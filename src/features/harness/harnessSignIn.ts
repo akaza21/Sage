@@ -3,7 +3,14 @@ import {
   signInProvider,
   subscribeAccountSignIn,
   resetAccountSignInForTest,
+  retainAccountSignInObservation,
 } from "./harnessSignInProvider";
+import { useWorkbenchStore } from "../../app/store";
+import {
+  harnessSignInFailures,
+  type HarnessSignInCommand,
+} from "../../services/acpHarnessDesktop";
+import type { AcpChatPage } from "../../domain/acp";
 
 /** Native account adapters own truth; visible surfaces share this bounded cache. */
 export type HarnessSignInState =
@@ -72,7 +79,9 @@ export async function refreshHarnessSignIn(
 ): Promise<HarnessSignInState> {
   const provider = signInProvider(harnessId);
   if (!provider) return "unsupported";
-  if (!provider.canRefresh) return harnessSignInStatus(harnessId).state;
+  if (provider.refreshRequirement) return "unavailable";
+  const nativeTransitionEpoch =
+    useWorkbenchStore.getState().nativeTransitionEpoch;
   const request = Symbol();
   refreshes.set(harnessId, request);
   if (harnessSignInStatus(harnessId).state === "unknown")
@@ -85,7 +94,11 @@ export async function refreshHarnessSignIn(
   }
   if (refreshes.get(harnessId) === request) {
     refreshes.delete(harnessId);
-    if (signInProvider(harnessId)?.key === provider.key)
+    const current = useWorkbenchStore.getState();
+    if (
+      signInProvider(harnessId)?.key === provider.key &&
+      current.nativeTransitionEpoch === nativeTransitionEpoch
+    )
       publish(harnessId, {
         state:
           state === "unavailable" &&
@@ -201,6 +214,7 @@ export function resetHarnessSignInForTest() {
 
 /** A protocol auth refusal is newer evidence than an earlier account check. */
 export function reportHarnessSignInRequired(harnessId: string) {
+  retainAccountSignInObservation();
   refreshes.delete(harnessId);
   publish(harnessId, { state: "signedOut", checkedAt: Date.now() });
 }
@@ -211,7 +225,8 @@ export function ensureHarnessSignInChecked(
 ) {
   for (const harnessId of harnessIds) {
     const provider = signInProvider(harnessId);
-    if (!provider?.canRefresh || refreshes.has(harnessId)) continue;
+    if (!provider || provider.refreshRequirement || refreshes.has(harnessId))
+      continue;
     const { state, checkedAt } = harnessSignInStatus(harnessId);
     if (
       (onFocus && state === "signedOut") ||
@@ -227,3 +242,33 @@ export function harnessesNeedingSignIn() {
     (harness) => harnessSignInStatus(harness.id).state === "signedOut",
   );
 }
+
+function reportBindingSignInRequired(bindingId: string | undefined) {
+  const harness = signInHarnesses().find(
+    (entry) => entry.bindingId === bindingId,
+  );
+  if (harness) reportHarnessSignInRequired(harness.id);
+}
+Object.assign(harnessSignInFailures, {
+  command({ bindingId, busy, error }: HarnessSignInCommand) {
+    if (busy && error?.failure.kind === "signInRequired")
+      reportBindingSignInRequired(bindingId);
+  },
+  page(previous: AcpChatPage, page: AcpChatPage) {
+    const turn = page.turns.at(-1);
+    if (
+      turn?.state !== "failed" ||
+      turn.terminalReason?.kind !== "authRequired"
+    )
+      return;
+    if (
+      previous.turns.some(
+        (entry) => entry.id === turn.id && entry.state === "failed",
+      )
+    )
+      return;
+    reportBindingSignInRequired(
+      page.sessions.find((session) => session.id === turn.sessionId)?.bindingId,
+    );
+  },
+});

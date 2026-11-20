@@ -1,7 +1,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearAcpProjectionRegistry } from "../../../app/acpProjectionRegistry";
+import {
+  clearAcpProjectionRegistry,
+  pinAcpProjectionIds,
+} from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
@@ -12,6 +15,12 @@ import type {
 import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatProjection } from "./useAcpChatProjection";
+import { page } from "./acpProjection.fixture";
+import {
+  harnessSignInStatus,
+  resetHarnessSignInForTest,
+  subscribeHarnessSignIn,
+} from "../../harness/harnessSignIn";
 
 const projection = {
   projectId: "project-1",
@@ -39,12 +48,154 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+  resetHarnessSignInForTest();
   vi.restoreAllMocks();
   useAcpProjectionStore.getState().clear();
   clearAcpProjectionRegistry();
 });
 
 describe("useAcpChatProjection", () => {
+  it("publishes a new protocol auth refusal but never replays it from restored history", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "account",
+          name: "Account",
+          description: "",
+          source: "builtIn",
+          installState: "available",
+          transport: "acp",
+          bindingId: "account-binding",
+          accountModelDiscovery: true,
+        },
+      ],
+      selectedHarnessId: "account",
+      harnessAccount: "managedChatgpt",
+      harnessDiscoveryPhase: "ready",
+    });
+    const unsubscribe = subscribeHarnessSignIn(() => undefined);
+    const running = page("running");
+    running.sessions = running.sessions.map((session) => ({
+      ...session,
+      bindingId: "account-binding" as never,
+    }));
+    const failed = {
+      ...page("failed", { kind: "authRequired" }),
+      sessions: running.sessions,
+      projectionRevision: "13" as never,
+    };
+    let changed!: (event: AcpProjectionChangedEvent) => void;
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
+      async (listener) => {
+        changed = listener;
+        return () => undefined;
+      },
+    );
+    const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(running);
+    const hook = renderHook(() => useAcpChatProjection());
+    await waitFor(() =>
+      expect(hook.result.current?.turns[0].state).toBe("running"),
+    );
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    load.mockResolvedValue(failed);
+    act(() =>
+      changed({
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        projectionRevision: "13",
+      } as AcpProjectionChangedEvent),
+    );
+    await waitFor(() =>
+      expect(harnessSignInStatus("account").state).toBe("signedOut"),
+    );
+    hook.unmount();
+    act(() => useWorkbenchStore.setState({ harnessAccount: "apiKey" }));
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    const restored = renderHook(() => useAcpChatProjection());
+    await waitFor(() =>
+      expect(restored.result.current?.turns[0].state).toBe("failed"),
+    );
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    restored.unmount();
+    unsubscribe();
+  });
+  it("ignores a suspended chat's delayed failure and its retained running page on restore", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "account",
+          name: "Account",
+          description: "",
+          source: "builtIn",
+          installState: "available",
+          transport: "acp",
+          bindingId: "account-binding",
+          accountModelDiscovery: true,
+        },
+      ],
+      selectedHarnessId: "account",
+      harnessAccount: "signedOut",
+      harnessDiscoveryPhase: "signInRequired",
+    });
+    const unsubscribe = subscribeHarnessSignIn(() => undefined);
+    const running = page("running");
+    running.sessions = running.sessions.map((session) => ({
+      ...session,
+      bindingId: "account-binding" as never,
+    }));
+    const failed = {
+      ...page("failed", { kind: "authRequired" }),
+      sessions: running.sessions,
+      projectionRevision: "13" as never,
+    };
+    let changed!: (event: AcpProjectionChangedEvent) => void;
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
+      async (listener) => {
+        changed = listener;
+        return () => undefined;
+      },
+    );
+    const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(running);
+    pinAcpProjectionIds(["chat-1"]);
+    const hook = renderHook(() => useAcpChatProjection(true, "chat-1"));
+    await waitFor(() =>
+      expect(hook.result.current?.turns[0].state).toBe("running"),
+    );
+    let complete!: (value: AcpChatPage) => void;
+    load.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    act(() =>
+      changed({
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        projectionRevision: "13",
+      } as AcpProjectionChangedEvent),
+    );
+    await waitFor(() => expect(complete).toBeDefined());
+    hook.unmount();
+    act(() =>
+      useWorkbenchStore.setState({
+        harnessAccount: "managedChatgpt",
+        harnessDiscoveryPhase: "ready",
+      }),
+    );
+    await act(async () => complete(failed));
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    load.mockResolvedValue(failed);
+    const restored = renderHook(() => useAcpChatProjection(true, "chat-1"));
+    await waitFor(() =>
+      expect(restored.result.current?.turns[0].state).toBe("failed"),
+    );
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    restored.unmount();
+    unsubscribe();
+  });
   it("subscribes config before bootstrap, coalesces reloads and recovers on renderer remount", async () => {
     let onConfig: ((event: AcpSessionConfigChangedV1) => void) | undefined;
     const dispose = vi.fn();

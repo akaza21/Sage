@@ -21,27 +21,27 @@ export function signInProvider(harnessId: string) {
             bindingId: harness.bindingId,
           } as CodexAuthScope)
         : null;
+    const key = JSON.stringify(scope);
+    const refreshRequirement = !scope
+      ? "Open a workspace first."
+      : state.selectedHarnessId !== harnessId
+        ? `Select ${harness.name} to check sign-in.`
+        : state.harnessDiscoveryPhase === "checking" ||
+            state.pendingHarnessSignIn
+          ? "Harness is busy."
+          : null;
     return {
-      key: JSON.stringify(scope),
+      key,
       backgroundCheck: false,
-      canRefresh:
-        scope !== null &&
-        state.selectedHarnessId === harnessId &&
-        state.harnessDiscoveryPhase !== "checking" &&
-        !state.pendingHarnessSignIn,
+      refreshRequirement,
       status: async () => {
         const before = useWorkbenchStore.getState();
-        if (
-          !scope ||
-          before.selectedHarnessId !== harnessId ||
-          before.harnessDiscoveryPhase === "checking" ||
-          before.pendingHarnessSignIn
-        )
+        if (!scope || signInProvider(harnessId)?.refreshRequirement !== null)
           return "unknown" as const;
         await before.retryHarnessDiscovery();
         const current = useWorkbenchStore.getState();
         if (
-          signInProvider(harnessId)?.key !== JSON.stringify(scope) ||
+          signInProvider(harnessId)?.key !== key ||
           current.selectedHarnessId !== harnessId
         )
           return "unknown" as const;
@@ -57,7 +57,7 @@ export function signInProvider(harnessId: string) {
           await useWorkbenchStore.getState().selectHarness(harnessId);
         const current = useWorkbenchStore.getState();
         if (
-          signInProvider(harnessId)?.key === JSON.stringify(scope) &&
+          signInProvider(harnessId)?.key === key &&
           current.selectedHarnessId === harnessId
         )
           await current.signInHarnessWith(
@@ -71,7 +71,7 @@ export function signInProvider(harnessId: string) {
     return {
       key: JSON.stringify([harness.bindingId, harness.version]),
       backgroundCheck: true,
-      canRefresh: true,
+      refreshRequirement: null,
       status: async () =>
         (await acpDesktop.getClaudeAuthStatus()).loggedIn
           ? ("signedIn" as const)
@@ -83,6 +83,20 @@ export function signInProvider(harnessId: string) {
 // Keep the last discovery observation across suspension. Replaying it on wake
 // must not overwrite a newer protocol refusal with stale discovery state.
 let accountObservation: readonly unknown[] = [];
+function currentAccountObservation() {
+  const state = useWorkbenchStore.getState();
+  return [
+    state.selectedHarnessId,
+    signInProvider(state.selectedHarnessId ?? "")?.key,
+    state.harnessAccount,
+    state.harnessDiscoveryPhase,
+    state.harnessRequestGeneration,
+  ];
+}
+
+export function retainAccountSignInObservation() {
+  accountObservation = currentAccountObservation();
+}
 export function resetAccountSignInForTest() {
   accountObservation = [];
 }
@@ -110,13 +124,7 @@ export function subscribeAccountSignIn(
     const harness = signInHarnesses().find(
       (entry) => entry.id === state.selectedHarnessId,
     );
-    const observation = [
-      harness?.id,
-      harness && signInProvider(harness.id)?.key,
-      state.harnessAccount,
-      state.harnessDiscoveryPhase,
-      state.harnessRequestGeneration,
-    ];
+    const observation = currentAccountObservation();
     const newObservation = observation.some(
       (value, index) => value !== accountObservation[index],
     );

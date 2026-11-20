@@ -10,12 +10,14 @@ import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { acpDesktop } from "../../services/acpDesktop";
 import type { HarnessDefinition } from "../../domain/harness";
+import type * as AcpHarnessDesktopModule from "../../services/acpHarnessDesktop";
 import { ComposerStatusNotices } from "../chat/ComposerStatusNotices";
 import { HarnessAccountMenu } from "./HarnessSignInStatus";
 import {
   refreshHarnessSignIn,
   resetHarnessSignInForTest,
   harnessSignInStatus,
+  reportHarnessSignInRequired,
 } from "./harnessSignIn";
 
 let signedIn = false;
@@ -34,7 +36,8 @@ vi.mock("../../services/acpDesktop", () => ({
     },
   },
 }));
-vi.mock("../../services/acpHarnessDesktop", () => ({
+vi.mock("../../services/acpHarnessDesktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof AcpHarnessDesktopModule>()),
   acpHarnessDesktop: {
     discoverCodex: async (scope: object) => ({
       ...scope,
@@ -295,6 +298,8 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
     selectedHarnessId: "cli-fixture",
     harnessAccount: null,
   });
+  await refreshHarnessSignIn("cli-fixture");
+  reportHarnessSignInRequired("cli-fixture");
   const view = render(
     <ComposerStatusNotices
       selectedHarnessId="cli-fixture"
@@ -339,10 +344,15 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
   expect(screen.getByRole("button", { name: "Check sign-in" })).toBeEnabled();
 });
 
-it("preserves Codex turn recovery when an unselected discovery check cannot run", async () => {
+it("requires selecting Codex before checking its retained recovery after external login", async () => {
   install("account-fixture");
+  vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
+    loggedIn: true,
+  });
   signedIn = true;
   await refreshHarnessSignIn("account-fixture");
+  reportHarnessSignInRequired("account-fixture");
+  signedIn = false;
   function RecoveryComposer() {
     const selected = useWorkbenchStore((state) => state.selectedHarnessId);
     const [recovered, setRecovered] = useState(false);
@@ -378,6 +388,9 @@ it("preserves Codex turn recovery when an unselected discovery check cannot run"
       harnessAccount: null,
     }),
   );
+  expect(screen.getByRole("button", { name: "Check sign-in" })).toBeDisabled();
+  expect(screen.getByText("Select Codex to check sign-in.")).toBeVisible();
+  signedIn = true;
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
   });
@@ -386,9 +399,12 @@ it("preserves Codex turn recovery when an unselected discovery check cannot run"
     screen.getByLabelText("Harness sign-in needs attention"),
   ).toBeVisible();
   expect(screen.queryByText("Ready to retry")).toBeNull();
-  expect(screen.getByRole("alert")).toHaveTextContent(
-    "Codex is still signed out.",
-  );
+  expect(screen.queryByRole("alert")).toBeNull();
+  await act(async () => {
+    await useWorkbenchStore.getState().selectHarness("account-fixture");
+  });
+  expect(await screen.findByText("Ready to retry")).toBeVisible();
+  expect(screen.queryByLabelText("Harness sign-in needs attention")).toBeNull();
 });
 
 it("keeps a newer expired-account fact across inventory refresh and view remount", async () => {
@@ -419,6 +435,7 @@ it.each(harnesses)(
     install(harness.id);
     signedIn = true;
     for (const entry of harnesses) await refreshHarnessSignIn(entry.id);
+    reportHarnessSignInRequired(harness.id);
     function RecoveryComposer() {
       const [recovered, setRecovered] = useState(false);
       return (

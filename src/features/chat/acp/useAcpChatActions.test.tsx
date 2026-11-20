@@ -28,6 +28,11 @@ import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
 import { ChatHarnessControls } from "../ChatHarnessControls";
+import {
+  harnessSignInStatus,
+  resetHarnessSignInForTest,
+  subscribeHarnessSignIn,
+} from "../../harness/harnessSignIn";
 
 const projectPort = getWorkbenchPorts().project;
 
@@ -123,6 +128,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetHarnessSignInForTest();
   vi.restoreAllMocks();
   useAcpProjectionStore.getState().clear();
   clearAcpProjectionRegistry();
@@ -130,6 +136,97 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it("keeps a newer sign-in when a refused command finishes settling", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "auth-fixture",
+          name: "Auth fixture",
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId,
+          accountModelDiscovery: true,
+        },
+      ],
+      selectedHarnessId: "auth-fixture",
+      harnessAccount: "managedChatgpt",
+      harnessDiscoveryPhase: "ready",
+    });
+    let signedInElsewhere = false;
+    const unsubscribe = subscribeHarnessSignIn(() => {
+      if (
+        !signedInElsewhere &&
+        harnessSignInStatus("auth-fixture").state === "signedOut"
+      ) {
+        signedInElsewhere = true;
+        useWorkbenchStore.setState({ harnessAccount: "apiKey" });
+      }
+    });
+    vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
+      new AcpDesktopError({
+        kind: "signInRequired",
+        message: "Sign in before sending.",
+      }),
+    );
+    const { result } = renderHook(() => useAcpChatActions());
+    await act(async () => {
+      await result.current.submit("Hello", [], bindingId, null);
+    });
+    expect(signedInElsewhere).toBe(true);
+    expect(harnessSignInStatus("auth-fixture").state).toBe("signedIn");
+    unsubscribe();
+  });
+  it.each([false, true])(
+    "attributes a refused session start to the submitted binding (previous session: %s)",
+    async (hasSession) => {
+      const scope = useAcpProjectionStore.getState().scope!;
+      useAcpProjectionStore.getState().clear();
+      useAcpProjectionStore.getState().activateScope(scope);
+      useAcpProjectionStore
+        .getState()
+        .completePageLoad(
+          useAcpProjectionStore.getState().beginPageLoad(null),
+          {
+            ...page(),
+            currentSessionId: hasSession ? page().currentSessionId : null,
+            sessions: hasSession ? page().sessions : [],
+          },
+        );
+      useWorkbenchStore.setState({
+        harnesses: [bindingId, "new-binding"].map((binding, index) => ({
+          id: `auth-${index}`,
+          name: `Auth ${index}`,
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: binding,
+          accountModelDiscovery: false,
+          signIn: { command: "", hint: "", statusCheck: "claudeCli" },
+        })),
+      });
+      vi.spyOn(acpDesktop, "startSession").mockRejectedValue(
+        new AcpDesktopError({
+          kind: "signInRequired",
+          message: "Sign in before starting.",
+        }),
+      );
+      const { result } = renderHook(() => useAcpChatActions());
+      await act(async () => {
+        await result.current.submit(
+          "Hello",
+          [],
+          "new-binding" as CuratedBindingId,
+          null,
+        );
+      });
+      expect(result.current.errorKind).toBe("signInRequired");
+      expect(harnessSignInStatus("auth-1").state).toBe("signedOut");
+      expect(harnessSignInStatus("auth-0").state).toBe("unknown");
+    },
+  );
   it("shows a refusal when a prompt has no authoritative Chat context", async () => {
     useAcpProjectionStore.getState().clear();
     const send = vi.spyOn(acpDesktop, "sendTurn");
@@ -537,6 +634,21 @@ describe("useAcpChatActions per-Chat ownership", () => {
     ["a bound", "chat-a"],
     ["an unbound", null],
   ])("clears a sign-in refusal and its kind for %s Chat", async (_, chatId) => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "auth-fixture",
+          name: "Auth fixture",
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId,
+          accountModelDiscovery: false,
+          signIn: { command: "", hint: "", statusCheck: "claudeCli" },
+        },
+      ],
+    });
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
       new AcpDesktopError({
         kind: "signInRequired",
@@ -560,6 +672,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       await result.current.submit("Need access", [], bindingId, null);
     });
     expect(result.current.errorKind).toBe("signInRequired");
+    expect(harnessSignInStatus("auth-fixture").state).toBe("signedOut");
 
     act(() => result.current.clearError());
     expect(result.current.error).toBeNull();

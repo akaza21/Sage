@@ -1,11 +1,25 @@
 import { safeCodexDiscovery } from "./acpHarnessResponses";
 import type {
+  AcpChatPage,
+  AcpCommandFailure,
   CodexAuthResponse,
   CodexAuthScope,
   CodexDiscoveryResponse,
   GetCodexDiscoveryRequest,
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
+
+// The account cache connects on first use. Until then there is no cached fact
+// to supersede. This port retains no events or views.
+export interface HarnessSignInCommand {
+  bindingId?: string;
+  busy: boolean;
+  error: { failure: AcpCommandFailure } | null;
+}
+export const harnessSignInFailures: {
+  command?: (state: HarnessSignInCommand) => void;
+  page?: (previous: AcpChatPage, page: AcpChatPage) => void;
+} = {};
 
 // Harness discovery runs before Chat; it must not retain transcript adapters.
 export const acpHarnessDesktop = {

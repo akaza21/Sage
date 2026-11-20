@@ -948,19 +948,32 @@ fn codex_auth_observation_preserves_the_catalog_for_a_real_session_start() {
         .unwrap();
         assert_eq!(discovered.models[0].id, model);
 
-        // A retained explicit account read must also leave discovery's model
-        // authority intact, even when the account worker cannot launch.
-        let _ = super::acp::codex_auth::run_codex_auth(
+        // Successful observation must preserve model authority. A worker-launch
+        // failure returns before invalidation and would not reproduce the bug.
+        let scope = crate::acp::ipc::CodexAuthScope {
+            project_id: project.clone(),
+            project_generation: ProjectGeneration::ZERO,
+            binding_id: binding.clone(),
+        };
+        let observed_scope = scope.clone();
+        let observed = super::acp::codex_auth::run_codex_auth_with(
             &state,
-            crate::acp::ipc::CodexAuthScope {
-                project_id: project.clone(),
-                project_generation: ProjectGeneration::ZERO,
-                binding_id: binding.clone(),
-            },
+            scope,
             crate::acp::service::CodexAuthAction::Observe,
             false,
+            move |_prepared| {
+                Ok(crate::acp::ipc::CodexAuthResponse {
+                    project_id: observed_scope.project_id,
+                    project_generation: observed_scope.project_generation,
+                    binding_id: observed_scope.binding_id,
+                    phase: crate::acp::ipc::CodexAuthPhase::SignedIn,
+                    revision: "2".into(),
+                })
+            },
         )
-        .await;
+        .await
+        .expect("the account observation must succeed");
+        assert_eq!(observed.phase, crate::acp::ipc::CodexAuthPhase::SignedIn);
         let page = state
             .acp
             .load_chat_page(project.clone(), chat.clone(), None)

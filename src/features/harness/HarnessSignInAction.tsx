@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDefinition } from "../../domain/harness";
 import { refreshHarnessSignIn, startHarnessSignIn } from "./harnessSignIn";
+import { signInProvider } from "./harnessSignInProvider";
 
 export function HarnessLoginAction({
   harness,
@@ -15,6 +16,9 @@ export function HarnessLoginAction({
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const checkRequirement = useWorkbenchStore(() =>
+    check ? signInProvider(harness.id)?.refreshRequirement : null,
+  );
   const canCancel = useWorkbenchStore(
     (state) =>
       menuItem &&
@@ -34,7 +38,7 @@ export function HarnessLoginAction({
               ? "Check sign-in"
               : `Sign in to ${harness.name}`
         }
-        disabled={canCancel ? cancelling : busy}
+        disabled={Boolean(checkRequirement) || (canCancel ? cancelling : busy)}
         onClick={() => {
           if (canCancel) {
             setCancelling(true);
@@ -50,7 +54,7 @@ export function HarnessLoginAction({
           setError(null);
           const action = check
             ? refreshHarnessSignIn(harness.id).then((state) => {
-                if (state === "unavailable")
+                if (state !== "signedIn" && state !== "signedOut")
                   throw new Error("Check unavailable");
                 if (state === "signedOut")
                   setError(`${harness.name} is still signed out.`);
@@ -78,6 +82,7 @@ export function HarnessLoginAction({
                 : "Sign in"}
         </span>
       </button>
+      {checkRequirement ? <span>{checkRequirement}</span> : null}
       {error ? <span role="alert">{error}</span> : null}
     </>
   );

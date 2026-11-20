@@ -4,6 +4,7 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import type { AcpActionContext } from "./acpActionController";
+import { harnessSignInFailures } from "../../../services/acpHarnessDesktop";
 
 export function sameScope(
   context: AcpActionContext | null,
@@ -51,6 +52,8 @@ export function createActionProjectionCommit(dependencies: {
       captured.scope,
       page,
     );
-    return disposition === "accepted" ? page : null;
+    if (disposition !== "accepted") return null;
+    harnessSignInFailures.page?.(previous, page);
+    return page;
   };
 }

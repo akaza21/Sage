@@ -36,7 +36,10 @@ import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
-import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
+import {
+  acpHarnessDesktop,
+  harnessSignInFailures,
+} from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { resetHarnessSignInForTest } from "../harness/harnessSignIn";
@@ -2516,7 +2519,11 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.error =
       "The harness requires sign-in before it can continue.";
     hooks.actions.errorKind = "signInRequired";
-
+    harnessSignInFailures.command?.({
+      bindingId: "claude-agent-acp",
+      busy: true,
+      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+    });
     const { rerender } = render(<ChatSurface />);
 
     expect(
@@ -2631,6 +2638,11 @@ describe("ChatSurface ACP resource integration", () => {
       })),
       turns: [failedTurn],
     };
+    harnessSignInFailures.command?.({
+      bindingId: "claude-agent-acp",
+      busy: true,
+      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+    });
     const { rerender } = render(<ChatSurface key="chat-a" chatId="chat-a" />);
 
     expect(
@@ -2644,6 +2656,11 @@ describe("ChatSurface ACP resource integration", () => {
 
     const claudePage = hooks.page;
     hooks.page = { ...claudePage, sessions: page.sessions };
+    harnessSignInFailures.command?.({
+      bindingId: "codex-app-server",
+      busy: true,
+      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+    });
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.getByText("Codex isn't signed in")).toBeVisible();
     expect(screen.getByRole("button", { name: "Check sign-in" })).toBeVisible();
@@ -2667,6 +2684,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("button", { name: "Sign in to Claude Code" }),
     ).toBeVisible();
 
+    const runningPage = hooks.page;
     hooks.page = {
       ...hooks.page,
       turns: [
@@ -2679,6 +2697,7 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
     };
+    harnessSignInFailures.page?.(runningPage!, hooks.page);
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Check sign-in" }),
@@ -2723,6 +2742,7 @@ describe("ChatSurface ACP resource integration", () => {
         { ...dismissedPage.turns[1], id: "turn-c" as never, ordinal: 2 },
       ],
     };
+    act(() => harnessSignInFailures.page?.(dismissedPage, hooks.page!));
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(
       await screen.findByRole("button", { name: "Check sign-in" }),

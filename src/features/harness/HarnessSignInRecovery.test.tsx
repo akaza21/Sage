@@ -233,6 +233,39 @@ it("can cancel an unfinished browser login and successfully retry", async () => 
   expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
 });
 
+it("does not restore an old chat's sign-out after signing in from another chat", async () => {
+  install();
+  vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockImplementation(
+    async (scope) => ({ ...scope, phase: "signedIn", revision: "2" }),
+  );
+  const failedChat = () => (
+    <ComposerHarnessSignInNotice
+      harnessId="account"
+      recovery={{
+        harnessId: "account",
+        scope: "chat-a-failed-turn",
+        onSignedIn: () => undefined,
+      }}
+    />
+  );
+  const chatA = render(failedChat());
+  expect(
+    await screen.findByText("Account harness isn't signed in"),
+  ).toBeVisible();
+  chatA.unmount();
+  const chatB = render(<ComposerHarnessSignInNotice harnessId="account" />);
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in to Account harness" }),
+    );
+  });
+  expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  chatB.unmount();
+  render(failedChat());
+  expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  expect(sendDisabledReason()).toBeNull();
+});
+
 it.each(["project", "harness", "request"])(
   "ignores a discovery retry's sign-in after the %s scope changes",
   async (changed) => {

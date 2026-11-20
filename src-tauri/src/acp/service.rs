@@ -100,7 +100,7 @@ pub(crate) use characterization::{
     BINDING_ID as CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
     CharacterizationCase, CharacterizationError,
 };
-pub(crate) use codex_auth::{CodexAuthAction, CodexAuthManager};
+pub(crate) use codex_auth::{CodexAuthAction, CodexAuthManager, PreparedCodexAuth};
 use codex_discovery::CodexDiscoveryManager;
 pub(crate) use codex_launch_failure::CodexLaunchSetupError;
 use configuration::ServiceConfiguration;

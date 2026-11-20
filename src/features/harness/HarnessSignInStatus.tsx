@@ -17,9 +17,7 @@ import {
   harnessesNeedingSignIn,
   harnessSignInRevision,
   subscribeHarnessSignIn,
-  reportHarnessSignInRequired,
   harnessSignInStatus,
-  harnessSupportsSignIn,
 } from "./harnessSignIn";
 
 const MenuPart = lazyParts<typeof MenuChunk>(
@@ -60,39 +58,45 @@ export function ComposerHarnessSignInNotice({
   const scope = recovery?.scope;
   const onSignedIn = recovery?.onSignedIn;
   const completed = useRef<string | null>(null);
-  useEffect(() => {
-    if (!recoveryId) return;
-    completed.current = null;
-    reportHarnessSignInRequired(recoveryId);
-  }, [recoveryId, scope]);
   const recoveryState = recoveryId
     ? harnessSignInStatus(recoveryId).state
     : null;
   useEffect(() => {
+    if (!recoveryId || recoveryState !== "signedIn" || !scope) {
+      completed.current = null;
+      return;
+    }
     if (
-      recoveryId &&
-      recoveryState === "signedIn" &&
       harnessSignInStatus(recoveryId).state === "signedIn" &&
-      scope &&
       completed.current !== scope
     ) {
       completed.current = scope;
       onSignedIn?.();
     }
   }, [onSignedIn, recoveryId, recoveryState, scope]);
-  if (refusal && (!recoveryId || !harnessSupportsSignIn(recoveryId)))
+  if (refusal && (!recoveryId || recoveryState === "unsupported"))
     return (
       <div className="composer__error" role="alert">
         <SignInRequiredMessage harness={refusal} />
       </div>
     );
-  const harness = needsSignIn.find(
-    (entry) => entry.id === (recoveryId ?? harnessId),
-  );
+  const harness =
+    needsSignIn.find((entry) => entry.id === (recoveryId ?? harnessId)) ??
+    (recoveryId &&
+    recoveryState !== "signedIn" &&
+    recoveryState !== "unsupported"
+      ? useWorkbenchStore
+          .getState()
+          .harnesses.find((entry) => entry.id === recoveryId)
+      : undefined);
   if (!harness) return null;
   return (
     <div className="composer__notice harness-signin-notice" role="status">
-      <span>{harness.name} isn't signed in</span>
+      <span>
+        {recoveryState && recoveryState !== "signedOut"
+          ? `Recheck ${harness.name} sign-in`
+          : `${harness.name} isn't signed in`}
+      </span>
       <HarnessLoginAction key={harness.id} harness={harness} />
       {recoveryId === harness.id ? (
         <HarnessLoginAction

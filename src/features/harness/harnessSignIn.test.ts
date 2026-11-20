@@ -1,5 +1,6 @@
 import { useWorkbenchStore } from "../../app/store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type * as AcpHarnessDesktopModule from "../../services/acpHarnessDesktop";
 
 const desktop = vi.hoisted(() => ({
   getClaudeAuthStatus: vi.fn(),
@@ -7,7 +8,8 @@ const desktop = vi.hoisted(() => ({
   discoverCodex: vi.fn(),
 }));
 vi.mock("../../services/acpDesktop", () => ({ acpDesktop: desktop }));
-vi.mock("../../services/acpHarnessDesktop", () => ({
+vi.mock("../../services/acpHarnessDesktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof AcpHarnessDesktopModule>()),
   acpHarnessDesktop: desktop,
 }));
 

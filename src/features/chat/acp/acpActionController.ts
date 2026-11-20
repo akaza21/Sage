@@ -39,6 +39,7 @@ export interface AcpActionContext {
 export type AcpActionOrigin = "chat" | "mode";
 
 export interface AcpActionState {
+  bindingId?: CuratedBindingId;
   scope: AcpProjectionScope | null;
   ownershipEpoch: number | null;
   transitionEpoch: number | null;
@@ -91,7 +92,7 @@ export type AcpActionOutcome =
   "applied" | "ignoredStale" | "rejected" | "outcomeUnknown";
 type AcpActionPresentation = Pick<
   AcpActionState,
-  "busy" | "cancellingTurnId" | "error"
+  "busy" | "cancellingTurnId" | "error" | "bindingId"
 >;
 
 function configOwner(page: AcpChatPage): {
@@ -158,6 +159,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     presentation: AcpActionPresentation,
   ) => {
     const emitted: AcpActionState = {
+      bindingId: currentSession(captured.page)?.bindingId,
       scope: captured.scope,
       ownershipEpoch: captured.ownershipEpoch,
       transitionEpoch: Number(captured.commandProjectGeneration),
@@ -375,7 +377,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);
-        updateState({ error });
+        updateState({ error, bindingId });
         if (!promptCallStarted || definitePromptNonDispatch(error)) {
           dependencies.restoreComposer?.(
             captured,
