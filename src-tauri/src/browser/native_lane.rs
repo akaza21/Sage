@@ -1,4 +1,5 @@
 mod annotate;
+mod background;
 mod device;
 mod diagnostics;
 

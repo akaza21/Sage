@@ -142,7 +142,8 @@ impl BoundsTarget for NativeTarget<'_> {
             .run_on_main_thread(move || {
                 visibility.place();
                 if app.state::<BrowserState>().annotate.placed(&tab_id)
-                    && let Err(error) = shown.show()
+                    && let Err(error) =
+                        visibility.reveal_page(&shown, || shown.show().map_err(|e| e.to_string()))
                 {
                     eprintln!("browser show failed for {tab_id}: {error}");
                 }
