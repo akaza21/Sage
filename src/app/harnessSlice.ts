@@ -66,6 +66,7 @@ export interface HarnessSlice {
   logoutHarness: () => Promise<void>;
   signInHarnessWith: (
     call: (scope: CodexAuthScope) => Promise<CodexAuthResponse>,
+    pending?: "checking" | "waiting",
   ) => Promise<void>;
   selectModel: (modelId: string) => void;
 }
@@ -342,10 +343,10 @@ export const createHarnessSlice: StateCreator<
           "checking",
         );
     },
-    signInHarnessWith: async (call) => {
+    signInHarnessWith: async (call, pending = "checking") => {
       const phase = get().harnessDiscoveryPhase;
       if (phase !== "checking" && phase !== "waiting")
-        await changeAccount(call, "signedIn", "checking");
+        await changeAccount(call, "signedIn", pending);
     },
     selectModel: (selectedModelId) => {
       if (

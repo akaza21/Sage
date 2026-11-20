@@ -23,7 +23,7 @@ pub(super) trait CodexOperationCancellation: Send + Sync {
     ) -> Result<(), CodexDiscoveryRunError>;
 }
 
-struct TreeCancellation(TreeControl);
+pub(super) struct TreeCancellation(pub(super) TreeControl);
 
 impl CodexOperationCancellation for TreeCancellation {
     fn request_parent_shutdown_until(

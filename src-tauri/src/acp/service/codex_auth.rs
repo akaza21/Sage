@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc, Mutex,
+    Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
@@ -14,6 +14,8 @@ use crate::acp::{
 };
 
 use super::codex_operation::{CodexOperationGate, PreparedCodexOperation};
+mod observation;
+use observation::{Observation, ObservationLease};
 
 #[derive(Debug)]
 pub(crate) enum CodexAuthAction {
@@ -35,6 +37,7 @@ pub(crate) struct PreparedCodexAuth {
     action: CodexAuthAction,
     deadline: CodexAuthDeadline,
     operation: PreparedCodexOperation,
+    observation: Option<ObservationLease>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +57,7 @@ pub(crate) struct CodexAuthManager {
     state: Mutex<AuthState>,
     cancel: Mutex<Option<ActiveCancel>>,
     next_revision: AtomicU64,
+    observation: Mutex<Weak<Observation>>,
 }
 
 impl CodexAuthManager {
@@ -70,6 +74,7 @@ impl CodexAuthManager {
             }),
             cancel: Mutex::new(None),
             next_revision: AtomicU64::new(2),
+            observation: Mutex::new(Weak::new()),
         })
     }
 
@@ -98,29 +103,51 @@ impl CodexAuthManager {
             return Err(CodexDiscoveryRunError::InvalidScope);
         }
         let operation = self.gate.prepare()?;
+        let observation = if matches!(action, CodexAuthAction::Observe) {
+            let observation = Observation::new();
+            *self
+                .observation
+                .lock()
+                .map_err(|_| CodexDiscoveryRunError::Cleanup)? = Arc::downgrade(&observation);
+            Some(ObservationLease {
+                observation,
+                settlement: Err(CodexDiscoveryRunError::Cleanup),
+            })
+        } else {
+            None
+        };
         Ok(PreparedCodexAuth {
             scope,
             root,
             action,
             deadline,
             operation,
+            observation,
         })
     }
 
     pub(crate) fn run(
         self: &Arc<Self>,
-        prepared: PreparedCodexAuth,
+        mut prepared: PreparedCodexAuth,
     ) -> Result<CodexAuthResponse, CodexDiscoveryRunError> {
         let changes_account = prepared.action.changes_account();
         let operation_epoch = CodexOperationGate::prepared_epoch(&prepared.operation);
         let active = self.gate.begin(&prepared.operation)?;
-        let result = self.run_active(prepared, &active);
+        let mut observation = prepared.observation.take();
+        let result = self.run_active(
+            prepared,
+            &active,
+            observation.as_ref().map(|lease| &*lease.observation),
+        );
         let settlement = if result == Err(CodexDiscoveryRunError::Cleanup) {
             Err(CodexDiscoveryRunError::Cleanup)
         } else {
             Ok(())
         };
         active.settle(settlement);
+        if let Some(observation) = observation.as_mut() {
+            observation.settlement = settlement;
+        }
         self.clear_cancel();
         if result.is_err() && changes_account && self.gate.is_current(operation_epoch) {
             self.publish(CodexAuthPhase::Recovery);
@@ -132,7 +159,11 @@ impl CodexAuthManager {
         &self,
         prepared: PreparedCodexAuth,
         active: &super::codex_operation::ActiveCodexOperation,
+        observation: Option<&Observation>,
     ) -> Result<CodexAuthResponse, CodexDiscoveryRunError> {
+        if let Some(observation) = observation {
+            observation.ensure_current()?;
+        }
         let binding = self.registration.refresh().map_err(|error| match error {
             crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift => {
                 CodexDiscoveryRunError::Drift
@@ -168,7 +199,14 @@ impl CodexAuthManager {
             runtime_epoch,
             prepared.deadline,
             cancel,
-            |control| active.register_control(control),
+            |control| {
+                if let Some(observation) = observation {
+                    observation.register(Arc::new(super::codex_operation::TreeCancellation(
+                        control.clone(),
+                    )))?;
+                }
+                active.register_control(control)
+            },
         )?;
         let outcome = match prepared.action {
             CodexAuthAction::Observe => run_account_protocol(
@@ -205,12 +243,74 @@ impl CodexAuthManager {
             return Err(CodexDiscoveryRunError::Drift);
         }
         transport.revalidate()?;
+        if let Some(observation) = observation {
+            observation.ensure_current()?;
+        }
         let phase = match outcome {
             CodexAuthOutcome::SignedIn => CodexAuthPhase::SignedIn,
             CodexAuthOutcome::SignedOut | CodexAuthOutcome::Cancelled => CodexAuthPhase::SignedOut,
         };
         let state = self.publish(phase);
         Ok(response(prepared.scope, state))
+    }
+
+    /// Called under the Project transition lock, before foreground admission.
+    /// An observation cannot take the slot again between settlement and prepare.
+    pub(crate) async fn yield_observation_until(
+        &self,
+        deadline: std::time::Instant,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        let observation = self
+            .observation
+            .lock()
+            .map_err(|_| CodexDiscoveryRunError::Cleanup)?
+            .upgrade();
+        if let Some(observation) = observation {
+            let cleanup = std::time::Duration::from_millis(
+                sage_core::limits::LIMITS
+                    .deadlines_ms
+                    .tree_termination
+                    .saturating_add(sage_core::limits::LIMITS.deadlines_ms.explicit_close),
+            );
+            observation
+                .yield_until(deadline.min(std::time::Instant::now() + cleanup))
+                .await?;
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hold_observation_for_test(
+        self: &Arc<Self>,
+        mut prepared: PreparedCodexAuth,
+    ) -> tokio::task::JoinHandle<()> {
+        struct Cancel(tokio::sync::mpsc::Sender<()>);
+        impl super::codex_operation::CodexOperationCancellation for Cancel {
+            fn request_parent_shutdown_until(
+                &self,
+                _: std::time::Instant,
+            ) -> Result<(), CodexDiscoveryRunError> {
+                self.0
+                    .try_send(())
+                    .map_err(|_| CodexDiscoveryRunError::Cleanup)
+            }
+        }
+        let active = self.gate.begin(&prepared.operation).unwrap();
+        let (send, mut receive) = tokio::sync::mpsc::channel(1);
+        prepared
+            .observation
+            .as_ref()
+            .unwrap()
+            .observation
+            .register(Arc::new(Cancel(send)))
+            .unwrap();
+        tokio::spawn(async move {
+            receive.recv().await.expect("foreground cancellation");
+            let mut lease = prepared.observation.take().unwrap();
+            drop(prepared);
+            active.settle(Ok(()));
+            lease.settlement = Ok(());
+        })
     }
 
     pub(crate) fn cancel(
@@ -441,6 +541,42 @@ mod tests {
         let observed = manager.publish(CodexAuthPhase::SignedIn);
         assert!(observed.revision > recovery.revision);
         assert_eq!(manager.snapshot(scope()).phase, CodexAuthPhase::SignedIn);
+    }
+
+    #[tokio::test]
+    async fn foreground_discovery_preempts_an_outstanding_observation() {
+        let gate = CodexOperationGate::new();
+        let registration = startup_codex_binding_registration();
+        let auth = CodexAuthManager::new(registration.clone(), Arc::clone(&gate));
+        let discovery = CodexDiscoveryManager::with_gate(registration, Arc::clone(&gate));
+        let scope = scope();
+        let observed = auth
+            .prepare(
+                scope.clone(),
+                root(&scope),
+                CodexAuthAction::Observe,
+                false,
+                CodexAuthDeadline::new().unwrap(),
+            )
+            .unwrap();
+        let worker = auth.hold_observation_for_test(observed);
+        auth.yield_observation_until(std::time::Instant::now() + std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        let foreground = discovery.prepare(
+            GetCodexDiscoveryRequest {
+                project_id: scope.project_id.clone(),
+                project_generation: scope.project_generation,
+                binding_id: scope.binding_id.clone(),
+            },
+            root(&scope),
+            CodexDiscoveryDeadline::new().unwrap(),
+        );
+        assert!(
+            foreground.is_ok(),
+            "background observation blocked foreground discovery"
+        );
+        worker.await.unwrap();
     }
 
     fn scope() -> CodexAuthScope {

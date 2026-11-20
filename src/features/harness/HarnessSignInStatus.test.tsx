@@ -35,6 +35,12 @@ vi.mock("../../services/acpDesktop", () => ({
 }));
 vi.mock("../../services/acpHarnessDesktop", () => ({
   acpHarnessDesktop: {
+    discoverCodex: async (scope: object) => ({
+      ...scope,
+      rootId: "root",
+      account: signedIn ? "managedChatgpt" : "signedOut",
+      models: [],
+    }),
     startCodexAuth: async () => {
       signedIn = true;
       return { phase: "signedIn" };
@@ -88,7 +94,19 @@ function install(id: string) {
   useWorkbenchStore.setState({
     harnesses,
     selectedHarnessId: id,
-    project: { id: "workspace", name: "Workspace", roots: [] },
+    project: {
+      id: "workspace",
+      name: "Workspace",
+      roots: [
+        {
+          id: "root",
+          name: "Root",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
     harnessDiscoveryPhase: "idle",
     harnessAccount: null,
     retryHarnessDiscovery: async () => undefined,
@@ -147,7 +165,9 @@ it("badges the account only while an installed harness needs sign-in and offers 
   expect(
     screen.getByRole("menuitem", { name: "Sign in to Codex" }),
   ).toBeVisible();
-  fireEvent.click(screen.getByRole("menuitem", { name: "Sign in to Codex" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in to Codex" }));
+  });
   await act(async () => {
     for (const harness of harnesses) await refreshHarnessSignIn(harness.id);
   });

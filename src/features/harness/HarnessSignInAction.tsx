@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDefinition } from "../../domain/harness";
 import { refreshHarnessSignIn, startHarnessSignIn } from "./harnessSignIn";
 
@@ -12,16 +13,40 @@ export function HarnessLoginAction({
   check?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canCancel = useWorkbenchStore(
+    (state) =>
+      menuItem &&
+      !check &&
+      state.selectedHarnessId === harness.id &&
+      state.harnessDiscoveryPhase === "waiting",
+  );
   return (
     <>
       <button
         type="button"
         role={menuItem ? "menuitem" : undefined}
         className={menuItem ? "menu-item" : "button button--compact"}
-        aria-label={check ? "Check sign-in" : `Sign in to ${harness.name}`}
-        disabled={busy}
+        aria-label={
+          canCancel
+            ? `Cancel sign-in to ${harness.name}`
+            : check
+              ? "Check sign-in"
+              : `Sign in to ${harness.name}`
+        }
+        disabled={canCancel ? cancelling : busy}
         onClick={() => {
+          if (canCancel) {
+            setCancelling(true);
+            setError(null);
+            void useWorkbenchStore
+              .getState()
+              .cancelHarnessSignIn()
+              .catch(() => setError("Could not cancel sign-in. Try again."))
+              .finally(() => setCancelling(false));
+            return;
+          }
           setBusy(true);
           setError(null);
           const action = check
@@ -43,13 +68,15 @@ export function HarnessLoginAction({
       >
         {menuItem ? <span>{harness.name}</span> : null}
         <span>
-          {busy
-            ? check
-              ? "Checking\u2026"
-              : "Signing in\u2026"
-            : check
-              ? "Check sign-in"
-              : "Sign in"}
+          {canCancel
+            ? "Cancel sign-in"
+            : busy
+              ? check
+                ? "Checking\u2026"
+                : "Signing in\u2026"
+              : check
+                ? "Check sign-in"
+                : "Sign in"}
         </span>
       </button>
       {error ? <span role="alert">{error}</span> : null}

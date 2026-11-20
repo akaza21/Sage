@@ -40,6 +40,12 @@ pub(crate) async fn get_codex_discovery_with_deadline(
             message: safe_message("Codex beta requires one unchanged Project root."),
         })?;
     let manager = state.acp.codex_discovery_manager();
+    state
+        .acp
+        .codex_auth_manager()
+        .yield_observation_until(deadline.operation_end())
+        .await
+        .map_err(codex_discovery_error)?;
     let prepared = manager
         .prepare(request, project_root, deadline)
         .map_err(codex_discovery_error)?;

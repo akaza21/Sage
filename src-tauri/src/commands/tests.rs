@@ -872,6 +872,60 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
     });
 }
 
+#[tokio::test]
+async fn codex_discovery_command_preempts_an_outstanding_auth_observation() {
+    let (state, project, _chat, root) = state_with_unavailable_codex_project();
+    let project = SageProjectId::parse(project).unwrap();
+    let scope = crate::acp::ipc::CodexAuthScope {
+        project_id: project.clone(),
+        project_generation: ProjectGeneration::ZERO,
+        binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+    };
+    let context = state
+        .lock_active_project(&project, ProjectGeneration::ZERO)
+        .await
+        .unwrap();
+    let authority = state
+        .database
+        .codex_project_root_authority(&context)
+        .unwrap();
+    let auth = state.acp.codex_auth_manager();
+    let observed = auth
+        .prepare(
+            scope.clone(),
+            authority,
+            crate::acp::service::CodexAuthAction::Observe,
+            false,
+            crate::acp::bindings::codex::CodexAuthDeadline::new().unwrap(),
+        )
+        .unwrap();
+    let worker = auth.hold_observation_for_test(observed);
+    drop(context);
+
+    let result = get_codex_discovery_inner(
+        &state,
+        GetCodexDiscoveryRequest {
+            project_id: project,
+            project_generation: scope.project_generation,
+            binding_id: scope.binding_id,
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            result,
+            Err(AcpIpcError::Unavailable {
+                reason: AcpUnavailableReason::BindingUnavailable,
+                ..
+            })
+        ),
+        "{result:?}"
+    );
+    worker.await.unwrap();
+    drop(state);
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtime() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {

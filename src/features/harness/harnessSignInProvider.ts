@@ -3,7 +3,6 @@ import type { CodexAuthScope } from "../../domain/acp";
 import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { codexAuthStatusDesktop } from "../../services/codexAuthStatusDesktop";
-import { resetHarnessModelCache } from "../../app/harnessModelCache";
 
 export function signInHarnesses() {
   return useWorkbenchStore.getState().harnesses.slice(0, 32);
@@ -27,7 +26,18 @@ export function signInProvider(harnessId: string) {
       key: JSON.stringify(scope),
       status: async () => {
         if (!scope) return "unknown" as const;
+        const requestGeneration =
+          useWorkbenchStore.getState().harnessRequestGeneration;
         const result = await codexAuthStatusDesktop.getAuth(scope);
+        const current = useWorkbenchStore.getState();
+        if (
+          result.phase === "signedIn" &&
+          signInProvider(harnessId)?.key === JSON.stringify(scope) &&
+          current.selectedHarnessId === harnessId &&
+          current.harnessRequestGeneration === requestGeneration &&
+          current.harnessDiscoveryPhase === "signInRequired"
+        )
+          await current.retryHarnessDiscovery();
         return result.phase === "signedIn"
           ? ("signedIn" as const)
           : result.phase === "signedOut" || result.phase === "recovery"
@@ -36,17 +46,17 @@ export function signInProvider(harnessId: string) {
       },
       start: async () => {
         if (!scope) throw new Error("Open a workspace to sign in.");
-        resetHarnessModelCache();
-        const result = await acpHarnessDesktop
-          .startCodexAuth(scope)
-          .finally(resetHarnessModelCache);
+        if (useWorkbenchStore.getState().selectedHarnessId !== harnessId)
+          await useWorkbenchStore.getState().selectHarness(harnessId);
         const current = useWorkbenchStore.getState();
         if (
-          result.phase === "signedIn" &&
           signInProvider(harnessId)?.key === JSON.stringify(scope) &&
           current.selectedHarnessId === harnessId
         )
-          await current.retryHarnessDiscovery();
+          await current.signInHarnessWith(
+            acpHarnessDesktop.startCodexAuth,
+            "waiting",
+          );
       },
     };
   }
