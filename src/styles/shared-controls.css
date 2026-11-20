@@ -29,8 +29,15 @@
     box-shadow var(--motion-duration-fast) ease;
 }
 
+.button,
+.button--compact {
+  display: inline-flex;
+  align-items: center;
+}
+
 .button {
   height: var(--button-height, auto);
+  justify-content: center;
   padding: var(--space-2) var(--space-3);
   border-color: var(--button-border, var(--color-border-strong));
   color: var(--button-text, var(--color-text-primary));
@@ -43,9 +50,7 @@
 }
 
 .button--compact {
-  display: inline-flex;
   min-height: var(--control-height-compact);
-  align-items: center;
   gap: 4px;
   padding: 0 8px;
   font-size: var(--font-size-xs);
