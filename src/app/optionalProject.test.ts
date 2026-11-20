@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { currentProjectLayout } from "./projectProjection";
 import { useWorkbenchStore } from "./store";
@@ -10,7 +11,64 @@ beforeEach(async () => {
   useWorkbenchStore.setState(initial, true);
   await useWorkbenchStore.getState().initialize();
 });
-afterEach(() => useWorkbenchStore.setState(initial, true));
+afterEach(() => {
+  vi.restoreAllMocks();
+  useWorkbenchStore.setState(initial, true);
+});
+
+it.each(["chat-first", "resources-first", "empty"])(
+  "archives the last private chat with native selection normalization: %s",
+  async (order) => {
+    const state = useWorkbenchStore.getState();
+    await state.createChat(null);
+    const privateState = useWorkbenchStore.getState();
+    const chat = privateState.activeTabId!;
+    const rootId = privateState.project!.roots[0].id;
+    if (order !== "empty") {
+      await state.openFile({ rootId, relativePath: "first.txt" });
+      await state.openFile({ rootId, relativePath: "second.txt" });
+    }
+    const files = useWorkbenchStore
+      .getState()
+      .tabs.filter((tab) => tab.kind === "file");
+    if (order === "resources-first") {
+      // Array order need not be persisted position order.
+      useWorkbenchStore.setState((current) => ({
+        tabs: current.tabs.map((tab) => ({
+          ...tab,
+          position: tab.id === chat ? 2 : tab.id === files[0].id ? 1 : 0,
+        })),
+      }));
+    }
+    await state.activateTab(chat);
+    const ports = getWorkbenchPorts();
+    const archive = ports.chat.archiveChat.bind(ports.chat);
+    vi.spyOn(ports.chat, "archiveChat").mockImplementation(async (...args) => {
+      const result = await archive(...args);
+      const snapshot = result.snapshot!;
+      // Native restore_layout selects the first tab by persisted position
+      // when the configured active tab is absent (unlike browserDesktop).
+      snapshot.tabs.sort((left, right) => left.position - right.position);
+      snapshot.activeTabId ??= snapshot.tabs[0]?.id ?? null;
+      return result;
+    });
+    expect(await state.archiveChat(chat)).toBe(true);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "ready",
+      error: null,
+      projectTransitioning: false,
+      activeTabId:
+        order === "empty" ? null : files[order === "chat-first" ? 0 : 1].id,
+      archivedChats: [{ id: chat }],
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .tabs.map((tab) => tab.id)
+        .sort(),
+    ).toEqual(files.map((tab) => tab.id).sort());
+  },
+);
 
 it.each(["delete", "move"])(
   "releases private directory listings after %s",

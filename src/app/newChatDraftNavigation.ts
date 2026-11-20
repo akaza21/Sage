@@ -8,10 +8,23 @@ type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
 export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
   const state = get();
-  if (projectId && projectId !== state.project?.id)
-    return state.createChat(projectId);
   if (state.projectTransitioning) return;
-  if (!state.project)
+  // An omitted target reopens the draft. Explicit retargeting may replace an
+  // empty draft, but an unsent prompt must be sent or discarded by its owner.
+  const draft = state.newChatDraft;
+  const retainedDraft =
+    draft &&
+    (projectId === undefined ||
+      (draft.targetProjectId === undefined
+        ? draft.projectId
+        : draft.targetProjectId) === projectId ||
+      draft.text.length > 0 ||
+      draft.submission.status !== "released")
+      ? draft
+      : null;
+  if (!retainedDraft && projectId && projectId !== state.project?.id)
+    return state.createChat(projectId);
+  if (!retainedDraft && !state.project)
     return (async () => {
       const created = await state.createChat(null);
       if (
@@ -31,11 +44,7 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
-  if (
-    state.agentCenter === "draft" &&
-    state.newChatDraft &&
-    state.newChatDraft.targetProjectId === (projectId ?? null)
-  ) {
+  if (state.agentCenter === "draft" && retainedDraft) {
     set({ draftFocusRequest });
     return;
   }
@@ -52,22 +61,18 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft:
-      state.newChatDraft &&
-      state.newChatDraft.targetProjectId === (projectId ?? null)
-        ? state.newChatDraft
-        : {
-            id: {},
-            projectId: state.project?.id ?? null,
-            targetProjectId: projectId ?? null,
-            text: "",
-            harnessId: state.selectedHarnessId,
-            modelId: state.selectedModelId,
-            access: null,
-            effort: null,
-            submission: { status: "released" },
-            error: null,
-          },
+    newChatDraft: retainedDraft ?? {
+      id: {},
+      projectId: state.project?.id ?? null,
+      targetProjectId: projectId ?? null,
+      text: "",
+      harnessId: state.selectedHarnessId,
+      modelId: state.selectedModelId,
+      access: null,
+      effort: null,
+      submission: { status: "released" },
+      error: null,
+    },
   });
 }
 /**

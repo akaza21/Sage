@@ -17,12 +17,18 @@ export function archiveChatLayout(
   const nextChat = chats[index + 1] ?? chats[index - 1];
   if (!nextChat && !allowEmpty)
     throw new Error("the last attached chat cannot be archived");
+  const tabs = current.tabs.filter((tab) => tab.id !== chatId);
+  // Native restore_layout falls back to the first remaining tab by position.
+  const firstRemaining = tabs.reduce<WorkbenchTab | undefined>(
+    (first, tab) => (!first || tab.position < first.position ? tab : first),
+    undefined,
+  );
   return {
     ...current,
-    tabs: current.tabs.filter((tab) => tab.id !== chatId),
+    tabs,
     activeTabId:
       current.activeTabId === chatId
-        ? (nextChat?.id ?? null)
+        ? (nextChat?.id ?? firstRemaining?.id ?? null)
         : current.activeTabId,
   };
 }

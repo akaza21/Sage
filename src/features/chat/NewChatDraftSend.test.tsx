@@ -1934,6 +1934,7 @@ it("keeps the confirmed chat owned by the draft after an Editor round trip durin
 
 it("sends a top-level new chat in its private scope without changing the public project list", async () => {
   const real = useWorkbenchStore.getState().project!.id;
+  useWorkbenchStore.getState().discardNewChatDraft();
   await useWorkbenchStore.getState().openNewChatDraft();
   mount();
   await settleLazyModules();

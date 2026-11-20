@@ -631,6 +631,17 @@ test("new chat can choose no project and distinguishes duplicate project names",
     exact: true,
   });
   await expect(selected).toBeVisible();
+  const draftComposer = page.getByRole("combobox", {
+    name: "Message agent",
+    exact: true,
+  });
+  await draftComposer.fill("Keep this project-selected unsent prompt");
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(draftComposer).toBeFocused();
+  await expect(draftComposer).toHaveValue(
+    "Keep this project-selected unsent prompt",
+  );
+  await expect(selected).toBeVisible();
   const clear = location.locator(".project-scope__clear");
   await selected.hover();
   await expect(clear).toBeVisible();
