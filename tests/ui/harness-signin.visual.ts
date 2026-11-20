@@ -21,8 +21,6 @@ for (const adapter of ["cli", "account"] as const) {
       const { acpDesktop } = await import("/src/services/acpDesktop.ts");
       const { acpHarnessDesktop } =
         await import("/src/services/acpHarnessDesktop.ts");
-      const { codexAuthStatusDesktop } =
-        await import("/src/services/codexAuthStatusDesktop.ts");
       const { refreshHarnessSignIn } =
         await import("/src/features/harness/harnessSignIn.ts");
       installChatChromeFixture(
@@ -34,17 +32,14 @@ for (const adapter of ["cli", "account"] as const) {
       acpDesktop.startClaudeAuthLogin = async () => {
         signedIn = true;
       };
-      codexAuthStatusDesktop.getAuth = async (scope) => ({
-        ...scope,
-        phase: signedIn ? "signedIn" : "signedOut",
-        revision: "1",
-      });
       acpHarnessDesktop.startCodexAuth = async (scope) => {
         signedIn = true;
         return { ...scope, phase: "signedIn", revision: "2" };
       };
       useWorkbenchStore.setState((state) => ({
-        harnessAccount: null,
+        harnessAccount: adapter === "account" ? "signedOut" : null,
+        harnessDiscoveryPhase:
+          adapter === "account" ? "signInRequired" : "ready",
         harnesses: state.harnesses.map((harness) => ({
           ...harness,
           accountModelDiscovery: adapter === "account",
@@ -60,9 +55,10 @@ for (const adapter of ["cli", "account"] as const) {
           });
         },
       }));
-      await refreshHarnessSignIn(
-        useWorkbenchStore.getState().selectedHarnessId!,
-      );
+      if (adapter === "cli")
+        await refreshHarnessSignIn(
+          useWorkbenchStore.getState().selectedHarnessId!,
+        );
     }, adapter);
     const notices = page.getByRole("region", { name: "Composer notices" });
     await expect(notices.getByText(`${name} isn't signed in`)).toBeVisible();

@@ -1,5 +1,4 @@
-import { acpHarnessDesktop } from "./acpHarnessDesktop";
-import { codexAuthStatusDesktop } from "./codexAuthStatusDesktop";
+import { acpHarnessDesktop, invokeCodexAuth } from "./acpHarnessDesktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -416,7 +415,7 @@ describe("ACP desktop bridge", () => {
           throw new Error("Unexpected mutation");
         return { ...authRequest, phase, revision: "5", token: "discarded" };
       });
-      expect(await codexAuthStatusDesktop.getAuth(authRequest)).toEqual({
+      expect(await invokeCodexAuth("get_codex_auth", authRequest)).toEqual({
         ...authRequest,
         phase,
         revision: "5",

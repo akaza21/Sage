@@ -6,9 +6,13 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { useWorkbenchStore } from "../../app/store";
+import type { StartAcpSessionRequest } from "../../domain/acp";
+import { agentSessionFixture } from "../../domain/acpProjection.fixture";
+import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
-import { codexAuthStatusDesktop } from "../../services/codexAuthStatusDesktop";
+import { desktop } from "../../services/desktop";
 import {
   ComposerHarnessSignInNotice,
   HarnessAccountMenu,
@@ -25,6 +29,7 @@ const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
   resetHarnessSignInForTest();
+  clearMocks();
   useWorkbenchStore.setState(initial, true);
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -72,9 +77,6 @@ function install() {
         defaultModelId: "model",
       }) as never,
   );
-  vi.spyOn(codexAuthStatusDesktop, "getAuth").mockImplementation(
-    async (scope) => ({ ...scope, phase: "signedOut", revision: "1" }),
-  );
 }
 
 function sendDisabledReason() {
@@ -92,17 +94,74 @@ function sendDisabledReason() {
   });
 }
 
-it("refocusing after an external sign-in refreshes models and makes sending available", async () => {
+it.each([1_000, 60_001])(
+  "refocusing after %i ms refreshes signed-out discovery and makes sending available",
+  async (elapsed) => {
+    install();
+    vi.useFakeTimers();
+    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    expect(sendDisabledReason()).toBe("Finish signing in before sending.");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(elapsed);
+      fireEvent.focus(window);
+      fireEvent.focus(window);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(sendDisabledReason()).toBeNull();
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
+    expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  },
+);
+
+it("starts a session with the discovered model after refocusing beyond the TTL", async () => {
   install();
   vi.useFakeTimers();
+  vi.mocked(acpHarnessDesktop.discoverCodex).mockRestore();
+  let catalog: string[] = [];
+  mockIPC((command, args) => {
+    const { request } = args as { request: StartAcpSessionRequest };
+    if (command === "get_codex_discovery") {
+      catalog = ["model"];
+      return {
+        ...request,
+        rootId: "root",
+        runtimeEpoch: "1",
+        account: "managedChatgpt",
+        models: [{ id: "model", name: "Model", isDefault: true }],
+        defaultModelId: "model",
+      };
+    }
+    if (command === "get_codex_auth") {
+      // Reproduce the old native observation's catalog invalidation.
+      catalog = [];
+      return { ...request, phase: "signedIn", revision: "2" };
+    }
+    if (command !== "start_acp_session") throw new Error(command);
+    if (!catalog.includes(request.modelId!))
+      throw { kind: "invalidScope", message: "Model is absent from catalog." };
+    const session = agentSessionFixture({
+      bindingId: request.bindingId,
+      modelId: request.modelId,
+    });
+    return {
+      projection: {
+        projectId: request.projectId,
+        chatId: request.chatId,
+        title: "Chat",
+        projectionRevision: "1",
+        currentSessionId: session.id,
+        sessions: [session],
+        turns: [],
+        nextCursor: null,
+      },
+    };
+  });
+  await useWorkbenchStore.getState().retryHarnessDiscovery();
   render(<ComposerHarnessSignInNotice harnessId="account" />);
   await act(async () => {
-    await refreshHarnessSignIn("account");
+    await vi.advanceTimersByTimeAsync(0);
   });
-  expect(sendDisabledReason()).toBe("Finish signing in before sending.");
-  vi.mocked(codexAuthStatusDesktop.getAuth).mockImplementation(
-    async (scope) => ({ ...scope, phase: "signedIn", revision: "2" }),
-  );
+  expect(sendDisabledReason()).toBeNull();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_001);
     fireEvent.focus(window);
@@ -111,6 +170,17 @@ it("refocusing after an external sign-in refreshes models and makes sending avai
   expect(sendDisabledReason()).toBeNull();
   expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
   expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  const state = useWorkbenchStore.getState();
+  const started = await acpDesktop.startSession({
+    projectId: state.project!.id,
+    projectGeneration: String(state.nativeTransitionEpoch),
+    chatId: "chat",
+    expectedProjectionRevision: "0",
+    clientIntentId: "start-after-refocus",
+    bindingId: "account-binding",
+    modelId: state.selectedModelId,
+  } as StartAcpSessionRequest);
+  expect(started.projection.sessions[0].modelId).toBe("model");
 });
 
 it("can cancel an unfinished browser login and successfully retry", async () => {
@@ -164,15 +234,22 @@ it("can cancel an unfinished browser login and successfully retry", async () => 
 });
 
 it.each(["project", "harness", "request"])(
-  "ignores an observed sign-in after the %s scope changes",
+  "ignores a discovery retry's sign-in after the %s scope changes",
   async (changed) => {
     install();
     let complete!: () => void;
-    vi.mocked(codexAuthStatusDesktop.getAuth).mockImplementationOnce(
+    vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementationOnce(
       (scope) =>
         new Promise((resolve) => {
           complete = () =>
-            resolve({ ...scope, phase: "signedIn", revision: "2" });
+            resolve({
+              ...scope,
+              rootId: "root",
+              account: "managedChatgpt",
+              models: [
+                { id: "stale-model", name: "Stale model", isDefault: true },
+              ],
+            } as never);
         }),
     );
     const observing = refreshHarnessSignIn("account");
@@ -182,6 +259,11 @@ it.each(["project", "harness", "request"])(
       useWorkbenchStore.setState({ selectedHarnessId: null });
     if (changed === "request")
       useWorkbenchStore.setState({ harnessRequestGeneration: 2 });
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "signInRequired",
+      models: [],
+      selectedModelId: null,
+    });
     complete();
     await observing;
     expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
@@ -191,13 +273,23 @@ it.each(["project", "harness", "request"])(
   },
 );
 
-it("can cancel and retry a sidebar login while a Chat owns another harness", async () => {
+it("can cancel the original sidebar login after selecting another harness and retry", async () => {
   install();
-  useWorkbenchStore.setState({
-    selectedHarnessId: "other",
-    harnessDiscoveryPhase: "ready",
-    harnessAccount: null,
-  });
+  useWorkbenchStore.setState((state) => ({
+    harnesses: [
+      ...state.harnesses,
+      {
+        ...state.harnesses[0],
+        id: "other",
+        name: "Other harness",
+        transport: "acp",
+        installState: "available",
+        bindingId: "other-binding",
+        accountModelDiscovery: false,
+      },
+    ],
+  }));
+  vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([]);
   let abandon!: () => void;
   vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
     async (scope) =>
@@ -224,12 +316,22 @@ it("can cancel and retry a sidebar login while a Chat owns another harness", asy
       <HarnessAccountMenu avatar="W" />
     </>,
   );
+  await act(async () => {
+    await refreshHarnessSignIn("account");
+  });
   fireEvent.click(
     await screen.findByRole("button", { name: "Account: sign-in needed" }),
   );
   fireEvent.click(
     await screen.findByRole("menuitem", { name: "Sign in to Account harness" }),
   );
+  await screen.findByRole("menuitem", {
+    name: "Cancel sign-in to Account harness",
+  });
+  await act(async () => {
+    await useWorkbenchStore.getState().selectHarness("other");
+    fireEvent.focus(window);
+  });
   fireEvent.click(
     await screen.findByRole("menuitem", {
       name: "Cancel sign-in to Account harness",
@@ -241,7 +343,7 @@ it("can cancel and retry a sidebar login while a Chat owns another harness", asy
   vi.mocked(acpHarnessDesktop.startCodexAuth).mockImplementationOnce(
     async (scope) => ({ ...scope, phase: "signedIn", revision: "3" }),
   );
-  vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementationOnce(
+  vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementation(
     async (scope) =>
       ({
         ...scope,

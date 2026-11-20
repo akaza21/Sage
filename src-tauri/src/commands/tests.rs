@@ -872,60 +872,6 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
     });
 }
 
-#[tokio::test]
-async fn codex_discovery_command_preempts_an_outstanding_auth_observation() {
-    let (state, project, _chat, root) = state_with_unavailable_codex_project();
-    let project = SageProjectId::parse(project).unwrap();
-    let scope = crate::acp::ipc::CodexAuthScope {
-        project_id: project.clone(),
-        project_generation: ProjectGeneration::ZERO,
-        binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
-    };
-    let context = state
-        .lock_active_project(&project, ProjectGeneration::ZERO)
-        .await
-        .unwrap();
-    let authority = state
-        .database
-        .codex_project_root_authority(&context)
-        .unwrap();
-    let auth = state.acp.codex_auth_manager();
-    let observed = auth
-        .prepare(
-            scope.clone(),
-            authority,
-            crate::acp::service::CodexAuthAction::Observe,
-            false,
-            crate::acp::bindings::codex::CodexAuthDeadline::new().unwrap(),
-        )
-        .unwrap();
-    let worker = auth.hold_observation_for_test(observed);
-    drop(context);
-
-    let result = get_codex_discovery_inner(
-        &state,
-        GetCodexDiscoveryRequest {
-            project_id: project,
-            project_generation: scope.project_generation,
-            binding_id: scope.binding_id,
-        },
-    )
-    .await;
-    assert!(
-        matches!(
-            result,
-            Err(AcpIpcError::Unavailable {
-                reason: AcpUnavailableReason::BindingUnavailable,
-                ..
-            })
-        ),
-        "{result:?}"
-    );
-    worker.await.unwrap();
-    drop(state);
-    fs::remove_dir_all(root).unwrap();
-}
-
 #[test]
 fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtime() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -978,6 +924,66 @@ async fn seed_codex_discovery_catalog(
         .acp
         .codex_discovery_manager()
         .seed_session_validation_for_test(&authority, binding.binding_digest(), Some(model));
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_auth_observation_preserves_the_catalog_for_a_real_session_start() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let chat = SageChatId::parse(chat).unwrap();
+        let model = sage_acp_protocol::intent::ModelId::new("modelId", "gpt-5-codex").unwrap();
+        seed_codex_discovery_catalog(&state, &project, model.clone()).await;
+        let binding = BindingId::new("bindingId", "codex-app-server").unwrap();
+        let discovered = get_codex_discovery_inner(
+            &state,
+            GetCodexDiscoveryRequest {
+                project_id: project.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                binding_id: binding.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(discovered.models[0].id, model);
+
+        // A retained explicit account read must also leave discovery's model
+        // authority intact, even when the account worker cannot launch.
+        let _ = super::acp::codex_auth::run_codex_auth(
+            &state,
+            crate::acp::ipc::CodexAuthScope {
+                project_id: project.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                binding_id: binding.clone(),
+            },
+            crate::acp::service::CodexAuthAction::Observe,
+            false,
+        )
+        .await;
+        let page = state
+            .acp
+            .load_chat_page(project.clone(), chat.clone(), None)
+            .unwrap();
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: binding,
+                model_id: Some(model.clone()),
+                effort: None,
+            },
+        )
+        .await
+        .expect("the discovered model must remain valid for session start");
+        assert!(result.projection.current_session_id.is_some());
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
 }
 
 #[cfg(windows)]

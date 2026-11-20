@@ -72,6 +72,7 @@ export async function refreshHarnessSignIn(
 ): Promise<HarnessSignInState> {
   const provider = signInProvider(harnessId);
   if (!provider) return "unsupported";
+  if (!provider.canRefresh) return harnessSignInStatus(harnessId).state;
   const request = Symbol();
   refreshes.set(harnessId, request);
   if (harnessSignInStatus(harnessId).state === "unknown")
@@ -116,6 +117,10 @@ export function startHarnessSignIn(harnessId: string): Promise<void> {
       owner.starting = undefined;
       if (polls.get(harnessId) !== owner) return;
       if (signInProvider(harnessId)?.key !== provider.key) {
+        stopPolling(harnessId);
+        return;
+      }
+      if (!provider.backgroundCheck) {
         stopPolling(harnessId);
         return;
       }
@@ -200,11 +205,19 @@ export function reportHarnessSignInRequired(harnessId: string) {
   publish(harnessId, { state: "signedOut", checkedAt: Date.now() });
 }
 
-export function ensureHarnessSignInChecked(harnessIds: readonly string[]) {
+export function ensureHarnessSignInChecked(
+  harnessIds: readonly string[],
+  onFocus = false,
+) {
   for (const harnessId of harnessIds) {
-    if (!harnessSupportsSignIn(harnessId) || refreshes.has(harnessId)) continue;
-    const checkedAt = harnessSignInStatus(harnessId).checkedAt;
-    if (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS)
+    const provider = signInProvider(harnessId);
+    if (!provider?.canRefresh || refreshes.has(harnessId)) continue;
+    const { state, checkedAt } = harnessSignInStatus(harnessId);
+    if (
+      (onFocus && state === "signedOut") ||
+      (provider.backgroundCheck &&
+        (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS))
+    )
       void refreshHarnessSignIn(harnessId);
   }
 }

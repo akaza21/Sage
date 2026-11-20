@@ -2,7 +2,6 @@ import { useWorkbenchStore } from "../../app/store";
 import type { CodexAuthScope } from "../../domain/acp";
 import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
-import { codexAuthStatusDesktop } from "../../services/codexAuthStatusDesktop";
 
 export function signInHarnesses() {
   return useWorkbenchStore.getState().harnesses.slice(0, 32);
@@ -24,23 +23,31 @@ export function signInProvider(harnessId: string) {
         : null;
     return {
       key: JSON.stringify(scope),
+      backgroundCheck: false,
+      canRefresh:
+        scope !== null &&
+        state.selectedHarnessId === harnessId &&
+        state.harnessDiscoveryPhase !== "checking" &&
+        !state.pendingHarnessSignIn,
       status: async () => {
-        if (!scope) return "unknown" as const;
-        const requestGeneration =
-          useWorkbenchStore.getState().harnessRequestGeneration;
-        const result = await codexAuthStatusDesktop.getAuth(scope);
+        const before = useWorkbenchStore.getState();
+        if (
+          !scope ||
+          before.selectedHarnessId !== harnessId ||
+          before.harnessDiscoveryPhase === "checking" ||
+          before.pendingHarnessSignIn
+        )
+          return "unknown" as const;
+        await before.retryHarnessDiscovery();
         const current = useWorkbenchStore.getState();
         if (
-          result.phase === "signedIn" &&
-          signInProvider(harnessId)?.key === JSON.stringify(scope) &&
-          current.selectedHarnessId === harnessId &&
-          current.harnessRequestGeneration === requestGeneration &&
-          current.harnessDiscoveryPhase === "signInRequired"
+          signInProvider(harnessId)?.key !== JSON.stringify(scope) ||
+          current.selectedHarnessId !== harnessId
         )
-          await current.retryHarnessDiscovery();
-        return result.phase === "signedIn"
+          return "unknown" as const;
+        return current.harnessDiscoveryPhase === "ready"
           ? ("signedIn" as const)
-          : result.phase === "signedOut" || result.phase === "recovery"
+          : current.harnessDiscoveryPhase === "signInRequired"
             ? ("signedOut" as const)
             : ("unknown" as const);
       },
@@ -63,6 +70,8 @@ export function signInProvider(harnessId: string) {
   if (harness.signIn?.statusCheck === "claudeCli")
     return {
       key: JSON.stringify([harness.bindingId, harness.version]),
+      backgroundCheck: true,
+      canRefresh: true,
       status: async () =>
         (await acpDesktop.getClaudeAuthStatus()).loggedIn
           ? ("signedIn" as const)
@@ -72,13 +81,13 @@ export function signInProvider(harnessId: string) {
 }
 
 // Keep the last discovery observation across suspension. Replaying it on wake
-// must not overwrite a newer status check with stale model-discovery state.
+// must not overwrite a newer protocol refusal with stale discovery state.
 let accountObservation: readonly unknown[] = [];
 export function resetAccountSignInForTest() {
   accountObservation = [];
 }
 
-/** Settings account changes feed the same cache as background status checks. */
+/** Discovery and Settings feed the shared cache without another account read. */
 export function subscribeAccountSignIn(
   publish: (id: string, state: "signedIn" | "signedOut") => void,
   changed: () => void,

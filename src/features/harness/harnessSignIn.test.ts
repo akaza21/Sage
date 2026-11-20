@@ -4,14 +4,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const desktop = vi.hoisted(() => ({
   getClaudeAuthStatus: vi.fn(),
   startClaudeAuthLogin: vi.fn(),
-  getCodexAuth: vi.fn(),
+  discoverCodex: vi.fn(),
 }));
 vi.mock("../../services/acpDesktop", () => ({ acpDesktop: desktop }));
 vi.mock("../../services/acpHarnessDesktop", () => ({
   acpHarnessDesktop: desktop,
-}));
-vi.mock("../../services/codexAuthStatusDesktop", () => ({
-  codexAuthStatusDesktop: { getAuth: desktop.getCodexAuth },
 }));
 
 import {
@@ -214,6 +211,8 @@ it("refreshes an expired cached fact without showing a checking prompt", async (
 it("discards account checks from a previous workspace and allows a fresh check", async () => {
   useWorkbenchStore.setState({
     project: { id: "first", name: "First", roots: [] },
+    selectedHarnessId: "account",
+    harnessDiscoveryPhase: "signInRequired",
     harnesses: [
       {
         id: "account",
@@ -227,21 +226,34 @@ it("discards account checks from a previous workspace and allows a fresh check",
       },
     ],
   });
-  let complete!: (value: { phase: string }) => void;
-  desktop.getCodexAuth
+  let complete!: () => void;
+  desktop.discoverCodex
     .mockImplementationOnce(
-      () =>
+      (scope) =>
         new Promise((resolve) => {
-          complete = resolve;
+          complete = () =>
+            resolve({
+              ...scope,
+              rootId: null,
+              account: "signedOut",
+              models: [],
+            });
         }),
     )
-    .mockResolvedValue({ phase: "signedIn" });
+    .mockImplementation(async (scope) => ({
+      ...scope,
+      rootId: null,
+      account: "managedChatgpt",
+      models: [],
+    }));
   const old = refreshHarnessSignIn("account");
   useWorkbenchStore.setState({
     project: { id: "second", name: "Second", roots: [] },
     nativeTransitionEpoch: 2,
+    harnessDiscoveryPhase: "signInRequired",
+    harnessAccount: "signedOut",
   });
-  complete({ phase: "signedOut" });
+  complete();
   await old;
   expect(harnessSignInStatus("account").state).toBe("unknown");
   await refreshHarnessSignIn("account");

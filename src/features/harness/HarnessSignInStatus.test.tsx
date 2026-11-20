@@ -8,17 +8,18 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
+import { acpDesktop } from "../../services/acpDesktop";
 import type { HarnessDefinition } from "../../domain/harness";
 import { ComposerStatusNotices } from "../chat/ComposerStatusNotices";
 import { HarnessAccountMenu } from "./HarnessSignInStatus";
 import {
   refreshHarnessSignIn,
   resetHarnessSignInForTest,
+  harnessSignInStatus,
 } from "./harnessSignIn";
 
 let signedIn = false;
 let statusFailure = false;
-let expired = false;
 let loginFailure = false;
 vi.mock("../../ports/desktopRuntime", () => ({ isTauriRuntime: () => true }));
 vi.mock("../../services/acpDesktop", () => ({
@@ -44,16 +45,6 @@ vi.mock("../../services/acpHarnessDesktop", () => ({
     startCodexAuth: async () => {
       signedIn = true;
       return { phase: "signedIn" };
-    },
-  },
-}));
-vi.mock("../../services/codexAuthStatusDesktop", () => ({
-  codexAuthStatusDesktop: {
-    getAuth: async () => {
-      if (statusFailure) throw new Error("offline");
-      return {
-        phase: expired ? "recovery" : signedIn ? "signedIn" : "signedOut",
-      };
     },
   },
 }));
@@ -87,8 +78,9 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
   signedIn = false;
   statusFailure = false;
-  expired = false;
   loginFailure = false;
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 function install(id: string) {
   useWorkbenchStore.setState({
@@ -107,9 +99,8 @@ function install(id: string) {
         },
       ],
     },
-    harnessDiscoveryPhase: "idle",
-    harnessAccount: null,
-    retryHarnessDiscovery: async () => undefined,
+    harnessDiscoveryPhase: id === "account-fixture" ? "signInRequired" : "idle",
+    harnessAccount: id === "account-fixture" ? "signedOut" : null,
   });
 }
 function notice(id: string) {
@@ -124,6 +115,34 @@ function notice(id: string) {
     />
   );
 }
+it("rechecks signed-out Claude on return within the cache TTL", async () => {
+  install("cli-fixture");
+  vi.useFakeTimers();
+  render(notice("cli-fixture"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(screen.getByText("Claude Code isn't signed in")).toBeVisible();
+  signedIn = true;
+  let complete!: (value: { loggedIn: boolean }) => void;
+  vi.spyOn(acpDesktop, "getClaudeAuthStatus")
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    )
+    .mockResolvedValue({ loggedIn: false });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+    fireEvent.focus(window);
+    complete({ loggedIn: true });
+    fireEvent.focus(window);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(harnessSignInStatus("cli-fixture").state).toBe("signedIn");
+  expect(screen.queryByText("Claude Code isn't signed in")).toBeNull();
+});
 it.each(harnesses)(
   "$name uses the same composer notice and clears after login",
   async (harness) => {
@@ -150,7 +169,7 @@ it.each(harnesses)("$name stays silent when signed in", async (harness) => {
   expect(screen.queryByText(/isn't signed in/)).toBeNull();
 });
 it("badges the account only while an installed harness needs sign-in and offers each login", async () => {
-  install("cli-fixture");
+  install("account-fixture");
   render(<HarnessAccountMenu avatar="W" />);
   const trigger = await screen.findByRole("button", {
     name: "Account: sign-in needed",
@@ -199,7 +218,6 @@ it("unknown, unsupported and uninstalled harnesses stay quiet", async () => {
 
 it("uses Codex recovery as a sign-in problem", async () => {
   install("account-fixture");
-  expired = true;
   render(notice("account-fixture"));
   expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
 });
@@ -269,6 +287,110 @@ it("reports a failed login with a retry action instead of discarding it", async 
   ).toBeEnabled();
 });
 
+it("keeps a failed Claude turn's recovery visible after selecting signed-in Codex", async () => {
+  install("account-fixture");
+  signedIn = true;
+  await refreshHarnessSignIn("account-fixture");
+  useWorkbenchStore.setState({
+    selectedHarnessId: "cli-fixture",
+    harnessAccount: null,
+  });
+  const view = render(
+    <ComposerStatusNotices
+      selectedHarnessId="cli-fixture"
+      workbenchError={null}
+      chatError="Authentication required"
+      signInHarness={harnesses[0]}
+      imageStatus={null}
+      missingBindingNotice={false}
+      discoveryPhase="ready"
+      authRecovery={{
+        harnessId: "cli-fixture",
+        scope: "failed-turn",
+        onSignedIn: () => undefined,
+      }}
+    />,
+  );
+  expect(await screen.findByText("Claude Code isn't signed in")).toBeVisible();
+  await act(async () => {
+    await useWorkbenchStore.getState().selectHarness("account-fixture");
+  });
+  view.rerender(
+    <ComposerStatusNotices
+      selectedHarnessId="account-fixture"
+      workbenchError={null}
+      chatError="Authentication required"
+      signInHarness={harnesses[0]}
+      imageStatus={null}
+      missingBindingNotice={false}
+      discoveryPhase="ready"
+      authRecovery={{
+        harnessId: "cli-fixture",
+        scope: "failed-turn",
+        onSignedIn: () => undefined,
+      }}
+    />,
+  );
+  expect(harnessSignInStatus("account-fixture").state).toBe("signedIn");
+  expect(screen.getByText("Claude Code isn't signed in")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Sign in to Claude Code" }),
+  ).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Check sign-in" })).toBeEnabled();
+});
+
+it("preserves Codex turn recovery when an unselected discovery check cannot run", async () => {
+  install("account-fixture");
+  signedIn = true;
+  await refreshHarnessSignIn("account-fixture");
+  function RecoveryComposer() {
+    const selected = useWorkbenchStore((state) => state.selectedHarnessId);
+    const [recovered, setRecovered] = useState(false);
+    return (
+      <>
+        {recovered ? (
+          <span>Ready to retry</span>
+        ) : (
+          <ComposerStatusNotices
+            selectedHarnessId={selected}
+            workbenchError={null}
+            chatError={null}
+            signInHarness={harnesses[1]}
+            imageStatus={null}
+            missingBindingNotice={false}
+            discoveryPhase="ready"
+            authRecovery={{
+              harnessId: "account-fixture",
+              scope: "failed-turn",
+              onSignedIn: () => setRecovered(true),
+            }}
+          />
+        )}
+        <HarnessAccountMenu avatar="W" />
+      </>
+    );
+  }
+  render(<RecoveryComposer />);
+  expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
+  act(() =>
+    useWorkbenchStore.setState({
+      selectedHarnessId: "cli-fixture",
+      harnessAccount: null,
+    }),
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+  });
+  expect(screen.getByText("Codex isn't signed in")).toBeVisible();
+  expect(
+    screen.getByLabelText("Harness sign-in needs attention"),
+  ).toBeVisible();
+  expect(screen.queryByText("Ready to retry")).toBeNull();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Codex is still signed out.",
+  );
+});
+
 it("keeps a newer expired-account fact across inventory refresh and view remount", async () => {
   install("account-fixture");
   signedIn = true;
@@ -277,10 +399,12 @@ it("keeps a newer expired-account fact across inventory refresh and view remount
     harnessDiscoveryPhase: "ready",
   });
   const view = render(notice("account-fixture"));
-  expired = true;
-  await act(async () => {
-    await refreshHarnessSignIn("account-fixture");
-  });
+  act(() =>
+    useWorkbenchStore.setState({
+      harnessAccount: "signedOut",
+      harnessDiscoveryPhase: "signInRequired",
+    }),
+  );
   expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
   act(() => useWorkbenchStore.setState({ harnesses: [...harnesses] }));
   expect(screen.getByText("Codex isn't signed in")).toBeVisible();

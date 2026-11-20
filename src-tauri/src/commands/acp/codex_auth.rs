@@ -86,7 +86,7 @@ pub async fn logout_codex_auth(
     run_codex_auth(&state, request, CodexAuthAction::Logout, false).await
 }
 
-async fn run_codex_auth(
+pub(crate) async fn run_codex_auth(
     state: &AppState,
     scope: CodexAuthScope,
     action: CodexAuthAction,
@@ -108,19 +108,12 @@ async fn run_codex_auth(
         })?;
     let manager = state.acp.codex_auth_manager();
     let changes_account = action.changes_account();
-    if changes_account {
-        manager
-            .yield_observation_until(deadline.operation_end())
-            .await
-            .map_err(codex_discovery_error)?;
-    }
     let prepared = manager
         .prepare(scope, root, action, consent, deadline)
         .map_err(codex_discovery_error)?;
-    // Clear the account-dependent catalog while this worker owns admission.
-    // An observation may yield to discovery, so it must never invalidate the
-    // shared operation gate after its worker settles.
-    state.acp.codex_discovery_manager().forget_snapshot();
+    if changes_account {
+        state.acp.codex_discovery_manager().forget_snapshot();
+    }
     drop(transition);
     let result = tauri::async_runtime::spawn_blocking(move || manager.run(prepared))
         .await

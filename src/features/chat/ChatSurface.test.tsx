@@ -2645,7 +2645,8 @@ describe("ChatSurface ACP resource integration", () => {
     const claudePage = hooks.page;
     hooks.page = { ...claudePage, sessions: page.sessions };
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
-    expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    expect(screen.getByText("Codex isn't signed in")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Check sign-in" })).toBeVisible();
     hooks.page = claudePage;
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
 

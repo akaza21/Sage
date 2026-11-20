@@ -37,9 +37,11 @@ function useHarnessSignIn() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const check = () => ensureHarnessSignInChecked(JSON.parse(key) as string[]);
+    const focus = () =>
+      ensureHarnessSignInChecked(JSON.parse(key) as string[], true);
     check();
-    window.addEventListener("focus", check);
-    return () => window.removeEventListener("focus", check);
+    window.addEventListener("focus", focus);
+    return () => window.removeEventListener("focus", focus);
   }, [key, harnesses, projectId, epoch]);
   return harnessesNeedingSignIn();
 }
@@ -84,7 +86,9 @@ export function ComposerHarnessSignInNotice({
         <SignInRequiredMessage harness={refusal} />
       </div>
     );
-  const harness = needsSignIn.find((entry) => entry.id === harnessId);
+  const harness = needsSignIn.find(
+    (entry) => entry.id === (recoveryId ?? harnessId),
+  );
   if (!harness) return null;
   return (
     <div className="composer__notice harness-signin-notice" role="status">

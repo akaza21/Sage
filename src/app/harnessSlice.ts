@@ -17,7 +17,7 @@ import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "./harnessModelCache";
-import { accountChange, authScope } from "./harnessAuth";
+import { accountChange } from "./harnessAuth";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 import { errorMessage } from "../domain/errors";
@@ -51,6 +51,7 @@ export interface HarnessSlice {
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
   harnessAccount: CodexAccount | null;
+  pendingHarnessSignIn: CodexAuthScope | null;
   selectHarness: (harnessId: string) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
   loadHarnessModelsForProjection: (
@@ -243,6 +244,7 @@ export const createHarnessSlice: StateCreator<
     harnessDiscoveryPhase: "idle",
     harnessDiscoveryError: null,
     harnessAccount: null,
+    pendingHarnessSignIn: null,
     selectHarness: async (harnessId) => {
       if (get().projectTransitioning) return;
       const generation = get().projectGeneration;
@@ -327,13 +329,14 @@ export const createHarnessSlice: StateCreator<
         );
     },
     cancelHarnessSignIn: async () => {
-      if (get().harnessDiscoveryPhase === "consent") {
-        set({ harnessDiscoveryPhase: "signInRequired" });
+      const pending = get().pendingHarnessSignIn;
+      if (pending) {
+        await acpHarnessDesktop.cancelCodexAuth(pending);
         return;
       }
-      const scope = authScope(get());
-      if (!scope || get().harnessDiscoveryPhase !== "waiting") return;
-      await acpHarnessDesktop.cancelCodexAuth(scope);
+      if (get().harnessDiscoveryPhase === "consent") {
+        set({ harnessDiscoveryPhase: "signInRequired" });
+      }
     },
     logoutHarness: async () => {
       if (get().harnessDiscoveryPhase === "ready")

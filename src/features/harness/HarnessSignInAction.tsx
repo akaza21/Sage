@@ -19,8 +19,7 @@ export function HarnessLoginAction({
     (state) =>
       menuItem &&
       !check &&
-      state.selectedHarnessId === harness.id &&
-      state.harnessDiscoveryPhase === "waiting",
+      state.pendingHarnessSignIn?.bindingId === harness.bindingId,
   );
   return (
     <>
