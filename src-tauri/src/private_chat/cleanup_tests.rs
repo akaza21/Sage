@@ -21,6 +21,37 @@ fn delete_chat(database: &Database, chat: &str) {
 }
 
 #[test]
+fn home_project_does_not_exhaust_private_storage_after_repeated_deletes() {
+    let home = std::env::current_dir()
+        .unwrap()
+        .join("work")
+        .join(format!("private-home-{}", Uuid::new_v4()));
+    fs::create_dir_all(home.join("profile")).unwrap();
+    let database = crate::database::open_database(&home.join("profile/sage.db")).unwrap();
+    let project = database.create_project_from_root(&home).unwrap();
+    fs::write(home.join("keep.txt"), "home files").unwrap();
+    for _ in 0..=MAX_PRIVATE_PROJECTS {
+        let chat = Uuid::new_v4().to_string();
+        create(&database, None, &chat).unwrap();
+        let scope = super::tests::layout(&database);
+        let folder = database.root_records(&scope.project_id).unwrap()[0]
+            .absolute_path
+            .clone();
+        fs::write(folder.join("scratch.txt"), "private work").unwrap();
+        delete_chat(&database, &chat);
+        assert!(!folder.exists(), "deleted chat must relinquish its folder");
+        assert!(list(&database).unwrap().is_empty());
+    }
+    assert_eq!(
+        fs::read_to_string(home.join("keep.txt")).unwrap(),
+        "home files"
+    );
+    assert!(database.project_summary(&project.id).is_ok());
+    drop(database);
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn round3_capacity_keeps_failed_cleanup_owned_until_files_are_reclaimed() {
     let root = std::env::current_dir()
         .unwrap()
@@ -168,11 +199,19 @@ fn deleting_private_chat_preserves_overlapping_registered_project_files() {
             .unwrap();
         fs::write(folder.join("nested/keep.txt"), "user work").unwrap();
         delete_chat(&database, &chat);
-        assert_eq!(
-            fs::read_to_string(folder.join("nested/keep.txt")).unwrap(),
-            "user work",
-            "{relation}"
-        );
+        if relation == "parent" {
+            assert!(
+                !folder.exists(),
+                "an ancestor does not own the managed folder"
+            );
+            assert!(registered.exists(), "the ancestor root itself survives");
+        } else {
+            assert_eq!(
+                fs::read_to_string(folder.join("nested/keep.txt")).unwrap(),
+                "user work",
+                "{relation}"
+            );
+        }
         assert!(database.project_summary(&real.id).is_ok());
         drop(database);
         fs::remove_dir_all(root).unwrap();

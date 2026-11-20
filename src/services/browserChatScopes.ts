@@ -85,6 +85,25 @@ function refreshUnscoped(snapshot: BootstrapSnapshot) {
       railArchived: scope.archivedChats,
     }));
 }
+export function pinPrivateBrowserChat(
+  snapshot: BootstrapSnapshot,
+  project: string,
+  chat: string,
+) {
+  const scope =
+    snapshot.project?.id === project ? snapshot : scopes.get(project);
+  if (!scope?.project?.isInternal) return false;
+  const tab = scope.tabs.find(
+    (item) => item.id === chat && item.kind === "chat",
+  );
+  if (!tab) throw new Error("Chat is not attached to that Project");
+  scope.tabs = scope.tabs.map((item) =>
+    item.id === chat ? { ...item, pinned: !item.pinned } : item,
+  );
+  if (scope === snapshot) rememberBrowserScope(snapshot);
+  else refreshUnscoped(snapshot);
+  return true;
+}
 export function restoreScopedBrowserChat(
   snapshot: BootstrapSnapshot,
   project: string,

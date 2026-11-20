@@ -31,7 +31,10 @@ afterEach(() => {
 
 describe("Compact chat controls", () => {
   it("keeps project selection accessible without other registered projects", async () => {
-    useWorkbenchStore.setState({ projects: [] });
+    useWorkbenchStore.setState({
+      projects: [],
+      project: { id: "alpha", name: "Alpha", roots: [] },
+    });
     render(<ProjectScopeChip projectName="Alpha" />);
     expect(
       screen.getByRole("button", { name: "Project: Alpha" }),

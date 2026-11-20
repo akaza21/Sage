@@ -325,6 +325,14 @@ pub(crate) fn cleanup_empty(database: &Database) {
     }
 }
 
+/// The same bounded ownership set drives navigation, attention and retention.
+pub(crate) fn visible_chat_set() -> String {
+    format!("(SELECT c.project_id,c.id FROM projects p JOIN chats c ON c.project_id=p.id
+        WHERE p.kind='privateChat' AND c.id NOT LIKE 'side-%'
+        ORDER BY (p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)) DESC,c.updated_at DESC,c.id
+        LIMIT {MAX_UNSCOPED_CHATS})")
+}
+
 /// Separate from the public project registry; capped exactly like rail Chats.
 /// Archived private Chats remain reachable here so they can be restored/deleted.
 pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
@@ -333,10 +341,10 @@ pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
         COALESCE(w.pinned,0),c.ordinal,w.status,c.updated_at,
         EXISTS(SELECT 1 FROM chat_tabs WHERE chat_id=c.id), {}
         FROM projects p JOIN chats c ON c.project_id=p.id
+        JOIN {} owned ON owned.project_id=p.id AND owned.id=c.id
         LEFT JOIN workbench_tabs w ON w.id=c.id
-        WHERE p.kind='privateChat' AND c.id NOT LIKE 'side-%'
         ORDER BY (p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)) DESC,c.updated_at DESC,c.id
-        LIMIT ?1", crate::project_registry::CHAT_FINISHED_AT)).db()?;
+        LIMIT ?1", crate::project_registry::CHAT_FINISHED_AT, visible_chat_set())).db()?;
     let rows = select
         .query_map([MAX_UNSCOPED_CHATS], |row| {
             let chat_id: String = row.get(2)?;

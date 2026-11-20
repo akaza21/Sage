@@ -63,9 +63,7 @@ export function ProjectScopeChip({
     : project?.isInternal
       ? null
       : (project?.id ?? null);
-  const scoped = draft
-    ? !!projectId
-    : !project?.isInternal && projectName !== "Choose project";
+  const scoped = !!projectId;
   const label = scoped
     ? draft
       ? (projects.find((project) => project.id === projectId)?.name ??

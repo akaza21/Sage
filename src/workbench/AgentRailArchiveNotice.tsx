@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../app/store";
+import { chatPlacement } from "../app/openChat";
 import {
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
@@ -14,12 +15,7 @@ export function AgentRailArchiveNotice() {
   const [saving, setSaving] = useState(false);
   const archived = useWorkbenchStore(
     (state) =>
-      !undo ||
-      (undo.projectId === state.project?.id
-        ? state.archivedChats.some((chat) => chat.id === undo.chatId)
-        : state.projects
-            .find((project) => project.id === undo.projectId)
-            ?.railArchived?.some((chat) => chat.id === undo.chatId)),
+      !undo || chatPlacement(state, undo.projectId, undo.chatId).archived,
   );
   useEffect(() => {
     if (undo && !archived && !transitioning)

@@ -7,6 +7,7 @@ import type {
   ProjectTransitionResult,
 } from "../domain/workbench";
 import { createBrowserChatTab } from "./browserChat";
+import { pinPrivateBrowserChat } from "./browserChatScopes";
 
 export function ensureBrowserLocalProject(input: {
   snapshot: BootstrapSnapshot;
@@ -58,6 +59,10 @@ export function pinBrowserChat(input: {
   const { snapshot, request } = input;
   if (input.expectedTransitionEpoch !== snapshot.transitionEpoch) {
     throw new Error("project changed before the requested Chat pin");
+  }
+  if (pinPrivateBrowserChat(snapshot, request.projectId, request.chatId)) {
+    snapshot.transitionEpoch += 1;
+    return committed(snapshot, input.activeMessages);
   }
   const tab = snapshot.tabs.find(
     (item) => item.id === request.chatId && item.kind === "chat",

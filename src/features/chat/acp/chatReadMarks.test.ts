@@ -11,6 +11,7 @@ import {
   useChatReadMarks,
 } from "./chatReadMarks";
 import { sessionRailUnreadVisible } from "./sessionRail";
+import { useWorkbenchStore } from "../../../app/store";
 
 const store = vi.hoisted(() => ({
   capacity: 64,
@@ -106,6 +107,40 @@ const unread = (chatId: string, finishedAt: number) =>
     finishedAt,
     readThrough: chatReadThrough(chatId),
   });
+
+it("drops a cached read mark when an inactive private chat is archived", async () => {
+  const previous = useWorkbenchStore.getState().unscopedChats;
+  try {
+    useWorkbenchStore.setState({
+      unscopedChats: [
+        {
+          id: "private-owner",
+          name: "",
+          rootCount: 1,
+          lastOpenedAt: 0,
+          railArchived: [],
+        },
+      ],
+    });
+    store.marks.set("private-chat", 100);
+    await restoreChatReadMarks();
+    expect(chatReadThrough("private-chat")).toBe(100);
+    useWorkbenchStore.setState({
+      unscopedChats: [
+        {
+          id: "private-owner",
+          name: "",
+          rootCount: 1,
+          lastOpenedAt: 0,
+          railArchived: [{ id: "private-chat", title: "Private chat" }],
+        },
+      ],
+    });
+    expect(chatReadThrough("private-chat")).toBeUndefined();
+  } finally {
+    useWorkbenchStore.setState({ unscopedChats: previous });
+  }
+});
 
 async function reload() {
   resetChatReadMarks();

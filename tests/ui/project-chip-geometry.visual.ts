@@ -495,6 +495,45 @@ test("the location strip is gone once the chat has a turn", async ({
   await expect(add).toBeFocused();
 });
 
+test("a real project named Choose project retains the clear control", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const store = useWorkbenchStore.getState;
+    const projectId = store().project!.id;
+    await store().openNewChatDraft(projectId);
+    useWorkbenchStore.setState({
+      project: { ...store().project!, name: "Choose project" },
+      projects: store().projects.map((project) =>
+        project.id === projectId
+          ? { ...project, name: "Choose project" }
+          : project,
+      ),
+    });
+  });
+  const location = page.getByRole("group", {
+    name: "Chat location",
+    exact: true,
+  });
+  await expect(
+    location.getByRole("button", {
+      name: "Project: Choose project",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await location
+    .getByRole("button", { name: "Project: Choose project", exact: true })
+    .hover();
+  await location
+    .getByRole("button", { name: "Remove project from this chat" })
+    .click();
+  await expect(
+    location.getByRole("button", { name: "Choose project", exact: true }),
+  ).toBeVisible();
+});
+
 test("new chat can choose no project and distinguishes duplicate project names", async ({
   page,
 }) => {

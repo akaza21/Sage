@@ -1,11 +1,4 @@
-import {
-  MAX_CHAT_SEARCH_RESULTS,
-  validateProjectChatSearchRequest,
-  type ProjectChatSearchGateway,
-  type ProjectChatSearchRequest,
-  type ProjectChatSearchResponse,
-  type ProjectChatSearchResult,
-} from "./chatSearchDomain";
+import type { ProjectChatSearchResult } from "./chatSearchDomain";
 import type { ProjectSummary } from "../../domain/workbench";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
 import { projectLabel } from "../../domain/project";
@@ -31,6 +24,7 @@ export function admitChatSearchFolder(
 
 export function chatSearchFolderOptions(
   projects: ReadonlyArray<{ id: string; name: string }>,
+  hasPrivateChats = false,
 ): ChatSearchFolderOption[] {
   const next: ChatSearchFolderOption[] = [];
   const limit = Math.min(projects.length, MAX_AGENT_RAIL_PROJECTS);
@@ -47,7 +41,7 @@ export function chatSearchFolderOptions(
     const name = projectLabel(project.name);
     next.push({ id: project.id, name });
   }
-  if (next.length === 0) return next;
+  if (next.length === 0 && !hasPrivateChats) return next;
   return [{ id: CHAT_SEARCH_ALL_FOLDERS_ID, name: "All folders" }, ...next];
 }
 
@@ -112,105 +106,6 @@ export function chatSearchFanoutFolderIds(
     if (next.length >= MAX_CHAT_SEARCH_FANOUT_FOLDERS) break;
   }
   return next;
-}
-
-export function mergeChatSearchFanout(
-  pages: ReadonlyArray<ProjectChatSearchResponse>,
-  visited: number,
-  listed: number,
-): { results: ChatSearchFanoutPick[]; hasMore: boolean } {
-  const results: ChatSearchFanoutPick[] = [];
-  let hasMore = visited < listed;
-  for (const page of pages) {
-    if (page.hasMore) hasMore = true;
-    for (const result of page.results) {
-      if (results.length >= MAX_CHAT_SEARCH_RESULTS) {
-        return { results, hasMore: true };
-      }
-      results.push({ ...result, projectId: page.projectId });
-    }
-  }
-  return { results, hasMore };
-}
-
-export async function searchChatFolders(args: {
-  folderIds: ReadonlyArray<string>;
-  listedCount: number;
-  projectGeneration: number;
-  expectedTransitionEpoch: number;
-  query: string;
-  search: ProjectChatSearchGateway["search"];
-}): Promise<{ results: ChatSearchFanoutPick[]; hasMore: boolean }> {
-  const pages: ProjectChatSearchResponse[] = [];
-  let visited = 0;
-  for (const projectId of args.folderIds) {
-    if (isChatSearchFanout(projectId)) continue;
-    if (visited >= MAX_CHAT_SEARCH_FANOUT_FOLDERS) break;
-    const request: ProjectChatSearchRequest = {
-      projectId,
-      projectGeneration: args.projectGeneration,
-      expectedTransitionEpoch: args.expectedTransitionEpoch,
-      query: args.query,
-    };
-    validateProjectChatSearchRequest(request);
-    const page = await args.search(request);
-    pages.push(page);
-    visited += 1;
-    const merged = mergeChatSearchFanout(pages, visited, args.listedCount);
-    if (merged.results.length >= MAX_CHAT_SEARCH_RESULTS) {
-      return merged;
-    }
-  }
-  if (pages.length === 0) {
-    throw new Error("Project chat search requires a valid project ID");
-  }
-  return mergeChatSearchFanout(pages, visited, args.listedCount);
-}
-
-export async function runScopedChatSearch(args: {
-  searchProjectId: string;
-  folders: ReadonlyArray<{ id: string }>;
-  projectGeneration: number;
-  expectedTransitionEpoch: number;
-  query: string;
-  search: ProjectChatSearchGateway["search"];
-}): Promise<ChatSearchFanoutView> {
-  if (isChatSearchFanout(args.searchProjectId)) {
-    const folderIds = chatSearchFanoutFolderIds(args.folders);
-    let listedCount = 0;
-    for (const folder of args.folders) {
-      if (!isChatSearchFanout(folder.id)) listedCount += 1;
-    }
-    const merged = await searchChatFolders({
-      folderIds,
-      listedCount,
-      projectGeneration: args.projectGeneration,
-      expectedTransitionEpoch: args.expectedTransitionEpoch,
-      query: args.query,
-      search: args.search,
-    });
-    return {
-      query: args.query,
-      results: merged.results,
-      hasMore: merged.hasMore,
-    };
-  }
-  const request: ProjectChatSearchRequest = {
-    projectId: args.searchProjectId,
-    projectGeneration: args.projectGeneration,
-    expectedTransitionEpoch: args.expectedTransitionEpoch,
-    query: args.query,
-  };
-  validateProjectChatSearchRequest(request);
-  const page = await args.search(request);
-  return {
-    query: page.query,
-    results: page.results.map((result) => ({
-      ...result,
-      projectId: page.projectId,
-    })),
-    hasMore: page.hasMore,
-  };
 }
 
 export const chatSearchResultKey = (result: ChatSearchFanoutPick) =>

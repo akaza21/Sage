@@ -317,7 +317,7 @@ export function markChatUnread(chatId: string): Promise<boolean> {
 
 function archivedChatIds(state: WorkbenchState): Set<string> {
   const ids = new Set(state.archivedChats.map((chat) => chat.id));
-  for (const project of state.projects)
+  for (const project of [...state.projects, ...state.unscopedChats])
     for (const chat of project.railArchived ?? []) ids.add(chat.id);
   return ids;
 }
@@ -326,7 +326,8 @@ function archivedChatIds(state: WorkbenchState): Set<string> {
 useWorkbenchStore.subscribe((state, previous) => {
   if (
     state.archivedChats === previous.archivedChats &&
-    state.projects === previous.projects
+    state.projects === previous.projects &&
+    state.unscopedChats === previous.unscopedChats
   )
     return;
   const before = archivedChatIds(previous);

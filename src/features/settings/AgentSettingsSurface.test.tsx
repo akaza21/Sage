@@ -135,7 +135,7 @@ it("restores an archived chat through the existing project-scoped action", async
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Archived chats" }));
   fireEvent.click(
-    screen.getByRole("button", { name: "Unarchive Archived work" }),
+    await screen.findByRole("button", { name: "Unarchive Archived work" }),
   );
   await waitFor(() =>
     expect(restoreChat).toHaveBeenCalledWith("archived-a", "project-a"),

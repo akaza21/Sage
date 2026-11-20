@@ -34,6 +34,31 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
+it("allows clearing a real project named Choose project", async () => {
+  await useWorkbenchStore
+    .getState()
+    .createChat(useWorkbenchStore.getState().project!.id);
+  const project = useWorkbenchStore.getState().project!;
+  useWorkbenchStore.setState({
+    agentCenter: "chat",
+    newChatDraft: null,
+    project: { ...project, name: "Choose project" },
+  });
+  render(<ProjectScopeChip projectName="Choose project" />);
+  expect(
+    screen.getByRole("button", { name: "Project: Choose project" }),
+  ).toBeEnabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove project from this chat" }),
+  );
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().project?.isInternal).toBe(true),
+  );
+  expect(
+    screen.getByRole("button", { name: "Choose project" }),
+  ).toBeInTheDocument();
+});
+
 it("keeps the entire unsent composer through New project creation and reparenting", async () => {
   await act(async () => useWorkbenchStore.getState().createChat(null));
   const state = useWorkbenchStore.getState();

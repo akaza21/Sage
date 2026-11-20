@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 import { readFile } from "node:fs/promises";
 
@@ -26,6 +26,11 @@ import { ChatTranscript } from "./ChatTranscript";
 beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
+beforeEach(() => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Sage", roots: [] },
+  });
+});
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);

@@ -17,6 +17,7 @@ export function chatPlacement(
     tabs: ReadonlyArray<WorkbenchTab>;
     archivedChats: ReadonlyArray<ArchivedChatSummary>;
     projects: ReadonlyArray<ProjectListItem>;
+    unscopedChats?: ReadonlyArray<ProjectListItem>;
   },
   projectId: string,
   chatId: string,
@@ -29,7 +30,9 @@ export function chatPlacement(
       archived: state.archivedChats.some((chat) => chat.id === chatId),
     };
   }
-  const folder = state.projects.find((item) => item.id === projectId);
+  const folder =
+    state.projects.find((item) => item.id === projectId) ??
+    state.unscopedChats?.find((item) => item.id === projectId);
   return {
     attached: Boolean(folder?.railChats?.some((chat) => chat.id === chatId)),
     archived: Boolean(folder?.railArchived?.some((chat) => chat.id === chatId)),

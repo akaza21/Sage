@@ -17,33 +17,32 @@ const RAIL_POSITION_ORDER: &str = "w.pinned DESC, w.position, w.id";
 const RAIL_CHAT_TABS: &str = "FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
-         WHERE w.project_id IN (
-           SELECT id FROM projects WHERE kind='user'
-           UNION ALL SELECT id FROM (SELECT p.id FROM projects p WHERE p.kind='privateChat'
-             AND EXISTS(SELECT 1 FROM chats WHERE project_id=p.id)
-             ORDER BY (p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)) DESC,
-               p.updated_at DESC,p.id LIMIT 64)
-         ) AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0";
+         WHERE w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0";
 
 /// Every chat tab of the open project, plus each other project's preview in
 /// both orders.
 pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_TABS
-    + 64
+    + crate::private_chat::MAX_UNSCOPED_CHATS as usize
     + (MAX_PROJECTS as usize - 1) * 2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
 
 /// Every chat the rail can show, as rows of `project_id`, `tab_id` and `id`
 /// (the attached chat's id, or NULL). Ranking reads only tab and chat rows, so
 /// callers can look up Turns for these rows alone.
 pub(crate) fn rail_chat_set() -> String {
+    let private_chats = crate::private_chat::visible_chat_set();
     format!(
-        "(SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
+        "(WITH private_chats AS {private_chats}
+          SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
           FROM (
             SELECT w.project_id AS project_id, w.id AS tab_id, c.id AS id,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_RECENCY_ORDER}) AS by_recency,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_POSITION_ORDER}) AS by_position
             {RAIL_CHAT_TABS}
+              AND (w.project_id IN (SELECT id FROM projects WHERE kind='user')
+                OR w.id IN (SELECT id FROM private_chats))
           ) ranked
           WHERE ranked.project_id IS (SELECT active_project_id FROM app_state WHERE singleton = 1)
+             OR ranked.tab_id IN (SELECT id FROM private_chats)
              OR ranked.by_recency <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT}
              OR ranked.by_position <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT})"
     )

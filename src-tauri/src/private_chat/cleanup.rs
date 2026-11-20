@@ -147,7 +147,9 @@ fn require_unreferenced(
         };
         for root in [Some(stored.clone()), resolved].into_iter().flatten() {
             let root = std::path::PathBuf::from(canonical_comparison_key(&root));
-            if root.starts_with(&folder) || folder.starts_with(&root) {
+            // Ancestor projects may contain the entire Sage profile. They do
+            // not own this managed folder; only a root at or inside it does.
+            if root.starts_with(&folder) {
                 return Err(AppError::InvalidRequest(
                     "private Chat folder overlaps another project root".into(),
                 ));

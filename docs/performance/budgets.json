@@ -16,6 +16,21 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chatSearch/chatSearchExecution.ts",
+        "maxGzipBytes": 2000,
+        "reason": "Bounded public/private search fan-out; prewarmed only when search opens. Existing search and startup caps stay unchanged."
+      },
+      {
+        "entry": "src/features/settings/AgentArchivedSettings.tsx",
+        "maxGzipBytes": 1800,
+        "reason": "Bounded archived public and private chat navigation; loaded only on Settings > Archived chats. Existing settings and startup caps stay unchanged."
+      },
+      {
+        "entry": "src/features/chatSearch/ChatSearchResults.tsx",
+        "maxGzipBytes": 1500,
+        "reason": "Bounded search result rendering; loaded only inside the search dialog. Existing search and startup caps stay unchanged."
+      },
+      {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
         "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,

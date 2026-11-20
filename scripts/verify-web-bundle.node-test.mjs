@@ -27,8 +27,8 @@ const pathLimits = Object.fromEntries(
   Object.keys(WEB_BUNDLE_PATH_ROOTS).map((name) => [name, 1000]),
 );
 
-test("lazy feature catalog admits 98 distinct entries and rejects 99", () => {
-  const features = Array.from({ length: 98 }, (_, index) => ({
+test("lazy feature catalog admits 101 distinct entries and rejects 102", () => {
+  const features = Array.from({ length: 101 }, (_, index) => ({
     entry: `src/features/Deferred${index}.tsx`,
     maxGzipBytes: 1000,
     reason: "Explicitly opened deferred surface.",

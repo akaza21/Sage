@@ -8,6 +8,45 @@ import {
   openSelectionScenario,
 } from "./shared/transcriptSelection";
 
+test("archived settings restores an inactive private chat without exposing its project", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  const chat = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const store = useWorkbenchStore.getState;
+    const publicId = store().project!.id;
+    await store().createChat(null);
+    const chatId = store().activeTabId!;
+    await store().archiveChat(chatId);
+    await store().switchProject(publicId);
+    return chatId;
+  });
+  await page.keyboard.press("Control+,");
+  const settings = page.getByRole("dialog", {
+    name: "Agent settings",
+    exact: true,
+  });
+  await settings
+    .getByRole("button", { name: "Archived chats", exact: true })
+    .click();
+  await settings
+    .getByRole("combobox", { name: "Archived chats project" })
+    .selectOption({ label: "Chats without a project" });
+  await settings.getByRole("button", { name: /^Unarchive / }).click();
+  await expect(settings.getByText("Chat unarchived.")).toBeVisible();
+  expect(
+    await page.evaluate(async (id) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      return useWorkbenchStore
+        .getState()
+        .unscopedChats.some((group) =>
+          group.railChats?.some((item) => item.id === id),
+        );
+    }, chat),
+  ).toBe(true);
+});
+
 for (const width of [480, 1380]) {
   test(`Agent settings stay contained and separate from Editor at ${width}px`, async ({
     page,
