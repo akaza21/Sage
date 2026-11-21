@@ -15,13 +15,15 @@ export function ForkChatDialogHost({
   focusRoot: RefObject<HTMLDivElement | null>;
 }) {
   const [request, setRequest] = useState<ConversationRequest | null>(null);
+  const part =
+    request && "kind" in request ? "RewindChatDialog" : "ForkChatDialog";
   return (
     <ConversationRequestContext.Provider value={setRequest}>
       {children}
       {request && (
         <ConversationPart
-          key={"kind" in request ? "rewind" : "fork"}
-          part={"kind" in request ? "RewindChatDialog" : "ForkChatDialog"}
+          key={part}
+          part={part}
           {...request}
           focusRoot={focusRoot}
           onClose={() => setRequest(null)}

@@ -1,10 +1,12 @@
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
+import { currentSession } from "./acpTurnState";
 import { itemOwnershipMatches } from "./agentEditSummary";
 import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
 
 export function isEditingFiles(page: AcpChatPage, turn: TurnProjection) {
   return (
     turn.sessionId === page.currentSessionId &&
+    currentSession(page)?.runtimeEpoch === turn.runtimeEpoch &&
     !terminalTurnStates.has(turn.state) &&
     turn.items.some(
       (item) =>

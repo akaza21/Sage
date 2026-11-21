@@ -155,7 +155,7 @@ export async function forkChat({
 }
 
 export function AnswerMoreActions({
-  page,
+  page: passedPage,
   onCopy,
   forkable,
 }: {
@@ -165,8 +165,7 @@ export function AnswerMoreActions({
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const requestFork = useContext(ConversationRequestContext);
-  const currentPage = useContext(ConversationActionContext);
-  page = currentPage ?? page;
+  const page = useContext(ConversationActionContext) ?? passedPage;
   const turn = page.turns.at(-1);
   const canFork =
     requestFork &&

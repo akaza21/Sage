@@ -19,6 +19,7 @@ import {
   promptAttachmentItems,
   rootActivities,
   turnBindingId,
+  currentSession,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
@@ -289,6 +290,8 @@ const Turn = memo(
   },
   (left, right) =>
     left.turn === right.turn &&
+    currentSession(left.page)?.runtimeEpoch ===
+      currentSession(right.page)?.runtimeEpoch &&
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
