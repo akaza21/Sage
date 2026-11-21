@@ -67,7 +67,11 @@ export function AgentCenterKeeper({
   );
   useEffect(() => {
     const state = useWorkbenchStore.getState();
-    if (projectId && state.project?.id === projectId)
+    if (
+      projectId &&
+      state.project?.id === projectId &&
+      !state.newChatDraftOpening
+    )
       void state.openNewChatDraft(
         state.project.isInternal ? undefined : projectId,
       );

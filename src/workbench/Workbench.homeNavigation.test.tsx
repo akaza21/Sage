@@ -21,9 +21,85 @@ import { agentSessionFixture } from "../domain/acpProjection.fixture";
 import { useSideChatState } from "./sideChatState";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { emptyChatOwnershipEntry } from "../app/chatOwnershipProjection";
+import { AgentCenterKeeper } from "./WorkbenchContinuity";
+import * as workspaceNotify from "../app/workspaceNotifyLifecycle";
+import { browserSnapshot } from "../services/browserWorkspaceFixture";
+import { durableChatIds } from "../services/browserChatState";
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
+
+it("sends a private chat when continuity runs during a fresh-profile New chat open", async () => {
+  Object.assign(browserSnapshot, {
+    project: null,
+    projects: [],
+    unscopedChats: [],
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+    messages: [],
+    sessionId: null,
+  });
+  durableChatIds.clear();
+  await useWorkbenchStore.getState().initialize();
+  let releaseBinding!: () => void;
+  let bindingStarted!: () => void;
+  const started = new Promise<void>((resolve) => (bindingStarted = resolve));
+  const binding = new Promise<void>((resolve) => (releaseBinding = resolve));
+  vi.spyOn(
+    workspaceNotify,
+    "bindWorkspaceNotifyFromState",
+  ).mockImplementationOnce(async () => {
+    bindingStarted();
+    await binding;
+  });
+  render(<AgentCenterKeeper windowMode="agent" />);
+  let opening!: Promise<unknown>;
+  await act(async () => {
+    opening = useWorkbenchStore.getState().openNewChatDraft();
+    await started;
+  });
+  try {
+    // Projection is available to the mounted keeper before the open resumes.
+    expect(useWorkbenchStore.getState().project?.name).toBe("Local");
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    await settleLazyModules();
+  } finally {
+    await act(async () => {
+      releaseBinding();
+      await opening;
+    });
+  }
+  expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBeNull();
+  expect(durableChatIds.size).toBe(0);
+  await act(async () => {
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Fixture ACP",
+          description: "Draft initialization fixture",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "fixture-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    await state.selectDraftHarness("sage-simulator");
+    state.updateNewChatDraft({ text: "First private prompt" });
+    await state.sendNewChatDraft();
+  });
+  const sent = useWorkbenchStore.getState();
+  expect(sent.error).toBeNull();
+  expect(sent.project?.isInternal).toBe(true);
+  expect(sent.composerText).toBe("First private prompt");
+  expect(durableChatIds.size).toBe(1);
+});
 
 beforeEach(async () => {
   localStorage.clear();
