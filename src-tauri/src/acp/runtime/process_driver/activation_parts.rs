@@ -10,7 +10,7 @@ use crate::acp::{
         SessionTreeLease, SqliteAdapterBatchJournal, TeardownActivationParts,
     },
     store::PrepareTurnCommand,
-    transport::{IncrementalFrameDecoder, validate_structure},
+    transport::IncrementalFrameDecoder,
 };
 use sage_acp_protocol::scheduler::RuntimeOwner;
 
@@ -68,7 +68,7 @@ where
                 }
             }
             if let Some(frame) = frame {
-                if validate_structure(&frame).is_err() {
+                if self.parts.validate_ingress(&frame).is_err() {
                     let batch = self.parts.discard_invalid_response(&frame).map_err(|_| {
                         log_idle_frame_rejection(&frame, "invalid-structure");
                         AdapterPumpError::Frame

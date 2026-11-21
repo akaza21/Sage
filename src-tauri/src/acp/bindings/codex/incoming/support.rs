@@ -89,28 +89,38 @@ pub(super) fn parse_usage(params: &Map<String, Value>) -> Result<NormalizedPaylo
 }
 
 pub(in crate::acp::bindings::codex) fn validate_shape(value: &Value) -> Result<(), IngressError> {
+    validate_shape_with_catalog(value, crate::acp::transport::CommandWirePath::Other)
+}
+
+pub(super) fn validate_shape_with_catalog(
+    value: &Value,
+    path: crate::acp::transport::CommandWirePath,
+) -> Result<(), IngressError> {
+    use crate::acp::transport::CommandWirePath;
     let mut nodes = 0_u64;
-    fn visit(value: &Value, depth: u64, nodes: &mut u64) -> bool {
+    fn visit(value: &Value, depth: u64, nodes: &mut u64, path: CommandWirePath) -> bool {
         *nodes = nodes.saturating_add(1);
         if depth > LIMITS.wire.json_depth || *nodes > LIMITS.wire.json_nodes {
             return false;
         }
         match value {
             Value::Array(values) => {
-                values.len() <= LIMITS.wire.array_entries as usize
-                    && values.iter().all(|value| visit(value, depth + 1, nodes))
+                values.len() <= path.array_limit() as usize
+                    && values
+                        .iter()
+                        .all(|value| visit(value, depth + 1, nodes, path.element()))
             }
             Value::Object(values) => {
                 values.len() <= LIMITS.wire.object_members as usize
                     && values.iter().all(|(key, value)| {
                         key.len() <= LIMITS.wire.decoded_key_bytes as usize
-                            && visit(value, depth + 1, nodes)
+                            && visit(value, depth + 1, nodes, path.child(key))
                     })
             }
             _ => true,
         }
     }
-    if value.is_array() || !visit(value, 0, &mut nodes) {
+    if value.is_array() || !visit(value, 0, &mut nodes, path) {
         Err(IngressError::Malformed)
     } else {
         Ok(())

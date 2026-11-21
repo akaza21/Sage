@@ -6,7 +6,7 @@ use crate::acp::{
         AdapterRuntimeError, EgressResolution, HarnessAdapter, ResourceMapper,
     },
     store::CompleteActivationCommand,
-    transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
+    transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue},
 };
 use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_acp_protocol::{

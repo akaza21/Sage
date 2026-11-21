@@ -91,7 +91,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Ok(std::mem::take(&mut self.oversize_event));
         };
         self.enforce_provisional_deadline(now_millis)?;
-        if validate_structure(&frame).is_err() {
+        if self.adapter.validate_ingress(&frame).is_err() {
             if let Ok(batch) = self.adapter.discard_invalid_response(&frame) {
                 self.accept_batch(batch, now_millis, IngestMode::Deferred)
                     .await?;
@@ -257,7 +257,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         };
         self.ensure_live()?;
         self.enforce_provisional_deadline(now_millis)?;
-        if validate_structure(&frame).is_err() {
+        if self.adapter.validate_ingress(&frame).is_err() {
             if self.skip_stdout_preamble(&frame) {
                 return Ok(false);
             }

@@ -4,7 +4,8 @@ use crate::acp::{
     bindings::{
         adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
         standard_acp::surface::command_list::{
-            AvailableCommand, CommandDispatch, CommandPanel, CommandSource, MAX_COMMANDS, wire_text,
+            AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandSourceInfo,
+            wire_text,
         },
     },
     session_action::SessionAction,
@@ -38,6 +39,27 @@ fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
         source,
         dispatch,
     )
+    .map(|command| {
+        let mut command = command.with_source_label(source_label(value));
+        command.source_info = CommandSourceInfo::from_wire(&value["sourceInfo"]).map(Box::new);
+        command
+    })
+}
+
+/// Pi reports package roots and extension paths, rather than a display label.
+fn source_label(value: &Value) -> Option<&str> {
+    let info = &value["sourceInfo"];
+    fn leaf(path: &str) -> Option<&str> {
+        path.trim_end_matches(['/', '\\'])
+            .rsplit(['/', '\\'])
+            .next()
+            .filter(|name| !name.is_empty())
+    }
+    if let Some(package) = info["baseDir"].as_str().and_then(leaf) {
+        return Some(package);
+    }
+    let file = info["path"].as_str().and_then(leaf)?;
+    Some(file.rsplit_once('.').map_or(file, |(stem, _)| stem))
 }
 
 /// A catalog larger than Sage's list keeps its first commands, leaving room for the built-ins.
@@ -58,19 +80,12 @@ fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeE
             CommandDispatch::Builtin,
         )?,
     ];
-    let mut commands = value
-        .as_array()
-        .ok_or(AdapterRuntimeError::Frame)?
-        .iter()
-        .filter(|value| {
-            builtins
-                .iter()
-                .all(|builtin| value["name"] != builtin.name.as_str())
-        })
-        .take(MAX_COMMANDS - builtins.len())
-        .map(command)
+    let listed = value.as_array().ok_or(AdapterRuntimeError::Frame)?;
+    let commands = builtins
+        .into_iter()
+        .map(Ok)
+        .chain(listed.iter().map(command))
         .collect::<Result<Vec<_>, _>>()?;
-    commands.extend(builtins);
     Ok(commands)
 }
 

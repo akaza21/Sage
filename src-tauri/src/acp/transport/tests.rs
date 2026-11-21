@@ -20,6 +20,46 @@ async fn frame_from(parts: &[&[u8]]) -> Result<super::Frame, FrameError> {
         .ok_or(FrameError::PartialEof)
 }
 
+#[test]
+fn command_catalog_raw_ceiling_preserves_other_array_limits() {
+    use serde_json::{Value, json};
+    runtime().block_on(async {
+        for count in [600, 2048, 2049] {
+            let commands: Vec<_> = (0..count)
+                .map(|i| json!({"name":format!("cmd{i}"),"description":"Command"}))
+                .collect();
+            let acp = json!({"jsonrpc":"2.0","method":"session/update","params":{
+                "sessionId":"session","update":{"sessionUpdate":"available_commands_update",
+                "availableCommands":commands}}});
+            let rpc = json!({"type":"response","command":"get_commands","success":true,
+                "id":"commands","data":{"commands":commands}});
+            for value in [acp, rpc] {
+                let line = format!("{value}\n");
+                let frame = frame_from(&[line.as_bytes()]).await.unwrap();
+                let expected = if count <= 2048 { Ok(()) } else { Err(StructuralError::ArrayTooLarge) };
+                assert_eq!(validate_structure(&frame), expected);
+                let decoded = crate::acp::bindings::standard_acp::wire::decode_frame(frame.as_bytes());
+                assert_eq!(decoded.is_ok(), count <= 2048);
+            }
+        }
+        let oversized = Value::Array(vec![Value::Null; 513]);
+        for value in [
+            json!({"type":"response","command":"get_state","success":true,"data":{"commands":oversized}}),
+            json!({"jsonrpc":"2.0","method":"session/update","params":{"update":{
+                "sessionUpdate":"agent_message_chunk","availableCommands":oversized}}}),
+            json!({"jsonrpc":"2.0","method":"session/update","params":{"update":{
+                "sessionUpdate":"available_commands_update","availableCommands":[{"aliases":oversized}]}}}),
+            json!({"type":"response","command":"get_commands","success":true,"data":{
+                "commands":[{"aliases":oversized}]}}),
+        ] {
+            let line = format!("{value}\n");
+            let frame = frame_from(&[line.as_bytes()]).await.unwrap();
+            assert_eq!(validate_structure(&frame), Err(StructuralError::ArrayTooLarge));
+            assert!(crate::acp::bindings::standard_acp::wire::decode_frame(frame.as_bytes()).is_err());
+        }
+    });
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RequestDigestVectors {
