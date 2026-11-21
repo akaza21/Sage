@@ -20,6 +20,14 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    /// At most four auxiliary slots; foreground work interrupts before writing its prompt.
+    pub(crate) fn poll_title(
+        &mut self,
+        cancel: bool,
+        transport: &mut impl super::EgressTransport,
+    ) -> Result<bool, crate::acp::runtime::HostError> {
+        super::session_config::poll_title(&mut self.adapter, cancel, transport)
+    }
     pub(crate) fn validate_command_prompt(
         &self,
         prompt: &crate::acp::transcript_quote::Prompt,
@@ -385,13 +393,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     /// Hands the sequential session-owned resources back only after the exact
     /// Turn terminal is durable and every stream/queue boundary is quiescent.
-    pub(crate) fn try_into_completed_parts(self) -> PumpHandoff<CompletedPumpParts<A, J, R>, Self> {
+    pub(crate) fn try_into_completed_parts(
+        mut self,
+    ) -> PumpHandoff<CompletedPumpParts<A, J, R>, Self> {
         if !self.completed_turn_ready() {
             return Err(Box::new((self, AdapterPumpError::TeardownRequired)));
         }
         let Some(terminal_cursor) = self.durable_turn_cursor.clone() else {
             return Err(Box::new((self, AdapterPumpError::TeardownRequired)));
         };
+        if terminal_cursor.state() == TurnState::Completed {
+            self.adapter.title_completed(&self.intent);
+        }
         let session_intent = SessionPumpIntent {
             binding_digest: self.intent.binding_digest,
             project_id: self.intent.project_id,

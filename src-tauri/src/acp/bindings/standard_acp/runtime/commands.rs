@@ -40,6 +40,27 @@ pub(crate) fn scoped_permission_id(
 }
 
 impl HarnessAdapter for StandardAcpRuntime {
+    fn title_requires_teardown(&self) -> bool {
+        self.delivery_unknown.is_some()
+    }
+    fn start_title(&mut self, _input: &str) -> Result<(), AdapterRuntimeError> {
+        self.begin_title_read()
+    }
+    fn poll_title(&mut self) -> Option<AdapterEgress> {
+        self.poll_title_read()
+    }
+    fn cancel_title(&mut self) {
+        if let Some(read) = &mut self.title_read {
+            read.finished = true;
+        }
+    }
+    fn title_pending(&self) -> bool {
+        self.title_read.as_ref().is_some_and(|r| !r.finished)
+    }
+    fn take_title_result(&mut self) -> Option<Option<String>> {
+        self.title_read.as_mut()?.result.take()
+    }
+
     fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
         let value =
             serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
@@ -75,6 +96,9 @@ impl HarnessAdapter for StandardAcpRuntime {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.delivery_unknown.is_some() {
+            return Err(AdapterRuntimeError::Operation);
+        }
         match command {
             AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::Initialize => self.initialize(),
@@ -170,6 +194,12 @@ impl HarnessAdapter for StandardAcpRuntime {
         resources: &dyn SharedResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let value = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        if self.read_title_response(&value, frame.len()) {
+            return AdapterBatch::new(
+                vec![crate::acp::bindings::adapter::AdapterEvent::Absorbed],
+                Vec::new(),
+            );
+        }
         if value.get("method").is_some() {
             let digest = value
                 .get("id")
@@ -296,6 +326,9 @@ impl HarnessAdapter for StandardAcpRuntime {
         let id = token
             .request_id()
             .ok_or(AdapterRuntimeError::EgressIntent)?;
+        if self.title_read_write(id, resolution) {
+            return Ok(());
+        }
         if !self.pending.contains_key(&id) || self.delivery_unknown.is_some() {
             return Err(AdapterRuntimeError::EgressIntent);
         }

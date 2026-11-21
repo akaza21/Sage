@@ -48,12 +48,14 @@ where
         operation_deadline_millis: Option<i64>,
     ) -> Result<DriverStep, DriverError> {
         self.ensure_running()?;
+        self.poll_title()?;
         self.settle_due_exit(self.clock.now_millis()).await?;
         let deadline = [
             self.pump.next_deferred_flush_deadline_millis(),
             self.pump.next_auto_resolution_deadline_millis(),
             operation_deadline_millis,
             self.pending_exit_deadline_millis(),
+            self.title_poll_deadline_millis(),
         ]
         .into_iter()
         .flatten()

@@ -8,6 +8,7 @@ impl Lane<'_> {
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
         deadlines: (Instant, Instant),
     ) -> Result<(), CodexSessionError> {
+        let title_capability = admitted.title_capability();
         let root = project_root.configured_resource_root();
         let (command, mut prepared) =
             self.prepare_session_activation(admitted, command, project_root)?;
@@ -160,6 +161,14 @@ impl Lane<'_> {
         prepared
             .runtime
             .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
+        prepared
+            .runtime
+            .attach_titles(super::super::chat_title::TitleScheduler::new(
+                self.database.clone(),
+                Arc::clone(&self.publisher),
+                title_capability,
+                Arc::clone(&self.title_admission),
+            ));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),

@@ -13,6 +13,7 @@ const FILLERS: &[&str] = &[
 ];
 const CONNECTORS: &[&str] = &[
     "and", "or", "to", "for", "with", "in", "on", "at", "of", "from", "by", "a", "an", "the",
+    "before",
 ];
 
 fn trailing_punctuation(value: char) -> bool {
@@ -26,9 +27,17 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
     while !text.is_char_boundary(end) {
         end -= 1;
     }
-    let line = text[..end]
-        .split(super::is_line_break)
-        .find_map(|line| super::title_line(line, PREFIX_BYTES))?;
+    let (line, prefix_truncated) =
+        text[..end]
+            .split_inclusive(super::is_line_break)
+            .find_map(|segment| {
+                super::title_line(segment, PREFIX_BYTES).map(|line| {
+                    (
+                        line,
+                        end < text.len() && !segment.ends_with(super::is_line_break),
+                    )
+                })
+            })?;
     let normalized = line
         .split_whitespace()
         .fold(String::new(), |mut text, word| {
@@ -64,7 +73,12 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
     };
     let mut title = String::new();
     let mut characters = 0;
-    for word in content.split_whitespace().take(TITLE_WORDS) {
+    let mut truncated = prefix_truncated;
+    for (index, word) in content.split_whitespace().enumerate() {
+        if index == TITLE_WORDS {
+            truncated = true;
+            break;
+        }
         let separator = usize::from(!title.is_empty());
         if characters + separator + word.chars().count() <= TITLE_CHARS
             && title.len() + separator + word.len() <= super::super::MAX_CHAT_TITLE_BYTES
@@ -75,6 +89,7 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
             title.push_str(word);
             characters += separator + word.chars().count();
         } else {
+            truncated = true;
             // Only an oversized first token is clipped: retain useful long
             // identifiers without leaving a fragment of a later word.
             if title.is_empty() {
@@ -93,7 +108,8 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
         }
     }
     let mut title = title.trim_end_matches(trailing_punctuation);
-    while let Some(last) = title.split_whitespace().next_back()
+    while truncated
+        && let Some(last) = title.split_whitespace().next_back()
         && CONNECTORS
             .iter()
             .any(|connector| last.eq_ignore_ascii_case(connector))
@@ -126,7 +142,13 @@ mod tests {
                 "I want you to help me check iOS ACP_v2 #443",
                 "Chat: Check iOS ACP_v2 #443",
             ),
-            ("Let's inspect foo::bar and", "Chat: Inspect foo::bar"),
+            ("Let's inspect foo::bar and", "Chat: Inspect foo::bar and"),
+            ("Turn logging on", "Chat: Turn logging on"),
+            ("Explain bitwise OR", "Chat: Explain bitwise OR"),
+            (
+                "Check what happened before",
+                "Chat: Check what happened before",
+            ),
         ] {
             assert_eq!(
                 prompt_title(prompt).as_deref(),
@@ -189,7 +211,7 @@ mod tests {
         );
         assert_eq!(
             prompt_title("Fix Sage ACP titles before the next release"),
-            Some("Chat: Fix Sage ACP titles before".into())
+            Some("Chat: Fix Sage ACP titles".into())
         );
         assert_eq!(
             prompt_title("Investigate recurring laptop notifications with logs and traces"),
@@ -213,6 +235,14 @@ mod tests {
             Some(format!("Chat: {}", "e\u{301}".repeat(25)))
         );
         assert_eq!(prompt_title(&format!("{}Fix Sage", " ".repeat(4096))), None);
+        assert_eq!(
+            prompt_title(&format!("\n{}Fix Sage with logs", " ".repeat(4082))),
+            Some("Chat: Fix Sage".into())
+        );
+        assert_eq!(
+            prompt_title(&format!("\nTurn logging on\n{}", "x".repeat(4096))),
+            Some("Chat: Turn logging on".into())
+        );
         assert_eq!(
             prompt_title(&format!("{}é\nFix Sage", " ".repeat(4095))),
             None

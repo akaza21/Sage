@@ -12,6 +12,7 @@ mod database_store;
 pub(crate) mod edit_disposition;
 mod facts;
 mod harness_turn;
+pub(crate) mod title_attempt;
 pub(crate) use harness_turn::prompted_turn;
 mod history;
 mod history_activities;
@@ -283,19 +284,7 @@ pub(crate) struct StoreCommit {
     pub results: Vec<StoreMutationResult>,
 }
 
-pub(crate) struct DatabaseAcpStore {
-    database: sage_db::database::Database,
-}
-
-impl AcpStore for DatabaseAcpStore {
-    fn commit(&mut self, batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {
-        let mut connection = self
-            .database
-            .write_connection()
-            .map_err(|_| StoreError::Corrupt("storage recovery required"))?;
-        commit_batch(&mut connection, batch)
-    }
-}
+pub(crate) use database_store::DatabaseAcpStore;
 
 fn commit_batch(
     connection: &mut rusqlite::Connection,
@@ -416,6 +405,8 @@ fn mutation_shape(mutation: &StoreMutation) -> (&str, &str, bool) {
 mod activation_resume_tests;
 #[cfg(test)]
 mod adapter_batch_tests;
+#[cfg(all(test, feature = "acp-fixture"))]
+pub(crate) use adapter_batch_tests::title_attempt_tests::scheduler_fixture as title_fixture;
 #[cfg(test)]
 mod extended_tests;
 #[cfg(test)]

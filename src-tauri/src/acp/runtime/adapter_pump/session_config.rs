@@ -2,6 +2,33 @@ use super::*;
 use crate::acp::goal::GoalAction;
 use sage_acp_protocol::session_config::ConfigIntent;
 
+pub(super) fn poll_title<A: HarnessAdapter>(
+    adapter: &mut A,
+    cancel: bool,
+    transport: &mut impl EgressTransport,
+) -> Result<bool, crate::acp::runtime::HostError> {
+    use crate::acp::runtime::HostError;
+    if adapter.title_requires_teardown() {
+        return Err(HostError::RecoveryRequired);
+    }
+    if cancel {
+        adapter.cancel_title();
+    }
+    for _ in 0..4 {
+        let Some(egress) = adapter.poll_title() else {
+            break;
+        };
+        let resolution = EgressResolution::from(transport.write(egress.frame()));
+        adapter
+            .resolve_egress(egress.into_token(), resolution)
+            .map_err(|_| HostError::RecoveryRequired)?;
+        if resolution == EgressResolution::DeliveryUnknown {
+            return Err(HostError::DeliveryUnknown);
+        }
+    }
+    Ok(adapter.title_pending())
+}
+
 pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -171,6 +198,24 @@ pub(crate) fn write_config<A: HarnessAdapter>(
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    pub(crate) fn poll_title(
+        &mut self,
+        cancel: bool,
+        transport: &mut impl EgressTransport,
+    ) -> Result<bool, crate::acp::runtime::HostError> {
+        if self.teardown {
+            return Err(crate::acp::runtime::HostError::RecoveryRequired);
+        }
+        let result = poll_title(&mut self.adapter, cancel, transport);
+        if result.is_err() {
+            self.teardown = true;
+        }
+        result
+    }
+    pub(crate) fn title_pending(&self) -> bool {
+        self.adapter.title_pending()
+    }
+
     pub(crate) fn write_session_config(
         &mut self,
         transport: &mut impl EgressTransport,

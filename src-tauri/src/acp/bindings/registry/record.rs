@@ -3,7 +3,9 @@ use std::sync::Arc;
 #[cfg(windows)]
 mod browser_mcp;
 mod models;
+mod title;
 mod undo;
+pub(crate) use title::TitleCapability;
 
 use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::acp::bindings::{

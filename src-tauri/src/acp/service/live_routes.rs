@@ -19,6 +19,7 @@ impl AcpService {
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<RuntimeOwner, CodexSessionError> {
+        self.title_admission.foreground();
         self.activate_head_session(admitted, command, project_root)
             .await
     }
@@ -57,6 +58,7 @@ impl AcpService {
         &self,
         intent: HostPromptIntent,
     ) -> Result<HostOutcome, PromptSendError<CodexSessionError>> {
+        self.title_admission.foreground();
         // A harness that reported its options only after activation is
         // restored here, before the prompt is dispatched. A no-op otherwise.
         self.restore_session_config(&intent.owner())

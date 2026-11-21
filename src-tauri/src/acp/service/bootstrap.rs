@@ -97,6 +97,7 @@ impl AcpService {
             notifier,
             page_reads: super::PageReadAdmission::default(),
             registry: configuration.registry,
+            title_admission: Arc::default(),
             codex_gate,
             codex_discovery,
             codex_auth,

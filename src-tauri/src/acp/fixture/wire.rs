@@ -40,6 +40,10 @@ pub(crate) use user_input::codex_user_input_wire_for_test;
 mod acp;
 #[path = "wire_codex_background.rs"]
 mod background;
+#[path = "wire_codex_title.rs"]
+mod title;
+#[cfg(test)]
+pub(crate) use title::title_wire;
 #[path = "wire_claude_sdk.rs"]
 mod claude_sdk;
 #[path = "wire_claude_sdk_transcript.rs"]

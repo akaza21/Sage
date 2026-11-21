@@ -34,6 +34,28 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    pub(crate) fn title_poll_deadline_millis(&self) -> Option<i64> {
+        self.pump
+            .title_pending()
+            .then(|| self.clock.now_millis().saturating_add(100))
+    }
+
+    pub(crate) fn poll_title(&mut self) -> Result<(), DriverError> {
+        self.ensure_running()?;
+        self.pump
+            .poll_title(true, &mut self.transport)
+            .map(|_| ())
+            .map_err(|error| {
+                self.latch(
+                    if error == crate::acp::runtime::HostError::DeliveryUnknown {
+                        TeardownCause::DeliveryUnknown
+                    } else {
+                        TeardownCause::PumpFailure
+                    },
+                )
+            })
+    }
+
     pub(crate) fn teardown_cause(&self) -> Option<TeardownCause> {
         match self.state {
             DriverState::Running => None,
