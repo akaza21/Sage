@@ -30,6 +30,7 @@ import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPage
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
+import { HarnessDiagnostics } from "./HarnessDiagnostics";
 import {
   returnFocusToAgentSettingsOpener,
   useAgentSettingsState,
@@ -292,6 +293,7 @@ export function AgentSettingsSurface({
                 )
               ) : null}
               {shownPage === "Chats" ? <AgentChatSettings /> : null}
+              {shownPage === "Harnesses" ? <HarnessDiagnostics /> : null}
               {shownPage === "Browser" ? (
                 <LazyModuleBoundary
                   label="Browser settings"

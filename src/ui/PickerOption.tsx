@@ -27,14 +27,15 @@ export const PickerOption = memo(function PickerOption({
   onRender?.(candidate.id);
   const unavailable = disabled || Boolean(candidate.disabledReason);
   const logo = candidate.logo ?? candidate.icon;
-  const option = (
+  const LeadingIcon = candidate.leadingIcon;
+  return (
     <button
       id={id}
       type="button"
       role="option"
       aria-label={candidate.accessibleLabel}
       title={candidate.disabledReason}
-      className="searchable-picker__option menu-item"
+      className={`searchable-picker__option menu-item${candidate.separatorBefore ? " searchable-picker__option--separated" : ""}`}
       aria-disabled={unavailable || undefined}
       aria-describedby={candidate.disabledReason ? `${id}-reason` : undefined}
       aria-selected={selected}
@@ -45,7 +46,13 @@ export const PickerOption = memo(function PickerOption({
       onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
       onClick={() => !unavailable && onSelect(candidate.id)}
     >
-      {logo ? <PickerLogo logo={candidate.logo} icon={candidate.icon} /> : null}
+      {logo ? (
+        <PickerLogo logo={candidate.logo} icon={candidate.icon} />
+      ) : LeadingIcon ? (
+        <span className="searchable-picker__option-icon" aria-hidden="true">
+          <LeadingIcon size={14} />
+        </span>
+      ) : null}
       <span className="searchable-picker__option-copy">
         <span>{candidate.label}</span>
         {candidate.subtitle ? (
@@ -67,25 +74,5 @@ export const PickerOption = memo(function PickerOption({
         />
       ) : null}
     </button>
-  );
-  const action = candidate.action;
-  return action ? (
-    <div className="searchable-picker__option-row" role="none">
-      {option}
-      <button
-        type="button"
-        className="searchable-picker__option-action"
-        aria-label={action.accessibleLabel ?? action.label}
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          action.onAction();
-        }}
-      >
-        {action.label}
-      </button>
-    </div>
-  ) : (
-    option
   );
 });

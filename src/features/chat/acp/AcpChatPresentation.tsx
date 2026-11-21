@@ -19,6 +19,7 @@ import {
   chronologicalTurnItems,
   promptAttachmentItems,
   rootActivities,
+  turnBindingId,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
@@ -32,7 +33,7 @@ import { terminalTurnStates } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
-import { TurnFailure } from "./TurnFailure";
+import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { TurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
@@ -72,6 +73,7 @@ const Turn = memo(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );
     const interactive = !inherited && turn.sessionId === page.currentSessionId;
+    const failurePage = latest && interactive ? page : undefined;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
       rootLabels && page.projectId && page.chatId && page.currentSessionId
         ? {
@@ -108,23 +110,23 @@ const Turn = memo(
       attachmentIds,
       terminal,
     );
+    const newestItems = [...chronologicalItems].reverse();
     const finalAnswer = terminal
-      ? [...chronologicalItems]
-          .reverse()
-          .find(
-            (item) => item.kind === "text" && item.payload.role === "assistant",
-          )
+      ? newestItems.find(
+          (item): item is Extract<AcpItem, { kind: "text" }> =>
+            item.kind === "text" && item.payload.role === "assistant",
+        )
       : undefined;
-    const liveThought = [...chronologicalItems]
-      .reverse()
-      .find((item) => item.kind === "thoughtSummary");
+    const liveThought = newestItems.find(
+      (item) => item.kind === "thoughtSummary",
+    );
     const workingItems = chronologicalItems.filter(
       (item) =>
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" ||
           (!terminal && item.id === liveThought?.id)),
     );
-    const text = finalAnswer?.kind === "text" && finalAnswer.payload.text;
+    const text = finalAnswer?.payload.text;
     // Rust forks only the latest Turn.
     const actions = text ? (
       <AnswerActions
@@ -268,15 +270,9 @@ const Turn = memo(
             ) : null}
             {stopped ? <TurnHeader turn={turn} /> : null}
             {stopped && !finalAnswer && onRetry ? (
-              <button
-                className="acp-turn__retry"
-                type="button"
-                onClick={onRetry}
-              >
-                Retry
-              </button>
+              <RetryTurnButton onRetry={onRetry} />
             ) : null}
-            <TurnFailure turn={turn} onRetry={onRetry} />
+            <TurnFailure turn={turn} onRetry={onRetry} page={failurePage} />
           </div>
           {!inherited && actions}
         </section>
@@ -302,6 +298,8 @@ const Turn = memo(
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
     left.latest === right.latest &&
+    turnBindingId(left.page, left.turn) ===
+      turnBindingId(right.page, right.turn) &&
     left.fileSummaryInDock === right.fileSummaryInDock &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,

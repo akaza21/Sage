@@ -4,12 +4,12 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { HarnessLoginAction } from "./HarnessSignInAction";
 import type { ComposerStatusNoticeProps } from "../chat/ComposerStatusNotices";
-import { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
 import { lazyParts } from "../chat/lazyParts";
 import type * as MenuChunk from "./HarnessSignInMenu";
 import {
@@ -20,6 +20,9 @@ import {
   harnessSignInStatus,
 } from "./harnessSignIn";
 
+export { HarnessTurnSignInRecovery } from "./HarnessTurnSignInRecovery";
+export { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
+
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./HarnessSignInMenu"),
 );
@@ -29,100 +32,69 @@ function useHarnessSignIn() {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   useSyncExternalStore(subscribeHarnessSignIn, harnessSignInRevision);
-  const key = JSON.stringify(
-    harnesses.slice(0, 32).map((harness) => harness.id),
-  );
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    const check = () => ensureHarnessSignInChecked(JSON.parse(key) as string[]);
-    const focus = () =>
-      ensureHarnessSignInChecked(JSON.parse(key) as string[], true);
-    check();
+    const ids = harnesses.slice(0, 32).map((harness) => harness.id);
+    const focus = () => ensureHarnessSignInChecked(ids, true);
+    ensureHarnessSignInChecked(ids);
     window.addEventListener("focus", focus);
     return () => window.removeEventListener("focus", focus);
-  }, [key, harnesses, projectId, epoch]);
-  return harnessesNeedingSignIn();
+  }, [harnesses, projectId, epoch]);
+  return harnesses;
 }
 
-export function ComposerHarnessSignInNotice({
-  harnessId,
+export function HarnessSignInRecovery({
   recovery,
   refusal,
 }: {
-  harnessId: string | null;
-  recovery?: ComposerStatusNoticeProps["authRecovery"];
-  refusal?: ComposerStatusNoticeProps["signInHarness"];
+  recovery: NonNullable<ComposerStatusNoticeProps["authRecovery"]>;
+  refusal?: ReactNode;
 }) {
-  const needsSignIn = useHarnessSignIn();
-  const recoveryId = recovery?.harnessId;
-  const scope = recovery?.scope;
-  const onSignedIn = recovery?.onSignedIn;
+  const harnesses = useHarnessSignIn();
+  const { harnessId: recoveryId, scope, onSignedIn, receivedAt } = recovery;
   const completed = useRef<string | null>(null);
-  const recoveryState = recoveryId
-    ? harnessSignInStatus(recoveryId).state
-    : null;
-  const accountReadStartedAt = recoveryId
-    ? harnessSignInStatus(recoveryId).evidenceAt
-    : null;
-  const receivedAt = recovery?.receivedAt;
+  const { state: recoveryState, evidenceAt: accountReadStartedAt } =
+    harnessSignInStatus(recoveryId);
   const awaitingFreshRead =
     receivedAt != null &&
     (accountReadStartedAt == null || accountReadStartedAt <= receivedAt);
   useEffect(() => {
     if (
-      !recoveryId ||
-      recoveryState !== "signedIn" ||
-      !scope ||
-      awaitingFreshRead
+      awaitingFreshRead ||
+      harnessSignInStatus(recoveryId).state !== "signedIn"
     ) {
       completed.current = null;
-      return;
-    }
-    if (
-      harnessSignInStatus(recoveryId).state === "signedIn" &&
-      completed.current !== scope
-    ) {
+    } else if (completed.current !== scope) {
       completed.current = scope;
-      onSignedIn?.();
+      onSignedIn();
     }
   }, [onSignedIn, recoveryId, recoveryState, scope, awaitingFreshRead]);
-  if (refusal && (!recoveryId || recoveryState === "unsupported"))
-    return (
-      <div className="composer__error" role="alert">
-        <SignInRequiredMessage harness={refusal} />
-      </div>
-    );
+  if (recoveryState === "unsupported") return refusal;
   const harness =
-    needsSignIn.find((entry) => entry.id === (recoveryId ?? harnessId)) ??
-    (recoveryId &&
-    (recoveryState !== "signedIn" || awaitingFreshRead) &&
-    recoveryState !== "unsupported"
-      ? useWorkbenchStore
-          .getState()
-          .harnesses.find((entry) => entry.id === recoveryId)
-      : undefined);
+    recoveryState !== "signedIn" || awaitingFreshRead
+      ? harnesses.find((entry) => entry.id === recoveryId)
+      : undefined;
   if (!harness) return null;
   return (
-    <div className="composer__notice harness-signin-notice" role="status">
+    <div className="acp-turn__sign-in" role="status">
       <span>
-        {recoveryState && recoveryState !== "signedOut"
+        {recoveryState !== "signedOut"
           ? `Recheck ${harness.name} sign-in`
           : `${harness.name} isn't signed in`}
       </span>
       <HarnessLoginAction key={harness.id} harness={harness} />
-      {recoveryId === harness.id ? (
-        <HarnessLoginAction
-          key={`${harness.id}:check:${scope}`}
-          harness={harness}
-          check
-        />
-      ) : null}
+      <HarnessLoginAction
+        key={`${harness.id}:${scope}`}
+        harness={harness}
+        check
+      />
     </div>
   );
 }
 
 export function HarnessAccountMenu({ avatar }: { avatar: string }) {
-  const needsSignIn = useHarnessSignIn();
+  useHarnessSignIn();
+  const needsSignIn = harnessesNeedingSignIn();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -167,7 +139,10 @@ export function HarnessAccountMenu({ avatar }: { avatar: string }) {
           onDismiss={() => setOpen(false)}
         >
           {needsSignIn.map((harness) => (
-            <HarnessLoginAction key={harness.id} harness={harness} menuItem />
+            <div key={harness.id} role="none">
+              <HarnessLoginAction harness={harness} menuItem />
+              <HarnessLoginAction harness={harness} menuItem check />
+            </div>
           ))}
         </MenuPart>
       ) : null}

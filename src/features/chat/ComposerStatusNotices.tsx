@@ -1,7 +1,5 @@
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { ComposerOptionsPart } from "./lazyParts";
-import { useWorkbenchStore } from "../../app/store";
-import { harnessHasSignInCheck } from "../../domain/harness";
 import type { ReactNode } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 
@@ -24,26 +22,16 @@ export type ComposerStatusNoticeProps = Pick<
   };
 };
 
-export function unexplainedMissingBinding(
-  props: Pick<
-    ComposerStatusNoticeProps,
-    "missingBindingNotice" | "discoveryPhase"
-  >,
-) {
-  return (
-    props.missingBindingNotice &&
-    (props.discoveryPhase === "idle" || props.discoveryPhase === "ready")
-  );
-}
-
 /** Errors remain available while the optional notice surface loads. */
 export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
   const { workbenchError, chatError, imageStatus, children } = props;
-  const errors = [workbenchError, chatError, imageStatus];
-  const missingBinding = unexplainedMissingBinding(props);
-  return errors.some(Boolean) || missingBinding || children ? (
+  const errors = [workbenchError, chatError, imageStatus].filter(Boolean);
+  const missingBinding =
+    props.missingBindingNotice &&
+    (props.discoveryPhase === "idle" || props.discoveryPhase === "ready");
+  return errors.length || missingBinding || children ? (
     <div
       className="composer__notices"
       role="region"
@@ -51,13 +39,11 @@ export function ComposerNoticeFrame(
       tabIndex={0}
     >
       {children}
-      {errors.map((error, index) =>
-        error ? (
-          <div key={index} className="composer__error" role="alert">
-            {error}
-          </div>
-        ) : null,
-      )}
+      {errors.map((error, index) => (
+        <div key={index} className="composer__error" role="alert">
+          {error}
+        </div>
+      ))}
       {missingBinding ? (
         <div className="composer__notice">
           No reviewed local binding is available for this harness.
@@ -68,24 +54,15 @@ export function ComposerNoticeFrame(
 }
 
 export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
-  const supported = useWorkbenchStore((state) =>
-    state.harnesses.some(
-      (harness) =>
-        harness.id === props.selectedHarnessId &&
-        harnessHasSignInCheck(harness),
-    ),
-  );
   const refusal =
-    props.signInHarness ||
-    props.authRecovery ||
-    props.chatAuth?.errorKind === "signInRequired" ||
-    props.chatAuth?.page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
-  if (!supported && !refusal) return <ComposerNoticeFrame {...props} />;
-  return (
+    props.authRecovery || props.chatAuth?.errorKind === "signInRequired";
+  return refusal ? (
     <ComposerOptionsPart
       part="ComposerNoticeSurface"
       {...props}
       fallback={<ComposerNoticeFrame {...props} />}
     />
+  ) : (
+    <ComposerNoticeFrame {...props} />
   );
 }

@@ -51,8 +51,9 @@ export function menuPopoverPosition(
       bottomEdge = bottom;
     }
   }
+  // Content avoidance is a preference; viewport containment takes priority.
   const clampTop = (top: number, height = surface.height) =>
-    Math.max(topEdge, Math.min(top, bottomEdge - height));
+    Math.min(Math.max(topEdge, top), bottomEdge - height);
   const parent = trigger.closest(".menu-popover")?.getBoundingClientRect();
   const shared = {
     minWidth: matchTriggerWidth ? Math.min(anchor.width, maxWidth) : undefined,
@@ -95,8 +96,17 @@ export function menuPopoverPosition(
       maxHeight,
     };
   }
+  // The empty-chat introduction is content to preserve above a dock menu.
+  const home =
+    dock &&
+    origin
+      .closest(".chat-surface")
+      ?.querySelector(".chat-home")
+      ?.getBoundingClientRect();
+  if (home && home.bottom <= anchor.top)
+    topEdge = Math.max(topEdge, home.bottom + gap);
   const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
-  const roomAbove = anchor.top - gap - GUTTER;
+  const roomAbove = anchor.top - gap - (home ? topEdge : GUTTER);
   const preferAbove = placement.startsWith("above-");
   const placeAbove = preferAbove
     ? surface.height <= roomAbove || roomAbove > roomBelow

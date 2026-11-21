@@ -14,15 +14,6 @@
   white-space: nowrap;
 }
 
-.project-scope__label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-scope__icon {
-  flex: none;
-}
-
 .project-scope__picker {
   min-width: 0;
   max-width: 100%;

@@ -4,7 +4,7 @@ import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import { selectProjectSwitchBlocked } from "../../app/workbenchSelectors";
-import { Folder, X } from "../../ui/leanIcons";
+import { Folder, Plus, X } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 import { lazyParts } from "./lazyParts";
@@ -15,13 +15,20 @@ import "./project-scope.css";
 const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
   () => import("./CreateChatProjectDialog"),
 );
-const NONE = "scope:none";
-const NEW = "scope:new";
+const NEW_PROJECT_ACTION = {
+  id: "scope:new",
+  label: "New project",
+  leadingIcon: Plus,
+  separatorBefore: true,
+  alwaysVisible: true,
+};
+const NO_PROJECT_ACTION = {
+  id: "scope:none",
+  label: "Don't work in a project",
+  leadingIcon: X,
+  alwaysVisible: true,
+};
 type ProjectScopeVariant = "inline" | "caption" | "menuItem";
-
-function shortenedParent(path: string) {
-  return path.length > 64 ? `...${path.slice(-61)}` : path;
-}
 
 export function ProjectScopeChip({
   projectName,
@@ -70,6 +77,8 @@ export function ProjectScopeChip({
         projectName)
       : projectName
     : "Choose project";
+  const triggerLabel = menuItem ? "Work in a project" : label;
+  const projectTitle = `Project: ${label}`;
   const readOnly =
     disabled ||
     switchBlocked ||
@@ -79,30 +88,32 @@ export function ProjectScopeChip({
       : !!sessionId);
   const candidates = useMemo(() => {
     const counts = new Map<string, number>();
-    projects.forEach((project) =>
-      counts.set(project.name, (counts.get(project.name) ?? 0) + 1),
-    );
+    for (const { name } of projects) {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
     return [
-      ...projects.map((project) => {
-        const duplicate = (counts.get(project.name) ?? 0) > 1;
-        const parent = project.parentPath;
+      ...projects.map(({ id, name, parentPath: parent }) => {
+        const duplicate = counts.get(name)! > 1;
         return {
-          id: project.id,
-          label: project.id === projectId ? label : project.name,
+          id,
+          leadingIcon: Folder,
+          label: id === projectId ? label : name,
           subtitle: duplicate
             ? parent
-              ? shortenedParent(parent)
+              ? parent.length > 64
+                ? `...${parent.slice(-61)}`
+                : parent
               : "No source folder"
             : undefined,
           accessibleLabel: duplicate
-            ? `${project.name}, ${parent ?? "No source folder"}${projects.some((other) => other.id !== project.id && other.name === project.name && other.parentPath === parent) ? `, ${project.id}` : ""}`
-            : project.name,
+            ? `${name}, ${parent ?? "No source folder"}${projects.some((other) => other.id !== id && other.name === name && other.parentPath === parent) ? `, ${id}` : ""}`
+            : name,
         };
       }),
-      { id: NEW, label: "New project", alwaysVisible: true },
-      { id: NONE, label: "Don't work in a project", alwaysVisible: true },
+      NEW_PROJECT_ACTION,
+      ...(scoped ? [NO_PROJECT_ACTION] : []),
     ];
-  }, [projects, projectId, label]);
+  }, [projects, projectId, label, scoped]);
   const choose = (id: string | null) => {
     if (readOnly) return;
     if (!draft && id !== projectId && hasActiveAcpTurn(chatId)) {
@@ -126,7 +137,8 @@ export function ProjectScopeChip({
         triggerRole={menuItem ? "menuitem" : undefined}
         className="project-scope__picker"
         appearance="plain"
-        popoverAppearance="menu"
+        menuAppearance
+        searchPlaceholder="Search projects"
         triggerClassName={
           menuItem ? "menu-item composer__add-action" : undefined
         }
@@ -134,32 +146,16 @@ export function ProjectScopeChip({
         portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
         popoverClassName="composer__popover"
         popoverPlacement={popoverPlacement}
-        ariaLabel={
-          menuItem
-            ? "Work in a project"
-            : scoped
-              ? `Project: ${label}`
-              : "Choose project"
-        }
+        ariaLabel={scoped && !menuItem ? projectTitle : triggerLabel}
         stateTitle={
-          readOnly ? `Project: ${label}` : "Change the project for this chat"
+          readOnly ? projectTitle : "Change the project for this chat"
         }
-        triggerIcon={
-          caption ? undefined : (
-            <Folder
-              className="project-scope__icon"
-              size={14}
-              aria-hidden="true"
-            />
-          )
-        }
+        triggerIcon={caption ? undefined : <Folder size={14} />}
         triggerLabel={
-          menuItem ? (
-            "Work in a project"
+          caption ? (
+            <span className="project-scope__caption">{label}</span>
           ) : (
-            <span className={caption ? "project-scope__caption" : undefined}>
-              {label}
-            </span>
+            triggerLabel
           )
         }
         triggerDetail={
@@ -173,11 +169,10 @@ export function ProjectScopeChip({
         onOpenChange={onOpenChange}
         candidates={candidates}
         disabled={readOnly}
-        emptyLabel={label}
         selectedId={projectId}
         onSelect={(id) => {
-          if (id !== NEW) {
-            choose(id === NONE ? null : id);
+          if (id !== NEW_PROJECT_ACTION.id) {
+            choose(id === NO_PROJECT_ACTION.id ? null : id);
             return;
           }
           const state = useWorkbenchStore.getState();
@@ -198,7 +193,7 @@ export function ProjectScopeChip({
           title="Don't work in a project"
           onClick={() => choose(null)}
         >
-          <X size={12} aria-hidden="true" />
+          <X size={12} />
         </button>
       ) : null}
       {creating ? (

@@ -1,6 +1,4 @@
-import { useWorkbenchStore } from "../../app/store";
-import { harnessHasSignInCheck } from "../../domain/harness";
-import { HarnessSignInPart } from "../harness/harnessSignInLazy";
+import { HarnessSignInPart } from "./lazyParts";
 import {
   ComposerNoticeFrame,
   type ComposerStatusNoticeProps,
@@ -13,26 +11,26 @@ export function ComposerStatusMessages({
   selectedHarnessId,
   ...props
 }: ComposerStatusNoticeProps) {
-  const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const observeSignIn =
-    authRecovery ||
-    signInHarness ||
-    harnesses.some(
-      (harness) =>
-        harness.id === selectedHarnessId && harnessHasSignInCheck(harness),
-    );
   return (
     <ComposerNoticeFrame
       {...props}
       selectedHarnessId={selectedHarnessId}
       chatError={signInHarness ? null : chatError}
     >
-      {observeSignIn ? (
+      {authRecovery ? (
         <HarnessSignInPart
-          part="ComposerHarnessSignInNotice"
-          harnessId={selectedHarnessId}
+          part="HarnessSignInRecovery"
           recovery={authRecovery}
-          refusal={signInHarness}
+          refusal={
+            signInHarness ? (
+              <div className="composer__error" role="alert">
+                <HarnessSignInPart
+                  part="SignInRequiredMessage"
+                  harness={signInHarness}
+                />
+              </div>
+            ) : null
+          }
           fallback={
             signInHarness && chatError ? (
               <div className="composer__error" role="alert">

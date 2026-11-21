@@ -8,6 +8,11 @@ import type {
 } from "../../../domain/acp";
 import { terminalItemLifecycles } from "./statusSemantics";
 
+export function turnBindingId(page: AcpChatPage, turn: TurnProjection) {
+  return page.sessions.find((session) => session.id === turn.sessionId)
+    ?.bindingId;
+}
+
 export function promptAttachmentItems(
   items: readonly AcpItem[],
 ): Extract<AcpItem, { kind: "image" }>[] {

@@ -288,6 +288,7 @@ fn notice(inbound: &mut Inbound, level: SessionNoticeLevel, text: &str) {
     inbound
         .session
         .push(SessionScopedEvent::Notice(SessionNotice {
+            diagnostic: false,
             level,
             text,
             source: Some(source),

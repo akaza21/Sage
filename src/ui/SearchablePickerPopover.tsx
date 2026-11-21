@@ -12,6 +12,7 @@ import { flushSync } from "react-dom";
 import { isImeComposing } from "./imeComposition";
 import { useActiveOption } from "./listNavigation";
 import { PickerOption } from "./PickerOption";
+import { Search } from "./leanIcons";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -22,31 +23,30 @@ import {
   searchablePickerOptionId as optionId,
 } from "./searchablePickerLoad";
 
-const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
-
 export function SearchablePickerPopover({
   ariaLabel,
   candidates,
   close,
-  disabled,
   draft,
-  expanded,
+  query,
+  onQueryChange,
   focusMoved,
   footer,
   id,
   onOptionRender,
   onSelect,
-  open,
   popoverClassName,
   popoverGap,
   popoverPlacement,
   portalTarget,
   searchable,
+  searchPlaceholder = "Search…",
+  menuAppearance = false,
+  keyboardOpen,
   sectionLabel,
   selected,
   selectedId,
   setDraft,
-  setOpen,
   state,
   stateDetail,
   stateTitle,
@@ -55,181 +55,183 @@ export function SearchablePickerPopover({
   ariaLabel: string;
   candidates: readonly SearchablePickerOption[];
   close: (reason?: MenuDismissReason) => void;
-  disabled: boolean;
   draft: string;
-  expanded: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
   focusMoved: () => boolean;
   footer?: string;
   id: string;
   onOptionRender?: (id: string) => void;
   onSelect: (id: string) => void;
-  open: boolean;
   popoverClassName?: string;
   popoverGap?: number;
   popoverPlacement?: MenuPlacement;
   portalTarget: "closest-dialog" | "closest-popover" | "document";
   searchable: boolean;
+  searchPlaceholder?: string;
+  menuAppearance?: boolean;
+  keyboardOpen: boolean;
   sectionLabel?: string;
   selected: SearchablePickerOption | undefined;
   selectedId: string | null;
   setDraft: (draft: string) => void;
-  setOpen: (open: boolean) => void;
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
   stateTitle?: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState(draft);
-  const [holdFocus, setHoldFocus] = useState(focusMoved);
-  if (!open && holdFocus) setHoldFocus(false);
+  const [keyboard, setKeyboard] = useState(keyboardOpen);
+  useLayoutEffect(() => {
+    onQueryChange(query);
+  }, [query, onQueryChange]);
+  const [holdFocus] = useState(focusMoved);
   const visible = useMemo(() => {
-    if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
     return candidates.filter(
       (candidate) =>
         candidate.alwaysVisible ||
         candidate.label.toLocaleLowerCase().includes(normalized),
     );
-  }, [candidates, query, expanded]);
+  }, [candidates, query]);
   const rendered = useMemo(
     () => visible.slice(0, SEARCHABLE_PICKER_MAX_RENDERED),
     [visible],
   );
-  const selectable = useMemo(
-    () => rendered.filter((candidate) => !candidate.disabledReason),
-    [rendered],
-  );
   const selectableIds = useMemo(
-    () => selectable.map((candidate) => candidate.id),
-    [selectable],
+    () =>
+      rendered
+        .filter((candidate) => !candidate.disabledReason)
+        .map((candidate) => candidate.id),
+    [rendered],
   );
   const option = useActiveOption(selectableIds, "none");
   const setActiveId = option.setActiveId;
-  if (!open && option.chosenId !== null) setActiveId(null);
-  const active =
-    option.activeIndex >= 0 ? selectable[option.activeIndex] : null;
+  const activateFromPointer = useCallback(
+    (id: string) => {
+      setActiveId(id);
+      setKeyboard(false);
+    },
+    [setActiveId],
+  );
+  const active = option.activeId;
 
   useEffect(() => {
-    if (!open || disabled) return;
-    const timer = window.setTimeout(
-      () => setQuery(draft),
-      SEARCHABLE_PICKER_DEBOUNCE_MS,
-    );
+    const timer = window.setTimeout(() => {
+      onQueryChange(draft);
+    }, SEARCHABLE_PICKER_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [disabled, draft, open]);
+  }, [draft, onQueryChange]);
 
   useLayoutEffect(() => {
-    if (!open || disabled || !searchable || holdFocus) return;
+    if (!searchable || holdFocus) return;
     inputRef.current?.focus();
-  }, [disabled, holdFocus, open, searchable]);
+  }, [holdFocus, searchable]);
   useLayoutEffect(() => {
-    if (!active) return;
+    if (active === null) return;
     triggerRef.current?.ownerDocument
-      .getElementById(optionId(id, active.id))
+      .getElementById(optionId(id, active))
       ?.scrollIntoView?.({ block: "nearest" });
   }, [active, id, triggerRef]);
 
-  const dismiss = useCallback(
-    (reason?: MenuDismissReason) => {
-      setActiveId(null);
-      close(reason);
-    },
-    [close, setActiveId],
-  );
   const moveActive = option.move;
   const selectCandidate = useCallback(
     (next: string) => {
-      if (disabled) return;
       onSelect(next);
       setDraft("");
-      setQuery("");
-      dismiss();
+      onQueryChange("");
+      setActiveId(null);
+      close();
       triggerRef.current?.focus();
     },
-    [dismiss, disabled, onSelect, setDraft, triggerRef],
+    [close, onSelect, onQueryChange, setActiveId, setDraft, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (disabled || isImeComposing(event)) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const { key } = event;
+    setKeyboard(true);
+    if (isImeComposing(event)) return;
+    if (
+      ["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"].includes(
+        key,
+      )
+    ) {
+      if ((key === "Home" || key === "End") && selectableIds.length === 0)
+        return;
       event.preventDefault();
-      if (!open) setOpen(true);
-      moveActive(event.key);
-    } else if (event.key === "Home" || event.key === "End") {
-      if (selectable.length === 0) return;
+      moveActive(key);
+    } else if (key === "Enter") {
       event.preventDefault();
-      moveActive(event.key);
-    } else if (event.key === "PageDown" || event.key === "PageUp") {
-      event.preventDefault();
-      moveActive(event.key);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (active) selectCandidate(active.id);
-    } else if (event.key === "Escape") {
+      if (active !== null) selectCandidate(active);
+    } else if (key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      dismiss("escape");
-    } else if (event.key === "Tab") {
+      close("escape");
+    } else if (key === "Tab") {
       if (portalTarget !== "document") {
-        flushSync(() => dismiss("tab"));
+        flushSync(() => close("tab"));
         triggerRef.current?.focus();
         return;
       }
       triggerRef.current?.focus();
-      dismiss("tab");
+      close("tab");
     }
   };
-
-  const listed = expanded ? rendered : EMPTY_CANDIDATES;
 
   return (
     <MenuPopover
       ariaLabel={ariaLabel}
       className={[
-        "searchable-picker__popover",
-        "menu-popover--editor",
+        "searchable-picker__popover menu-popover--editor",
+        menuAppearance ? "searchable-picker__popover--menu" : null,
+        keyboard ? "searchable-picker__popover--keyboard" : null,
         popoverClassName,
       ]
         .filter(Boolean)
         .join(" ")}
       focusStrategy={searchable ? "none" : "roving"}
       holdFocus={holdFocus}
-      focusKey={
-        searchable
-          ? undefined
-          : selectable.map((candidate) => candidate.id).join("\0")
-      }
+      focusKey={searchable ? undefined : selectableIds.join("\0")}
       initialFocus="selected"
       id={`${id}-popover`}
-      matchTriggerWidth
+      matchTriggerWidth={!menuAppearance}
       gap={popoverGap}
       placement={popoverPlacement}
-      onDismiss={dismiss}
-      open={expanded}
+      onDismiss={close}
+      open
       portalTarget={portalTarget}
       role="none"
       triggerRef={triggerRef}
     >
       {searchable ? (
-        <input
-          ref={inputRef}
-          className="searchable-picker__input"
-          role="combobox"
-          aria-label={ariaLabel}
-          aria-activedescendant={active ? optionId(id, active.id) : undefined}
-          aria-autocomplete="list"
-          aria-controls={`${id}-listbox`}
-          aria-expanded={expanded}
-          placeholder="Search…"
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setActiveId(null);
-          }}
-          onKeyDown={onKeyDown}
-        />
+        <div
+          className={
+            menuAppearance ? "searchable-picker__search-row" : undefined
+          }
+        >
+          {menuAppearance ? <Search size={14} aria-hidden="true" /> : null}
+          <input
+            ref={inputRef}
+            className="searchable-picker__input"
+            role="combobox"
+            aria-label={ariaLabel}
+            aria-activedescendant={
+              active !== null ? optionId(id, active) : undefined
+            }
+            aria-autocomplete="list"
+            aria-controls={`${id}-listbox`}
+            aria-expanded
+            placeholder={searchPlaceholder}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setActiveId(null);
+            }}
+            onKeyDown={onKeyDown}
+            onPointerDown={() => setKeyboard(false)}
+          />
+        </div>
       ) : null}
-      {selected ? (
+      {selected && !menuAppearance ? (
         <p className="searchable-picker__current">Current: {selected.label}</p>
       ) : null}
       {sectionLabel ? (
@@ -249,17 +251,17 @@ export function SearchablePickerPopover({
         />
       ) : null}
       <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-        {listed.map((candidate) => (
+        {rendered.map((candidate) => (
           <PickerOption
             key={candidate.id}
-            active={candidate.id === active?.id}
+            active={candidate.id === active}
             candidate={candidate}
             id={optionId(id, candidate.id)}
-            onActivate={searchable ? setActiveId : undefined}
+            onActivate={searchable ? activateFromPointer : undefined}
             onRender={onOptionRender}
             onSelect={selectCandidate}
             selected={candidate.id === selectedId}
-            disabled={disabled}
+            showSelectedCheck={menuAppearance}
           />
         ))}
         {visible.length > rendered.length ? (

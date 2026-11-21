@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { ComposerStatusNoticeProps } from "./ComposerStatusNotices";
 import { ComposerStatusMessages } from "./ComposerStatusMessages";
-import { HarnessSignInPart } from "../harness/harnessSignInLazy";
+import { HarnessSignInPart } from "./lazyParts";
 import { clearChatSignInError } from "./chatSignInRecovery";
 
 export function HarnessAccountMenu({ avatar }: { avatar: string }) {
@@ -19,7 +19,7 @@ export function ComposerNoticeSurface({
   );
 }
 
-/** Resolve restored refusals only while the chat's notice surface is awake. */
+/** Command refusals have no turn yet; turn failures own their inline recovery. */
 function ChatSignInNotices({
   page,
   errorKind,
@@ -36,34 +36,16 @@ function ChatSignInNotices({
     (state) => state.chatUiById[ownerChatId ?? ""],
   );
   const latestTurn = page?.turns.at(-1);
-  const latestTurnSession = page?.sessions.find(
-    (session) => session.id === latestTurn?.sessionId,
-  );
   const commandRefusal = errorKind === "signInRequired";
   const harness = harnesses.find(
-    (entry) =>
-      entry.bindingId ===
-      (commandRefusal ? refusal?.errorBindingId : latestTurnSession?.bindingId),
+    (entry) => entry.bindingId === refusal?.errorBindingId,
   );
-  const authOwner = useWorkbenchStore
-    .getState()
-    .captureChatOwnership(ownerChatId ?? undefined);
-  const signInRequired =
-    commandRefusal ||
-    (page?.chatId === ownerChatId &&
-      refusal?.dismissedAuthTurnId !== latestTurn?.id &&
-      latestTurn?.state === "failed" &&
-      latestTurn.terminalReason?.kind === "authRequired");
   return (
     <ComposerStatusMessages
       {...notices}
-      signInHarness={
-        commandRefusal || (signInRequired && !notices.chatError)
-          ? harness
-          : null
-      }
+      signInHarness={commandRefusal ? harness : null}
       authRecovery={
-        signInRequired && harness
+        commandRefusal && harness
           ? {
               harnessId: harness.id,
               receivedAt: commandRefusal ? refusal?.errorReceivedAt : null,
@@ -74,11 +56,7 @@ function ChatSignInNotices({
                 latestTurn?.id,
               ]),
               onSignedIn: () => {
-                if (commandRefusal) clearChatSignInError(ownerChatId, refusal);
-                else if (authOwner && latestTurn)
-                  useWorkbenchStore
-                    .getState()
-                    .dismissChatAuthTurn(authOwner, latestTurn.id);
+                clearChatSignInError(ownerChatId, refusal);
               },
             }
           : undefined
