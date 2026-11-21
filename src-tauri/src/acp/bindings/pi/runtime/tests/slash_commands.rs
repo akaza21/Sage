@@ -201,8 +201,8 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     );
     runtime.ingest(&response(&query, json!({"commands":[{"name":"review","description":"Review changes","source":"extension"}]})), &Mapper).unwrap();
     let commands = runtime.available_commands().snapshot();
-    assert_eq!(commands.commands[0].name, "review");
-    assert_eq!(commands.commands[0].input_hint, None);
+    assert_eq!(commands.commands[2].name, "review");
+    assert_eq!(commands.commands[2].input_hint, None);
     commands.validate(commands.revision, "/review src").unwrap();
     assert!(
         runtime.discover_commands().unwrap().is_none(),
@@ -330,8 +330,11 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
             &response(
                 &query,
                 json!({"commands":[
-                    {"name":"review","description":"Review","source":"extension"},
-                    {"name":"fix","description":"Fix it","source":"prompt","location":"project"},
+                    {"name":"review","description":"Review","source":"extension",
+                        "sourceInfo":{"path":"/extensions/review.ts","source":"package","scope":"user",
+                            "origin":"npm:review-tools","baseDir":"/packages/review-tools"}},
+                    {"name":"fix","description":"Fix it","source":"prompt","location":"project",
+                        "sourceInfo":{"path":"/prompts/fix.md","source":"local","scope":"project"}},
                     {"name":"skill:lint","description":"Lint","source":"skill","path":"/s/SKILL.md"},
                 ]}),
             ),
@@ -347,13 +350,22 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
     assert_eq!(
         sources,
         [
+            ("session", CommandSource::Builtin),
+            ("compact", CommandSource::Builtin),
             ("review", CommandSource::Extension),
             ("fix", CommandSource::Prompt),
             ("skill:lint", CommandSource::Skill),
-            ("session", CommandSource::Builtin),
-            ("compact", CommandSource::Builtin),
         ]
     );
+    let review = &listed.commands[2];
+    assert_eq!(review.source_label.as_deref(), Some("review-tools"));
+    let info = review.source_info.as_ref().unwrap();
+    assert_eq!(info.path.as_deref(), Some("/extensions/review.ts"));
+    assert_eq!(info.source.as_deref(), Some("package"));
+    assert_eq!(info.scope.as_deref(), Some("user"));
+    assert_eq!(info.origin.as_deref(), Some("npm:review-tools"));
+    assert_eq!(info.base_dir.as_deref(), Some("/packages/review-tools"));
+    assert_eq!(listed.commands[3].source_label.as_deref(), Some("fix"));
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime
@@ -394,8 +406,8 @@ fn a_full_pi_catalog_that_lists_compact_keeps_it_as_the_builtin() {
         .unwrap();
     let listed = runtime.available_commands().snapshot().commands;
     assert_eq!(listed.len(), crate::acp::slash_commands::MAX_COMMANDS);
-    assert_eq!(listed[3].name, "t3");
-    let compact = listed.last().unwrap();
+    assert_eq!(listed[5].name, "t3");
+    let compact = &listed[1];
     assert_eq!(
         (compact.name.as_str(), compact.source),
         (

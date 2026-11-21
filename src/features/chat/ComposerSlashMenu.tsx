@@ -22,6 +22,7 @@ import {
 } from "../../services/acpCommandsDesktop";
 import {
   suggestionOptionId,
+  TEXT_FIELD_SUGGESTIONS_MAX_RENDERED,
   useSuggestionNavigation,
   type SuggestionKeyEvent,
   type TextFieldSuggestion,
@@ -66,10 +67,19 @@ function filterSlashCommands(
 ): AvailableAcpCommand[] {
   if (!query)
     return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
-      (source) =>
-        commands
+      (source) => {
+        const rows = commands
           .filter((command) => command.source === source)
-          .slice(0, SECTION_ROWS),
+          .slice(0, SECTION_ROWS);
+        const labels = new Map<string, AvailableAcpCommand[]>();
+        for (const row of rows) {
+          const label = row.sourceLabel ?? "";
+          const group = labels.get(label) ?? [];
+          group.push(row);
+          labels.set(label, group);
+        }
+        return [...labels.values()].flat();
+      },
     );
   const needle = query.toLocaleLowerCase();
   const ranks: AvailableAcpCommand[][] = [[], [], [], []];
@@ -98,7 +108,11 @@ function suggestion(
 ): TextFieldSuggestion {
   return {
     id: command.name,
-    group: grouped ? commandSourceGroups[command.source] : undefined,
+    group: grouped
+      ? [commandSourceGroups[command.source], command.sourceLabel]
+          .filter(Boolean)
+          .join(" · ")
+      : undefined,
     label: `/${command.name}`,
     icon: <SlashCommandIcon name={command.name} />,
     hint: command.inputHint ?? undefined,
@@ -273,6 +287,10 @@ export function ComposerSlashMenu({
       });
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
+  const more =
+    (load?.kind === "ready" ? (load.list.omitted ?? 0) : 0) +
+    (query ? items.length : commands.length) -
+    Math.min(items.length, TEXT_FIELD_SUGGESTIONS_MAX_RENDERED);
   const activeId = navigation.active?.id ?? null;
   const loading = load?.kind === "loading";
   useLayoutEffect(() => {
@@ -329,11 +347,7 @@ export function ComposerSlashMenu({
     <SuggestionsPart
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
-      footer={
-        !query && commands.length > items.length
-          ? `${commands.length - items.length} more — keep typing to narrow`
-          : undefined
-      }
+      footer={more > 0 ? `and ${more} more, type to search` : undefined}
       ariaLabel="Slash commands"
       className="composer-slash-menu"
       items={items}

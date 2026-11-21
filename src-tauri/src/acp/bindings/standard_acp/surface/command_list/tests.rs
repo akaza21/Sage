@@ -30,17 +30,12 @@ fn latest_list_replaces_and_revokes_prior_command_authority() {
     assert!(list.validate(3, "/test").is_err());
 }
 #[test]
-fn malformed_duplicate_and_over_cap_lists_fail_closed() {
+fn malformed_lists_fail_closed() {
     for value in [
         json!([{"name":"bad name","description":"d"}]),
-        json!([{"name":"x","description":"d"},{"name":"x","description":"d"}]),
         json!([{"name":"/x","description":"d"}]),
         json!([{"name":"x","description":"d","input":{}}]),
         json!([{"name":"x","description":"d","input":{"hint":"h".repeat(257)}}]),
-        json!(vec![
-            json!({"name":"x","description":"d"});
-            MAX_COMMANDS + 1
-        ]),
         json!(null),
     ] {
         let mut list = CommandList::default();
@@ -291,4 +286,42 @@ fn aliases_from_acp_meta_keep_only_distinct_command_names_within_the_bound() {
             .get("aliases")
             .is_none()
     );
+}
+
+#[test]
+fn admission_keeps_a_priority_prefix_and_counts_every_omission() {
+    for (count, description_bytes, duplicate, expected, omitted) in [
+        (600, 1, false, 512, 88),
+        (300, 1024, false, 254, 46),
+        (3, 1, true, 1, 2),
+    ] {
+        let rows: Vec<_> = (0..count)
+            .map(|i| {
+                json!({
+                    "name": if duplicate { "cmd000".to_owned() } else { format!("cmd{i:03}") },
+                    "description": "d".repeat(description_bytes),
+                    "_meta": {"source": if i == count - 1 { "builtin" } else { "skill" }}
+                })
+            })
+            .collect();
+        let mut list = CommandList::default();
+        list.replace(parse_acp(&json!(rows))).unwrap();
+        assert_eq!((list.commands.len(), list.omitted), (expected, omitted));
+        assert_eq!(list.commands[0].source, CommandSource::Builtin);
+        assert!(
+            list.commands
+                .iter()
+                .map(AvailableCommand::listed_bytes)
+                .sum::<usize>()
+                <= MAX_COMMAND_BYTES
+        );
+        if !duplicate {
+            assert_eq!(list.commands[0].name, format!("cmd{:03}", count - 1));
+            assert_eq!(list.commands[1].name, "cmd000");
+            assert_eq!(
+                list.commands.last().unwrap().name,
+                format!("cmd{:03}", expected - 2)
+            );
+        }
+    }
 }

@@ -71,8 +71,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1946,
-        "reason": "Composer `/` menu: commands by source, matched by name or alias, the command port, and panel commands on Enter. Loads with the first `/`. Measured 1944-1946 B JS as shared-chunk aliases move."
+        "maxGzipBytes": 2300,
+        "reason": "Composer `/` menu: bounded source labels and omitted/render-cap counts, name and alias search, panel commands. Loads with the first `/`. Measured 2028 B JS; reserves at least 250 B."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",

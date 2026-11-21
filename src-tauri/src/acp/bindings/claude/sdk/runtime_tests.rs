@@ -1512,3 +1512,36 @@ fn a_background_subagents_approval_card_row_ends_with_the_answer_not_the_turn() 
         Some(ToolState::Declined)
     );
 }
+
+#[test]
+fn initialize_plugin_commands_keep_their_reported_namespace() {
+    let mut runtime = runtime();
+    let initialize = send(&mut runtime, AdapterCommand::Initialize);
+    reply(
+        &mut runtime,
+        &initialize,
+        json!({
+            "commands":[{"name":"codex:review","description":"(codex) Review changes"}],
+            "current_permission_mode":"default", "models":[]
+        }),
+    );
+    let session = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    reply(&mut runtime, &session, json!({"applied":{}}));
+    let list = runtime.available_commands().snapshot();
+    let plugin = list
+        .commands
+        .iter()
+        .find(|command| command.name == "codex:review")
+        .unwrap();
+    assert_eq!(
+        plugin.source,
+        crate::acp::slash_commands::CommandSource::Plugin
+    );
+    assert_eq!(plugin.source_label.as_deref(), Some("codex"));
+}

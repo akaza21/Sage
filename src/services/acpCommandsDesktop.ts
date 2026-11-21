@@ -30,6 +30,7 @@ export interface AvailableAcpCommand {
   description: string;
   inputHint: string | null;
   source: AcpCommandSource;
+  sourceLabel?: string;
   /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
   aliases?: string[];
@@ -42,6 +43,7 @@ const MAX_ALIASES = 8;
 export interface AcpCommandList {
   revision: number;
   commands: AvailableAcpCommand[];
+  omitted?: number;
 }
 export interface RunAcpCommandRequest extends AcpSessionMutationIntent {
   expectedCommandsRevision: number;
@@ -59,6 +61,10 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     !isRecord(value) ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
+    (value.omitted !== undefined &&
+      (!Number.isInteger(value.omitted) ||
+        (value.omitted as number) < 0 ||
+        (value.omitted as number) > 0xffff_ffff)) ||
     !Array.isArray(value.commands) ||
     value.commands.length > MAX_COMMANDS
   )
@@ -82,12 +88,17 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       !text(c.description, 1024) ||
       (c.inputHint !== null && !text(c.inputHint, 256)) ||
       !isCommandSource(c.source) ||
+      (c.sourceLabel !== undefined && !text(c.sourceLabel, 128)) ||
       (c.panel !== undefined && !isCommandPanel(c.panel))
     )
       return null;
     names.add(c.name);
     bytes += utf8ByteLength(
-      c.name + c.description + (c.inputHint ?? "") + aliases.join(""),
+      c.name +
+        c.description +
+        (c.inputHint ?? "") +
+        (c.sourceLabel ?? "") +
+        aliases.join(""),
     );
     if (bytes > MAX_COMMAND_BYTES) return null;
     commands.push({
@@ -95,11 +106,16 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       description: c.description,
       inputHint: c.inputHint,
       source: c.source,
+      ...(c.sourceLabel ? { sourceLabel: c.sourceLabel } : {}),
       ...(c.panel ? { panel: c.panel } : {}),
       ...(aliases.length ? { aliases } : {}),
     });
   }
-  return { revision: value.revision as number, commands };
+  return {
+    revision: value.revision as number,
+    commands,
+    omitted: (value.omitted as number | undefined) ?? 0,
+  };
 }
 /** Native says one live owner's command list has a new revision; no data. */
 export interface AcpCommandsChangedV1 {

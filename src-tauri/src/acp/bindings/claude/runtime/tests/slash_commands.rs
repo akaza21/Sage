@@ -25,11 +25,18 @@ fn native_command_validates_latest_list_and_uses_acp_prompt_wire() {
         .ingest(
             &update(
                 "claude-session-1",
-                json!([{"name":"plan","description":"Plan","input":{"hint":"task"}}]),
+                json!([{"name":"plan","description":"Plan","input":{"hint":"task"}},
+                    {"name":"codex:review","description":"(codex) Review"}]),
             ),
             &Mapper,
         )
         .unwrap();
+    let listed = runtime.available_commands().snapshot();
+    assert_eq!(
+        listed.commands[1].source,
+        crate::acp::slash_commands::CommandSource::Plugin
+    );
+    assert_eq!(listed.commands[1].source_label.as_deref(), Some("codex"));
     assert!(runtime.command(command(0)).is_err());
     let egress = runtime.command(command(1)).unwrap();
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();

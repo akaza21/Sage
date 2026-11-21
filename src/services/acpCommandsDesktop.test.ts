@@ -4,16 +4,19 @@ describe("native command list contract", () => {
   it("preserves advertised hints and empty lists", () => {
     expect(decodeCommandList({ revision: 0, commands: [] })).toEqual({
       revision: 0,
+      omitted: 0,
       commands: [],
     });
     const value = {
       revision: 1,
+      omitted: 88,
       commands: [
         {
           name: "plan",
           description: "Plan",
           inputHint: "task",
           source: "skill",
+          sourceLabel: "user",
         },
       ],
     };
@@ -38,6 +41,10 @@ describe("native command list contract", () => {
     };
     for (const value of [
       null,
+      { revision: 1, commands: [], omitted: -1 },
+      { revision: 1, commands: [], omitted: 2 ** 32 },
+      { revision: 1, commands: [], omitted: 1.5 },
+      { revision: 1, commands: [{ ...command, sourceLabel: "x".repeat(129) }] },
       { revision: -1, commands: [] },
       { revision: 2 ** 53, commands: [] },
       { revision: 1, commands: [command, command] },

@@ -56,6 +56,8 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
         json!({"name":"two words","description":"d","enabled":true,"path":"p","scope":"repo"});
     let mut short = skill("pdf", true);
     short["interface"] = json!({"shortDescription":"Read PDFs"});
+    let mut plugin = skill("lint", true);
+    plugin["pluginId"] = json!("quality");
     read_skills(
         &mut runtime,
         json!([
@@ -63,7 +65,7 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
             skill("off", false),
             invalid,
             skill("pdf", true),
-            skill("lint", true)
+            plugin
         ]),
     );
     let list = runtime.available_commands().snapshot();
@@ -74,7 +76,9 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
         .filter(|c| c.source == CommandSource::Skill)
         .collect();
     assert_eq!(skills[0].description, "Read PDFs");
+    assert_eq!(skills[0].source_label.as_deref(), Some("user"));
     assert_eq!(skills[1].description, "lint in full");
+    assert_eq!(skills[1].source_label.as_deref(), Some("quality"));
     assert!(runtime.discover_commands().unwrap().is_none());
     runtime
         .ingest(
