@@ -1,3 +1,4 @@
+import { projectNameOption } from "../domain/projectNameOption";
 import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 import { projectLabel } from "../domain/project";
 import type {
@@ -29,6 +30,8 @@ export interface AgentRailProjectGroup {
   id: string;
   name: string;
   rootCount: number;
+  subtitle?: string;
+  accessibleLabel?: string;
   chats: AgentRailChat[];
   archived: ArchivedChatSummary[];
   truncated: boolean;
@@ -114,9 +117,9 @@ export function groupAgentRailProjects(input: {
   if (currentProjectIndex >= MAX_AGENT_RAIL_PROJECTS) {
     projectIndexes[projectIndexes.length - 1] = currentProjectIndex;
   }
+  const listed = projectIndexes.map((index) => input.projects[index]);
   let currentIncluded = false;
-  for (const index of projectIndexes) {
-    const project = input.projects[index];
+  for (const project of listed) {
     const id = admittedProjectId(project?.id);
     if (!id || !project) continue;
     const current = id === currentProjectId;
@@ -130,11 +133,14 @@ export function groupAgentRailProjects(input: {
             : MAX_AGENT_RAIL_CHATS_PER_PROJECT,
         );
     const name = projectLabel(project.name);
+    const identity = projectNameOption(project, listed);
     groups.push({
       isInternal: input.isInternal,
       id,
       name,
       rootCount: project.rootCount,
+      subtitle: identity.subtitle,
+      accessibleLabel: identity.accessibleLabel,
       chats: source.chats.sort(compareAgentRailChats),
       archived: current
         ? []

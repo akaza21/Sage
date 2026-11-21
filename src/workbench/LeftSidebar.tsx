@@ -17,6 +17,7 @@ import {
   lazyParts,
 } from "../features/chat/lazyParts";
 import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
   subscribeChatSearchFolderRequest,
@@ -35,7 +36,6 @@ import {
 } from "./agentRailInteractions";
 import { AgentRailSections } from "./AgentRailSections";
 import {
-  agentRailSectionCollapsed,
   expandAgentRailSection,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
@@ -135,10 +135,6 @@ export function LeftSidebar({
   const prefs = useAgentRailViewPrefs();
   useEffect(() => {
     if (projectTransitioning) return;
-    const scroll = () =>
-      sidebarRef.current
-        ?.querySelector(".project-chat[aria-current='page']")
-        ?.scrollIntoView?.({ block: "nearest" });
     if (previousChatId.current !== railChatId) {
       previousChatId.current = railChatId;
       const active = useWorkbenchStore
@@ -148,14 +144,8 @@ export function LeftSidebar({
         "projects",
         active?.pinned ? "pinned" : `project:${project?.id}`,
       ];
-      const hidden = sections.some(agentRailSectionCollapsed);
       sections.forEach(expandAgentRailSection);
-      if (hidden) {
-        const frame = requestAnimationFrame(scroll);
-        return () => cancelAnimationFrame(frame);
-      }
     }
-    scroll();
   }, [railChatId, project?.id, projectTransitioning]);
   useEffect(() => {
     pruneAgentRailInteractions(
@@ -190,7 +180,8 @@ export function LeftSidebar({
             title="Search chats"
             disabled={!project || projectTransitioning}
             onClick={() => {
-              if (project) requestChatSearchInFolder(project.id);
+              if (project)
+                requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
             }}
           >
             <Search size={15} aria-hidden="true" />

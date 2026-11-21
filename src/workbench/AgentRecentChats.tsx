@@ -1,5 +1,9 @@
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
-import { ProjectChatNavigation } from "./ProjectChatNavigation";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as NavigationChunk from "./ProjectChatNavigation";
+const NavigationPart = lazyParts<typeof NavigationChunk>(
+  () => import("./ProjectChatNavigation"),
+);
 
 export function AgentRecentChats({
   items,
@@ -18,7 +22,8 @@ export function AgentRecentChats({
     <>
       <div className="agent-rail-flat-list">
         {items.map((item) => (
-          <ProjectChatNavigation
+          <NavigationPart
+            part="ProjectChatNavigation"
             key={`${item.projectId}:${item.chat.id}`}
             projectId={item.projectId}
             chats={[item.chat]}
@@ -42,7 +47,8 @@ export function AgentRecentChats({
         </button>
       ) : null}
       {groups.map((group) => (
-        <ProjectChatNavigation
+        <NavigationPart
+          part="ProjectChatNavigation"
           key={group.id}
           projectId={group.id}
           chats={[]}

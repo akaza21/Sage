@@ -105,7 +105,12 @@ test.describe("Search chats contrast", () => {
       // A search with no native backend reports its error inline, so the
       // error role is on screen with the field, picker and actions.
       await dialog.getByRole("combobox", { name: "Search chats" }).fill("chat");
-      await expect(dialog.locator(".composer__error")).toBeVisible();
+      await expect(
+        dialog.getByText(
+          /^Couldn't search .+: Chat search is available in the Sage desktop runtime\.$/,
+        ),
+      ).toBeVisible();
+      await expect(dialog.getByRole("status")).toContainText("Partial results");
 
       const atRest = await lowestTextContrast(dialog, underlay);
       expect(atRest.ratio, atRest.text).toBeGreaterThanOrEqual(4.5);

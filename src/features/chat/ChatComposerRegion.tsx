@@ -12,7 +12,10 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
-import { ComposerLocationStrip } from "./ComposerLocationStrip";
+import type * as LocationChunk from "./ComposerLocationStrip";
+const LocationPart = lazyParts<typeof LocationChunk>(
+  () => import("./ComposerLocationStrip"),
+);
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { useComposerFiles } from "./useComposerFiles";
@@ -151,8 +154,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           discoveryPhase={discoveryPhase}
         />
       ) : null}
-      {newChat ? (
-        <ComposerLocationStrip
+      {newChat && !hidden ? (
+        <LocationPart
+          part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
           disabled={actionBusy || projectTransitioning || !!sessionId}
         />

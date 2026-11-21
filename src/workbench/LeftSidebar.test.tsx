@@ -111,7 +111,7 @@ it("dismisses the live palette without hiding persistent Agent navigation", asyn
   );
 });
 
-it("keeps open and running chats keyboard-reachable in the sidebar", () => {
+it("keeps open and running chats keyboard-reachable in the sidebar", async () => {
   const activateTab = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -141,7 +141,7 @@ it("keeps open and running chats keyboard-reachable in the sidebar", () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
-  const running = screen.getByRole("button", {
+  const running = await screen.findByRole("button", {
     name: "Open chat Running task",
   });
   expect(running).toBeEnabled();
@@ -192,7 +192,7 @@ it.each([false, true])(
     });
     try {
       render(<LeftSidebar />);
-      expect(seen).toEqual(["chat-0"]);
+      await waitFor(() => expect(seen).toEqual(["chat-0"]));
       if (collapsed)
         fireEvent.click(screen.getByRole("button", { name: "Project Sage" }));
       act(() => useWorkbenchStore.setState({ activeTabId: "chat-11" }));
@@ -549,8 +549,12 @@ it("opens Chat search on a truncated foreign folder without switching", async ()
   fireEvent.click(screen.getByRole("button", { name: "Show more" }));
   expect(switchProject).not.toHaveBeenCalled();
   expect(
-    await screen.findByRole("button", { name: "Search in" }),
-  ).toHaveTextContent("Cross");
+    await screen.findByRole("combobox", { name: "Search chats" }),
+  ).toHaveFocus();
+  expect(screen.getByRole("tab", { name: /^All$/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
 });
 
@@ -587,8 +591,12 @@ it("continues In one list into Chat search when a folder holds more chats than t
     await within(recents).findByRole("button", { name: "Show more" }),
   );
   expect(
-    await screen.findByRole("button", { name: "Search in" }),
-  ).toHaveTextContent("Cross");
+    await screen.findByRole("combobox", { name: "Search chats" }),
+  ).toHaveFocus();
+  expect(screen.getByRole("tab", { name: /^All$/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 it("mounts the lazy Chat search dialog only for a folder request, including one made before the rail", async () => {
@@ -609,7 +617,7 @@ it("mounts the lazy Chat search dialog only for a folder request, including one 
     within(dialog).getByRole("combobox", { name: "Search chats" }),
   ).toHaveFocus();
   expect(hasChatSearchFolderRequest()).toBe(false);
-  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   act(() => requestChatSearchInFolder("sage"));
   expect(screen.getByRole("dialog", { name: "Search chats" })).toBeTruthy();
@@ -928,4 +936,53 @@ it("shows a labelled running spinner and local project identity without fake acc
   expect(footer?.querySelector(".account-avatar")).toHaveTextContent("S");
   expect(screen.queryByText(/@/)).toBeNull();
   expect(footer?.querySelector(".project-sidebar__settings")).toBeTruthy();
+});
+
+it("disambiguates colliding sidebar names with paths and removes suffixes for unique names", () => {
+  useWorkbenchStore.setState({
+    projects: [
+      {
+        id: "one",
+        name: "Sage",
+        parentPath: "repos/first",
+        rootCount: 1,
+        lastOpenedAt: 1,
+      },
+      {
+        id: "two",
+        name: "Sage",
+        parentPath: "repos/second",
+        rootCount: 1,
+        lastOpenedAt: 1,
+      },
+      {
+        id: "three",
+        name: "Unique",
+        parentPath: "repos/third",
+        rootCount: 1,
+        lastOpenedAt: 1,
+      },
+    ],
+    loadRepositoryInventory: async () => undefined,
+  });
+  render(<LeftSidebar />);
+  expect(
+    screen.getByRole("button", { name: "Project Sage, repos/first" }),
+  ).toHaveTextContent("Sagerepos/first");
+  expect(
+    screen.getByRole("button", { name: "Project Sage, repos/second" }),
+  ).toHaveTextContent("Sagerepos/second");
+  expect(
+    screen.getByRole("button", { name: "Project Unique" }),
+  ).toHaveTextContent(/^Unique$/);
+  act(() =>
+    useWorkbenchStore.setState({
+      projects: useWorkbenchStore
+        .getState()
+        .projects.filter((project) => project.id !== "two"),
+    }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Project Sage" }),
+  ).toHaveTextContent(/^Sage$/);
 });

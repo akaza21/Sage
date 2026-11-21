@@ -4,6 +4,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  type PointerEventHandler,
 } from "react";
 import { createPortal } from "react-dom";
 import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
@@ -37,6 +38,7 @@ export function ModalDialog({
   describedBy,
   initialFocusRef,
   restoreFocus = false,
+  onPointerDown,
   onDismiss,
 }: {
   children: ReactNode;
@@ -49,6 +51,7 @@ export function ModalDialog({
    * close.
    */
   restoreFocus?: boolean;
+  onPointerDown?: PointerEventHandler<HTMLDialogElement>;
   onDismiss: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -116,6 +119,7 @@ export function ModalDialog({
       aria-modal="true"
       aria-labelledby={labelledBy}
       aria-describedby={describedBy}
+      onPointerDown={onPointerDown}
       onCancel={(event) => {
         event.preventDefault();
         onDismiss();

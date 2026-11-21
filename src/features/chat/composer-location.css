@@ -18,13 +18,11 @@
   font-weight: var(--font-weight-medium);
 }
 
-.composer-location__item {
-  display: inline-flex;
+.composer-location > .searchable-picker {
+  --picker-field-padding: 0 var(--space-1);
+  --picker-trigger-hover-color: var(--color-text-emphasis);
+  --picker-trigger-hover-fill: var(--composer-control-hover);
   flex: none;
-  align-items: center;
-  gap: var(--composer-location-icon-gap);
-  padding-inline: var(--space-1);
-  white-space: nowrap;
 }
 
 @media (forced-colors: active) {

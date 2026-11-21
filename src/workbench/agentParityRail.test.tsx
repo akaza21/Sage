@@ -46,11 +46,12 @@ function seed() {
   });
 }
 
-it("collapses projects without activating them and reopens the section from the rail", () => {
+it("collapses projects without activating them and reopens the section from the rail", async () => {
   seed();
   const switchProject = vi.fn();
   useWorkbenchStore.setState({ switchProject });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const project = screen.getByRole("button", { name: "Project A" });
   fireEvent.click(project);
   expect(project).toHaveAttribute("aria-expanded", "false");
@@ -74,6 +75,7 @@ it("collapses projects without activating them and reopens the section from the 
 it("opens the same chat actions by right click and marks a read chat unread", async () => {
   seed();
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const projects = screen.getByRole("region", { name: "Projects" });
   const chat = within(projects).getByRole("button", {
     name: "Open chat Alpha",
@@ -108,6 +110,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({ archiveChat, restoreChat });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   fireEvent.click(
     within(screen.getByRole("region", { name: "Projects" })).getByRole(
       "button",
@@ -121,7 +124,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   await act(async () => undefined);
 });
 
-it("previews five chats per project and Show more expands the list in place", () => {
+it("previews five chats per project and Show more expands the list in place", async () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 12 }, (_, position) => ({
@@ -137,6 +140,7 @@ it("previews five chats per project and Show more expands the list in place", ()
     activeTabId: null,
   });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const rows = () =>
     within(screen.getByRole("region", { name: "Projects" })).getAllByRole(
       "button",
@@ -162,6 +166,7 @@ it("does not offer Undo for an archive rejected by the durable store", async () 
   seed();
   useWorkbenchStore.setState({ archiveChat: vi.fn(async () => false) });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   fireEvent.contextMenu(
     within(screen.getByRole("region", { name: "Projects" })).getByRole(
       "button",
@@ -175,7 +180,7 @@ it("does not offer Undo for an archive rejected by the durable store", async () 
   expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
 });
 
-it("shows a collapsed project as running when any of its chats runs, even past the preview", () => {
+it("shows a collapsed project as running when any of its chats runs, even past the preview", async () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 10 }, (_, position) => ({
@@ -191,12 +196,15 @@ it("shows a collapsed project as running when any of its chats runs, even past t
     activeTabId: null,
   });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const header = screen
     .getByRole("button", { name: "Project A" })
     .closest(".project-entry__header") as HTMLElement;
   expect(within(header).queryByRole("img", { name: "Working" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Project A" }));
-  expect(within(header).getByRole("img", { name: "Working" })).toBeVisible();
+  expect(
+    await within(header).findByRole("img", { name: "Working" }),
+  ).toBeVisible();
   expect(screen.queryByRole("button", { name: "Open chat Task 0" })).toBeNull();
 });
 
@@ -220,6 +228,7 @@ it("pins, unpins and archives a chat from its hover actions", async () => {
     },
   });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const projects = () =>
     within(screen.getByRole("region", { name: "Projects" }));
 
@@ -274,6 +283,7 @@ it("keeps the open chat in view In one list, even far down a manual order", asyn
     setAgentRailOrdering("manual");
   });
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   const recents = within(screen.getByRole("region", { name: "Recents" }));
   const open = await recents.findByRole("button", {
     name: "Open chat Task 39",
@@ -324,6 +334,7 @@ it("keeps the open chat In one list when it is past the list's cap", async () =>
   });
   act(() => setAgentRailOrganize("list"));
   render(<LeftSidebar />);
+  await screen.findAllByRole("button", { name: /^Open chat / });
   expect(
     await within(screen.getByRole("region", { name: "Recents" })).findByRole(
       "button",

@@ -16,6 +16,27 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chatSearch/ChatSearchPalette.tsx",
+        "maxGzipBytes": 3000,
+        "reason": "Search palette layout, bounded actions and scope tabs load only when search opens; result rendering and search execution retain their own budgets."
+      },
+      {
+        "entry": "src/features/chat/ComposerLocationStrip.tsx",
+        "maxGzipBytes": 1250,
+        "maxCssGzipBytes": 850,
+        "reason": "Local execution target picker and project location strip load only for a new chat; no remote execution plumbing or retained closed-menu DOM."
+      },
+      {
+        "entry": "src/workbench/CollapsedProjectStatus.tsx",
+        "maxGzipBytes": 950,
+        "reason": "Collapsed-project status subscriptions mount only while the project is collapsed; expanded projects already show per-chat status. Kept off the first-chat static path."
+      },
+      {
+        "entry": "src/workbench/ProjectChatNavigation.tsx",
+        "maxGzipBytes": 3500,
+        "reason": "Bounded project chat navigation mounts only for visible chat lists; menus and archived previews retain their existing demand loading. Kept off the first-chat static closure."
+      },
+      {
         "entry": "src/features/chatSearch/chatSearchExecution.ts",
         "maxGzipBytes": 2000,
         "reason": "Bounded public/private search fan-out; prewarmed only when search opens. Existing search and startup caps stay unchanged."

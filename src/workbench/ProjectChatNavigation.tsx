@@ -79,6 +79,7 @@ export function ProjectChatNavigation({
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
+  const activeRowRef = useRef<HTMLButtonElement>(null);
   const interactions = useAgentRailInteractions();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -125,6 +126,11 @@ export function ProjectChatNavigation({
       renameInputRef.current?.focus();
     }
   }, [renameError, renameSaving, renamingChatId]);
+
+  useEffect(() => {
+    if (!projectTransitioning)
+      activeRowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [activeTabId, projectTransitioning, selected, suppressActive]);
 
   const closeRename = (chatId: string) => {
     pendingFocusChatId.current = chatId;
@@ -235,6 +241,7 @@ export function ProjectChatNavigation({
                   focused ? "project-chat--active" : ""
                 }`}
                 type="button"
+                ref={focused ? activeRowRef : undefined}
                 aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
                 data-chat-id={tab.id}
                 aria-current={focused ? "page" : undefined}
