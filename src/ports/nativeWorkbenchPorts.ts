@@ -121,6 +121,9 @@ const repository: RepositoryPort = {
     return invokeNative("get_file_git_base", { resource, knownOid });
   },
   mutateGitFile: epochCommand("mutate_git_file"),
+  stageGitPaths: epochCommand("stage_git_paths"),
+  unstageGitPaths: epochCommand("unstage_git_paths"),
+  discardGitPaths: epochCommand("discard_git_paths"),
   abortGitInProgress: epochCommand("abort_git_in_progress"),
   commitGitRepository: epochCommand("commit_git_repository"),
   checkoutGitLocalBranch: epochCommand("checkout_git_local_branch"),

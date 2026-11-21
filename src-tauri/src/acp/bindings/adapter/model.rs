@@ -97,6 +97,8 @@ pub(crate) trait HarnessAdapter {
     fn title_requires_teardown(&self) -> bool {
         false
     }
+    /// `Some(None)` is a real, terminal failure. Intentional foreground
+    /// cancellation finishes without a result, so the scheduler can defer it.
     fn take_title_result(&mut self) -> Option<Option<String>> {
         None
     }

@@ -1,30 +1,10 @@
-import type { ReactNode } from "react";
-import { GitBranch, PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
+import { lazy, Suspense, type ReactNode } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
-import { useEditorCaretStore } from "../app/editorCaretStore";
-import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useWorkbenchStore } from "../app/store";
-import type { ProjectRepositoryStatus } from "../domain/workbench";
-import { caretStatusLabel } from "../features/files/editorCaret";
-import { editorLanguageStatusLabel } from "../features/files/editorLanguage";
+import { EditorStatusItems } from "./EditorStatusItems";
 
-function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {
-  if (repositories.roots.length === 0) return "No project";
-  if (repositories.roots.length > 1) {
-    const count = repositories.roots.filter(
-      (root) => root.state === "repository",
-    ).length;
-    return `${count} ${count === 1 ? "repository" : "repositories"} across ${repositories.roots.length} roots`;
-  }
-
-  const [repository] = repositories.roots;
-  if (repository.state === "repository") {
-    return repository.branch ?? "Repository";
-  }
-  return repository.state === "notRepository"
-    ? "No repository"
-    : "Repository unavailable";
-}
+const SourceBranchStatus = lazy(() => import("./StatusBarDetails"));
 
 export function StatusBar({
   inert = false,
@@ -41,33 +21,11 @@ export function StatusBar({
 }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
-  const repositories = useWorkbenchStore((state) => state.repositories);
   const recoveryNotice = useWorkbenchStore((state) => state.recoveryNotice);
   const browserClearNotice = useWorkbenchStore(
     (state) => state.browserClearNotice,
   );
-  const tabSize = useEditorSettingsStore(
-    (state) => state.settings["editor.tabSize"],
-  );
-  const caretLabel = caretStatusLabel(
-    useEditorCaretStore((state) => state.caret),
-  );
-  const languageLabel = editorLanguageStatusLabel(
-    useWorkbenchStore((state) => {
-      const tab = state.tabs.find((item) => item.id === state.activeTabId);
-      if (tab?.kind !== "file") {
-        return null;
-      }
-      return tab.resource?.relativePath ?? tab.title;
-    }),
-  );
-  const sidebarLabel = railLeading
-    ? sidebarOpen
-      ? "Hide left sidebar"
-      : "Show left sidebar"
-    : sidebarOpen
-      ? "Hide artifact pane"
-      : "Show artifact pane";
+  const sidebarLabel = `${sidebarOpen ? "Hide" : "Show"} ${railLeading ? "left sidebar" : "artifact pane"}`;
 
   return (
     <footer
@@ -76,10 +34,9 @@ export function StatusBar({
       aria-hidden={inert || undefined}
     >
       <div className="status-bar__group">
-        <span>
-          <GitBranch size={14} aria-hidden="true" />
-          {repositoryStatusLabel(repositories)}
-        </span>
+        <Suspense fallback={null}>
+          <SourceBranchStatus />
+        </Suspense>
         {recoveryNotice ? <span role="status">{recoveryNotice}</span> : null}
         {browserClearNotice ? (
           <span role="status">{browserClearNotice}</span>
@@ -87,15 +44,7 @@ export function StatusBar({
       </div>
       <div className="status-bar__group">
         {terminalControls}
-        {showEditorSettings && caretLabel ? (
-          <span title="Caret position">{caretLabel}</span>
-        ) : null}
-        {showEditorSettings && languageLabel ? (
-          <span title="Editor language">{languageLabel}</span>
-        ) : null}
-        {showEditorSettings ? (
-          <span title="Indentation">Spaces: {tabSize}</span>
-        ) : null}
+        {showEditorSettings ? <EditorStatusItems /> : null}
         {showSidebarToggle ? (
           <button
             className="status-bar__button"

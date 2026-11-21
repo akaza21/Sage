@@ -16,6 +16,10 @@ use tokio::{
 use crate::budget;
 
 mod cancellation;
+#[cfg(any(test, feature = "test-support"))]
+mod command_counts;
+#[cfg(any(test, feature = "test-support"))]
+pub use command_counts::GitCommandCounts;
 mod containment;
 mod parallel_limits;
 #[cfg(all(test, windows))]
@@ -23,6 +27,8 @@ mod process_tree_tests;
 mod readers;
 mod repository_config;
 mod root_authority;
+#[cfg(test)]
+mod stdin_tests;
 mod submodule_isolation;
 use readers::{ReaderTask, ReaderTasks};
 use sage_process::process_tree::{GitChild, ProcessTree};
@@ -82,6 +88,11 @@ pub struct GitProcessPolicy {
 }
 
 impl GitProcessPolicy {
+    pub(crate) fn with_stdin(mut self, input: Vec<u8>) -> Self {
+        self.stdin = Some(input);
+        self
+    }
+
     pub fn mutation(command_timeout: Duration) -> Self {
         Self {
             stdin: None,
@@ -329,6 +340,8 @@ async fn run_admitted(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    #[cfg(any(test, feature = "test-support"))]
+    command_counts::record(root, args);
     // Created suspended on Windows: it runs only once its whole tree is held.
     let tree = match ProcessTree::contain(&child) {
         Ok(tree) => tree,
@@ -404,13 +417,19 @@ async fn run_admitted(
     }
     let completed = tokio::select! {
         result = timeout(policy.command_timeout, async {
+            let mut stdin_error = None;
             if let Some(input) = &policy.stdin {
                 let mut stdin = child.stdin.take().ok_or_else(|| PostSpawnFailure {
                     message: "Git stdin was not captured".into(), reaped: false,
                 })?;
-                stdin.write_all(input).await.map_err(|error| PostSpawnFailure {
-                    message: format!("Git stdin write failed: {error}"), reaped: false,
-                })?;
+                // Git can reject a request before reading stdin (for example,
+                // an index lock). Preserve its exit diagnostic instead of
+                // replacing it with a scheduling-dependent broken pipe.
+                stdin_error = async {
+                    stdin.write_all(input).await?;
+                    // Windows pipe writes are buffered by Tokio's blocking IO.
+                    stdin.flush().await
+                }.await.err();
             }
             #[cfg(any(test, feature = "test-support"))]
             if let Some(gate) = &policy.deadline_wait_gate {
@@ -439,6 +458,13 @@ async fn run_admitted(
             .await?;
             let stderr =
                 await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
+            if status.success()
+                && let Some(error) = stdin_error
+            {
+                return Err(PostSpawnFailure {
+                    message: format!("Git stdin write failed: {error}"), reaped: true,
+                });
+            }
             Ok::<GitOutput, PostSpawnFailure>(GitOutput {
                 status,
                 stdout: stdout.bytes,

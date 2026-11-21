@@ -56,7 +56,7 @@ pub(crate) fn scheduler_fixture() -> (sage_db::database::Database, crate::acp::r
 
 fn claim(fixture: &mut Fixture) -> Option<TitleAttempt> {
     let owner = &fixture.owner;
-    title_attempt::claim(
+    match title_attempt::claim(
         &mut fixture.connection,
         RuntimeOwner {
             project_id: owner.project_id.clone(),
@@ -65,8 +65,13 @@ fn claim(fixture: &mut Fixture) -> Option<TitleAttempt> {
             runtime_epoch: owner.runtime_epoch,
         },
         owner.turn_id.clone(),
+        true,
     )
     .unwrap()
+    {
+        title_attempt::TitleClaim::Started(attempt) => Some(*attempt),
+        _ => None,
+    }
 }
 
 fn shown(fixture: &Fixture) -> (String, String) {
@@ -117,6 +122,152 @@ fn a_durable_claim_spends_one_attempt_across_duplicates_and_reopen() {
         )
         .unwrap()
         .is_none()
+    );
+}
+
+#[test]
+fn a_preempted_claim_cannot_apply_after_a_retry_claim_is_admitted() {
+    let mut fixture = completed();
+    let first = claim(&mut fixture).unwrap();
+    assert!(title_attempt::preempt(&mut fixture.connection, &first).unwrap());
+    assert!(!title_attempt::preempt(&mut fixture.connection, &first).unwrap());
+    let retry = claim(&mut fixture).unwrap();
+    assert_eq!(retry.input, "User:\nprompt\nAssistant:\nadapter text");
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &first,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &retry,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(
+        shown(&fixture),
+        (
+            "Chat: Investigate empty sidebar chats".into(),
+            "harness".into()
+        )
+    );
+}
+
+#[test]
+fn pending_title_survives_a_real_park_and_reactivation_with_a_new_epoch() {
+    let mut fixture = completed();
+    let owner = RuntimeOwner {
+        project_id: fixture.owner.project_id.clone(),
+        chat_id: fixture.owner.chat_id.clone(),
+        session_id: fixture.owner.session_id.clone(),
+        runtime_epoch: fixture.owner.runtime_epoch,
+    };
+    assert!(matches!(
+        title_attempt::claim(
+            &mut fixture.connection,
+            owner.clone(),
+            fixture.owner.turn_id.clone(),
+            false
+        )
+        .unwrap(),
+        title_attempt::TitleClaim::Pending
+    ));
+    park_session_after_zero_process(
+        &mut fixture.connection,
+        ParkSessionCommand {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            exit_kind: RequiredText::new("exitKind", "idleAfterTurn").unwrap(),
+            now_millis: 10,
+        },
+    )
+    .unwrap();
+    let revision: i64 = fixture
+        .connection
+        .query_row("SELECT projection_revision FROM chats", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let epoch = RuntimeEpoch::new(2).unwrap();
+    activate_session(
+        &mut fixture.connection,
+        ActivateSessionCommand {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: epoch,
+            expected_projection_revision: ProjectionRevision::new(revision as u64).unwrap(),
+            client_intent_id: ClientIntentId::parse("title-reactivate").unwrap(),
+            artifact_digest: "d".repeat(64),
+            now_millis: 11,
+        },
+    )
+    .unwrap();
+    complete_activation(
+        &mut fixture.connection,
+        CompleteActivationCommand {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: epoch,
+            binding_digest: "a".repeat(64),
+            artifact_digest: "d".repeat(64),
+            external_session_id: fixture.owner.external_session_id.clone(),
+            capabilities_json: capabilities(),
+            now_millis: 12,
+        },
+    )
+    .unwrap();
+    // A stale runtime still cannot claim or publish, even though the exchange
+    // from its epoch remains the source for the new runtime's title.
+    assert!(matches!(
+        title_attempt::claim(
+            &mut fixture.connection,
+            owner,
+            fixture.owner.turn_id.clone(),
+            true
+        )
+        .unwrap(),
+        title_attempt::TitleClaim::Stopped
+    ));
+    fixture.owner.runtime_epoch = epoch;
+    fixture
+        .connection
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,
+         client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at)
+         SELECT 'turn-reactivated',project_id,chat_id,session_id,?1,ordinal+1,
+         'turn-reactivated','completed','correlated',0,100,100,100 FROM turns WHERE id=?2",
+            rusqlite::params![epoch.get() as i64, fixture.owner.turn_id.as_str()],
+        )
+        .unwrap();
+    fixture.owner.turn_id = SageTurnId::parse("turn-reactivated").unwrap();
+    let attempt = claim(&mut fixture).expect("historical first exchange is eligible");
+    assert_eq!(attempt.input, "User:\nprompt\nAssistant:\nadapter text");
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &attempt,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(
+        shown(&fixture),
+        (
+            "Chat: Investigate empty sidebar chats".into(),
+            "harness".into()
+        )
     );
 }
 
@@ -253,4 +404,51 @@ fn malformed_results_leave_the_local_title_and_only_prompt_and_final_text_are_se
             ("Chat: Prompt fallback".into(), "prompt".into())
         );
     }
+}
+
+#[test]
+fn latest_title_marker_uses_the_turn_kind_index_among_unrelated_history() {
+    let mut fixture = completed();
+    let attempt = claim(&mut fixture).unwrap();
+    fixture.connection.execute_batch(
+        "WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<10000)
+         INSERT INTO session_facts(project_id,chat_id,session_id,sequence,kind,payload_json,payload_bytes,payload_digest,projection_revision,created_at)
+         SELECT 'project-one','chat-one','session-one',100+n,'unrelated','{}',2,
+         'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,100+n FROM history;
+         ANALYZE;"
+    ).unwrap();
+    assert!(title_attempt::valid(&fixture.connection, &attempt).unwrap());
+    let plan = fixture
+        .connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {}", title_attempt::LATEST_SQL))
+        .unwrap()
+        .query_map(
+            rusqlite::params!["session-one", "turn-one", "chatTitleAttempt"],
+            |row| row.get::<_, String>(3),
+        )
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+    assert!(plan.contains("idx_session_facts_turn"), "{plan}");
+    assert!(
+        !plan.contains("TEMP B-TREE") && !plan.contains("SCAN session_facts"),
+        "{plan}"
+    );
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &attempt,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(
+        shown(&fixture),
+        (
+            "Chat: Investigate empty sidebar chats".into(),
+            "harness".into()
+        )
+    );
 }

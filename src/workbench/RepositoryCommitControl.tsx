@@ -27,20 +27,29 @@ import {
 } from "../domain/gitCommit";
 import { isConflictedChange } from "../domain/gitMutation";
 import type { RootRepositoryStatus } from "../domain/workbench";
+import {
+  mutateSourceGroup,
+  sourceActionChanges,
+} from "../features/git/sourceControlActions";
+import { SearchablePicker } from "../ui/SearchablePicker";
+import { SmartCommitPrompt } from "./SmartCommitPrompt";
 
 interface RepositoryCommitControlProps {
   repository: RootRepositoryStatus;
   rootLabel: string;
   controlsDisabled: boolean;
+  formId?: string;
 }
 
 export function RepositoryCommitControl({
   repository,
   rootLabel,
   controlsDisabled,
+  formId,
 }: RepositoryCommitControlProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmSmartCommit, setConfirmSmartCommit] = useState(false);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const focusAfterSubmit = useRef(false);
   useLayoutEffect(() => {
@@ -83,6 +92,10 @@ export function RepositoryCommitControl({
           ? canContinueRevert(repository)
           : false;
   const committable = canCommitRepository(repository);
+  const canSmartCommit =
+    !repository.mergeInProgress &&
+    !repository.changes.some(isConflictedChange) &&
+    sourceActionChanges(repository, "stage").length > 0;
   const hasConflicts = repository.changes.some(isConflictedChange);
   const editorUnavailable = repository.state !== "repository";
   const repositoryUnavailable = editorUnavailable || repository.truncated;
@@ -92,7 +105,7 @@ export function RepositoryCommitControl({
     submitting ||
     repositoryUnavailable ||
     historyContinue !== null ||
-    !committable ||
+    (!committable && !canSmartCommit) ||
     gitCommitMessageError(message) !== null;
   const continueDisabled =
     controlsDisabled ||
@@ -135,10 +148,17 @@ export function RepositoryCommitControl({
     }
   }, [submitting]);
 
-  const submitCommit = async () => {
+  const submitCommit = async (stageAll = false) => {
     if (commitDisabled) return;
+    if (!committable && !stageAll) {
+      setConfirmSmartCommit(true);
+      return;
+    }
+    setConfirmSmartCommit(false);
     setSubmitting(true);
-    const committed = await commitRepository(repository.rootId, message);
+    const staged = !stageAll || (await mutateSourceGroup(repository, "stage"));
+    const committed =
+      staged && (await commitRepository(repository.rootId, message));
     focusAfterSubmit.current = true;
     setSubmitting(false);
     if (committed) setMessage("");
@@ -173,6 +193,7 @@ export function RepositoryCommitControl({
 
   return (
     <form
+      id={formId}
       className="repository-commit"
       aria-label={historyContinue ? continueAction : commitAction}
       onSubmit={submit}
@@ -184,7 +205,7 @@ export function RepositoryCommitControl({
           rows={1}
           maxLength={MAX_GIT_COMMIT_MESSAGE_BYTES}
           value={message}
-          placeholder="Commit message"
+          placeholder={`Message (${formatKeymapChords(keymapBinding("commit"), usesMetaModifier())[0]} to commit on '${repository.branch ?? "HEAD"}')`}
           aria-describedby={description}
           aria-invalid={validationError || error ? "true" : undefined}
           disabled={
@@ -212,7 +233,10 @@ export function RepositoryCommitControl({
         />
       </label>
       <div className="repository-commit__footer">
-        <span id={helpId} className="repository-commit__help">
+        <span
+          id={helpId}
+          className={`repository-commit__help${sequence || repositoryUnavailable ? "" : " sr-only"}`}
+        >
           {repositoryUnavailable
             ? "Repository status must be complete before committing."
             : historyContinue && hasConflicts
@@ -280,20 +304,46 @@ export function RepositoryCommitControl({
                     : "Continue rebase"}
             </button>
           ) : (
-            <button
-              type="submit"
-              aria-label={commitAction}
-              disabled={commitDisabled}
-            >
-              {submitting
-                ? "Committing…"
-                : completingMerge
-                  ? "Commit merge"
-                  : "Commit"}
-            </button>
+            <>
+              <button
+                type="submit"
+                aria-label={commitAction}
+                disabled={commitDisabled}
+              >
+                {submitting
+                  ? "Committing…"
+                  : completingMerge
+                    ? "Commit merge"
+                    : "Commit"}
+              </button>
+              <SearchablePicker
+                ariaLabel="Commit actions"
+                searchable={false}
+                appearance="plain"
+                chevron
+                triggerLabel=""
+                selectedId={null}
+                disabled={commitDisabled}
+                candidates={[
+                  {
+                    id: "commit",
+                    label: completingMerge
+                      ? "Commit merge"
+                      : "Commit staged changes",
+                  },
+                ]}
+                onSelect={() => void submitCommit()}
+              />
+            </>
           )}
         </span>
       </div>
+      {confirmSmartCommit ? (
+        <SmartCommitPrompt
+          onConfirm={() => void submitCommit(true)}
+          onCancel={() => setConfirmSmartCommit(false)}
+        />
+      ) : null}
       {validationError ? (
         <p
           id={validationId}
@@ -327,6 +377,10 @@ export function RepositoryCommitControl({
 }
 
 function fitToContent(field: HTMLTextAreaElement) {
+  if (!field.value) {
+    field.style.height = "";
+    return;
+  }
   field.style.height = "auto";
   const borders = field.offsetHeight - field.clientHeight;
   field.style.height = `${field.scrollHeight + borders}px`;

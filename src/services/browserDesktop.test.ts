@@ -85,6 +85,22 @@ describe("browser repository mutations", () => {
         0,
       ),
     ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+    for (const command of [
+      browserDesktop.stageGitPaths,
+      browserDesktop.unstageGitPaths,
+      browserDesktop.discardGitPaths,
+    ]) {
+      await expect(
+        command(
+          {
+            projectId: "project-a",
+            resources: [{ rootId: "root-a", relativePath: "file.txt" }],
+            discardConfirmed: true,
+          },
+          0,
+        ),
+      ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+    }
   });
 
   it("reports the same native-only failure for repository commits", async () => {

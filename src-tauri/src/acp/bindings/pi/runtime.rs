@@ -14,6 +14,7 @@ use sage_acp_protocol::{
 
 use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator};
 
+mod construct;
 mod ingress;
 mod launch;
 mod support;
@@ -123,100 +124,66 @@ pub(crate) struct PiRuntime {
     /// Unsettled forks and refused copies whose cleanup has not succeeded.
     forks: Vec<support::ForkCopy>,
     launch: Option<Box<dyn PiLaunch>>,
+    title_launch: Option<super::title_launch::TitleLaunch>,
+    title_request: Option<super::title_request::TitleRequest>,
+    title_result: Option<Option<String>>,
     #[cfg(test)]
     pub(super) remove_file_for_test: fn(&std::path::Path) -> std::io::Result<()>,
 }
 
-impl PiRuntime {
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn from_fixture_binding(
-        binding: &super::fixture_admission::PiFixtureBinding,
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        binding.revalidate()?;
-        Ok(Self::new(
-            PiTranslator::fixture_admitted(runtime_epoch.get()),
-            binding.binding_digest(),
-            runtime_epoch,
-            session_id,
-        ))
+impl HarnessAdapter for PiRuntime {
+    fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
+        self.launch
+            .as_ref()
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)?
+            .revalidate_title()?;
+        let model = self
+            .current_model
+            .as_ref()
+            .and_then(|current| {
+                self.available_models
+                    .iter()
+                    .find(|model| format!("{}:{}", model.provider, model.id) == *current)
+            })
+            .ok_or(AdapterRuntimeError::Operation)?;
+        if self.title_request.is_some() || self.active_turn.is_some() || input.len() > 4096 {
+            return Err(AdapterRuntimeError::Operation);
+        }
+        let command = self
+            .title_launch
+            .as_ref()
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)?
+            .command(model)?;
+        self.title_request = Some(super::title_request::TitleRequest::start(command, input)?);
+        Ok(())
     }
-
-    pub(crate) fn from_native_binding(
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Self {
-        Self::new(
-            PiTranslator::native_admitted(runtime_epoch.get()),
-            binding_digest,
-            runtime_epoch,
-            session_id,
-        )
+    fn poll_title(&mut self) -> Option<AdapterEgress> {
+        if let Some(result) = self
+            .title_request
+            .as_mut()
+            .and_then(|request| request.poll())
+        {
+            self.title_result = match result {
+                super::title_request::TitleOutcome::Generated(title) => Some(Some(title)),
+                super::title_request::TitleOutcome::Failed => Some(None),
+                super::title_request::TitleOutcome::Preempted => None,
+            };
+            self.title_request = None;
+        }
+        None
     }
-
-    #[cfg(test)]
-    pub(crate) fn fixture(runtime_epoch: RuntimeEpoch, session_id: SageAgentSessionId) -> Self {
-        Self::new(
-            PiTranslator::fixture_admitted(runtime_epoch.get()),
-            [7; 32],
-            runtime_epoch,
-            session_id,
-        )
-    }
-
-    fn new(
-        translator: PiTranslator,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Self {
-        Self {
-            bridge: None,
-            translator,
-            binding_digest,
-            runtime_epoch,
-            session_id,
-            external_session: None,
-            session_dir: None,
-            active_turn: None,
-            steering: support::Steering::default(),
-            deny: None,
-            cancelled_dialogs: BTreeMap::new(),
-            recent_cancelled_dialogs: VecDeque::new(),
-            staged_initialize: None,
-            reservations: BTreeMap::new(),
-            next_egress: 0,
-            next_item: 0,
-            model_count: 0,
-            current_model: None,
-            available_models: Vec::new(),
-            current_thinking: None,
-            available_thinking: Vec::new(),
-            auto_compaction: None,
-            commands: std::sync::Arc::default(),
-            commands_pending: false,
-            commands_discovered: false,
-            thinking_request_session: None,
-            thinking_request_owner: None,
-            thinking_request_command: None,
-            refresh_thinking_after_model: false,
-            initialized: false,
-            poisoned: false,
-            native_pending: None,
-            native_rpc_reply: None,
-            usage: std::sync::Arc::default(),
-            fork: None,
-            forks: Vec::new(),
-            launch: None,
-            #[cfg(test)]
-            remove_file_for_test: |path| std::fs::remove_file(path),
+    fn cancel_title(&mut self) {
+        if let Some(request) = &mut self.title_request {
+            request.cancel();
         }
     }
-}
-
-impl HarnessAdapter for PiRuntime {
+    fn title_pending(&self) -> bool {
+        self.title_request.is_some()
+    }
+    fn take_title_result(&mut self) -> Option<Option<String>> {
+        self.poll_title();
+        self.title_result.take()
+    }
     /// Pi ends each run with `agent_end`, which repeats the whole run and can outgrow a frame.
     /// Everything Sage needs from it already arrived in the streamed events.
     fn skips_oversize_frames(&self) -> bool {

@@ -9,6 +9,15 @@ function nativeGitUnavailable(
 }
 
 export const browserGitUnavailable = {
+  stageGitPaths: nativeGitUnavailable(
+    "Git stage requires the native Sage desktop",
+  ),
+  unstageGitPaths: nativeGitUnavailable(
+    "Git unstage requires the native Sage desktop",
+  ),
+  discardGitPaths: nativeGitUnavailable(
+    "Git discard requires the native Sage desktop",
+  ),
   abortGitInProgress: nativeGitUnavailable(
     "Git abort requires the native Sage desktop",
   ),

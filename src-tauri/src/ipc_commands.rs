@@ -1,7 +1,7 @@
 use crate::{
     acp, app_preview_commands, browser, chat_archive_commands, chat_commands, chat_queue_commands,
     chat_search_commands, commands, editor_watch, file_create_commands, file_rename_commands,
-    image_artifacts_commands, project_commands, project_create_commands,
+    image_artifacts_commands, project_commands, project_create_commands, repository_batch_commands,
     repository_branch_create_commands, repository_branch_delete_commands,
     repository_branch_rename_commands, repository_change_stamp_commands,
     repository_checkout_commands, repository_cherry_pick_commands, repository_commit_commands,
@@ -56,6 +56,9 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         workspace_commands::notify::watch_workspace_notify,
         workspace_commands::notify::unwatch_workspace_notify,
         repository_mutation_commands::mutate_git_file,
+        repository_batch_commands::stage_git_paths,
+        repository_batch_commands::unstage_git_paths,
+        repository_batch_commands::discard_git_paths,
         repository_commit_commands::commit_git_repository,
         repository_checkout_commands::checkout_git_local_branch,
         repository_branch_create_commands::create_git_local_branch,

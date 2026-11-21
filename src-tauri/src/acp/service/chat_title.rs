@@ -2,7 +2,7 @@
 //! a turn, journal or session-control lock and never on a waiting queue.
 use sage_db::database::Database;
 use std::{
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -12,66 +12,31 @@ use crate::acp::{
         registry::TitleCapability,
     },
     runtime::{ProjectionPublisher, PumpIntent},
-    store::title_attempt::{self, TitleAttempt},
+    store::title_attempt::{self, TitleAttempt, TitleClaim},
 };
 
-/// Shared by every lane of the application, with no waiting queue.
-#[derive(Default)]
-pub(crate) struct TitleAdmission {
-    state: Mutex<AdmissionState>,
-}
-#[derive(Default)]
-struct AdmissionState {
-    busy: bool,
-    foreground: u64,
-    active_turns: usize,
-}
-impl TitleAdmission {
-    fn state(&self) -> std::sync::MutexGuard<'_, AdmissionState> {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-    pub(crate) fn foreground(&self) {
-        self.state().foreground += 1;
-    }
-    fn turn(self: &Arc<Self>) -> ForegroundLease {
-        let mut state = self.state();
-        state.foreground += 1;
-        state.active_turns += 1;
-        ForegroundLease(Arc::clone(self))
-    }
-    fn generation(&self) -> u64 {
-        self.state().foreground
-    }
-    fn acquire(self: &Arc<Self>) -> Option<(Lease, u64)> {
-        let mut state = self.state();
-        if state.busy || state.active_turns != 0 {
-            return None;
-        }
-        state.busy = true;
-        Some((Lease(Arc::clone(self)), state.foreground))
-    }
-}
-pub(crate) struct ForegroundLease(Arc<TitleAdmission>);
-impl Drop for ForegroundLease {
-    fn drop(&mut self) {
-        self.0.state().active_turns -= 1;
-    }
-}
-struct Lease(Arc<TitleAdmission>);
-impl Drop for Lease {
-    fn drop(&mut self) {
-        self.0.state().busy = false;
-    }
-}
+mod admission;
+use admission::Lease;
+pub(crate) use admission::{ForegroundLease, TitleAdmission};
 
 struct Active {
-    attempt: TitleAttempt,
+    attempt: Box<TitleAttempt>,
     deadline: Instant,
     foreground: u64,
     _lease: Lease,
     cancelled: bool,
+    retry: bool,
+}
+
+fn failed_result(capability: TitleCapability, result: &Option<Option<String>>) -> bool {
+    match result {
+        Some(Some(raw)) => match capability {
+            TitleCapability::ReadExisting => crate::chat_lifecycle::harness_title(raw).is_none(),
+            _ => crate::chat_lifecycle::generated_title(raw).is_none(),
+        },
+        Some(None) => true,
+        None => false,
+    }
 }
 
 pub(crate) struct TitleScheduler {
@@ -105,6 +70,7 @@ impl TitleScheduler {
 
     pub(crate) fn completed(&mut self, intent: &PumpIntent, adapter: &mut dyn HarnessAdapter) {
         if self.considered
+            || self.active.is_some()
             || !matches!(
                 self.capability,
                 TitleCapability::ReadExisting | TitleCapability::GenerateIsolated
@@ -118,22 +84,55 @@ impl TitleScheduler {
             session_id: intent.session_id.clone(),
             runtime_epoch: intent.runtime_epoch,
         };
+        self.start(owner, intent.active_turn.turn_id.clone(), adapter);
+    }
+
+    fn start(
+        &mut self,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+        completed_turn: sage_acp_protocol::contract::SageTurnId,
+        adapter: &mut dyn HarnessAdapter,
+    ) {
+        let admission = if adapter.config_pending() || adapter.native_rpc_pending() {
+            None
+        } else {
+            self.admission.acquire()
+        };
         let Ok(mut connection) = self.database.write_connection() else {
+            self.considered = true;
             return;
         };
-        let Ok(Some(mut attempt)) =
-            title_attempt::claim(&mut connection, owner, intent.active_turn.turn_id.clone())
-        else {
-            return;
-        };
+        let attempt =
+            match title_attempt::claim(&mut connection, owner, completed_turn, admission.is_some())
+            {
+                Ok(TitleClaim::Started(attempt)) => attempt,
+                Ok(TitleClaim::Stopped) => {
+                    self.considered = true;
+                    return;
+                }
+                Ok(TitleClaim::Pending) => return,
+                Err(error) => {
+                    tracing::info!(?error, "Auxiliary chat title claim failed");
+                    self.considered = true;
+                    return;
+                }
+            };
         self.considered = true;
         drop(connection);
         tracing::info!("Auxiliary chat title attempt claimed");
-        // Even busy admission spends the durable attempt. There is no later retry.
-        let Some((lease, foreground)) = self.admission.acquire() else {
-            tracing::info!("Auxiliary chat title skipped: capacity busy");
+        let Some((lease, foreground)) = admission else {
             return;
         };
+        self.launch(attempt, lease, foreground, adapter);
+    }
+
+    fn launch(
+        &mut self,
+        mut attempt: Box<TitleAttempt>,
+        lease: Lease,
+        foreground: u64,
+        adapter: &mut dyn HarnessAdapter,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(15);
         if let Err(error) = adapter.start_title(&attempt.input) {
             tracing::info!(?error, "Auxiliary chat title unavailable");
@@ -146,6 +145,7 @@ impl TitleScheduler {
             foreground,
             _lease: lease,
             cancelled: false,
+            retry: false,
         });
     }
 
@@ -157,6 +157,12 @@ impl TitleScheduler {
         if let Some(active) = &mut self.active {
             if !active.cancelled {
                 tracing::info!("Auxiliary chat title preempted by foreground work");
+                // Deadline/invalidated claims are terminal even if foreground
+                // work arrives before the next scheduler poll.
+                active.retry = Instant::now() < active.deadline
+                    && title_attempt::valid(&self.database.connection(), &active.attempt)
+                        .unwrap_or(false)
+                    && !failed_result(self.capability, &adapter.take_title_result());
             }
             active.cancelled = true;
             adapter.cancel_title();
@@ -165,17 +171,28 @@ impl TitleScheduler {
 
     pub(crate) fn poll(&mut self, adapter: &mut dyn HarnessAdapter) -> Option<AdapterEgress> {
         let active = self.active.as_mut()?;
+        // Observe a real failure before deciding whether foreground preemption
+        // is retryable. Adapters may complete asynchronously between polls.
+        let prior_result = adapter.take_title_result();
         if !active.cancelled
             && (Instant::now() >= active.deadline
-                || active.foreground != self.admission.generation()
                 || !title_attempt::valid(&self.database.connection(), &active.attempt)
                     .unwrap_or(false))
         {
             active.cancelled = true;
             adapter.cancel_title();
         }
+        if !active.cancelled && active.foreground != self.admission.generation() {
+            active.cancelled = true;
+            active.retry = !failed_result(self.capability, &prior_result);
+            adapter.cancel_title();
+        }
         let egress = adapter.poll_title();
-        if let Some(Some(title)) = adapter.take_title_result()
+        let result = prior_result.or_else(|| adapter.take_title_result());
+        if failed_result(self.capability, &result) {
+            active.retry = false;
+        }
+        if let Some(Some(title)) = result
             && !active.cancelled
             && Instant::now() < active.deadline
             && let Ok(mut connection) = self.database.write_connection()
@@ -196,12 +213,27 @@ impl TitleScheduler {
                     child_projection_epoch: 0,
                 });
         }
+        let mut followup = None;
         if !adapter.title_pending() {
+            if active.retry
+                && !adapter.title_requires_teardown()
+                && let Ok(mut connection) = self.database.write_connection()
+                && title_attempt::preempt(&mut connection, &active.attempt).unwrap_or(false)
+            {
+                self.considered = false;
+                followup = title_attempt::next_completion(&connection, &active.attempt)
+                    .ok()
+                    .flatten()
+                    .map(|turn| (active.attempt.owner.clone(), turn));
+            }
             self.active = None;
+        }
+        if let Some((owner, turn)) = followup {
+            self.start(owner, turn, adapter);
         }
         egress
     }
 }
 
 #[cfg(all(test, feature = "acp-fixture"))]
-mod tests;
+pub(crate) mod tests;

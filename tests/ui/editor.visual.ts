@@ -691,7 +691,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       page.getByLabel("Source Control project tools", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Select repository", exact: true }),
+      page.getByRole("button", { name: "Stage All Changes", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("textbox", {
@@ -866,6 +866,11 @@ test.describe("Wave 2 200% zoom state", () => {
     await page
       .getByRole("button", { name: "Source Control", exact: true })
       .click();
+    await page
+      .getByRole("button", { name: "More Source Control Actions" })
+      .click();
+    await page.getByRole("menuitem", { name: "Switch branch in Sage" }).click();
+    await page.getByRole("option", { name: "Rename branch…" }).click();
     const renameTrigger = page.getByRole("button", {
       name: "Branch to rename",
     });

@@ -131,6 +131,12 @@ export interface GitFileMutationRequest {
   discardConfirmed: boolean;
 }
 
+export interface GitPathsMutationRequest {
+  projectId: string;
+  resources: ResourceRef[];
+  discardConfirmed: boolean;
+}
+
 export type GitFileMutationErrorKind = "effectUnknown";
 
 export interface GitFileMutationError {

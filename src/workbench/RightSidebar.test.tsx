@@ -733,65 +733,81 @@ describe("RightSidebar Source Control mutations", () => {
     expect(refresh).toBeDisabled();
   });
 
-  it("does not offer stage, unstage, or discard for conflicted files", () => {
-    useWorkbenchStore.setState({
-      sidebarOpen: true,
-      sidebarView: "sourceControl",
-      project: {
-        id: "project-a",
-        name: "A",
-        roots: [
-          {
-            id: "root-a",
-            name: "Alpha",
-            ordinal: 0,
-            availability: "available",
-            message: null,
-          },
-        ],
-      },
-      repositories: {
-        roots: [
-          {
-            rootId: "root-a",
-            state: "repository",
-            branch: "main",
-            changes: [
-              {
-                resource: { rootId: "root-a", relativePath: "conflict.txt" },
-                indexStatus: "conflicted",
-                worktreeStatus: "conflicted",
-                additions: null,
-                deletions: null,
-              },
-            ],
-            truncated: false,
-            elapsedMs: 1,
-            message: null,
-          },
-        ],
-        truncated: false,
-        elapsedMs: 1,
-      },
-    });
+  it.each([false, true])(
+    "does not offer stage, unstage, or discard for conflicted files (truncated: %s)",
+    (truncated) => {
+      useWorkbenchStore.setState({
+        sidebarOpen: true,
+        sidebarView: "sourceControl",
+        project: {
+          id: "project-a",
+          name: "A",
+          roots: [
+            {
+              id: "root-a",
+              name: "Alpha",
+              ordinal: 0,
+              availability: "available",
+              message: null,
+            },
+          ],
+        },
+        repositories: {
+          roots: [
+            {
+              rootId: "root-a",
+              state: "repository",
+              branch: "main",
+              changes: [
+                {
+                  resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                  indexStatus: "conflicted",
+                  worktreeStatus: "conflicted",
+                  additions: null,
+                  deletions: null,
+                },
+              ],
+              truncated,
+              elapsedMs: 1,
+              message: null,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+        },
+      });
 
-    render(<RightSidebar compact={false} />);
-    expect(
-      screen.queryByRole("button", { name: /^(Stage|Unstage|Discard) / }),
-    ).toBeNull();
-    expect(screen.getByText("Conflicts")).toBeInTheDocument();
-    expect(screen.getByText("Conflict")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Keep ours for conflict.txt in Alpha",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Keep theirs for conflict.txt in Alpha",
-      }),
-    ).toBeInTheDocument();
-  });
+      render(<RightSidebar compact={false} />);
+      expect(
+        screen.queryByRole("button", { name: /^(Stage|Unstage|Discard) / }),
+      ).toBeNull();
+      expect(
+        document.querySelectorAll(".source-change__row-actions button"),
+      ).toHaveLength(1);
+      expect(screen.queryByText("Staged Changes")).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: "More Source Control Actions" }),
+      );
+      expect(
+        screen.getByRole("menu", { name: "Source Control actions" }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("menuitem", { name: /^(Stage|Unstage|Discard) / }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Conflicts")).toBeInTheDocument();
+      expect(screen.getByText("Conflict")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Keep ours for conflict.txt in Alpha",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Keep theirs for conflict.txt in Alpha",
+        }),
+      ).toBeInTheDocument();
+    },
+  );
 });
 
 describe("RightSidebar Explorer New File", () => {

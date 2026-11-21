@@ -10,6 +10,7 @@ import {
   type ComponentProps,
   type ComponentType,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type { HarnessBrand } from "../domain/harness";
 import "../styles/searchable-picker.css";
@@ -65,6 +66,7 @@ type SearchablePickerProps = {
   popoverGap?: number;
   popoverPlacement?: MenuPlacement;
   triggerClassName?: string;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
   /** Shown in place of the selected label, which still describes the trigger. */
@@ -109,7 +111,8 @@ export function SearchablePicker(props: SearchablePickerProps) {
     stateTitle,
   } = props;
   const id = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const internalTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = props.triggerRef ?? internalTriggerRef;
   const [keyboardOpen, setKeyboardOpen] = useState(true);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
@@ -131,7 +134,7 @@ export function SearchablePicker(props: SearchablePickerProps) {
       if (reason === "escape" || (!searchable && reason === "tab"))
         triggerRef.current?.focus();
     },
-    [searchable, setOpen],
+    [searchable, setOpen, triggerRef],
   );
   const Loaded = useSyncExternalStore(
     subscribeSearchablePicker,

@@ -26,6 +26,14 @@ pub struct GitFileMutationRequest {
     pub discard_confirmed: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitPathsMutationRequest {
+    pub project_id: String,
+    pub resources: Vec<ResourceRef>,
+    pub discard_confirmed: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GitFileMutationErrorKind {

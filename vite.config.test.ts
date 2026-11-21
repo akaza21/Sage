@@ -301,6 +301,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // So does the Passwords settings page (BF-7b-1).
   "src/workbench/settings/SettingsPasswordsPage.tsx",
   "src/workbench/SourceControlView.tsx",
+  "src/workbench/StatusBarDetails.tsx",
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
   "src/workbench/TerminalDockShell.tsx",

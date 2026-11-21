@@ -9,6 +9,14 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
+    pub(crate) fn poll_idle_title(&mut self, cancel: bool) -> Result<bool, HostError> {
+        match self {
+            Self::Idle(idle) => idle.parts.poll_title(cancel, &mut idle.transport),
+            Self::Reusable(parts) => parts.completed.poll_title(cancel, &mut parts.transport),
+            _ => Ok(false),
+        }
+    }
+
     pub(crate) fn begin_configure<Auth>(
         &mut self,
         context: &FirstTurnWorkerContext<Auth>,

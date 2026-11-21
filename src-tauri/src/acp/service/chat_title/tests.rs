@@ -60,7 +60,7 @@ fn runtime() -> CodexRuntime {
         "modelProvider":"openai","cwd":"."}})),&Mapper).unwrap();
     runtime
 }
-fn scheduler(db: &Database, admission: &Arc<TitleAdmission>) -> TitleScheduler {
+pub(crate) fn scheduler(db: &Database, admission: &Arc<TitleAdmission>) -> TitleScheduler {
     TitleScheduler::new(
         db.clone(),
         Arc::new(ProjectionMailbox::default()),
@@ -68,19 +68,31 @@ fn scheduler(db: &Database, admission: &Arc<TitleAdmission>) -> TitleScheduler {
         Arc::clone(admission),
     )
 }
-fn shown(db: &Database) -> String {
+pub(crate) fn shown(db: &Database) -> String {
     db.connection()
         .query_row("SELECT title FROM chats", [], |r| r.get(0))
         .unwrap()
 }
 fn finish(scheduler: &mut TitleScheduler, runtime: &mut CodexRuntime) {
+    finish_with_title(scheduler, runtime, None);
+}
+fn finish_with_title(
+    scheduler: &mut TitleScheduler,
+    runtime: &mut CodexRuntime,
+    title: Option<&str>,
+) {
     for _ in 0..8 {
         if let Some(egress) = scheduler.poll(runtime) {
             let value: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
             runtime
                 .resolve_egress(egress.into_token(), EgressResolution::Written)
                 .unwrap();
-            for event in crate::acp::fixture::title_wire(&value) {
+            for mut event in crate::acp::fixture::title_wire(&value) {
+                if let Some(title) = title
+                    && event["method"] == "item/completed"
+                {
+                    event["params"]["item"]["text"] = json!({"title":title}).to_string().into();
+                }
                 runtime.ingest(&frame(event), &Mapper).unwrap();
             }
         }
@@ -89,6 +101,194 @@ fn finish(scheduler: &mut TitleScheduler, runtime: &mut CodexRuntime) {
         }
     }
     assert!(!scheduler.pending(), "bounded cleanup completed");
+}
+
+pub(crate) fn next_completed(db: &Database, intent: &PumpIntent) -> PumpIntent {
+    let mut next = intent.clone();
+    let id = format!("turn-{}", uuid::Uuid::new_v4());
+    db.connection()
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,
+         client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at)
+         SELECT ?1,project_id,chat_id,session_id,runtime_epoch,
+         (SELECT MAX(ordinal)+1 FROM turns),?1,'completed','correlated',0,100,100,100
+         FROM turns WHERE id=?2",
+            rusqlite::params![id, intent.active_turn.turn_id.as_str()],
+        )
+        .unwrap();
+    next.active_turn = crate::acp::runtime::ActiveTurnIntent::store_minted(
+        sage_acp_protocol::contract::SageTurnId::parse(id).unwrap(),
+    )
+    .unwrap();
+    next
+}
+
+#[test]
+fn busy_completion_retries_the_first_exchange_after_the_next_turn_even_after_reopen() {
+    let admission = Arc::new(TitleAdmission::default());
+    let (db, intent) = crate::acp::store::title_fixture();
+    let mut titles = scheduler(&db, &admission);
+    let mut live = runtime();
+    let foreground = titles.foreground_turn();
+    let mut completion = intent.clone();
+    for _ in 0..5 {
+        titles.completed(&completion, &mut live);
+        assert!(!titles.pending());
+        completion = next_completed(&db, &completion);
+    }
+    assert_eq!(shown(&db), "Chat: Prompt fallback");
+    drop(foreground);
+    drop(titles);
+    let mut titles = scheduler(&db, &admission);
+    let next = next_completed(&db, &completion);
+    titles.completed(&next, &mut live);
+    finish(&mut titles, &mut live);
+    assert_eq!(shown(&db), "Chat: Investigate empty sidebar chats");
+}
+
+#[test]
+fn preempted_title_retries_after_the_next_turn_and_absorbs_late_previous_replies() {
+    let admission = Arc::new(TitleAdmission::default());
+    let (db, intent) = crate::acp::store::title_fixture();
+    let mut titles = scheduler(&db, &admission);
+    let mut live = runtime();
+    titles.completed(&intent, &mut live);
+    let config = titles.poll(&mut live).unwrap();
+    let request: Value = serde_json::from_slice(config.frame().payload()).unwrap();
+    live.resolve_egress(config.into_token(), EgressResolution::Written)
+        .unwrap();
+    let foreground = titles.foreground_turn();
+    titles.cancel(&mut live);
+    finish(&mut titles, &mut live);
+    assert_eq!(shown(&db), "Chat: Prompt fallback");
+    titles.completed(&intent, &mut live);
+    assert!(
+        !titles.pending(),
+        "no retry while foreground work is active"
+    );
+    drop(foreground);
+    let next = next_completed(&db, &intent);
+    titles.completed(&next, &mut live);
+    // An oversized old reply must stay absorbed even after the retry replaces
+    // the original operation; it must not fail the main conversation.
+    live.discard_invalid_response(&frame(
+        json!({"id":request["id"],"result":{"oversized":vec![0;513]}}),
+    ))
+    .unwrap();
+    finish(&mut titles, &mut live);
+    assert_eq!(shown(&db), "Chat: Investigate empty sidebar chats");
+}
+
+#[test]
+fn three_foreground_preemptions_stop_durably_with_the_local_title() {
+    let admission = Arc::new(TitleAdmission::default());
+    let (db, mut intent) = crate::acp::store::title_fixture();
+    let mut live = runtime();
+    for attempt in 0..3 {
+        let mut titles = scheduler(&db, &admission);
+        titles.completed(&intent, &mut live);
+        assert!(titles.pending(), "try {} is admitted", attempt + 1);
+        let foreground = titles.foreground_turn();
+        if attempt % 2 == 0 {
+            titles.cancel(&mut live);
+        }
+        finish(&mut titles, &mut live);
+        assert_eq!(shown(&db), "Chat: Prompt fallback");
+        drop(foreground);
+        intent = next_completed(&db, &intent);
+    }
+    let mut titles = scheduler(&db, &admission);
+    titles.completed(&intent, &mut live);
+    assert!(
+        !titles.pending(),
+        "the fourth try is refused after reopening"
+    );
+    assert_eq!(shown(&db), "Chat: Prompt fallback");
+}
+
+#[test]
+fn failed_title_claim_stops_even_when_fact_capacity_becomes_available() {
+    for global in [false, true] {
+        let admission = Arc::new(TitleAdmission::default());
+        let (db, intent) = crate::acp::store::title_fixture();
+        let mut titles = scheduler(&db, &admission);
+        let mut live = runtime();
+        let foreground = titles.foreground_turn();
+        titles.completed(&intent, &mut live);
+        drop(foreground);
+        let (table, limit) = if global {
+            (
+                "acp_store_usage",
+                sage_core::limits::LIMITS.durable.facts_global,
+            )
+        } else {
+            (
+                "acp_session_usage",
+                sage_core::limits::LIMITS.durable.facts_per_session,
+            )
+        };
+        let count: i64 = db
+            .connection()
+            .query_row(&format!("SELECT fact_count FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        db.connection()
+            .execute(&format!("UPDATE {table} SET fact_count=?1"), [limit as i64])
+            .unwrap();
+        let next = next_completed(&db, &intent);
+        titles.completed(&next, &mut live);
+        assert!(!titles.pending(), "a failed claim must not launch");
+        db.connection()
+            .execute(&format!("UPDATE {table} SET fact_count=?1"), [count])
+            .unwrap();
+        titles.completed(&next_completed(&db, &next), &mut live);
+        finish(&mut titles, &mut live);
+        assert_eq!(shown(&db), "Chat: Prompt fallback", "global={global}");
+    }
+}
+
+#[test]
+fn timeout_rejection_and_malformed_output_are_terminal_even_after_reopen() {
+    for failure in ["timeout", "rejection", "malformed"] {
+        let admission = Arc::new(TitleAdmission::default());
+        let (db, intent) = crate::acp::store::title_fixture();
+        let mut titles = scheduler(&db, &admission);
+        let mut live = runtime();
+        titles.completed(&intent, &mut live);
+        match failure {
+            "timeout" => {
+                titles.active.as_mut().unwrap().deadline = Instant::now();
+                titles.cancel(&mut live);
+                finish(&mut titles, &mut live);
+            }
+            "rejection" => {
+                let config = titles.poll(&mut live).unwrap();
+                let request: Value = serde_json::from_slice(config.frame().payload()).unwrap();
+                live.resolve_egress(config.into_token(), EgressResolution::Written)
+                    .unwrap();
+                live.ingest(
+                    &frame(
+                        json!({"id":request["id"],"error":{"code":-32601,"message":"Unavailable"}}),
+                    ),
+                    &Mapper,
+                )
+                .unwrap();
+                // A real failure already received must win over a racing send.
+                titles.cancel(&mut live);
+                finish(&mut titles, &mut live);
+            }
+            "malformed" => finish_with_title(&mut titles, &mut live, Some("New conversation")),
+            _ => unreachable!(),
+        }
+        assert_eq!(shown(&db), "Chat: Prompt fallback", "{failure}");
+        drop(titles);
+        let next = next_completed(&db, &intent);
+        let mut reopened = scheduler(&db, &admission);
+        reopened.completed(&next, &mut live);
+        assert!(!reopened.pending(), "{failure} cannot retry");
+        assert_eq!(shown(&db), "Chat: Prompt fallback");
+    }
 }
 
 #[test]
@@ -110,9 +310,12 @@ fn title_scheduler_saturation_timeout_exit_and_preemption_preserve_local_titles_
     assert_eq!(shown(&db), "Chat: Investigate empty sidebar chats");
     first.completed(&intent, &mut live);
     assert!(!first.pending());
-    // Busy admission is spent durably, including on a new scheduler after restart.
-    scheduler(&other_db, &admission).completed(&other_intent, &mut other);
-    assert!(!other.title_pending());
+    // Capacity becoming available lets the pending chat try at its next completion.
+    let next = next_completed(&other_db, &other_intent);
+    let mut reopened = scheduler(&other_db, &admission);
+    reopened.completed(&next, &mut other);
+    finish(&mut reopened, &mut other);
+    assert_eq!(shown(&other_db), "Chat: Investigate empty sidebar chats");
     for failure in ["timeout", "process exit", "foreground"] {
         let (db, intent) = crate::acp::store::title_fixture();
         let mut titles = scheduler(&db, &admission);

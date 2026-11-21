@@ -226,7 +226,7 @@ test.describe("Editor tool views at VS Code list density", () => {
     await expect(page.getByTitle("Caret position")).toHaveText("Ln 2, Col 3");
   });
 
-  test("the center is an inset card and the repository summary lines up with its groups", async ({
+  test("the center is an inset card and the Source Control heading lines up with the message box", async ({
     page,
   }) => {
     const center = page.locator(".center-region");
@@ -236,14 +236,12 @@ test.describe("Editor tool views at VS Code list density", () => {
 
     const source = await openTool(page, "Source Control");
     const name = source.locator(".source-root__name");
-    const branches = source.locator(".source-group-label", {
-      hasText: "Branches",
-    });
+    const message = source.locator(".repository-commit");
     const [nameBox, labelBox] = await Promise.all([
       name.boundingBox(),
-      branches.boundingBox(),
+      message.boundingBox(),
     ]);
-    expect(nameBox?.x).toBe(labelBox?.x);
+    expect(nameBox?.x).toBe((labelBox?.x ?? 0) + 4);
   });
 
   test("a disabled Commit stays neutral and fully legible", async ({
