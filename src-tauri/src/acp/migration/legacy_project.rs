@@ -1,4 +1,4 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use rusqlite::{Connection, params};
 use sage_core::error::{AppError, AppResult};
@@ -136,7 +136,10 @@ fn validate_root_keys(connection: &Connection, roots: &[RootRecord]) -> AppResul
             return invalid_request("legacy project root is not absolute");
         }
         match root.absolute_path.canonicalize() {
-            Ok(canonical) if canonical != root.absolute_path => {
+            Ok(canonical)
+                if canonical_comparison_key(&canonical)
+                    != canonical_comparison_key(&root.absolute_path) =>
+            {
                 return invalid_request("legacy project root spelling is not canonical");
             }
             Ok(_) => {}
@@ -158,7 +161,9 @@ fn validate_root_keys(connection: &Connection, roots: &[RootRecord]) -> AppResul
                 |row| row.get(0),
             )
             .db()?;
-        if stored != canonical_comparison_key(&root.absolute_path) {
+        if canonical_comparison_key(Path::new(&stored))
+            != canonical_comparison_key(&root.absolute_path)
+        {
             return invalid_request("legacy project root canonical identity is corrupt");
         }
     }

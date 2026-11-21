@@ -80,7 +80,8 @@ export function LeftSidebar({
   const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const project = useWorkbenchStore((state) => state.project);
-  const avatar = (project?.name.trim()[0] ?? "L").toLocaleUpperCase();
+  const namedProject = project?.isInternal ? null : project;
+  const avatar = (namedProject?.name.trim()[0] ?? "L").toLocaleUpperCase();
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createChat = useWorkbenchStore((state) => state.openNewChatDraft);
@@ -239,7 +240,7 @@ export function LeftSidebar({
           </span>
         )}
         <span className="agent-rail-identity">
-          <strong>{project?.name ?? "Local"}</strong>
+          <strong>{namedProject?.name ?? "Local"}</strong>
           <span>Local workspace</span>
         </span>
         <button

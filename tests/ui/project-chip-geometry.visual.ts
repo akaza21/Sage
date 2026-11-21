@@ -684,6 +684,8 @@ test("project selection keeps the visible chat's identity with a right-pane File
     });
     return { projectId, chatId };
   });
+  await expect(page.locator(".agent-rail-identity strong")).toHaveText("Local");
+  await expect(page.locator(".account-avatar")).toHaveText("L");
   await page
     .getByRole("button", { name: "Composer options", exact: true })
     .click();
@@ -700,6 +702,7 @@ test("project selection keeps the visible chat's identity with a right-pane File
       }),
     )
     .toEqual(expected);
+  await expect(page.locator(".agent-rail-identity strong")).toHaveText("Sage");
 });
 
 test("New project preserves the unsent composer through creation and reparenting", async ({

@@ -21,6 +21,37 @@ fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
 }
 
+#[cfg(windows)]
+#[test]
+fn ordinary_and_legacy_verbatim_roots_share_one_identity_and_cannot_be_added_twice() {
+    let folders = Folders::new();
+    let root = folders.root("root");
+    let canonical = root.canonicalize().unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    database
+        .connection()
+        .execute(
+            "UPDATE project_roots SET absolute_path=?1,canonical_key=?2 WHERE project_id=?3",
+            params![
+                canonical.to_str().unwrap(),
+                canonical.to_string_lossy().to_lowercase(),
+                project.id
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        canonical_comparison_key(&root),
+        canonical_comparison_key(&canonical)
+    );
+    assert!(database.add_project_root(&project.id, &root).is_err());
+    assert_eq!(database.root_records(&project.id).unwrap().len(), 1);
+    database
+        .add_project_root(&project.id, &folders.root("second"))
+        .unwrap();
+    assert_eq!(database.root_records(&project.id).unwrap().len(), 2);
+}
+
 #[test]
 fn process_root_authority_rejects_unknown_and_foreign_roots() {
     runtime().block_on(async {

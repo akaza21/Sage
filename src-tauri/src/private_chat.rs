@@ -65,7 +65,7 @@ fn allocate_folder(
     let base = storage_root(database)?;
     fs::create_dir_all(&base)?;
     cleanup::admit_base(&base)?;
-    let folder = base.canonicalize()?.join(&project);
+    let folder = sage_core::win32_path::simplified(&base.canonicalize()?.join(&project));
     let count: i64 = database
         .connection()
         .query_row(

@@ -46,11 +46,11 @@ pub struct RootRecord {
 }
 
 pub fn canonical_comparison_key(path: &Path) -> String {
-    let value = path.to_string_lossy();
     if cfg!(windows) {
-        value.replace('/', "\\").to_lowercase()
+        let path = sage_core::win32_path::simplified(path);
+        path.to_string_lossy().replace('/', "\\").to_lowercase()
     } else {
-        value.into_owned()
+        path.to_string_lossy().into_owned()
     }
 }
 
@@ -136,7 +136,9 @@ impl ProjectRegistryStore for Database {
         let canonical = record.absolute_path.canonicalize().map_err(|_| {
             AppError::InvalidRequest("selected project root is missing or unavailable".into())
         })?;
-        if canonical.as_os_str() != record.absolute_path.as_os_str() || !canonical.is_dir() {
+        if canonical_comparison_key(&canonical) != canonical_comparison_key(&record.absolute_path)
+            || !canonical.is_dir()
+        {
             return Err(AppError::InvalidRequest(
                 "registered project root is not its canonical directory identity".into(),
             ));
@@ -258,7 +260,9 @@ impl ProjectRegistryStore for Database {
                     Ok(RootRecord {
                         id: row.get(0)?,
                         project_id: row.get(1)?,
-                        absolute_path: PathBuf::from(row.get::<_, String>(2)?),
+                        absolute_path: sage_core::win32_path::simplified(Path::new(
+                            &row.get::<_, String>(2)?,
+                        )),
                         ordinal: row.get(3)?,
                     })
                 },
@@ -297,16 +301,11 @@ impl ProjectRegistryStore for Database {
                 "project reached its {MAX_ROOTS_PER_PROJECT}-root limit"
             )));
         }
-        let duplicate = transaction
-            .query_row(
-                "SELECT EXISTS(
-               SELECT 1 FROM project_roots
-               WHERE project_id = ?1 AND canonical_key = ?2
-             )",
-                params![project_id, canonical_key],
-                |row| row.get::<_, bool>(0),
-            )
-            .db()?;
+        // At most eight roots. Compare their normalized identities so rows
+        // with the older verbatim canonical_key remain duplicate-safe too.
+        let duplicate = root_records_in(&transaction, project_id)?
+            .iter()
+            .any(|root| canonical_comparison_key(&root.absolute_path) == canonical_key);
         if duplicate {
             return Err(AppError::InvalidRequest(
                 "this canonical folder is already a project root".into(),
@@ -369,7 +368,9 @@ fn root_records_in(connection: &Connection, project_id: &str) -> AppResult<Vec<R
             Ok(RootRecord {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                absolute_path: PathBuf::from(row.get::<_, String>(2)?),
+                absolute_path: sage_core::win32_path::simplified(Path::new(
+                    &row.get::<_, String>(2)?,
+                )),
                 ordinal: row.get(3)?,
             })
         })
@@ -392,7 +393,7 @@ fn canonical_folder(root: &Path) -> AppResult<PathBuf> {
         ));
     }
     persisted_path_text(&canonical)?;
-    Ok(canonical)
+    Ok(sage_core::win32_path::simplified(&canonical))
 }
 
 pub(crate) fn folder_name(root: &Path) -> String {

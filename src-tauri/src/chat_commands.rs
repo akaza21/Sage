@@ -5,6 +5,7 @@ use crate::chat_lifecycle::ChatRenameStore;
 use crate::chat_lifecycle::create::ChatCreateStore;
 use crate::chat_move::ChatMoveStore;
 use crate::chat_pin::ChatPinStore;
+use crate::project_registry::ProjectRegistryStore;
 use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     preview_lifecycle::on_committed_project_transition_epoch,
@@ -121,7 +122,7 @@ pub async fn move_chat(
     .await)
 }
 
-async fn create_chat_inner(
+pub(crate) async fn create_chat_inner(
     state: &AppState,
     current_layout: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
@@ -210,6 +211,10 @@ pub(crate) async fn execute_chat_transition(
     if *transition_epoch >= MAX_TRANSITION_EPOCH {
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
+    let active_before = match state.database.active_project_id() {
+        Ok(active) => active,
+        Err(error) => return failed_transition(*transition_epoch, error.public_message()),
+    };
     let database = state.database.clone();
     let mutation = tauri::async_runtime::spawn_blocking(move || operation(database))
         .await
@@ -222,6 +227,13 @@ pub(crate) async fn execute_chat_transition(
         return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch += 1;
+    if !matches!(state.database.active_project_id(), Ok(active) if active == active_before) {
+        return crate::project_commands::finish_committed_project_transition(
+            state,
+            *transition_epoch,
+        )
+        .await;
+    }
     on_committed_project_transition_epoch(*transition_epoch);
     match build_bootstrap_snapshot(state, *transition_epoch).await {
         Ok(snapshot) => ProjectTransitionResult {

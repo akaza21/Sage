@@ -35,8 +35,11 @@ pub fn ordinary_invocation(
 /// device-name component, a component ending in `.` or a space, or a path of
 /// `MAX_PATH` or more UTF-16 code units.
 fn simplified_text(text: &str) -> Option<String> {
-    let simple = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
+    let simple = if text
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(r"\\?\UNC\"))
+    {
+        format!(r"\\{}", &text[8..])
     } else {
         let rest = text.strip_prefix(r"\\?\")?;
         let bytes = rest.as_bytes();
@@ -87,6 +90,10 @@ mod tests {
         );
         assert_eq!(
             simplified_text(r"\\?\UNC\server\share\dl").as_deref(),
+            Some(r"\\server\share\dl")
+        );
+        assert_eq!(
+            simplified_text(r"\\?\unc\server\share\dl").as_deref(),
             Some(r"\\server\share\dl")
         );
         assert_eq!(simplified_text(r"\\?\C:\odd.\dir"), None);
