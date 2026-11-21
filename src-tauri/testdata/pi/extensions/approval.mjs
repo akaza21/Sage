@@ -2,23 +2,79 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
 export default function approvalFixture(pi) {
+  const scenario = process.env.SAGE_PI_FIXTURE_SCENARIO ?? "echo";
+  const names =
+    scenario === "collisions"
+      ? ["read", "write", "edit", "bash"]
+      : ["fixture_echo"];
+  let arrivals = 0;
+  let release;
+  const together = new Promise((resolve) => {
+    release = resolve;
+  });
   pi.registerCommand("fixture-command", {
     description: "Extension discovery fixture",
     handler: async (_args, ctx) => ctx.ui.notify("Fixture command available"),
   });
+  for (const name of names)
+    pi.registerTool({
+      name,
+      label: "Fixture echo",
+      description: "Return the supplied text after Sage approval",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          destination: {
+            type: "object",
+            properties: { path: { type: "string" } },
+          },
+        },
+        required: ["text"],
+        additionalProperties: false,
+      },
+      async execute(_id, args) {
+        if (scenario === "concurrent") {
+          if (++arrivals === 2) release();
+          await together;
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Executed: ${args.text}${args.destination ? ` -> ${args.destination.path}` : ""}`,
+            },
+          ],
+          details: {},
+        };
+      },
+    });
   pi.registerTool({
-    name: "fixture_echo",
-    label: "Fixture echo",
-    description: "Return the supplied text after Sage approval",
-    parameters: {
-      type: "object",
-      properties: { text: { type: "string" } },
-      required: ["text"],
-      additionalProperties: false,
-    },
-    async execute(_id, args) {
+    name: "fixture_parallel",
+    label: "Concurrent nested calls",
+    description: "Run nested tools concurrently",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    async execute(_id, _args, signal, _update, ctx) {
+      const count =
+        scenario === "overflow" ? 10 : scenario === "concurrent" ? 3 : 2;
+      const outcomes = await Promise.all(
+        Array.from({ length: count }, (_, index) =>
+          ctx.executeTool(
+            scenario === "concurrent" && index === 2 ? "write" : "fixture_echo",
+            scenario === "concurrent" && index === 2
+              ? { path: "nested.txt", content: "approved write" }
+              : { text: `nested-${index}` },
+            { signal },
+          ),
+        ),
+      );
       return {
-        content: [{ type: "text", text: `Executed: ${args.text}` }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(outcomes.map(({ isError }) => isError)),
+          },
+        ],
         details: {},
       };
     },
@@ -46,14 +102,28 @@ export default function approvalFixture(pi) {
         const prompt = last?.content?.[0]?.text ?? "hello";
         const content = result
           ? [{ type: "text", text: "Fixture complete." }]
-          : [
-              {
-                type: "toolCall",
-                id: "fixture-call",
-                name: "fixture_echo",
-                arguments: { text: prompt },
-              },
-            ];
+          : (scenario === "collisions"
+              ? [prompt]
+              : [
+                  ["concurrent", "overflow", "cancel"].includes(scenario) &&
+                  prompt !== "after-cancel"
+                    ? "fixture_parallel"
+                    : "fixture_echo",
+                ]
+            ).map((name, index) => ({
+              type: "toolCall",
+              id: `fixture-call-${index}`,
+              name,
+              arguments:
+                name === "fixture_parallel"
+                  ? {}
+                  : {
+                      text: prompt,
+                      ...(scenario === "mutation"
+                        ? { destination: { path: "approved" } }
+                        : {}),
+                    },
+            }));
         const message = {
           role: "assistant",
           api: model.api,

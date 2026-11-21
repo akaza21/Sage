@@ -42,8 +42,9 @@ pub(crate) fn installed(version: &str) -> Result<PathBuf, Unavailable> {
 
 /// A development build runs from a Cargo target directory that other checkouts may share and
 /// overwrite, so it reads the bridge from the checkout it was compiled from.
+/// Unit-test executables are not installed apps, including with `custom-protocol` enabled.
 fn resource_root() -> Option<PathBuf> {
-    if tauri::is_dev() {
+    if cfg!(test) || tauri::is_dev() {
         return Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
     }
     let package = tauri::utils::PackageInfo {
