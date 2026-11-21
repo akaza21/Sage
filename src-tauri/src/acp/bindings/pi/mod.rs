@@ -14,6 +14,9 @@ pub(crate) mod native_admission;
 pub(crate) mod native_runtime;
 mod protocol;
 mod runtime;
+mod title_launch;
+mod title_reply;
+mod title_request;
 mod translator;
 
 #[allow(unused_imports)]

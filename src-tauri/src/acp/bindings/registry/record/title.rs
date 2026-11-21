@@ -17,7 +17,7 @@ impl AdmittedBindingRecord<'_> {
             return Unsupported;
         }
         match &self.record.admission {
-            Admission::Codex(_)
+            Admission::Codex(_) | Admission::PiNative(_)
                 if self.record.bound_build().is_some_and(|build| {
                     build.characterisation
                         == sage_domain::harness::HarnessCharacterisation::Characterised

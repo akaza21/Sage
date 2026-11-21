@@ -50,6 +50,11 @@ struct InstalledPi {
 }
 
 impl PiLaunch for InstalledPi {
+    fn revalidate_title(&self) -> Result<(), AdapterRuntimeError> {
+        self.binding
+            .revalidate()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)
+    }
     fn launch_spec(&mut self, epoch: RuntimeEpoch) -> Result<LaunchSpec, AdapterRuntimeError> {
         let root = self
             .root

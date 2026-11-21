@@ -50,6 +50,14 @@ const reviewedSpawnModules = new Map([
     "Bounded Codex model probe",
   ],
   [
+    "src-tauri/src/acp/bindings/pi/title_launch.rs",
+    "Admitted Pi title launch with the main session's configuration",
+  ],
+  [
+    "src-tauri/src/acp/bindings/pi/title_request.rs",
+    "Bounded no-session Pi title process with tree cleanup",
+  ],
+  [
     "src-tauri/src/acp/fixture/process_ops.rs",
     "Feature-gated adversarial process fixture",
   ],
