@@ -32,7 +32,7 @@ export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
 type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
 
-const toolKindIcons: Record<ToolKind, typeof FileText> = {
+const toolKindIcons: Record<ToolKind | "extension", typeof FileText> = {
   read: FileText,
   edit: FilePen,
   delete: Trash2,
@@ -45,11 +45,12 @@ const toolKindIcons: Record<ToolKind, typeof FileText> = {
   think: Brain,
   switchMode: ArrowRightLeft,
   mcp: Command,
+  extension: Wrench,
   subagent: Bot,
   other: Wrench,
 };
 
-export function ToolKindIcon({ kind }: { kind: ToolKind }) {
+export function ToolKindIcon({ kind }: { kind: ToolKind | "extension" }) {
   const Icon = toolKindIcons[kind];
   return <Icon aria-hidden="true" size={14} data-tool-kind-icon={kind} />;
 }

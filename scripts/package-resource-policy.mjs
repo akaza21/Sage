@@ -11,8 +11,8 @@ import path from "node:path";
 export const curatedPackageResources = Object.freeze([
   Object.freeze({
     path: "src/acp/bindings/pi/bridge/extension.mjs",
-    bytes: 3275,
-    sha256: "c843b7cdf45d77bbf193826d3c9e7460821709b414ef80ce14233bbf344e9610",
+    bytes: 4198,
+    sha256: "c257e4892eebb2b2d14359db8c83c2eb054cb3d8300092b62171c6e5279b964f",
   }),
 ]);
 

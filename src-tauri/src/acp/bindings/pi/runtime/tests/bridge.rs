@@ -5,6 +5,8 @@ use std::path::PathBuf;
 #[cfg(feature = "acp-fixture")]
 #[path = "bridge_fixture.rs"]
 mod fixture_cases;
+#[path = "bridge_native.rs"]
+mod native;
 struct Journey {
     runtime: PiRuntime,
     root: PathBuf,
@@ -152,6 +154,122 @@ fn pi_bridge_journey_read_only_denies_edits_and_commands_without_side_effects() 
         assert!(batch.events().is_empty());
         assert_eq!(request(&batch.egress()[0])["value"], refusal.message());
         assert!(!j.root.join("a.txt").exists());
+    }
+}
+#[test]
+fn extension_tool_approvals_work_in_both_access_modes_and_free_the_pending_slot() {
+    for mode in [
+        SessionAccessMode::ReadOnly,
+        SessionAccessMode::WorkspaceWrite,
+    ] {
+        let mut j = Journey::new(mode);
+        let batch = j.prepare("fixture_echo", json!({"text":"hello", "path":17}));
+        let [
+            AdapterEvent::PermissionRequest {
+                payload:
+                    NormalizedPayload::PermissionRequest {
+                        category, summary, ..
+                    },
+                ..
+            },
+        ] = &batch.events()[1..]
+        else {
+            panic!("extension approval: {:?}", batch.events());
+        };
+        assert_eq!(*category, ToolCategory::Extension);
+        let args = summary
+            .as_str()
+            .strip_prefix("Allow extension tool fixture_echo?\n")
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(args).unwrap(),
+            json!({"text":"hello", "path":17})
+        );
+        j.allow();
+        assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+        let next = j.prepare_as("tool-2", "prepare-2", "another_tool", json!({}));
+        assert!(matches!(
+            next.events(),
+            [
+                AdapterEvent::Item { .. },
+                AdapterEvent::PermissionRequest { .. }
+            ]
+        ));
+        let deny = j
+            .runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: SageServerRequestId::parse("prepare-2").unwrap(),
+                decision: PermissionDecision::Deny,
+            })
+            .unwrap();
+        j.runtime.commit_mandatory_egress(deny.token()).unwrap();
+        assert_eq!(
+            deliver(&mut j.runtime, deny)["value"],
+            Refusal::Denied.message()
+        );
+        assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+    }
+}
+#[test]
+fn extension_names_and_schemas_are_not_interpreted_as_managed_tools_and_oversize_is_refused() {
+    let mut j = Journey::new(SessionAccessMode::ReadOnly);
+    j.runtime
+        .ingest(
+            &frame(
+                json!({"type":"tool_execution_start","toolCallId":"custom-write",
+        "toolName":"write","args":{"path":17}}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    let batch = j.dialog(
+        "custom-approval",
+        "sage.pi.prepare.v1",
+        &json!({
+            "version":1,"toolCallId":"custom-write","tool":"write","kind":"extension",
+            "label":"Custom writer","args":{"path":17}
+        })
+        .to_string(),
+    );
+    assert!(
+        matches!(batch.events(), [AdapterEvent::Item { payload: NormalizedPayload::ToolCall {
+        category: ToolCategory::Extension, label, .. }, .. }, AdapterEvent::PermissionRequest {
+        payload: NormalizedPayload::PermissionRequest { category: ToolCategory::Extension, summary, .. }, ..
+    }] if label.as_str() == "Custom writer" && summary.as_str() == "Allow extension tool write (Custom writer)?\n{\"path\":17}")
+    );
+    let allow = j
+        .runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("custom-approval").unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .unwrap();
+    assert_eq!(deliver(&mut j.runtime, allow)["value"], "approved");
+    let ended = j
+        .runtime
+        .ingest(
+            &frame(json!({"type":"tool_execution_end",
+                "toolCallId":"custom-write", "toolName":"write", "isError":false,
+                "result":{"content":[{"type":"text","text":"Custom operation complete"}]}
+            })),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(
+        matches!(ended.events(), [AdapterEvent::Item { payload: NormalizedPayload::ToolCall {
+        category: ToolCategory::Extension, output_summary: Some(output), .. }, ..
+    }] if output.as_str() == "Custom operation complete")
+    );
+
+    for bytes in [65_536, 262_144] {
+        let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+        let batch = j.prepare("fixture_echo", json!({"text":"x".repeat(bytes)}));
+        assert!(batch.events().is_empty());
+        assert_eq!(
+            request(&batch.egress()[0])["value"],
+            Refusal::TooLarge.message()
+        );
+        assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
     }
 }
 #[test]

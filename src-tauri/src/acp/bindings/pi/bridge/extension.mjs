@@ -1,7 +1,11 @@
 // Sage Pi bridge v1; admitted only with Pi 1.5.0 and exact installed bytes.
-// No filesystem authority lives in this extension: Sage writes approved files.
+// Sage writes approved files; reads use Pi's own read-only implementation.
 // Pi's own bash runs a command only after Sage records the user's approval.
-import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  createBashToolDefinition,
+  createReadToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import { fileURLToPath } from "node:url";
 const MAX_BYTES = 262144;
 // Every answer other than "approved" or "written" is Sage's reason, shown to
 // the model and the user as the tool's error.
@@ -15,9 +19,15 @@ const fields = (names) =>
   Object.fromEntries(names.map((name) => [name, { type: "string" }]));
 // Resolves once Sage records the user's approval of this tool call; throws
 // Sage's reason otherwise.
-async function approve(toolCallId, tool, args, signal, ctx) {
+async function approve(toolCallId, tool, args, signal, ctx, metadata = {}) {
   if (signal?.aborted) throw new Error("Cancelled");
-  const request = JSON.stringify({ version: 1, toolCallId, tool, args });
+  const request = JSON.stringify({
+    version: 1,
+    toolCallId,
+    tool,
+    args,
+    ...metadata,
+  });
   if (Buffer.byteLength(request) > MAX_BYTES)
     throw new Error("Sage operation exceeds the byte limit");
   let approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
@@ -34,6 +44,34 @@ async function approve(toolCallId, tool, args, signal, ctx) {
   if (approved !== "approved") throw refusal(approved);
 }
 export default function sageBridge(pi) {
+  // Register Pi's read implementation directly, keeping discovered tools active
+  // even when the launch disables the other built-in implementations.
+  pi.registerTool(createReadToolDefinition(process.cwd()));
+  const source = fileURLToPath(import.meta.url);
+  pi.on("tool_call", async (event, ctx) => {
+    const tool = pi.getAllTools().find((tool) => tool.name === event.toolName);
+    if (
+      (tool?.sourceInfo?.path === source &&
+        ["read", "write", "edit", "bash"].includes(event.toolName)) ||
+      tool?.sourceInfo?.path === "builtin:read"
+    )
+      return;
+    try {
+      await approve(
+        event.toolCallId,
+        event.toolName,
+        event.input,
+        ctx.signal,
+        ctx,
+        {
+          kind: "extension",
+          label: tool?.label,
+        },
+      );
+    } catch (error) {
+      return { block: true, reason: refusal(error.message).message };
+    }
+  });
   for (const [name, required] of [
     ["write", ["path", "content"]],
     ["edit", ["path", "oldText", "newText"]],
@@ -76,8 +114,5 @@ export default function sageBridge(pi) {
       await approve(toolCallId, "bash", args, signal, ctx);
       return shell.execute(toolCallId, args, signal, update, ctx);
     },
-  });
-  pi.on("session_start", async () => {
-    pi.setActiveTools(["read", "write", "edit", "bash"]);
   });
 }

@@ -6,15 +6,14 @@ use std::{
 
 use crate::acp::bindings::release_version::characterise_against;
 /// The Pi release whose extension API the bridge was tested against. Later
-/// releases load it too; if a release stops loading it, Pi starts with no
-/// tools rather than unguarded ones.
-const BRIDGE_PI_VERSION: &str = "1.5.0";
+/// releases load it too. Native launch requires this pinned resource.
+pub(crate) const BRIDGE_PI_VERSION: &str = "1.5.0";
 pub(crate) const SOURCE: &[u8] = include_bytes!("extension.mjs");
 /// The bridge's path under Sage's resource directory. `bundle.resources` in
 /// tauri.conf.json ships the file at exactly this path.
 pub(crate) const RESOURCE: &str = "src/acp/bindings/pi/bridge/extension.mjs";
 
-/// Why the bridge cannot be enabled; Pi then runs with read-only tools.
+/// Why the bridge cannot be enabled; native launch is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Unavailable {
     #[error("the Sage bridge needs Pi {BRIDGE_PI_VERSION} or later")]

@@ -15,7 +15,7 @@ impl Fixture {
     fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, Refusal> {
         match self.prepare(tool, args)? {
             files::Prepared::Edit(edit) => Ok(edit),
-            files::Prepared::Shell(_) => panic!("{tool} prepared a command"),
+            _ => panic!("{tool} did not prepare an edit"),
         }
     }
     fn prepare(&self, tool: &str, args: serde_json::Value) -> Result<files::Prepared, Refusal> {
@@ -26,6 +26,8 @@ impl Fixture {
                 tool_call_id: "tool-1".into(),
                 tool: tool.into(),
                 args,
+                kind: files::RequestKind::Managed,
+                label: None,
             },
         )
     }

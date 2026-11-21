@@ -106,9 +106,6 @@ impl PiRuntime {
         let Some(bridge) = self.bridge.as_mut() else {
             return refused(Refusal::Unsupported);
         };
-        if bridge.mode == SessionAccessMode::ReadOnly {
-            return refused(Refusal::ReadOnly);
-        }
         if bridge.writes >= 32 {
             return refused(Refusal::WriteLimit);
         }
@@ -119,6 +116,9 @@ impl PiRuntime {
             let Ok(request) = serde_json::from_str::<files::Request>(body) else {
                 return refused(Refusal::Unsupported);
             };
+            if bridge.mode == SessionAccessMode::ReadOnly && !request.is_extension() {
+                return refused(Refusal::ReadOnly);
+            }
             // Each tool call gets one approval request, whatever its answer was.
             if bridge.used.contains(&request.tool_call_id) {
                 return refused(Refusal::Replayed);
@@ -155,20 +155,29 @@ impl PiRuntime {
                 form: None,
                 expires: false,
             });
-            return self.translate_outputs(
+            let tool = self.extension_tool_started()?;
+            let batch = self.translate_outputs(
                 vec![AdapterOutput::PermissionRequested {
                     external_id: id.into(),
                 }],
                 None,
                 request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?,
                 resources,
-            );
+            )?;
+            let (mut events, egress) = batch.into_parts();
+            if let Some(tool) = tool {
+                events.insert(0, tool);
+            }
+            return AdapterBatch::new(events, egress);
         }
         if title == "sage.pi.withdraw.v1" {
             return self.withdraw_bridge_edit(id, body);
         }
         if title != "sage.pi.commit.v1" {
             return refused(Refusal::Unsupported);
+        }
+        if bridge.mode == SessionAccessMode::ReadOnly {
+            return refused(Refusal::ReadOnly);
         }
         let Some(pending) = bridge.pending.take() else {
             return refused(Refusal::NotApproved);
@@ -262,7 +271,7 @@ impl PiRuntime {
         if self
             .bridge
             .as_ref()
-            .is_some_and(|bridge| bridge.approved_shell.as_deref() == Some(tool_id))
+            .is_some_and(|bridge| bridge.approved_tool.as_deref() == Some(tool_id))
         {
             return answer("approved");
         }
@@ -358,10 +367,10 @@ impl PiRuntime {
         {
             if resolution == EgressResolution::Written {
                 pending.written = true;
-                // Pi runs an approved command without a commit, so the
+                // Pi runs approved tools without a commit, so the
                 // approval reaching Pi frees the Turn's single pending slot.
-                if let files::Prepared::Shell(shell) = &pending.prepared {
-                    bridge.approved_shell = Some(shell.tool_id.clone());
+                if !matches!(pending.prepared, files::Prepared::Edit(_)) {
+                    bridge.approved_tool = Some(pending.prepared.tool_id().to_owned());
                     bridge.pending = None;
                     return Ok(());
                 }

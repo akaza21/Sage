@@ -1,5 +1,6 @@
 //! Curated bridge authority. Retains at most one 512 KiB old/new pair or one
-//! shell command awaiting approval.
+//! shell command or 64 KiB extension request awaiting approval.
+mod extension;
 pub(crate) mod files;
 pub(crate) mod install;
 pub(crate) mod path;
@@ -17,9 +18,9 @@ pub(crate) struct Bridge {
     pub pending: Option<Pending>,
     pub writes: u8,
     pub used: std::collections::BTreeSet<String>,
-    /// The last command whose approval reached Pi. Pi may have expired the
+    /// The last tool whose approval reached Pi. Pi may have expired the
     /// dialog first and ask again by withdrawing; the approval still stands.
-    pub approved_shell: Option<String>,
+    pub approved_tool: Option<String>,
 }
 pub(crate) struct Pending {
     pub request_id: String,
@@ -35,7 +36,7 @@ impl Bridge {
             pending: None,
             writes: 0,
             used: std::collections::BTreeSet::new(),
-            approved_shell: None,
+            approved_tool: None,
         }
     }
     pub(crate) fn begin_turn(&mut self, mode: SessionAccessMode) {
@@ -43,7 +44,7 @@ impl Bridge {
         self.pending = None;
         self.writes = 0;
         self.used.clear();
-        self.approved_shell = None;
+        self.approved_tool = None;
     }
 }
 
