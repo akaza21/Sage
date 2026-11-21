@@ -56,6 +56,9 @@ export function AgentCenterKeeper({
 }: {
   windowMode: WorkbenchWindowMode;
 }) {
+  const newChatDraftOpening = useWorkbenchStore(
+    (state) => state.newChatDraftOpening,
+  );
   const projectId = useWorkbenchStore((state) =>
     windowMode === "agent" &&
     state.project &&
@@ -75,7 +78,7 @@ export function AgentCenterKeeper({
       void state.openNewChatDraft(
         state.project.isInternal ? undefined : projectId,
       );
-  }, [projectId]);
+  }, [projectId, newChatDraftOpening]);
 
   return null;
 }
