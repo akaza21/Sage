@@ -20,7 +20,6 @@ import type * as SessionNoticeChunk from "./acp/SessionNoticeStrip";
 import type * as TranscriptChunk from "./TranscriptInteractions";
 import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
 import type * as ConversationChunk from "./ConversationActions";
-import type * as ForkChunk from "./ForkChat";
 import type * as HandoffChunk from "./ChatHandoffDialog";
 import type * as HandoffControlChunk from "./ChatHandoffControl";
 import type * as LegacyTranscriptChunk from "./ChatLegacyTranscript";
@@ -148,7 +147,7 @@ export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
 export const ConversationPart = lazyParts<typeof ConversationChunk>(
   () => import("./ConversationActions"),
 );
-export const ForkPart = lazyParts<typeof ForkChunk>(() => import("./ForkChat"));
+export const ForkPart = ConversationPart;
 export const HandoffPart = lazyParts<typeof HandoffChunk>(
   () => import("./ChatHandoffDialog"),
 );

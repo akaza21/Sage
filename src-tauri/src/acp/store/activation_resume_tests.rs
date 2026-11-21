@@ -242,6 +242,14 @@ fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
             [session.as_str()],
         )
         .unwrap();
+    let prompt =
+        serde_json::json!({"kind":"text","payload":{"role":"user","text":"Fork this prompt"}})
+            .to_string();
+    use sha2::{Digest, Sha256};
+    connection.execute("INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
+        origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at)
+        VALUES('prompt-fork','project-one','chat-one',?1,'turn-fork',2,0,'primary','text','completed',
+        'prompt-fork',?2,?3,?4,0,46,47,47)", rusqlite::params![session.as_str(),prompt,prompt.len() as i64,format!("{:x}",Sha256::digest(prompt.as_bytes()))]).unwrap();
     let turn = SageTurnId::parse("turn-fork").unwrap();
     let source = chat_fork::fork_source(&connection, &project(), &chat(), &turn).unwrap();
     assert_eq!(source.session_id, session);

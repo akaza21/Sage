@@ -11,7 +11,6 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { AnswerActionButton, AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { turnSessionForkState } from "../forkChatRequest";
 import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
@@ -35,7 +34,8 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
-import { ConversationActions, TurnPrompts } from "./TurnPrompts";
+import { TurnPrompts } from "./TurnPrompts";
+import { ConversationActionContext } from "../forkChatRequest";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -289,8 +289,6 @@ const Turn = memo(
   },
   (left, right) =>
     left.turn === right.turn &&
-    turnSessionForkState(left.page, left.turn.sessionId) ===
-      turnSessionForkState(right.page, right.turn.sessionId) &&
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
@@ -358,7 +356,7 @@ export function AcpChatPresentation({
     </Fragment>
   );
   return (
-    <ConversationActions page={page}>
+    <ConversationActionContext.Provider value={page}>
       <NavigationPart
         part="ChatNavigation"
         // Use a distinct sibling key to avoid remounting and closing find.
@@ -392,7 +390,7 @@ export function AcpChatPresentation({
       {editSummaryContainer
         ? createPortal(editSummary, editSummaryContainer)
         : null}
-    </ConversationActions>
+    </ConversationActionContext.Provider>
   );
 }
 

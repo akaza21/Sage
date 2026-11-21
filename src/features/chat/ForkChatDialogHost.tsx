@@ -1,12 +1,10 @@
 import { useState, type ReactNode, type RefObject } from "react";
 
 import {
-  ForkChatRequestContext,
-  RewindChatRequestContext,
-  type RewindChatRequest,
-  type ForkChatRequest,
+  ConversationRequestContext,
+  type ConversationRequest,
 } from "./forkChatRequest";
-import { ConversationPart, ForkPart } from "./lazyParts";
+import { ConversationPart } from "./lazyParts";
 
 // A separate host: the source answer may disappear during a project switch.
 export function ForkChatDialogHost({
@@ -16,28 +14,19 @@ export function ForkChatDialogHost({
   children: ReactNode;
   focusRoot: RefObject<HTMLDivElement | null>;
 }) {
-  const [request, setRequest] = useState<ForkChatRequest | null>(null);
-  const [rewind, setRewind] = useState<RewindChatRequest | null>(null);
+  const [request, setRequest] = useState<ConversationRequest | null>(null);
   return (
-    <ForkChatRequestContext.Provider value={setRequest}>
-      <RewindChatRequestContext.Provider value={setRewind}>
-        {children}
-        {request && (
-          <ForkPart
-            part="ForkChatDialog"
-            {...request}
-            focusRoot={focusRoot}
-            onClose={() => setRequest(null)}
-          />
-        )}
-        {rewind && (
-          <ConversationPart
-            part="RewindChatDialog"
-            {...rewind}
-            onClose={() => setRewind(null)}
-          />
-        )}
-      </RewindChatRequestContext.Provider>
-    </ForkChatRequestContext.Provider>
+    <ConversationRequestContext.Provider value={setRequest}>
+      {children}
+      {request && (
+        <ConversationPart
+          key={"kind" in request ? "rewind" : "fork"}
+          part={"kind" in request ? "RewindChatDialog" : "ForkChatDialog"}
+          {...request}
+          focusRoot={focusRoot}
+          onClose={() => setRequest(null)}
+        />
+      )}
+    </ConversationRequestContext.Provider>
   );
 }

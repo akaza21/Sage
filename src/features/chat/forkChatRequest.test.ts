@@ -10,7 +10,7 @@ import {
   capabilitySetFixture,
 } from "../../domain/acpProjection.fixture";
 import { page as fixture } from "./acp/acpProjection.fixture";
-import { conversationActions } from "./forkChatRequest";
+import { conversationActions } from "./conversationActionAvailability";
 
 type Offer = NonNullable<AcpCapabilitySet["rewind"]>;
 const all: Offer = {

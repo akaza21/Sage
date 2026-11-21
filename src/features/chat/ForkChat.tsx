@@ -25,8 +25,8 @@ import { AnswerActionButton } from "./AnswerActions";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
 import {
-  ForkChatRequestContext,
-  turnSessionForkState,
+  ConversationActionContext,
+  ConversationRequestContext,
 } from "./forkChatRequest";
 
 export function AnswerMoreMenu({
@@ -164,7 +164,9 @@ export function AnswerMoreActions({
   forkable?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  const requestFork = useContext(ForkChatRequestContext);
+  const requestFork = useContext(ConversationRequestContext);
+  const currentPage = useContext(ConversationActionContext);
+  page = currentPage ?? page;
   const turn = page.turns.at(-1);
   const canFork =
     requestFork &&
@@ -296,4 +298,12 @@ export function ForkChatDialog({
       )}
     </ModalDialog>
   );
+}
+
+function turnSessionForkState(page: AcpChatPage, sessionId: string) {
+  const session = page.sessions.find(({ id }) => id === sessionId);
+  if (!session) return "absent";
+  return session.residency === "hot" && session.capabilities?.rewind?.forkAt
+    ? "forkable"
+    : "present";
 }

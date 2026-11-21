@@ -275,22 +275,6 @@ pub(crate) fn forked_from(
         .transpose()
 }
 
-pub(crate) fn forked_before_prompt(
-    connection: &Connection,
-    project: &SageProjectId,
-    chat: &SageChatId,
-) -> Result<bool, StoreError> {
-    Ok(connection
-        .query_row(
-            "SELECT COALESCE(json_extract(payload_json,'$.beforePrompt'),0) FROM session_facts
-        WHERE project_id=?1 AND chat_id=?2 AND kind='sessionForked' LIMIT 1",
-            params![project.as_str(), chat.as_str()],
-            |r| r.get(0),
-        )
-        .optional()?
-        .unwrap_or(false))
-}
-
 pub(crate) struct ForkHistory {
     pub session: String,
     pub session_ordinal: i64,

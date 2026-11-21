@@ -199,7 +199,6 @@ mod tests {
             next_cursor: None,
             forked_from: None,
             forked_from_turn_id: None,
-            forked_before_prompt: false,
             imported_history: false,
             child_projection_epoch: 0,
             session_notices: Vec::new(),

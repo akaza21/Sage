@@ -200,7 +200,6 @@ export function ChatTranscript({
                     part="ForkDivider"
                     parentChatId={forkedFrom}
                     forkTurnId={page.forkedFromTurnId}
-                    beforePrompt={page.forkedBeforePrompt}
                     forkChatId={page.chatId}
                   />
                 ) : null}

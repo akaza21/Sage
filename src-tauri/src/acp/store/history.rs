@@ -102,8 +102,6 @@ fn load_page(
         .map_err(|_| StoreError::Corrupt("session page bound"))?;
     let (forked_from, forked_from_turn_id) =
         super::chat_fork::forked_from(connection, &project_id, &chat_id)?.unzip();
-    let forked_before_prompt =
-        super::chat_fork::forked_before_prompt(connection, &project_id, &chat_id)?;
     let imported_history =
         super::native_import::imported_session(connection, &project_id, &chat_id, false)?.is_some();
     let child_projection_epoch = super::child_transcript::child_projection_epoch(
@@ -136,7 +134,6 @@ fn load_page(
         next_cursor: None,
         forked_from: forked_from.clone(),
         forked_from_turn_id: forked_from_turn_id.clone(),
-        forked_before_prompt,
         imported_history,
         child_projection_epoch,
         session_notices: session_notices.clone(),
@@ -172,7 +169,6 @@ fn load_page(
         next_cursor: slice.next_cursor,
         forked_from,
         forked_from_turn_id,
-        forked_before_prompt,
         imported_history,
         child_projection_epoch,
         session_notices,

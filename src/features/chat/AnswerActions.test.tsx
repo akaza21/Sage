@@ -13,7 +13,7 @@ import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { AcpChatPresentation, InheritedTurns } from "./acp/AcpChatPresentation";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
-import { ForkChatRequestContext } from "./forkChatRequest";
+import { ConversationRequestContext } from "./forkChatRequest";
 
 afterEach(() => {
   cleanup();
@@ -240,7 +240,7 @@ it("retains the owner-requested Retry on a successful native answer", () => {
 it("offers Retry and Branch only on the latest answer, following its session's residency", async () => {
   const projection = forkable(twoTurns());
   const ui = (next: AcpChatPage) => (
-    <ForkChatRequestContext.Provider value={vi.fn()}>
+    <ConversationRequestContext.Provider value={vi.fn()}>
       <AcpChatPresentation
         page={next}
         hasEarlier={false}
@@ -250,7 +250,7 @@ it("offers Retry and Branch only on the latest answer, following its session's r
         retentionIncomplete={false}
         onRetry={vi.fn()}
       />
-    </ForkChatRequestContext.Provider>
+    </ConversationRequestContext.Provider>
   );
   const { rerender } = render(ui(projection));
   const row = (ordinal: number) =>

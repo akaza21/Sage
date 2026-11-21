@@ -8,24 +8,17 @@ import "./fork-history.css";
 export function ForkDivider({
   parentChatId,
   forkTurnId,
-  beforePrompt = false,
   forkChatId,
 }: {
   parentChatId: string;
   forkTurnId?: string;
-  beforePrompt?: boolean;
   forkChatId?: string;
 }) {
   const open = useWorkbenchStore((state) =>
     state.tabs.some((tab) => tab.kind === "chat" && tab.id === parentChatId),
   );
   const activateTab = useWorkbenchStore((state) => state.activateTab);
-  const inherited = useInheritedHistory(
-    parentChatId,
-    forkTurnId,
-    beforePrompt,
-    forkChatId,
-  );
+  const inherited = useInheritedHistory(parentChatId, forkTurnId, forkChatId);
   return (
     <>
       <p className="acp-history-notice">This chat shares the project folder.</p>
@@ -92,7 +85,6 @@ type Inherited = AcpChatPage & {
 function useInheritedHistory(
   parentChatId: string,
   forkTurnId: string | undefined,
-  beforePrompt: boolean,
   forkChatId?: string,
 ) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
@@ -114,8 +106,7 @@ function useInheritedHistory(
         if (!live || page.chatId !== parentChatId) return;
         const end = forkChatId
           ? page.turns.length
-          : page.turns.findIndex((turn) => turn.id === forkTurnId) +
-            (beforePrompt ? 0 : 1);
+          : page.turns.findIndex((turn) => turn.id === forkTurnId) + 1;
         if (!end) return setInherited(null);
         const start = Math.max(0, end - MAX_INHERITED_TURNS);
         setInherited({
@@ -129,14 +120,7 @@ function useInheritedHistory(
     return () => {
       live = false;
     };
-  }, [
-    projectId,
-    generation,
-    parentChatId,
-    forkTurnId,
-    beforePrompt,
-    forkChatId,
-  ]);
+  }, [projectId, generation, parentChatId, forkTurnId, forkChatId]);
   return inherited?.chatId === parentChatId &&
     inherited.forkTurnId === forkTurnId
     ? inherited

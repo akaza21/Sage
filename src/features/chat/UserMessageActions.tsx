@@ -1,10 +1,9 @@
 import { useContext } from "react";
+import { conversationActions } from "./conversationActionAvailability";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import {
-  conversationActions,
   ConversationActionContext,
-  ForkChatRequestContext,
-  RewindChatRequestContext,
+  ConversationRequestContext,
 } from "./forkChatRequest";
 
 export function UserMessageActions({
@@ -16,22 +15,27 @@ export function UserMessageActions({
   turn: TurnProjection;
   text: string;
 }) {
-  const requestFork = useContext(ForkChatRequestContext);
-  const requestRewind = useContext(RewindChatRequestContext);
+  const requestFork = useContext(ConversationRequestContext);
   const context = useContext(ConversationActionContext);
-  const actions = conversationActions(page, turn, context ?? undefined);
+  const actions = conversationActions(context ?? page, turn);
+  if (!actions.rewind && !actions.fork) return null;
   return (
     <div
       className="chat-transcript-actions"
       role="group"
       aria-label="Prompt actions"
     >
-      {actions.rewind && requestRewind ? (
+      {actions.rewind && requestFork ? (
         <button
           type="button"
           className="button--compact"
           onClick={() =>
-            requestRewind({ chatId: page.chatId, turnId: turn.id, text })
+            requestFork({
+              kind: "rewind",
+              chatId: page.chatId,
+              turnId: turn.id,
+              text,
+            })
           }
         >
           Rewind here

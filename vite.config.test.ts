@@ -199,7 +199,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Pasted-text staging, chips and messages load with a native chat's
   // composer or over-cap input; only the size check stays eager.
   "src/features/chat/ComposerPaste.tsx",
-  "src/features/chat/ForkChat.tsx",
+  "src/features/chat/ConversationActions.tsx",
   // An imported session's history and the session picker load on first use.
   "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",

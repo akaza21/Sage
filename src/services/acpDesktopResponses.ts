@@ -59,51 +59,47 @@ function safeCapabilities(
     value.schemaVersion !== 1 ||
     !protocolVersion ||
     extensionSchemaId === undefined ||
-    REQUIRED_CAPABILITIES.some((flag) => typeof value[flag] !== "boolean") ||
     modelCount === null ||
     modelCount > 128 ||
     configCount === null ||
     configCount > 128
   )
     return null;
-  const rewind = safeRewind(value.rewind);
-  return {
+  const capabilities = {
     schemaVersion: 1,
     protocolVersion,
-    ...(rewind ? { rewind } : {}),
-    ...Object.fromEntries([
-      ...REQUIRED_CAPABILITIES.map((flag) => [flag, value[flag]]),
-      ...OPTIONAL_CAPABILITIES.filter((flag) => value[flag] === true).map(
-        (flag) => [flag, true],
-      ),
-    ]),
+    rewind: safeRewind(value.rewind),
     multiRootExtensionSchemaId: extensionSchemaId,
     modelCount,
     configCount,
   } as AgentSessionProjection["capabilities"];
+  for (const flag of REQUIRED_CAPABILITIES) {
+    if (typeof value[flag] !== "boolean") return null;
+    capabilities[flag] = value[flag] as boolean;
+  }
+  for (const flag of OPTIONAL_CAPABILITIES)
+    if (value[flag] === true) capabilities[flag] = true;
+  return capabilities;
 }
 
 function safeRewind(
   value: unknown,
 ): AgentSessionProjection["capabilities"]["rewind"] {
+  if (!isRecord(value) || !isRecord(value.effects)) return undefined;
+  const { effects, targets, forkAt, onResume } = value;
   if (
-    !isRecord(value) ||
-    !isRecord(value.effects) ||
-    typeof value.effects.conversation !== "boolean" ||
-    typeof value.effects.files !== "boolean" ||
-    !isOneOf(value.targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
-    typeof value.forkAt !== "boolean" ||
-    typeof value.onResume !== "boolean"
+    typeof effects.conversation !== "boolean" ||
+    typeof effects.files !== "boolean" ||
+    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
+    typeof forkAt !== "boolean" ||
+    typeof onResume !== "boolean"
   )
     return undefined;
   return {
-    effects: {
-      conversation: value.effects.conversation,
-      files: value.effects.files,
-    },
-    targets: value.targets,
-    forkAt: value.forkAt,
-    onResume: value.onResume,
+    effects: { conversation: effects.conversation, files: effects.files },
+    targets,
+    forkAt,
+    onResume,
   };
 }
 
@@ -322,9 +318,6 @@ export function safeAcpMutationResponse(
         : {}),
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
-      }),
-      ...(projection.forkedBeforePrompt === true && {
-        forkedBeforePrompt: true,
       }),
       ...(projection.importedHistory === true && { importedHistory: true }),
       ...(Number.isSafeInteger(epoch) &&
