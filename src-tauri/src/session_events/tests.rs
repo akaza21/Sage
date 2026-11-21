@@ -17,7 +17,7 @@ fn legacy_welcome_session(database: &Database) -> String {
 fn historical_simulator_session(database: &Database, fact_kind: &str) -> String {
     let root = std::env::temp_dir().join(format!("sage-events-root-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     fs::remove_dir_all(root).unwrap();
     install_legacy_welcome(database, &project.id, fact_kind)
 }
@@ -505,11 +505,11 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
     fs::create_dir_all(&root_b).unwrap();
     let database_path = base.join("sage.db");
     let database = crate::database::open_database(&database_path).unwrap();
-    let project_a = database.create_project_from_root(&root_a).unwrap();
+    let project_a = database.create_project_with_chat(&root_a).unwrap();
     let welcome_session_a =
         install_legacy_welcome(&database, &project_a.id, "simulatorTurnCommitted");
     let chat_a = chat(&database, &welcome_session_a);
-    let project_b = database.create_project_from_root(&root_b).unwrap();
+    let project_b = database.create_project_with_chat(&root_b).unwrap();
     let current_b = database.bootstrap_snapshot().unwrap();
     database
         .switch_project(&ProjectSwitchRequest {

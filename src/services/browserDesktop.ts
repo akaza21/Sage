@@ -323,9 +323,6 @@ export const browserDesktop = {
     return ensureBrowserLocalProject({
       snapshot,
       expectedTransitionEpoch,
-      durableChatIds,
-      chatTitles,
-      messagesByChat,
       activeMessages,
     });
   },

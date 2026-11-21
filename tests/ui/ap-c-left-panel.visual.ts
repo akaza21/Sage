@@ -715,3 +715,52 @@ test("AP-C Create project offers only this computer as a folder location", async
   await expect(dialog).toBeVisible();
   await expect(location).toBeFocused();
 });
+
+test("AP-C a new project starts with an unsent draft and no chat rows", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await page.evaluate(async () => {
+    const { resetBrowserDesktopForTests } =
+      await import("/src/services/browserDesktop.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+  });
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await sidebar
+    .getByRole("button", { name: "Create project", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Create project" });
+  await dialog
+    .getByRole("textbox", { name: "Project name" })
+    .fill("Fresh project");
+  await dialog
+    .getByRole("button", { name: "Create project", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  const project = sidebar.locator(".project-entry").filter({
+    has: page.getByRole("button", {
+      name: "Project Fresh project",
+      exact: true,
+    }),
+  });
+  await expect(project).toBeVisible();
+  await expect(project.locator(".project-chat-row")).toHaveCount(0);
+  await expect(
+    project.getByRole("button", { name: "Show more", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const state = useWorkbenchStore.getState();
+      return {
+        chats: state.tabs.filter((tab) => tab.kind === "chat").length,
+        draftTarget: state.newChatDraft?.targetProjectId === state.project?.id,
+        draftText: state.newChatDraft?.text,
+      };
+    }),
+  ).toEqual({ chats: 0, draftTarget: true, draftText: "" });
+});

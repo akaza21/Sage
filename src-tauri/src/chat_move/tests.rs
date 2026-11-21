@@ -30,7 +30,7 @@ fn moves_an_attached_chat_to_another_project() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let first = database.create_project_from_root(&first_root).unwrap();
+    let first = database.create_project_with_chat(&first_root).unwrap();
     let first_chat = database
         .bootstrap_snapshot()
         .unwrap()
@@ -39,7 +39,7 @@ fn moves_an_attached_chat_to_another_project() {
     let second_chat = database
         .create_chat(&layout(&database.bootstrap_snapshot().unwrap()))
         .unwrap();
-    let second = database.create_project_from_root(&second_root).unwrap();
+    let second = database.create_project_with_chat(&second_root).unwrap();
     database
         .switch_project(&ProjectSwitchRequest {
             current_layout: layout(&database.bootstrap_snapshot().unwrap()),
@@ -76,7 +76,7 @@ fn moves_only_a_proven_legacy_welcome_and_preserves_rows_accounting_and_guards()
         fs::create_dir_all(&first_root).unwrap();
         fs::create_dir_all(&second_root).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let first = database.create_project_from_root(&first_root).unwrap();
+        let first = database.create_project_with_chat(&first_root).unwrap();
         let chat_id = database
             .bootstrap_snapshot()
             .unwrap()
@@ -105,7 +105,7 @@ fn moves_only_a_proven_legacy_welcome_and_preserves_rows_accounting_and_guards()
             .unwrap();
             transaction.commit().unwrap();
         }
-        let second = database.create_project_from_root(&second_root).unwrap();
+        let second = database.create_project_with_chat(&second_root).unwrap();
         if inject_failure {
             database
                 .connection()
@@ -247,7 +247,7 @@ fn refuses_same_project_and_unknown_target() {
     let root = std::env::temp_dir().join(format!("sage-chat-move-deny-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let chat_id = snapshot.active_tab_id.clone().unwrap();
     let same = database
@@ -282,12 +282,12 @@ fn moves_a_sessionless_chat_from_a_non_active_project_without_switching() {
     fs::create_dir_all(&second_root).unwrap();
     fs::create_dir_all(&third_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let cross_chat = database
         .create_chat(&layout(&database.bootstrap_snapshot().unwrap()))
         .unwrap();
-    let work = database.create_project_from_root(&second_root).unwrap();
-    let sage = database.create_project_from_root(&third_root).unwrap();
+    let work = database.create_project_with_chat(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&third_root).unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     database
         .move_chat(&MoveChatRequest {
@@ -333,7 +333,7 @@ fn refuses_to_move_a_chat_that_has_an_agent_session() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let first = database.create_project_from_root(&first_root).unwrap();
+    let first = database.create_project_with_chat(&first_root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
         .unwrap()
@@ -342,7 +342,7 @@ fn refuses_to_move_a_chat_that_has_an_agent_session() {
     database
         .append_simulator_turn(&chat_id, "keep this chat here", "session exists")
         .unwrap();
-    let second = database.create_project_from_root(&second_root).unwrap();
+    let second = database.create_project_with_chat(&second_root).unwrap();
     let error = database
         .move_chat(&MoveChatRequest {
             project_id: first.id,

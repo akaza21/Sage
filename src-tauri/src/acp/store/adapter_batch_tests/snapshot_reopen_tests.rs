@@ -182,7 +182,7 @@ fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, Sage
     fs::create_dir_all(&root).unwrap();
     let path = directory.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();

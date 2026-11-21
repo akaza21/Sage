@@ -386,7 +386,7 @@ mod tests {
             let root = std::env::temp_dir().join(format!("sage-layout-epoch-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
             let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let selected = sage_domain::resource::ResourceRef {
                 root_id: project.roots[0].id.clone(),
@@ -445,7 +445,7 @@ mod tests {
             let first_database = state.database.clone();
             let first = tokio::spawn(async move {
                 execute_committed_transition(&first_state, 0, move || {
-                    first_database.create_project_from_root(&first_root)?;
+                    first_database.create_project_with_chat(&first_root)?;
                     started_tx.send(()).unwrap();
                     release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
                     Ok(())
@@ -458,7 +458,7 @@ mod tests {
             let second_database = state.database.clone();
             let second = tokio::spawn(async move {
                 execute_committed_transition(&second_state, 1, move || {
-                    second_database.create_project_from_root(&second_root)
+                    second_database.create_project_with_chat(&second_root)
                 })
                 .await
             });
@@ -491,11 +491,11 @@ mod tests {
             std::fs::create_dir_all(&second_root).unwrap();
             let project_a = state
                 .database
-                .create_project_from_root(&first_root)
+                .create_project_with_chat(&first_root)
                 .unwrap();
             let database = state.database.clone();
             let to_b = execute_committed_transition(&state, 0, move || {
-                database.create_project_from_root(&second_root)
+                database.create_project_with_chat(&second_root)
             })
             .await;
             let project_b = to_b.snapshot.unwrap();
@@ -543,7 +543,7 @@ mod tests {
             std::fs::create_dir_all(&root).unwrap();
             let operation_root = root.clone();
             let result = execute_committed_transition(&state, 0, move || {
-                database.create_project_from_root(&operation_root)?;
+                database.create_project_with_chat(&operation_root)?;
                 database
                     .connection()
                     .execute_batch("DROP TABLE workbench_tabs")
@@ -624,7 +624,7 @@ mod tests {
             let database = state.database.clone();
             let operation_root = root.clone();
             let committed = execute_committed_transition(&state, 0, move || {
-                database.create_project_from_root(&operation_root)
+                database.create_project_with_chat(&operation_root)
             })
             .await;
             assert!(committed.committed);

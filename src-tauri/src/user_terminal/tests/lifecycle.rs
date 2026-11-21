@@ -369,7 +369,7 @@ fn unsettled_previous_project_sessions_hold_global_capacity() {
         let next_project = fixture
             .state
             .database
-            .create_project_from_root(&next_root)
+            .create_project_with_chat(&next_root)
             .unwrap();
         let next_chat: String = fixture
             .state

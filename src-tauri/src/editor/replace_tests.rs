@@ -23,7 +23,7 @@ impl Fixture {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join(path), content).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {
             root,
