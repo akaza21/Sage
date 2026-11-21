@@ -70,9 +70,6 @@ for (const adapter of ["cli", "account"] as const) {
     await expect(notices).toHaveCount(0);
     const input = page.getByRole("combobox", { name: "Message agent" });
     await expect(input).toBeVisible();
-    await expect(
-      page.locator(".chat-dock-frame .harness-signin-notice"),
-    ).toHaveCount(0);
     const harness = page.getByRole("button", { name: "Harness", exact: true });
     await harness.click();
     await expect(

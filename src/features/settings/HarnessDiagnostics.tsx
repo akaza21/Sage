@@ -1,9 +1,8 @@
 import { useAgentChatFocus } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import { useAcpChatProjection } from "../chat/acp/useAcpChatProjection";
-import { isHarnessDiagnostic } from "../../services/acpSessionNotices";
 
-export default function HarnessDiagnostics() {
+export function HarnessDiagnostics() {
   const chatId = useAgentChatFocus();
   const page = useAcpChatProjection(!!chatId, chatId);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
@@ -13,7 +12,10 @@ export default function HarnessDiagnostics() {
   const harness = harnesses.find(
     (entry) => entry.bindingId === session?.bindingId,
   );
-  const notices = page?.sessionNotices?.filter(isHarnessDiagnostic) ?? [];
+  const notices =
+    page?.sessionNotices?.filter(
+      (notice) => notice.diagnostic !== false && notice.level !== "error",
+    ) ?? [];
   if (!chatId || page?.chatId !== chatId || !harness || !notices.length)
     return null;
   return (

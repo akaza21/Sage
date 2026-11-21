@@ -37,7 +37,7 @@ export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
           strokeLinecap="round"
           strokeLinejoin="round"
           className={`${cssClass}${className ? ` ${className}` : ""}`}
-          {...(!children && !hasA11yProp ? { "aria-hidden": "true" } : {})}
+          aria-hidden={!children && !hasA11yProp ? true : undefined}
           {...rest}
         >
           {nodes.map((node, index) =>

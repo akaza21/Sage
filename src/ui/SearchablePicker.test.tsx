@@ -53,6 +53,27 @@ function Harness({
 }
 
 describe("SearchablePicker", () => {
+  it("does not select a highlighted choice that becomes unavailable", () => {
+    const view = render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "Select repository" });
+    fireEvent.click(trigger);
+    const input = screen.getByRole("combobox");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    view.rerender(
+      <Harness
+        candidates={options.map((option) =>
+          option.id === "two"
+            ? { ...option, disabledReason: "Disconnected" }
+            : option,
+        )}
+      />,
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(trigger).toHaveAttribute("data-selected-id", "one");
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+  });
+
   it("does not leave a pointer-active row behind keyboard focus in a non-searchable list", () => {
     render(
       <SearchablePicker

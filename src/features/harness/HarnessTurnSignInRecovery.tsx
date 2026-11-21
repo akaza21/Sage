@@ -1,6 +1,6 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
-import { HarnessSignInPart } from "./harnessSignInLazy";
+import { HarnessSignInRecovery } from "./HarnessSignInStatus";
 
 export function HarnessTurnSignInRecovery({
   page,
@@ -13,19 +13,14 @@ export function HarnessTurnSignInRecovery({
     (session) => session.id === turn.sessionId,
   )?.bindingId;
   const harness = useWorkbenchStore((state) =>
-    state.harnesses.find((entry) => entry.bindingId === bindingId),
-  );
-  const dismissed = useWorkbenchStore(
-    (state) =>
-      state.chatUiById[page.chatId]?.dismissedAuthTurnId === turn.id ||
-      state.chatUiById[page.chatId]?.errorKind === "signInRequired",
+    state.chatUiById[page.chatId]?.dismissedAuthTurnId === turn.id ||
+    state.chatUiById[page.chatId]?.errorKind === "signInRequired"
+      ? undefined
+      : state.harnesses.find((entry) => entry.bindingId === bindingId),
   );
   const owner = useWorkbenchStore.getState().captureChatOwnership(page.chatId);
-  return harness && !dismissed ? (
-    <HarnessSignInPart
-      part="ComposerHarnessSignInNotice"
-      harnessId={harness.id}
-      inline
+  return harness ? (
+    <HarnessSignInRecovery
       recovery={{
         harnessId: harness.id,
         scope: JSON.stringify([page.projectId, page.chatId, turn.id]),

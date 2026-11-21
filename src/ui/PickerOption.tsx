@@ -28,7 +28,7 @@ export const PickerOption = memo(function PickerOption({
   const unavailable = disabled || Boolean(candidate.disabledReason);
   const logo = candidate.logo ?? candidate.icon;
   const LeadingIcon = candidate.leadingIcon;
-  const option = (
+  return (
     <button
       id={id}
       type="button"
@@ -74,25 +74,5 @@ export const PickerOption = memo(function PickerOption({
         />
       ) : null}
     </button>
-  );
-  const action = candidate.action;
-  return action ? (
-    <div className="searchable-picker__option-row" role="none">
-      {option}
-      <button
-        type="button"
-        className="searchable-picker__option-action"
-        aria-label={action.accessibleLabel ?? action.label}
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          action.onAction();
-        }}
-      >
-        {action.label}
-      </button>
-    </div>
-  ) : (
-    option
   );
 });

@@ -15,7 +15,7 @@ import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
 import { AcpDesktopError } from "../../services/acpDesktopCommand";
 import {
-  ComposerHarnessSignInNotice,
+  HarnessSignInRecovery,
   HarnessAccountMenu,
 } from "./HarnessSignInStatus";
 import { HarnessDiscoveryNotice } from "../chat/HarnessDiscoveryNotice";
@@ -86,6 +86,18 @@ function install() {
   );
 }
 
+function authFailure(harnessId: string) {
+  return (
+    <HarnessSignInRecovery
+      recovery={{
+        harnessId,
+        scope: "failed-turn",
+        onSignedIn: () => undefined,
+      }}
+    />
+  );
+}
+
 function sendDisabledReason() {
   return composerDisabledReason({
     actionBusy: false,
@@ -126,7 +138,7 @@ it.each(["focus", "check"])(
     // Selection can reuse a native snapshot; explicit recovery must bypass it.
     await useWorkbenchStore.getState().selectHarness("account");
     expect(sendDisabledReason()).toBe("Finish signing in before sending.");
-    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    render(authFailure("account"));
     await act(async () => {
       if (trigger === "focus") fireEvent.focus(window);
       else await refreshHarnessSignIn("account");
@@ -170,7 +182,7 @@ it("keeps a signed-out warning after a failed focus check and recovers on the ne
       accountReadStartedAt: failedReadAt,
     }),
   );
-  render(<ComposerHarnessSignInNotice harnessId="account" />);
+  render(authFailure("account"));
   expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
   await act(async () => {
     fireEvent.focus(window);
@@ -222,7 +234,7 @@ it.each(["refusal", "selection"])(
             complete = () => resolve(cached);
           }),
       );
-    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    render(authFailure("account"));
     act(() => reportHarnessSignInRequired("account", ++nativeTime));
     let pending!: Promise<unknown>;
     await act(async () => {
@@ -257,7 +269,7 @@ it.each([1_000, 60_001])(
   async (elapsed) => {
     install();
     vi.useFakeTimers();
-    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    render(authFailure("account"));
     expect(sendDisabledReason()).toBe("Finish signing in before sending.");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(elapsed);
@@ -316,7 +328,7 @@ it("starts a session with the discovered model after refocusing beyond the TTL",
     };
   });
   await useWorkbenchStore.getState().retryHarnessDiscovery();
-  render(<ComposerHarnessSignInNotice harnessId="account" />);
+  render(authFailure("account"));
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -371,7 +383,7 @@ it("can cancel an unfinished browser login and successfully retry", async () => 
   );
   render(
     <>
-      <ComposerHarnessSignInNotice harnessId="account" />
+      {authFailure("account")}
       <HarnessDiscoveryNotice />
     </>,
   );
@@ -398,8 +410,7 @@ it("does not restore an old chat's sign-out after signing in from another chat",
     async (scope) => ({ ...scope, phase: "signedIn", revision: "2" }),
   );
   const failedChat = () => (
-    <ComposerHarnessSignInNotice
-      harnessId="account"
+    <HarnessSignInRecovery
       recovery={{
         harnessId: "account",
         scope: "chat-a-failed-turn",
@@ -412,7 +423,7 @@ it("does not restore an old chat's sign-out after signing in from another chat",
     await screen.findByText("Account harness isn't signed in"),
   ).toBeVisible();
   chatA.unmount();
-  const chatB = render(<ComposerHarnessSignInNotice harnessId="account" />);
+  const chatB = render(authFailure("account"));
   await act(async () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Sign in to Account harness" }),
@@ -511,7 +522,7 @@ it("can cancel the original sidebar login after selecting another harness and re
   );
   render(
     <>
-      <ComposerHarnessSignInNotice harnessId="other" />
+      {authFailure("other")}
       <HarnessAccountMenu avatar="W" />
     </>,
   );

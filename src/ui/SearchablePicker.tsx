@@ -1,4 +1,5 @@
 import {
+  createElement,
   useEffect,
   useCallback,
   useId,
@@ -40,40 +41,14 @@ export interface SearchablePickerOption {
   disabledReason?: string;
   icon?: HarnessBrand | "generic";
   logo?: string;
-  action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
 const preload = () => void preloadSearchablePicker().catch(() => undefined);
 
 type PopoverProps = ComponentProps<typeof PopoverChunk.SearchablePickerPopover>;
-const renderPopover = (
-  Loaded: typeof PopoverChunk.SearchablePickerPopover,
-  props: PopoverProps,
-) => <Loaded {...props} />;
-
 function PopoverSlot(props: PopoverProps) {
   const Loaded = loadedSearchablePickerPopover();
-  return Loaded ? renderPopover(Loaded, props) : null;
-}
-
-function usePopoverLoad(wanted: boolean, onFailure: () => void) {
-  const Loaded = useSyncExternalStore(
-    subscribeSearchablePicker,
-    loadedSearchablePickerPopover,
-  );
-  useEffect(
-    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
-    [],
-  );
-  useEffect(() => {
-    if (!wanted || Loaded) return;
-    let live = true;
-    void preloadSearchablePicker().catch(() => live && onFailure());
-    return () => {
-      live = false;
-    };
-  }, [Loaded, onFailure, wanted]);
-  return Loaded;
+  return Loaded ? createElement(Loaded, props) : null;
 }
 
 export function SearchablePicker({
@@ -95,7 +70,7 @@ export function SearchablePicker({
   triggerLabel,
   triggerDetail,
   appearance = "field",
-  popoverAppearance = "list",
+  menuAppearance = false,
   chevron = true,
   sectionLabel,
   searchable = true,
@@ -128,8 +103,8 @@ export function SearchablePicker({
   triggerDetail?: ReactNode;
   /** "plain" draws the trigger as text in its surroundings, with no field chrome. */
   appearance?: "field" | "plain";
-  /** "menu" draws the open list as a compact menu with a borderless search field. */
-  popoverAppearance?: "list" | "menu";
+  /** Draw the open list as a compact menu with a borderless search field. */
+  menuAppearance?: boolean;
   chevron?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
@@ -148,9 +123,8 @@ export function SearchablePicker({
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
-  const [opened, setOpened] = useState(expanded);
-  if (expanded && !opened) setOpened(true);
   const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   if (expanded && loadFailed) setLoadFailed(false);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
@@ -167,11 +141,26 @@ export function SearchablePicker({
     },
     [searchable, setOpen],
   );
-  const failLoad = useCallback(() => {
-    setLoadFailed(true);
-    close();
-  }, [close]);
-  const Loaded = usePopoverLoad(expanded, failLoad);
+  const Loaded = useSyncExternalStore(
+    subscribeSearchablePicker,
+    loadedSearchablePickerPopover,
+  );
+  useEffect(
+    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
+    [],
+  );
+  useEffect(() => {
+    if (!expanded || Loaded) return;
+    let live = true;
+    void preloadSearchablePicker().catch(() => {
+      if (!live) return;
+      setLoadFailed(true);
+      close();
+    });
+    return () => {
+      live = false;
+    };
+  }, [Loaded, close, expanded]);
   const coldOpen = useColdOpen({
     dismiss: close,
     loaded: Boolean(Loaded),
@@ -196,7 +185,7 @@ export function SearchablePicker({
   }
 
   return (
-    <div className={["searchable-picker", className].filter(Boolean).join(" ")}>
+    <div className={`searchable-picker ${className ?? ""}`}>
       <button
         ref={triggerRef}
         type="button"
@@ -263,44 +252,37 @@ export function SearchablePicker({
           detail="Open it again to retry."
         />
       ) : null}
-      {opened && Loaded ? (
+      {expanded && Loaded ? (
         <PopoverSlot
-          ariaLabel={ariaLabel}
-          candidates={candidates}
-          close={close}
-          disabled={disabled}
-          draft={draft}
-          expanded={expanded}
-          focusMoved={coldOpen.focusMoved}
-          footer={footer}
-          id={id}
-          onOptionRender={onOptionRender}
-          onSelect={onSelect}
-          open={open}
-          popoverClassName={[
-            popoverAppearance === "menu"
-              ? "searchable-picker__popover--menu"
-              : null,
+          {...{
+            ariaLabel,
+            candidates,
+            close,
+            draft,
+            query: query ?? draft,
+            onQueryChange: setQuery,
+            focusMoved: coldOpen.focusMoved,
+            footer,
+            id,
+            onOptionRender,
+            onSelect,
             popoverClassName,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          popoverGap={popoverGap}
-          popoverPlacement={popoverPlacement}
-          portalTarget={portalTarget}
-          searchable={searchable}
-          searchPlaceholder={searchPlaceholder}
-          menuAppearance={popoverAppearance === "menu"}
-          keyboardOpen={keyboardOpen}
-          sectionLabel={sectionLabel}
-          selected={selected}
-          selectedId={selectedId}
-          setDraft={setDraft}
-          setOpen={setOpen}
-          state={state}
-          stateDetail={stateDetail}
-          stateTitle={stateTitle}
-          triggerRef={triggerRef}
+            popoverGap,
+            popoverPlacement,
+            portalTarget,
+            searchable,
+            searchPlaceholder,
+            menuAppearance,
+            keyboardOpen,
+            sectionLabel,
+            selected,
+            selectedId,
+            setDraft,
+            state,
+            stateDetail,
+            stateTitle,
+            triggerRef,
+          }}
         />
       ) : null}
     </div>

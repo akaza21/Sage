@@ -39,6 +39,8 @@ it("opens a list that is still loading, then keeps its query", async () => {
   fireEvent.keyDown(input, { key: "Escape" });
   expect(trigger).toHaveAttribute("aria-expanded", "false");
   expect(trigger).toHaveFocus();
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.queryByRole("listbox")).toBeNull();
   fireEvent.click(trigger);
   expect(screen.getByRole("combobox")).toHaveValue("B");
   await waitFor(() =>

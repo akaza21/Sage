@@ -4,28 +4,25 @@ import {
 } from "../domain/acpProjection";
 import { isRecord, safeText } from "./acpDesktopGuards";
 
-const LEVELS = new Set(["info", "warning", "error"]);
+const LEVELS = ["info", "warning", "error"];
 
 function safeNotice(value: unknown): SessionNotice | null {
-  if (!isRecord(value) || !LEVELS.has(value.level as string)) return null;
+  if (!isRecord(value) || !LEVELS.includes(value.level as string)) return null;
   const text = safeText(value.text, 1024);
-  const source =
-    value.source === null || value.source === undefined
-      ? null
-      : safeText(value.source, 128);
-  if (!text || (value.source != null && !source)) return null;
-  if (value.diagnostic != null && typeof value.diagnostic !== "boolean")
+  const source = value.source == null ? null : safeText(value.source, 128);
+  const diagnostic = value.diagnostic ?? true;
+  if (
+    !text ||
+    (value.source != null && !source) ||
+    typeof diagnostic !== "boolean"
+  )
     return null;
   return {
     level: value.level as SessionNotice["level"],
     text,
     source,
-    diagnostic: value.diagnostic !== false,
+    diagnostic,
   };
-}
-
-export function isHarnessDiagnostic(notice: SessionNotice): boolean {
-  return notice.diagnostic !== false && notice.level !== "error";
 }
 
 /** Notices are display-only, so a malformed one is dropped, not the page. */

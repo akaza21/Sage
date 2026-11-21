@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { ComposerStatusNoticeProps } from "./ComposerStatusNotices";
 import { ComposerStatusMessages } from "./ComposerStatusMessages";
-import { HarnessSignInPart } from "../harness/harnessSignInLazy";
+import { HarnessSignInPart } from "./lazyParts";
 import { clearChatSignInError } from "./chatSignInRecovery";
 
 export function HarnessAccountMenu({ avatar }: { avatar: string }) {

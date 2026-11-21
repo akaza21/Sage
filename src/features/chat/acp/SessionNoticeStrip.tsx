@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { isHarnessDiagnostic } from "../../../services/acpSessionNotices";
 
 import type { AcpChatPage, SessionNotice } from "../../../domain/acpProjection";
 import "./session-notice-strip.css";
@@ -61,7 +60,9 @@ export function SessionNoticeStrip({
     setDismissed({ session, keys: new Set(kept) });
   }
   const shown = notices.filter(
-    (notice) => !isHarnessDiagnostic(notice) && !kept.includes(keyOf(notice)),
+    (notice) =>
+      (notice.diagnostic === false || notice.level === "error") &&
+      !kept.includes(keyOf(notice)),
   );
   if (shown.length === 0) return null;
   const dismiss = (keys: readonly string[]) =>

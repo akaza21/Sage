@@ -20,7 +20,6 @@ import {
   promptAttachmentItems,
   rootActivities,
   turnBindingId,
-  lastAssistantAnswer,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
@@ -34,7 +33,7 @@ import { terminalTurnStates } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
-import { TurnFailure } from "./TurnFailure";
+import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { TurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
@@ -111,19 +110,23 @@ const Turn = memo(
       attachmentIds,
       terminal,
     );
+    const newestItems = [...chronologicalItems].reverse();
     const finalAnswer = terminal
-      ? lastAssistantAnswer(chronologicalItems)
+      ? newestItems.find(
+          (item): item is Extract<AcpItem, { kind: "text" }> =>
+            item.kind === "text" && item.payload.role === "assistant",
+        )
       : undefined;
-    const liveThought = [...chronologicalItems]
-      .reverse()
-      .find((item) => item.kind === "thoughtSummary");
+    const liveThought = newestItems.find(
+      (item) => item.kind === "thoughtSummary",
+    );
     const workingItems = chronologicalItems.filter(
       (item) =>
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" ||
           (!terminal && item.id === liveThought?.id)),
     );
-    const text = finalAnswer?.kind === "text" && finalAnswer.payload.text;
+    const text = finalAnswer?.payload.text;
     // Rust forks only the latest Turn.
     const actions = text ? (
       <AnswerActions
@@ -267,13 +270,7 @@ const Turn = memo(
             ) : null}
             {stopped ? <TurnHeader turn={turn} /> : null}
             {stopped && !finalAnswer && onRetry ? (
-              <button
-                className="acp-turn__retry"
-                type="button"
-                onClick={onRetry}
-              >
-                Retry
-              </button>
+              <RetryTurnButton onRetry={onRetry} />
             ) : null}
             <TurnFailure turn={turn} onRetry={onRetry} page={failurePage} />
           </div>

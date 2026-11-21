@@ -35,7 +35,7 @@ import { ChatHarnessControls } from "../ChatHarnessControls";
 import { ComposerNoticeSurface } from "../ChatSignInNotices";
 import {
   HarnessAccountMenu,
-  ComposerHarnessSignInNotice,
+  HarnessSignInRecovery,
 } from "../../harness/HarnessSignInStatus";
 import {
   harnessSignInStatus,
@@ -201,7 +201,13 @@ describe("useAcpChatActions per-Chat ownership", () => {
       render(<Notices />);
       render(<HarnessAccountMenu avatar="A" />);
       const otherChat = render(
-        <ComposerHarnessSignInNotice harnessId="account" />,
+        <HarnessSignInRecovery
+          recovery={{
+            harnessId: "account",
+            scope: "other-chat-failed-turn",
+            onSignedIn: () => undefined,
+          }}
+        />,
       );
       await waitFor(() =>
         expect(harnessSignInStatus("account").state).toBe("signedIn"),

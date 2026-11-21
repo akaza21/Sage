@@ -137,7 +137,7 @@ export function ProjectScopeChip({
         triggerRole={menuItem ? "menuitem" : undefined}
         className="project-scope__picker"
         appearance="plain"
-        popoverAppearance="menu"
+        menuAppearance
         searchPlaceholder="Search projects"
         triggerClassName={
           menuItem ? "menu-item composer__add-action" : undefined

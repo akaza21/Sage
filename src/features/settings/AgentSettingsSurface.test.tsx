@@ -243,6 +243,12 @@ it("shows protocol diagnostics under the originating harness in Settings", async
       source: "fixture",
     },
     {
+      level: "warning",
+      diagnostic: false,
+      text: "Approval needs attention in Chat",
+      source: "fixture",
+    },
+    {
       level: "error",
       diagnostic: true,
       text: "Session blocked",
@@ -257,6 +263,7 @@ it("shows protocol diagnostics under the originating harness in Settings", async
     await screen.findByRole("region", { name: "Test harness diagnostics" }),
   ).toHaveTextContent("Unknown configuration key");
   expect(screen.queryByText("Session blocked")).toBeNull();
+  expect(screen.queryByText("Approval needs attention in Chat")).toBeNull();
 });
 
 it("labels transient harness/model selection honestly and exposes only real access defaults", () => {
