@@ -1,3 +1,4 @@
+mod command_catalog;
 mod egress;
 mod framer;
 mod ingress;
@@ -6,6 +7,7 @@ mod p02_egress;
 mod request_digest;
 mod writer;
 
+pub(crate) use command_catalog::CommandWirePath;
 #[allow(unused_imports, reason = "fixture and transport-test entrypoints")]
 pub(crate) use egress::{BoundedQueue, EgressQueue, QueueError, ReservedQueue};
 #[allow(unused_imports, reason = "transport-test reader entrypoint")]

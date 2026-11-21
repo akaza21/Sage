@@ -28,22 +28,22 @@ fn admit(mut commands: Vec<AvailableCommand>) -> (Vec<AvailableCommand>, u32) {
     let mut bytes = 0;
     let mut names = std::collections::HashSet::new();
     let mut indices = Vec::new();
+    let mut omitted: u32 = 0;
+    let mut full = false;
     for (index, command) in commands.iter().enumerate() {
-        if indices.len() == MAX_COMMANDS {
-            break;
-        }
         if !names.insert(command.name.as_str()) {
             continue;
         }
         let next = bytes + command.listed_bytes();
-        if next > MAX_COMMAND_BYTES {
-            break;
+        if full || indices.len() == MAX_COMMANDS || next > MAX_COMMAND_BYTES {
+            full = true;
+            omitted = omitted.saturating_add(1);
+            continue;
         }
         bytes = next;
         indices.push(index);
     }
     drop(names);
-    let omitted = u32::try_from(commands.len() - indices.len()).unwrap_or(u32::MAX);
     let mut indices = indices.into_iter().peekable();
     let kept = commands
         .into_iter()

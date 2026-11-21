@@ -739,7 +739,7 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
     listed
         .replace(parse_acp(&updates(&commands)[0]["availableCommands"]))
         .unwrap();
-    assert_eq!(listed.omitted, 3);
+    assert_eq!(listed.omitted, 0);
     let rows: Vec<_> = listed
         .commands
         .iter()

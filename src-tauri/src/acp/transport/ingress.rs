@@ -5,7 +5,7 @@ use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 
 use sage_core::limits::LIMITS;
 
-use super::Frame;
+use super::{CommandWirePath, Frame};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StructuralError {
@@ -35,6 +35,15 @@ struct Budget {
 
 pub(crate) fn validate_structure(frame: &Frame) -> Result<(), StructuralError> {
     validate_numeric_tokens(frame.as_bytes())?;
+    match validate_with_path(frame, CommandWirePath::Other) {
+        Err(StructuralError::ArrayTooLarge) => {
+            validate_with_path(frame, CommandWirePath::for_frame(frame.as_bytes()))
+        }
+        result => result,
+    }
+}
+
+fn validate_with_path(frame: &Frame, path: CommandWirePath) -> Result<(), StructuralError> {
     let mut budget = Budget { nodes: 0 };
     let mut deserializer = serde_json::Deserializer::from_slice(frame.as_bytes());
     let kind = NodeSeed {
@@ -42,6 +51,7 @@ pub(crate) fn validate_structure(frame: &Frame) -> Result<(), StructuralError> {
         depth: 0,
         method: false,
         count_node: false,
+        path,
     }
     .deserialize(&mut deserializer)
     .map_err(map_error)?;
@@ -105,6 +115,7 @@ struct NodeSeed<'a> {
     depth: u64,
     method: bool,
     count_node: bool,
+    path: CommandWirePath,
 }
 
 impl<'de> DeserializeSeed<'de> for NodeSeed<'_> {
@@ -127,6 +138,7 @@ impl<'de> DeserializeSeed<'de> for NodeSeed<'_> {
             budget: self.budget,
             depth: self.depth,
             method: self.method,
+            path: self.path,
         })
     }
 }
@@ -135,6 +147,7 @@ struct NodeVisitor<'a> {
     budget: &'a mut Budget,
     depth: u64,
     method: bool,
+    path: CommandWirePath,
 }
 
 impl<'de> Visitor<'de> for NodeVisitor<'_> {
@@ -162,6 +175,7 @@ impl<'de> Visitor<'de> for NodeVisitor<'_> {
                 return Err(de::Error::custom("decoded-key"));
             }
             let is_method = self.depth == 0 && key == "method";
+            let path = self.path.child(&key);
             if !keys.insert(key) {
                 return Err(de::Error::custom("duplicate-key"));
             }
@@ -170,6 +184,7 @@ impl<'de> Visitor<'de> for NodeVisitor<'_> {
                 depth: self.depth + 1,
                 method: is_method,
                 count_node: true,
+                path,
             })?;
         }
         Ok(Kind::Object)
@@ -189,11 +204,12 @@ impl<'de> Visitor<'de> for NodeVisitor<'_> {
                 depth: self.depth + 1,
                 method: false,
                 count_node: true,
+                path: CommandWirePath::Other,
             })?
             .is_some()
         {
             count += 1;
-            if count > LIMITS.wire.array_entries {
+            if count > self.path.array_limit() {
                 return Err(de::Error::custom("array-entries"));
             }
         }

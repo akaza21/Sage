@@ -289,13 +289,13 @@ fn aliases_from_acp_meta_keep_only_distinct_command_names_within_the_bound() {
 }
 
 #[test]
-fn admission_keeps_a_priority_prefix_and_counts_every_omission() {
+fn admission_keeps_a_priority_prefix_and_counts_only_missing_choices() {
     for (count, description_bytes, duplicate, expected, omitted) in [
         (600, 1, false, 512, 88),
         (300, 1024, false, 254, 46),
-        (3, 1, true, 1, 2),
+        (3, 1, true, 1, 0),
     ] {
-        let rows: Vec<_> = (0..count)
+        let mut rows: Vec<_> = (0..count)
             .map(|i| {
                 json!({
                     "name": if duplicate { "cmd000".to_owned() } else { format!("cmd{i:03}") },
@@ -304,6 +304,10 @@ fn admission_keeps_a_priority_prefix_and_counts_every_omission() {
                 })
             })
             .collect();
+        // Repeated rows beyond either admitted prefix are not additional missing choices.
+        rows.push(rows[0].clone());
+        rows.push(rows[count - 2].clone());
+        rows.push(rows[count - 1].clone());
         let mut list = CommandList::default();
         list.replace(parse_acp(&json!(rows))).unwrap();
         assert_eq!((list.commands.len(), list.omitted), (expected, omitted));

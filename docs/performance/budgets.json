@@ -71,8 +71,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 2500,
-        "reason": "Composer `/` menu owns source group labels, bounded source labels and omission counts, name/alias search and panel commands. Loads with the first `/`; reserves at least 250 B."
+        "maxGzipBytes": 2430,
+        "reason": "Composer `/` menu: source groups, labels, searchable overflow, catalog truncation, name/alias search and panels. Loads with the first `/`. Measured 2180 B JS plus 250 B headroom."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",
@@ -92,9 +92,9 @@
       },
       {
         "entry": "src/ui/TextFieldSuggestions.tsx",
-        "maxGzipBytes": 1200,
+        "maxGzipBytes": 1180,
         "maxCssGzipBytes": 620,
-        "reason": "Suggestion listbox shared by composer `/` and `@` menus; custom footers replace automatic overflow counts. Loads with either controller; reserves at least 250 B of JS headroom."
+        "reason": "Suggestion listbox shared by composer `/` and `@` menus; custom footers replace automatic overflow counts. Loads with either controller. Measured 930 B JS plus 250 B headroom."
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",

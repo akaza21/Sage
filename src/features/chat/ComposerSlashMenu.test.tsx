@@ -502,20 +502,24 @@ describe("composer slash commands", () => {
         .getByRole("group", { name: "Commands" })
         .querySelectorAll("[role='option']"),
     ).toHaveLength(7);
+    expect(screen.getByText("and 53 more, type to search")).toBeInTheDocument();
     expect(
-      screen.getByText("and 141 more, type to search"),
+      screen.getByText("Catalog truncated: 88 commands not shown"),
     ).toBeInTheDocument();
     type("/built-");
     await waitFor(() =>
       expect(within(listbox).getAllByRole("option")).toHaveLength(50),
     );
-    expect(screen.getByText("and 98 more, type to search")).toBeInTheDocument();
+    expect(screen.getByText("and 10 more, type to search")).toBeInTheDocument();
     expect(screen.queryByText("10 more — keep typing to narrow")).toBeNull();
     type("/built-59");
     await waitFor(() =>
       expect(names(screen.getByRole("listbox"))).toEqual(["/built-59"]),
     );
-    expect(screen.getByText("and 88 more, type to search")).toBeInTheDocument();
+    expect(screen.queryByText(/more, type to search/)).toBeNull();
+    expect(
+      screen.getByText("Catalog truncated: 88 commands not shown"),
+    ).toBeInTheDocument();
   });
 
   it("opens again after Escape once the focus leaves and returns", async () => {

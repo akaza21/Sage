@@ -1,8 +1,12 @@
 use std::{collections::BTreeSet, fmt};
 
-use serde::{Deserialize, Deserializer, de};
+use serde::{
+    Deserializer,
+    de::{self, DeserializeSeed},
+};
 use serde_json::{Map, Number, Value};
 
+use crate::acp::transport::CommandWirePath;
 use sage_core::limits::LIMITS;
 
 pub(crate) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
@@ -11,29 +15,44 @@ pub(crate) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     }
     let text = std::str::from_utf8(raw).map_err(|_| WireError::Utf8)?;
     preflight_nesting(text)?;
-    let value = serde_json::from_slice::<UniqueValue>(raw)
-        .map_err(|_| WireError::Json)?
-        .0;
+    let (value, path) = match decode_value(raw, CommandWirePath::Other) {
+        Ok(value) => (value, CommandWirePath::Other),
+        Err(error) if error.to_string().starts_with("array entry limit exceeded") => {
+            let path = CommandWirePath::for_frame(raw);
+            (decode_value(raw, path).map_err(|_| WireError::Json)?, path)
+        }
+        Err(_) => return Err(WireError::Json),
+    };
     if !value.is_object() {
         return Err(WireError::TopLevelObject);
     }
     let mut nodes = 0_u64;
-    validate_value(&value, 1, &mut nodes)?;
+    validate_value(&value, 1, &mut nodes, path)?;
+    Ok(value)
+}
+
+fn decode_value(raw: &[u8], path: CommandWirePath) -> Result<Value, serde_json::Error> {
+    let mut deserializer = serde_json::Deserializer::from_slice(raw);
+    let value = UniqueVisitor { path }.deserialize(&mut deserializer)?.0;
+    deserializer.end()?;
     Ok(value)
 }
 
 struct UniqueValue(Value);
 
-impl<'de> Deserialize<'de> for UniqueValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+impl<'de> DeserializeSeed<'de> for UniqueVisitor {
+    type Value = UniqueValue;
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_any(UniqueVisitor)
+        deserializer.deserialize_any(self)
     }
 }
 
-struct UniqueVisitor;
+struct UniqueVisitor {
+    path: CommandWirePath,
+}
 
 impl<'de> de::Visitor<'de> for UniqueVisitor {
     type Value = UniqueValue;
@@ -91,10 +110,12 @@ impl<'de> de::Visitor<'de> for UniqueVisitor {
             sequence
                 .size_hint()
                 .unwrap_or(0)
-                .min(LIMITS.wire.array_entries as usize),
+                .min(self.path.array_limit() as usize),
         );
-        while let Some(value) = sequence.next_element::<UniqueValue>()? {
-            if values.len() as u64 >= LIMITS.wire.array_entries {
+        while let Some(value) = sequence.next_element_seed(UniqueVisitor {
+            path: CommandWirePath::Other,
+        })? {
+            if values.len() as u64 >= self.path.array_limit() {
                 return Err(de::Error::custom("array entry limit exceeded"));
             }
             values.push(value.0);
@@ -117,7 +138,9 @@ impl<'de> de::Visitor<'de> for UniqueVisitor {
             if !keys.insert(key.clone()) {
                 return Err(de::Error::custom("duplicate decoded object key"));
             }
-            let value = map.next_value::<UniqueValue>()?;
+            let value = map.next_value_seed(UniqueVisitor {
+                path: self.path.child(&key),
+            })?;
             values.insert(key, value.0);
         }
         Ok(UniqueValue(Value::Object(values)))
@@ -159,7 +182,12 @@ fn preflight_nesting(text: &str) -> Result<(), WireError> {
     Ok(())
 }
 
-fn validate_value(value: &Value, depth: u64, nodes: &mut u64) -> Result<(), WireError> {
+fn validate_value(
+    value: &Value,
+    depth: u64,
+    nodes: &mut u64,
+    path: CommandWirePath,
+) -> Result<(), WireError> {
     if depth > LIMITS.wire.json_depth {
         return Err(WireError::Depth);
     }
@@ -176,15 +204,15 @@ fn validate_value(value: &Value, depth: u64, nodes: &mut u64) -> Result<(), Wire
                 if key.len() as u64 > LIMITS.wire.decoded_key_bytes {
                     return Err(WireError::KeyBytes);
                 }
-                validate_value(child, depth + 1, nodes)?;
+                validate_value(child, depth + 1, nodes, path.child(key))?;
             }
         }
         Value::Array(array) => {
-            if array.len() as u64 > LIMITS.wire.array_entries {
+            if array.len() as u64 > path.array_limit() {
                 return Err(WireError::ArrayEntries);
             }
             for child in array {
-                validate_value(child, depth + 1, nodes)?;
+                validate_value(child, depth + 1, nodes, CommandWirePath::Other)?;
             }
         }
         Value::Number(number)

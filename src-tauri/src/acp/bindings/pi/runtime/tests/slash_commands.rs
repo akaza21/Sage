@@ -1,5 +1,26 @@
 use super::*;
 
+#[test]
+fn oversized_pi_catalog_reaches_shared_admission_through_wire_ingress() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    let commands: Vec<_> = (0..600)
+        .map(|i| json!({"name":format!("cmd{i:03}"),"source":"prompt"}))
+        .collect();
+    let incoming = response(&query, json!({"commands":commands}));
+    crate::acp::transport::validate_structure(&incoming).unwrap();
+    runtime.ingest(&incoming, &Mapper).unwrap();
+    let list = runtime.available_commands().snapshot();
+    assert_eq!((list.commands.len(), list.omitted), (512, 90));
+    assert_eq!(list.commands[0].name, "session");
+    assert_eq!(list.commands[1].name, "compact");
+    assert_eq!(list.commands.last().unwrap().name, "cmd509");
+    assert!(list.validate(list.revision, "/cmd509").is_ok());
+    assert!(list.validate(list.revision, "/cmd510").is_err());
+}
+
 fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);

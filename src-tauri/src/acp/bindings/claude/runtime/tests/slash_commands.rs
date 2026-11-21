@@ -15,6 +15,23 @@ fn command(revision: u64) -> AdapterCommand {
     }
 }
 #[test]
+fn oversized_acp_catalog_reaches_shared_admission_through_wire_ingress() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let commands: Vec<_> = (0..600)
+        .map(|i| json!({"name":format!("cmd{i:03}"),"description":"Command"}))
+        .collect();
+    let incoming = update("claude-session-1", json!(commands));
+    crate::acp::transport::validate_structure(&incoming).unwrap();
+    runtime.ingest(&incoming, &Mapper).unwrap();
+    let list = runtime.available_commands().snapshot();
+    assert_eq!((list.commands.len(), list.omitted), (512, 88));
+    assert_eq!(list.commands[0].name, "cmd000");
+    assert_eq!(list.commands.last().unwrap().name, "cmd511");
+    assert!(list.validate(list.revision, "/cmd511").is_ok());
+    assert!(list.validate(list.revision, "/cmd512").is_err());
+}
+#[test]
 fn native_command_validates_latest_list_and_uses_acp_prompt_wire() {
     let mut claude = ClaudeRuntime::fixture();
     ready(&mut claude);

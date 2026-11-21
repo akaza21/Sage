@@ -297,9 +297,9 @@ export function ComposerSlashMenu({
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const more =
-    (load?.kind === "ready" ? (load.list.omitted ?? 0) : 0) +
     (query ? items.length : commands.length) -
     Math.min(items.length, TEXT_FIELD_SUGGESTIONS_MAX_RENDERED);
+  const omitted = load?.kind === "ready" ? (load.list.omitted ?? 0) : 0;
   const activeId = navigation.active?.id ?? null;
   const loading = load?.kind === "loading";
   useLayoutEffect(() => {
@@ -356,7 +356,17 @@ export function ComposerSlashMenu({
     <SuggestionsPart
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
-      footer={more > 0 ? `and ${more} more, type to search` : undefined}
+      footer={
+        more > 0 || omitted > 0 ? (
+          <>
+            {more > 0 && <span>and {more} more, type to search</span>}
+            {more > 0 && omitted > 0 && <br />}
+            {omitted > 0 && (
+              <span>Catalog truncated: {omitted} commands not shown</span>
+            )}
+          </>
+        ) : undefined
+      }
       ariaLabel="Slash commands"
       className="composer-slash-menu"
       items={items}
