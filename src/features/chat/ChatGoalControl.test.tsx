@@ -62,6 +62,7 @@ it("offers pause and delete only for a binding with native Goal mutation", async
         },
       }}
       capabilities={{
+        observes: true,
         set: false,
         pause: true,
         resume: false,
@@ -99,6 +100,7 @@ it("keeps the observed Goal visible and locks controls when a delete outcome is 
         },
       }}
       capabilities={{
+        observes: true,
         set: false,
         pause: true,
         resume: false,
@@ -143,6 +145,7 @@ it.each([
   { capability: undefined, actions: [] },
   {
     capability: {
+      observes: true,
       set: false,
       pause: true,
       resume: false,
@@ -153,6 +156,7 @@ it.each([
   },
   {
     capability: {
+      observes: true,
       set: true,
       pause: false,
       resume: false,
@@ -163,6 +167,7 @@ it.each([
   },
   {
     capability: {
+      observes: true,
       set: true,
       pause: false,
       resume: false,
@@ -207,6 +212,7 @@ it("sets a goal from the shared editor without inventing observed goal state", a
     <ChatGoalControl
       state={{ kind: "noGoal" }}
       capabilities={{
+        observes: true,
         set: true,
         pause: false,
         resume: false,

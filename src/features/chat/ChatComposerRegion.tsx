@@ -90,8 +90,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
-    goal,
-    goalCapabilities,
     availableBinding && sessionHarnessId === selectedHarnessId,
   );
   const otherContext = attachedContext.filter((c) => !isTranscriptQuote(c));
@@ -205,13 +203,16 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           </div>
           <div className="composer__body">
             {goal.kind === "goal" ||
-            (goal.kind === "noGoal" && goalDetails.capabilities?.set) ? (
+            (goalCapabilities &&
+              (!goalCapabilities.observes ||
+                (goal.kind === "noGoal" && goalCapabilities.set))) ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 key={dictationScope}
                 state={goal}
                 chatId={dictationScope}
                 details={goalDetails}
+                capabilities={goalCapabilities}
               />
             ) : null}
             <label className="sr-only" htmlFor={fieldId}>
@@ -366,7 +367,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 addActions={{
                   onAttachFiles: files.attach,
                   attachRefusalChatId: files.refusalChatId,
-                  onOpenGoal: goalDetails.onOpen,
+                  ...goalDetails.actions,
                   onCompact,
                 }}
                 optionsTriggerId={optionsTriggerId}

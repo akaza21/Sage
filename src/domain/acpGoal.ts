@@ -1,4 +1,5 @@
 export interface AcpGoalCapabilities {
+  observes: boolean;
   set: boolean;
   pause: boolean;
   resume: boolean;
@@ -12,7 +13,7 @@ export function decodeGoalCapabilities(
   value: unknown,
 ): AcpGoalCapabilities | undefined {
   return record(value) &&
-    ["set", "pause", "resume", "tokenBudget", "clear"].every(
+    ["observes", "set", "pause", "resume", "tokenBudget", "clear"].every(
       (operation) => typeof value[operation] === "boolean",
     )
     ? (value as unknown as AcpGoalCapabilities)

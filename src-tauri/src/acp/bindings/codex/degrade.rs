@@ -154,6 +154,7 @@ pub(crate) fn projected_capabilities(
         native_background_terminals: optional.native_background_terminals,
         goal: if optional.goals {
             sage_acp_protocol::intent::GoalCapabilities {
+                observes: true,
                 pause: true,
                 clear: true,
                 ..Default::default()

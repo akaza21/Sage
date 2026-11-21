@@ -98,6 +98,7 @@ for (const width of [1888, 720, 480]) {
               ...session.capabilities,
               goal: profile.goal
                 ? {
+                    observes: true,
                     set: false,
                     pause: true,
                     resume: false,

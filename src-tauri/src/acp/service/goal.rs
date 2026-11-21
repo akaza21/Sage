@@ -39,14 +39,6 @@ impl AcpService {
             .runtime
             .for_owner(&owner)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
-        if !matches!(action, GoalAction::Set { .. })
-            && !matches!(
-                lane.runtime.goal.snapshot(&owner),
-                Some(GoalState::Goal { .. })
-            )
-        {
-            return Err(crate::acp::runtime::HostError::Intent);
-        }
         // Enforce the negotiated policy snapshot as well as the binding's own
         // admission. Missing capabilities on older sessions fail closed.
         let json: String = self.database.connection().query_row(
@@ -59,6 +51,15 @@ impl AcpService {
         }
         let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
             serde_json::from_str(&json).map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        if (capabilities.goal.observes || matches!(action, GoalAction::PauseExisting))
+            && !matches!(action, GoalAction::Set { .. })
+            && !matches!(
+                lane.runtime.goal.snapshot(&owner),
+                Some(GoalState::Goal { .. })
+            )
+        {
+            return Err(crate::acp::runtime::HostError::Intent);
+        }
         let admitted = match &action {
             GoalAction::Set { .. } => capabilities.goal.set,
             GoalAction::PauseExisting => capabilities.goal.pause,

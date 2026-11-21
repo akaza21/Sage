@@ -231,6 +231,7 @@ describe("composer image input", () => {
             capabilities: capabilitySetFixture({
               protocolVersion: "codex-app-server-observed-0.167.0",
               goal: {
+                observes: true,
                 set: false,
                 pause: true,
                 resume: false,
@@ -245,6 +246,7 @@ describe("composer image input", () => {
     const { rerenderComposer } = renderComposer({
       goal,
       goalCapabilities: {
+        observes: true,
         set: false,
         pause: true,
         resume: false,

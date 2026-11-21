@@ -10,6 +10,8 @@ export function canMutateGoal(
   );
   if (!session?.runtimeEpoch || !session.capabilities.goal) return false;
   const goal = session.capabilities.goal;
+  if (!goal.observes && (action === "set" || action === "clear"))
+    return goal[action];
   if (action === "set")
     return (
       goal.set && (page?.goal?.kind === "noGoal" || page?.goal?.kind === "goal")

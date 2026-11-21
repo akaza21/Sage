@@ -147,6 +147,13 @@ impl RuntimeEngine for GoalEngine {
 pub(in crate::commands::acp) fn fixture(
     result: Result<(), HostError>,
 ) -> (AppState, ExistingGoalRequest, Arc<AtomicUsize>) {
+    fixture_with_observation(result, true)
+}
+
+fn fixture_with_observation(
+    result: Result<(), HostError>,
+    observes: bool,
+) -> (AppState, ExistingGoalRequest, Arc<AtomicUsize>) {
     let root = std::env::temp_dir().join(format!("sage-goal-ipc-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
@@ -233,6 +240,7 @@ pub(in crate::commands::acp) fn fixture(
                     native_review: false,
                     native_background_terminals: false,
                     goal: sage_acp_protocol::intent::GoalCapabilities {
+                        observes,
                         pause: true,
                         clear: true,
                         ..Default::default()
@@ -398,4 +406,28 @@ fn compose_goal_uses_the_capability_instead_of_protocol_identity() {
         assert_eq!(page.goal.availability(), expected);
     }
     state.acp.shutdown_blocking().unwrap();
+}
+
+#[tokio::test]
+async fn command_only_clear_is_admitted_without_an_observed_snapshot() {
+    for observes in [true, false] {
+        let (state, request, _) = fixture_with_observation(Ok(()), observes);
+        let owner = RuntimeOwner {
+            project_id: request.project_id.clone(),
+            chat_id: request.chat_id.clone(),
+            session_id: request.session_id.clone(),
+            runtime_epoch: request.runtime_epoch,
+        };
+        state
+            .acp
+            .goal_channel_for_test()
+            .update(&owner, GoalState::Unavailable);
+        let result = mutate(&state, request, GoalAction::ClearExisting).await;
+        if observes {
+            assert!(result.is_err());
+        } else {
+            assert_eq!(result.unwrap().projection.goal, GoalState::NoGoal);
+        }
+        state.acp.shutdown_blocking().unwrap();
+    }
 }

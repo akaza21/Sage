@@ -1,6 +1,6 @@
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
 import { Pause, Target } from "../../ui/leanIconNodesLazy";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
   AcpGoalState,
@@ -13,6 +13,8 @@ import { lazyParts } from "./lazyParts";
 const GoalContent = lazyParts<typeof GoalContentChunk>(
   () => import("./GoalDetails"),
 );
+
+import type { GoalControls } from "./useBoundGoalDetails";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
@@ -40,63 +42,75 @@ export function ChatGoalControl({
   onReady,
   canMutate = false,
   onMutation,
-  detailsRef: externalDetailsRef,
 }: {
   state: AcpGoalState;
   capabilities?: AcpGoalCapabilities;
   editorOpen?: boolean;
   onEditorClose?: () => void;
-  onReady?: (open: () => void) => () => void;
+  onReady?: (controls: GoalControls) => () => void;
   canMutate?: boolean;
   onMutation?: (
     action: GoalMutationAction,
     objective?: string,
   ) => Promise<GoalMutationOutcome>;
-  detailsRef?: RefObject<HTMLDetailsElement | null>;
 }) {
-  const internalDetailsRef = useRef<HTMLDetailsElement>(null);
-  const detailsRef = externalDetailsRef ?? internalDetailsRef;
+  const detailsRef = useRef<HTMLDetailsElement>(null);
   const [mutation, setMutation] = useState<
     | { kind: "idle" | "pending" }
     | { kind: "refused" | "outcomeUnknown"; message: string }
   >({ kind: "idle" });
   const [editing, setEditing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  useEffect(
-    () =>
-      onReady?.(() => {
-        if (capabilities?.set) setEditing(true);
-        else if (detailsRef.current) {
-          detailsRef.current.open = true;
-          detailsRef.current.querySelector("summary")?.focus();
-        }
-      }),
-    [onReady, capabilities?.set, detailsRef],
-  );
   const controls = canMutate && onMutation;
   const locked =
     mutation.kind === "pending" || mutation.kind === "outcomeUnknown";
-  const run = async (
-    action: GoalMutationAction,
-    objective?: string,
-  ): Promise<boolean> => {
-    if (!controls || locked || !capabilities?.[action]) return false;
-    setMutation({ kind: "pending" });
-    try {
-      const outcome = await onMutation(
-        action,
-        ...(action === "set" ? [objective] : []),
-      );
-      setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
-      return outcome.kind === "applied";
-    } catch {
-      setMutation({
-        kind: "outcomeUnknown",
-        message: "Goal outcome unknown. Reload this chat to verify.",
-      });
-      return false;
-    }
-  };
+  const run = useCallback(
+    async (
+      action: GoalMutationAction,
+      objective?: string,
+    ): Promise<boolean> => {
+      if (!controls || locked || !capabilities?.[action]) return false;
+      setMutation({ kind: "pending" });
+      try {
+        const outcome = await controls(
+          action,
+          ...(action === "set" ? [objective] : []),
+        );
+        setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
+        return outcome.kind === "applied";
+      } catch {
+        setMutation({
+          kind: "outcomeUnknown",
+          message: "Goal outcome unknown. Reload this chat to verify.",
+        });
+        return false;
+      }
+    },
+    [controls, locked, capabilities],
+  );
+  useEffect(
+    () =>
+      onReady?.({
+        goalUnobserved: capabilities?.observes === false,
+        onOpenGoal:
+          capabilities?.set || state.kind === "goal"
+            ? () => {
+                if (capabilities?.set) setEditing(true);
+                else if (detailsRef.current) {
+                  detailsRef.current.open = true;
+                  detailsRef.current.querySelector("summary")?.focus();
+                }
+              }
+            : undefined,
+        onClearGoal:
+          !capabilities?.observes && capabilities?.clear
+            ? () => {
+                void run("clear");
+              }
+            : undefined,
+      }),
+    [onReady, capabilities, state.kind, run],
+  );
   const closeEditor = () => {
     setEditing(false);
     onEditorClose?.();
@@ -112,17 +126,19 @@ export function ChatGoalControl({
       />
     ) : null;
   const notice =
-    mutation.kind === "pending" ? (
-      <p className="chat-goal-strip__notice" role="status">
-        Updating native Goal...
-      </p>
-    ) : mutation.kind === "refused" || mutation.kind === "outcomeUnknown" ? (
-      <p className="chat-goal-strip__notice" role="alert">
-        {mutation.message}
+    mutation.kind !== "idle" ? (
+      <p
+        className="chat-goal-strip__notice"
+        role={mutation.kind === "pending" ? "status" : "alert"}
+      >
+        {"message" in mutation ? mutation.message : "Updating native Goal..."}
       </p>
     ) : null;
   if (state.kind !== "goal") {
-    if (state.kind === "noGoal" && capabilities?.set)
+    if (
+      capabilities &&
+      (!capabilities.observes || (state.kind === "noGoal" && capabilities.set))
+    )
       return (
         <>
           {editor}

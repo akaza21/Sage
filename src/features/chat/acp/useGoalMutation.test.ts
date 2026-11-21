@@ -27,6 +27,7 @@ function context(runtimeEpoch: string | null = "9"): AcpActionContext {
           runtimeEpoch: runtimeEpoch as never,
           capabilities: capabilitySetFixture({
             goal: {
+              observes: true,
               set: false,
               pause: true,
               resume: false,

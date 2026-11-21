@@ -6,6 +6,9 @@ use crate::contract::{RequiredText, SchemaVersionV1};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GoalCapabilities {
+    /// Goal state is reported by the harness, independently of command support.
+    #[serde(default)]
+    pub observes: bool,
     pub set: bool,
     pub pause: bool,
     pub resume: bool,
@@ -15,11 +18,12 @@ pub struct GoalCapabilities {
 
 impl GoalCapabilities {
     pub fn supported(&self) -> bool {
-        self.set || self.pause || self.resume || self.token_budget || self.clear
+        self.observes || self.set || self.pause || self.resume || self.token_budget || self.clear
     }
 
     pub fn intersect(self, other: Self) -> Self {
         Self {
+            observes: self.observes && other.observes,
             set: self.set && other.set,
             pause: self.pause && other.pause,
             resume: self.resume && other.resume,

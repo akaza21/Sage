@@ -1691,7 +1691,7 @@ fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
         }),
     );
     assert!(
-        matches!(&events[..], [AdapterEvent::Initialized { capabilities }] if capabilities.goal.set && capabilities.goal.clear && !capabilities.goal.pause)
+        matches!(&events[..], [AdapterEvent::Initialized { capabilities }] if capabilities.goal.set && capabilities.goal.clear && !capabilities.goal.observes && !capabilities.goal.pause)
     );
     let session = send(
         &mut sdk,
@@ -1713,6 +1713,41 @@ fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
     channel.publish(&owner);
     let mut runtime = NativeRuntime::new(sdk);
     runtime.attach_goal(owner.clone(), channel.clone());
+    assert_eq!(runtime.goal_state(), Some(&GoalState::Unavailable));
+    assert!(
+        runtime
+            .prepare_goal_command(&GoalAction::ClearExisting)
+            .unwrap()
+    );
+    assert!(
+        matches!(runtime.take_native_rpc_reply(), Some(NativeRpcReply::GoalCommand(command)) if command.input.as_str() == "clear")
+    );
+    assert!(
+        runtime
+            .prepare_goal_command(&GoalAction::Set {
+                objective: "Ship the release".into()
+            })
+            .unwrap()
+    );
+    let Some(NativeRpcReply::GoalCommand(command)) = runtime.take_native_rpc_reply() else {
+        panic!("goal command")
+    };
+    let mut prompt = Prompt::new("command", "/goal Ship the release").unwrap();
+    prompt.command_revision = Some(command.revision);
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "set-unobserved").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        })
+        .unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime.ingest(&frame(json!({"type":"assistant","message":{"id":"goal-confirmation","role":"assistant","content":[{"type":"text","text":"Goal set: Ship the release"}]}})), &Mapper).unwrap();
+    runtime.ingest(&frame(json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn"})), &Mapper).unwrap();
+    assert_eq!(runtime.goal_state(), Some(&GoalState::Unavailable));
+    assert_eq!(channel.snapshot(&owner), Some(GoalState::Unavailable));
     for (value, expected) in [
         (
             json!({"condition":"Ship the release","iterations":3,"set_at":1795305600000_u64,"tokens_at_start":42,"last_reason":"Tests still failing"}),

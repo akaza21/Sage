@@ -13,6 +13,7 @@ impl SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn goal_capabilities(&self) -> GoalCapabilities {
         let supported = self.goals_enabled;
         GoalCapabilities {
+            observes: false,
             set: supported,
             clear: supported,
             ..Default::default()
@@ -26,7 +27,8 @@ impl SdkBridge {
             })
         });
         if self.goals_enabled && matches!(self.goal, GoalState::Unsupported) {
-            self.goal = GoalState::NoGoal;
+            // A listed command does not prove that no goal is set.
+            self.goal = GoalState::Unavailable;
         }
     }
 
