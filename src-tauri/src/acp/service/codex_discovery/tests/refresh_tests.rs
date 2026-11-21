@@ -24,6 +24,47 @@ fn content(account: CodexAccountSnapshot) -> CodexDiscoveryContent {
 }
 
 #[test]
+fn a_refresh_cancelled_before_control_registration_preserves_the_cached_catalog() {
+    let (manager, owner, _joined) = admitted_joined_flight(
+        "refresh-cancel-before-control",
+        CodexDiscoveryDeadline::new().unwrap(),
+    );
+    let root = owner.project_root.as_ref().unwrap().clone_for_test();
+    let mut request = owner.request.clone();
+    manager.discover(owner).unwrap();
+    let digest = manager.registration.refresh().unwrap().binding_digest();
+    request.refresh = true;
+    let refresh = manager
+        .prepare(
+            request.clone(),
+            root.clone_for_test(),
+            CodexDiscoveryDeadline::new().unwrap(),
+        )
+        .unwrap();
+    let cancel = manager.cancellation(&refresh);
+
+    let result = manager.discover_with(refresh, |_, _, _, _, active| {
+        cancel();
+        active.register_cancellation(TestCancellation::new(false))?;
+        unreachable!("cancelled discovery must reject process registration")
+    });
+
+    assert_eq!(result, Err(CodexDiscoveryRunError::Timeout));
+    manager
+        .registration
+        .refresh()
+        .expect("a local timeout is not binding drift");
+    manager
+        .validate_session_model(
+            &root,
+            &request.binding_id,
+            digest,
+            Some(&ModelId::new("modelId", "gpt-joined").unwrap()),
+        )
+        .unwrap();
+}
+
+#[test]
 fn refresh_rereads_the_account_through_the_real_cache_and_coalesces() {
     let (manager, mut first, joined) =
         admitted_joined_flight("account-refresh", CodexDiscoveryDeadline::new().unwrap());

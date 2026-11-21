@@ -42,6 +42,7 @@ impl CodexOperationCancellation for TreeCancellation {
 pub(super) struct PreparedCodexOperation {
     invalidation_epoch: u64,
     class: OperationClass,
+    cancelled: Arc<AtomicBool>,
     _admission: AdmissionLease,
 }
 
@@ -58,6 +59,7 @@ struct OperationSlot {
     class: OperationClass,
     settlement: Settlement,
     cancel_requested: bool,
+    cancelled: Arc<AtomicBool>,
     cancellation: Option<Arc<dyn CodexOperationCancellation>>,
 }
 
@@ -106,7 +108,11 @@ impl ActiveCodexOperation {
             .filter(|slot| slot.cancellation.is_none())
             .ok_or(CodexDiscoveryRunError::Cleanup)?;
         slot.cancellation = Some(cancellation);
-        if slot.cancel_requested || self.gate.shutting_down.load(Ordering::Acquire) {
+        // Local timeout is not binding drift: discovery must preserve shared
+        // catalog authority when this process cannot finish registering.
+        if slot.cancelled.load(Ordering::Acquire) {
+            Err(CodexDiscoveryRunError::Timeout)
+        } else if slot.cancel_requested || self.gate.shutting_down.load(Ordering::Acquire) {
             Err(CodexDiscoveryRunError::Drift)
         } else {
             Ok(())
@@ -189,6 +195,7 @@ impl CodexOperationGate {
         Ok(PreparedCodexOperation {
             invalidation_epoch: self.invalidation_epoch.load(Ordering::Acquire),
             class,
+            cancelled: Arc::new(AtomicBool::new(false)),
             _admission: admission,
         })
     }
@@ -202,6 +209,7 @@ impl CodexOperationGate {
             .active
             .lock()
             .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
+        self.validate_admission(prepared)?;
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
         }
@@ -218,6 +226,7 @@ impl CodexOperationGate {
             id,
             class: prepared.class,
             cancel_requested: false,
+            cancelled: Arc::clone(&prepared.cancelled),
             cancellation: None,
             settlement: Arc::new(Mutex::new(None)),
         });
@@ -237,6 +246,9 @@ impl CodexOperationGate {
         &self,
         prepared: &PreparedCodexOperation,
     ) -> Result<(), CodexDiscoveryRunError> {
+        if prepared.cancelled.load(Ordering::Acquire) {
+            return Err(CodexDiscoveryRunError::Timeout);
+        }
         self.validate_epoch(prepared.invalidation_epoch)
     }
 

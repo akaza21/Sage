@@ -268,9 +268,20 @@ impl CodexDiscoveryManager {
         self.forget_snapshot();
     }
 
-    /// Cancel a timed-out read without discarding the last usable catalog.
-    pub(crate) fn cancel_discovery(&self) {
-        self.gate.invalidate();
+    /// Joined waiters do not own the discovery operation's cancellation.
+    pub(crate) fn cancellation(
+        self: &Arc<Self>,
+        prepared: &PreparedCodexDiscovery,
+    ) -> impl FnOnce() + Send + 'static + use<> {
+        let cancel = prepared
+            .operation
+            .as_ref()
+            .map(|operation| self.gate.cancellation(operation));
+        move || {
+            if let Some(cancel) = cancel {
+                cancel();
+            }
+        }
     }
 
     /// Called when the account changes: a discovery prepared before now can
@@ -975,6 +986,16 @@ mod tests {
         assert!(owner.owns_flight);
         assert!(!joined.owns_flight);
         (manager, owner, joined)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_timed_out_joined_waiter_does_not_cancel_the_owners_discovery() {
+        let (manager, owner, joined) =
+            admitted_joined_flight("joined-timeout", CodexDiscoveryDeadline::new().unwrap());
+        manager.cancellation(&joined)();
+        let response = manager.discover(owner).unwrap();
+        assert_eq!(manager.discover(joined).unwrap(), response);
     }
 
     #[cfg(windows)]

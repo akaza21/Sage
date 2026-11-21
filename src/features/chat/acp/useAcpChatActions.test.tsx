@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 
 import {
   acpProjectionStoreFor,
@@ -20,6 +21,7 @@ import type {
   AcpChatPage,
   CuratedBindingId,
   ProjectGeneration,
+  RuntimeEpoch,
   SageChatId,
   SageProjectId,
 } from "../../../domain/acp";
@@ -134,6 +136,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearMocks();
+  Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   resetHarnessSignInForTest();
   vi.restoreAllMocks();
   useAcpProjectionStore.getState().clear();
@@ -142,6 +146,120 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it.each([100, 200])(
+    "keeps an untimestamped native refusal after a cached read at %i until a later account read succeeds",
+    async (cachedAt) => {
+      vi.spyOn(Date, "now").mockReturnValue(200);
+      useWorkbenchStore.setState({
+        project: {
+          ...useWorkbenchStore.getState().project!,
+          roots: [
+            {
+              id: "root",
+              name: "Root",
+              ordinal: 0,
+              availability: "available",
+              message: null,
+            },
+          ],
+        },
+        harnesses: [
+          {
+            id: "account",
+            name: "Account",
+            description: "",
+            source: "builtIn",
+            installState: "available",
+            transport: "acp",
+            bindingId,
+            accountModelDiscovery: true,
+          },
+        ],
+        selectedHarnessId: "account",
+        harnessAccount: "managedChatgpt",
+        harnessAccountReadStartedAt: cachedAt,
+        harnessDiscoveryPhase: "ready",
+      });
+      function Notices() {
+        const actions = useAcpChatActions();
+        return (
+          <ComposerNoticeSurface
+            workbenchError={null}
+            chatError={actions.error}
+            imageStatus={null}
+            selectedHarnessId="account"
+            discoveryPhase="ready"
+            missingBindingNotice={false}
+            chatAuth={{ page: page(), errorKind: actions.errorKind }}
+          />
+        );
+      }
+      render(<Notices />);
+      await waitFor(() =>
+        expect(harnessSignInStatus("account").state).toBe("signedIn"),
+      );
+      const { result } = renderHook(() => useAcpChatActions());
+      const refusal = deferred<never>();
+      const entered = deferred<void>();
+      mockIPC((command) => {
+        if (command === "send_acp_turn") {
+          entered.resolve();
+          return refusal.promise;
+        }
+        throw new Error(command);
+      });
+      const read =
+        deferred<Awaited<ReturnType<typeof acpHarnessDesktop.discoverCodex>>>();
+      vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementationOnce(
+        () => read.promise,
+      );
+      let checking!: Promise<unknown>;
+      let sending!: Promise<unknown>;
+      act(() => {
+        checking = refreshHarnessSignIn("account");
+        sending = result.current.submit(
+          "Expired credentials",
+          [],
+          bindingId,
+          null,
+        );
+      });
+      await act(async () => {
+        await entered.promise;
+        refusal.reject({
+          kind: "signInRequired",
+          message: "Credentials expired.",
+        });
+        await sending;
+      });
+      expect(result.current.errorKind).toBe("signInRequired");
+      expect(await screen.findByText("Account isn't signed in")).toBeVisible();
+      const account = {
+        projectId: "project-a" as SageProjectId,
+        projectGeneration: "0" as ProjectGeneration,
+        bindingId,
+        rootId: "root",
+        runtimeEpoch: "1" as RuntimeEpoch,
+        account: "managedChatgpt",
+        accountReadStartedAt: 150,
+        models: [],
+        defaultModelId: null,
+      } as Awaited<ReturnType<typeof acpHarnessDesktop.discoverCodex>>;
+      await act(async () => {
+        read.resolve(account);
+        await checking;
+      });
+      expect(result.current.errorKind).toBe("signInRequired");
+      expect(screen.getByText("Account isn't signed in")).toBeVisible();
+      vi.mocked(acpHarnessDesktop.discoverCodex).mockResolvedValueOnce({
+        ...account,
+        accountReadStartedAt: 300,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+      await waitFor(() => expect(result.current.errorKind).toBeNull());
+      expect(screen.queryByText("Account isn't signed in")).toBeNull();
+    },
+  );
   it.each([
     ["managedChatgpt", false],
     ["signedOut", false],

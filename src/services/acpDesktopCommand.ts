@@ -84,7 +84,8 @@ export function safeFailure(value: unknown): AcpCommandFailure {
       };
     }
     if (kind === "signInRequired" && message) {
-      return { kind, message };
+      // Native and WebView clocks share epoch ms; signed-out evidence wins ties.
+      return { kind, message, terminalAt: Date.now() };
     }
     if (
       (kind === "invalidRequest" ||
@@ -117,7 +118,7 @@ export async function invokeAcp<T, Request extends object>(
     throw new AcpDesktopError({
       kind: "unavailable",
       reason: "desktopRuntimeUnavailable",
-      message: "ACP is available only in the Sage desktop runtime.",
+      message: "Sage desktop required.",
     });
   }
 

@@ -35,6 +35,9 @@ use sage_acp_protocol::{
 };
 use sage_domain::chat::ProjectLayoutRequest;
 
+#[cfg(feature = "acp-fixture")]
+mod discovery_timeout_tests;
+
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/bootstrap_pause.rs"]
 mod bootstrap_pause;

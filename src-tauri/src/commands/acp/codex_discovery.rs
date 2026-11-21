@@ -50,9 +50,9 @@ pub(crate) async fn get_codex_discovery_with_deadline(
         .prepare(request, project_root, deadline)
         .map_err(codex_discovery_error)?;
     drop(transition);
-    let discovery_manager = manager.clone();
+    let on_timeout = manager.cancellation(&prepared);
     let task = tauri::async_runtime::spawn_blocking(move || manager.discover(prepared));
-    await_codex_discovery(task, deadline, move || discovery_manager.cancel_discovery()).await
+    await_codex_discovery(task, deadline, on_timeout).await
 }
 
 pub(crate) async fn await_codex_discovery(
