@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import type {
   GitFileMutationRequest,
@@ -91,8 +91,12 @@ beforeEach(async () => {
             ...current,
             changes:
               request.action === "discard"
-                ? current.changes.filter(
-                    (change) => !selected(change.resource.relativePath),
+                ? current.changes.flatMap((change) =>
+                    !selected(change.resource.relativePath)
+                      ? [change]
+                      : change.indexStatus === "unchanged"
+                        ? []
+                        : [{ ...change, worktreeStatus: "unchanged" as const }],
                   )
                 : current.changes.map((change) =>
                     !selected(change.resource.relativePath)
@@ -583,7 +587,7 @@ it.each(["unchanged", "modified"] as const)(
   },
 );
 
-it("caps 300 partially staged files at 300 rendered rows and explains the overflow", () => {
+function renderPartiallyStagedFiles() {
   useWorkbenchStore.setState({
     repositories: {
       roots: [
@@ -603,11 +607,114 @@ it("caps 300 partially staged files at 300 rendered rows and explains the overfl
       elapsedMs: 1,
     },
   });
-  render(<SourceControlView />);
-  expect(
-    screen.getAllByRole("button", { name: /^Open diff for/ }),
-  ).toHaveLength(300);
-  expect(screen.getByText("Change list capped at 300 files.")).toBeVisible();
+  return render(<SourceControlView />);
+}
+
+describe("300 partially staged files", () => {
+  let container: HTMLElement;
+  let staged: HTMLDetailsElement;
+  let changes: HTMLDetailsElement;
+  beforeEach(() => {
+    ({ container } = renderPartiallyStagedFiles());
+    staged = screen
+      .getByText("Staged Changes", { selector: "summary span" })
+      .closest("details")!;
+    changes = screen
+      .getByText("Changes", { selector: "summary span" })
+      .closest("details")!;
+  });
+  const expectBounded = () =>
+    expect(
+      container.querySelectorAll(".source-change-row").length,
+    ).toBeLessThanOrEqual(300);
+  it.each(["Staged Changes", "Changes"])(
+    "pages all 300 files in %s with accurate group counts",
+    (label) => {
+      expect(within(staged).getByText("300")).toBeVisible();
+      expect(within(changes).getByText("300")).toBeVisible();
+      expect(container.querySelectorAll(".source-change-row")).toHaveLength(
+        300,
+      );
+      const group = label === "Staged Changes" ? staged : changes;
+      expect(group.querySelectorAll(".source-change-row")).toHaveLength(150);
+      fireEvent.click(
+        within(group).getByText("Show more", { selector: "button" }),
+      );
+      expectBounded();
+      expect(
+        within(group).queryByLabelText("Open diff for src/file-0.ts"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(group).getByLabelText("Open diff for src/file-299.ts"),
+      ).toBeVisible();
+      fireEvent.click(
+        within(group).getByText("Previous", { selector: "button" }),
+      );
+      expectBounded();
+      expect(
+        within(group).getByLabelText("Open diff for src/file-0.ts"),
+      ).toBeVisible();
+    },
+  );
+
+  it.each(["Staged Changes", "Changes"])(
+    "unmounts collapsed rows in %s and restores them on expansion",
+    async (label) => {
+      const group = label === "Staged Changes" ? staged : changes;
+      fireEvent.click(group.querySelector("summary")!);
+      await waitFor(() =>
+        expect(group.querySelectorAll(".source-change-row")).toHaveLength(0),
+      );
+      expectBounded();
+      fireEvent.click(group.querySelector("summary")!);
+      await waitFor(() =>
+        expect(group.querySelectorAll(".source-change-row")).toHaveLength(150),
+      );
+    },
+  );
+
+  describe("actions on the second page", () => {
+    beforeEach(() => {
+      fireEvent.click(
+        within(changes).getByText("Show more", { selector: "button" }),
+      );
+    });
+    it.each(["stage", "discard"] as const)(
+      "reaches the individual %s action on the second page of 300 partially staged files",
+      async (action) => {
+        if (action === "stage") {
+          fireEvent.click(
+            within(changes).getByLabelText("Stage src/file-299.ts in Root A"),
+          );
+        } else {
+          fireEvent.click(
+            within(changes).getByLabelText(
+              "Discard unstaged changes to src/file-299.ts in Root A",
+            ),
+          );
+          expectBounded();
+          fireEvent.click(
+            within(changes).getByLabelText(
+              "Confirm discard of src/file-299.ts in Root A",
+              { selector: "button" },
+            ),
+          );
+        }
+        await waitFor(() =>
+          expect(within(changes).getByText("299")).toBeVisible(),
+        );
+        expect(within(staged).getByText("300")).toBeVisible();
+        expect(
+          useWorkbenchStore.getState().repositories.roots[0].changes[299],
+        ).toMatchObject({
+          resource: { rootId: root.rootId, relativePath: "src/file-299.ts" },
+          indexStatus: "modified",
+          worktreeStatus: "unchanged",
+        });
+        expectBounded();
+      },
+    );
+  });
 });
 
 afterEach(() => {

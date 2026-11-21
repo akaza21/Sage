@@ -16,6 +16,80 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 #[test]
+fn batch_handles_300_long_literal_paths_beyond_windows_command_line_limit() {
+    let root = std::env::temp_dir().join(format!("sage-git-batch-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "-q"]);
+    let paths: Vec<_> = (0..300)
+        .map(|index| format!("file-{index:03}-{}[ab].txt", "x".repeat(103)))
+        .collect();
+    for path in &paths {
+        fs::write(root.join(path), "base\n").unwrap();
+    }
+    let workspace = Workspace::open("project", "root", &root).unwrap();
+    let selected: Vec<_> = paths
+        .iter()
+        .map(|path| workspace.resource(path).unwrap())
+        .collect();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async {
+        for action in [GitFileMutationAction::Stage, GitFileMutationAction::Unstage] {
+            mutate_paths(&workspace, &selected, action).await.unwrap();
+            let status = crate::status(&workspace).await.unwrap();
+            assert_eq!(status.changes.len(), 300);
+            assert!(status.changes.iter().all(|change| match action {
+                GitFileMutationAction::Stage => change.index_status == "added",
+                _ => change.worktree_status == "untracked" && change.index_status == "unchanged",
+            }));
+        }
+        git(&root, &["add", "."]);
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture",
+                "commit",
+                "-qm",
+                "base",
+            ],
+        );
+        for path in &paths {
+            fs::write(root.join(path), "changed\n").unwrap();
+        }
+        for action in [
+            GitFileMutationAction::Stage,
+            GitFileMutationAction::Unstage,
+            GitFileMutationAction::Discard,
+        ] {
+            let counts = GitCommandCounts::observe(&root);
+            mutate_paths(&workspace, &selected, action).await.unwrap();
+            assert_eq!(counts.count("status"), 1);
+            assert_eq!(
+                counts.count("add") + counts.count("reset") + counts.count("restore"),
+                1
+            );
+            let status = crate::status(&workspace).await.unwrap();
+            if action == GitFileMutationAction::Discard {
+                assert!(status.changes.is_empty());
+                for path in &paths {
+                    assert_eq!(fs::read_to_string(root.join(path)).unwrap(), "base\n");
+                }
+            } else {
+                assert_eq!(status.changes.len(), 300);
+                assert!(status.changes.iter().all(|change| match action {
+                    GitFileMutationAction::Stage =>
+                        change.index_status == "modified" && change.worktree_status == "unchanged",
+                    _ => change.index_status == "unchanged" && change.worktree_status == "modified",
+                }));
+            }
+        }
+    });
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn batch_preserves_literal_paths_untracked_files_and_unborn_unstage() {
     let root = std::env::temp_dir().join(format!("sage-git-batch-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();

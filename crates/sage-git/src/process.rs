@@ -86,6 +86,11 @@ pub struct GitProcessPolicy {
 }
 
 impl GitProcessPolicy {
+    pub(crate) fn with_stdin(mut self, input: Vec<u8>) -> Self {
+        self.stdin = Some(input);
+        self
+    }
+
     pub fn mutation(command_timeout: Duration) -> Self {
         Self {
             stdin: None,

@@ -79,7 +79,7 @@ fn three_hundred_paths_use_one_preflight_one_mutation_and_one_refresh() {
             (GitFileMutationAction::Stage, "add", "modified", "unchanged"),
             (
                 GitFileMutationAction::Unstage,
-                "restore",
+                "reset",
                 "unchanged",
                 "modified",
             ),

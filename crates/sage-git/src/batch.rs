@@ -6,7 +6,7 @@ use sage_workspace::Workspace;
 
 use crate::{
     GitProcessPolicy, budget,
-    mutation::{mutation_paths, path_mutation_arguments, validate_resource_identity},
+    mutation::{mutation_paths, validate_resource_identity},
 };
 
 pub const MAX_BATCH_PATHS: usize = 300;
@@ -60,13 +60,26 @@ pub async fn mutate_paths(
             paths.insert(path);
         }
     }
-    let paths: Vec<_> = paths.into_iter().collect();
-    let arguments = path_mutation_arguments(workspace, &paths, action).await?;
+    let mut arguments = match action {
+        GitFileMutationAction::Stage => vec!["add"],
+        // Path-limited reset also handles an unborn HEAD, without a separate probe.
+        GitFileMutationAction::Unstage => vec!["reset", "--quiet"],
+        GitFileMutationAction::Discard => vec!["restore", "--worktree"],
+        _ => unreachable!("batch action was validated"),
+    };
+    arguments.extend(["--pathspec-from-file=-", "--pathspec-file-nul"]);
+    // The contained runner supplies --literal-pathspecs. Keep the bounded paths
+    // off the command line, which has a 32,767-character limit on Windows.
+    let input = paths.into_iter().fold(Vec::new(), |mut input, path| {
+        input.extend_from_slice(path.as_bytes());
+        input.push(0);
+        input
+    });
     let output = crate::cli::run_git_with_policy(
         workspace.root(),
         &arguments,
         64 * 1024,
-        GitProcessPolicy::mutation(budget::MUTATION),
+        GitProcessPolicy::mutation(budget::MUTATION).with_stdin(input),
     )
     .await?;
     // A multi-path restore may change earlier paths before a later path fails.
