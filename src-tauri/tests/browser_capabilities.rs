@@ -121,7 +121,32 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
             "{command}"
         );
     }
-    assert!(source.contains("browser::ipc_guard::admits_main_invoke(webview.label(), &url)"));
+    // Keep admission and its rejecting early return contiguous with registration,
+    // so a present but bypassed guard cannot satisfy the contract.
+    let guarded_registration = r#"
+        pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
+            let webview = invoke.message.webview_ref();
+            let admitted = webview.url().is_ok_and(|url| {
+                browser::ipc_guard::admits_main_invoke(
+                    webview.label(),
+                    &url,
+                    webview.app_handle().config().build.dev_url.as_ref(),
+                )
+            });
+            if !admitted {
+                invoke
+                    .resolver
+                    .reject("Sage commands are available only to the main app webview");
+                return true;
+            }
+            let handle: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+    "#;
+    assert!(
+        source
+            .split_whitespace()
+            .collect::<String>()
+            .contains(&guarded_registration.split_whitespace().collect::<String>())
+    );
     assert!(
         source.contains(".reject(\"Sage commands are available only to the main app webview\")")
     );
