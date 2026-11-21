@@ -173,7 +173,7 @@ export const createHarnessSlice: StateCreator<
     }
     try {
       if (usesAccountModelDiscovery) {
-        if (harness.installState !== "available" || !harness.bindingId) {
+        if (!harness.bindingId) {
           throw new Error(
             "This account-model binding is not installed and admitted yet.",
           );
@@ -200,10 +200,8 @@ export const createHarnessSlice: StateCreator<
         ) {
           return;
         }
-        const models = response.models.map((model) => ({
-          ...model,
-          effortLevels: model.effortLevels?.slice(),
-        }));
+        // The desktop decoder already owns a fresh, validated catalog.
+        const models = response.models.slice();
         // Signed out, the catalog is still listed; sign-in gates a send.
         set({
           harnessAccount: response.account,

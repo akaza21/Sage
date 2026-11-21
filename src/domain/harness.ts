@@ -113,7 +113,7 @@ export interface ModelOption {
   description?: string;
   isDefault?: boolean;
   contextWindow?: number;
-  effortLevels?: string[];
+  effortLevels?: readonly string[];
 }
 
 /** Presentation-only mark selection; never selects protocol behavior. */

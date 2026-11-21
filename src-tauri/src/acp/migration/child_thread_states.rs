@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/031_acp_child_thr
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentChildThreadStates | SchemaClass::CurrentPrivateProjects => {
+        SchemaClass::CurrentChildThreadStates
+        | SchemaClass::CurrentPrivateProjects
+        | SchemaClass::CurrentSignInEvidenceIndexes => {
             return Ok(());
         }
         SchemaClass::CurrentSessionCapabilities => {}

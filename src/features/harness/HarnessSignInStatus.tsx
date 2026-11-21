@@ -61,8 +61,20 @@ export function ComposerHarnessSignInNotice({
   const recoveryState = recoveryId
     ? harnessSignInStatus(recoveryId).state
     : null;
+  const accountReadStartedAt = recoveryId
+    ? harnessSignInStatus(recoveryId).evidenceAt
+    : null;
+  const receivedAt = recovery?.receivedAt;
+  const awaitingFreshRead =
+    receivedAt != null &&
+    (accountReadStartedAt == null || accountReadStartedAt <= receivedAt);
   useEffect(() => {
-    if (!recoveryId || recoveryState !== "signedIn" || !scope) {
+    if (
+      !recoveryId ||
+      recoveryState !== "signedIn" ||
+      !scope ||
+      awaitingFreshRead
+    ) {
       completed.current = null;
       return;
     }
@@ -73,7 +85,7 @@ export function ComposerHarnessSignInNotice({
       completed.current = scope;
       onSignedIn?.();
     }
-  }, [onSignedIn, recoveryId, recoveryState, scope]);
+  }, [onSignedIn, recoveryId, recoveryState, scope, awaitingFreshRead]);
   if (refusal && (!recoveryId || recoveryState === "unsupported"))
     return (
       <div className="composer__error" role="alert">
@@ -83,7 +95,7 @@ export function ComposerHarnessSignInNotice({
   const harness =
     needsSignIn.find((entry) => entry.id === (recoveryId ?? harnessId)) ??
     (recoveryId &&
-    recoveryState !== "signedIn" &&
+    (recoveryState !== "signedIn" || awaitingFreshRead) &&
     recoveryState !== "unsupported"
       ? useWorkbenchStore
           .getState()

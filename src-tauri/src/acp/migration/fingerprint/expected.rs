@@ -379,31 +379,32 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             .pragma_update(None, "user_version", capabilities)
             .db()?;
     }
-    let states = super::super::child_thread_states::VERSION;
-    if version >= states {
-        expected
-            .execute_batch(super::super::child_thread_states::SQL)
-            .db()?;
-        expected
-            .execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
-                [states],
-            )
-            .db()?;
-        expected.pragma_update(None, "user_version", states).db()?;
-    }
-    let private = super::super::private_projects::VERSION;
-    if version >= private {
-        expected
-            .execute_batch(super::super::private_projects::SQL)
-            .db()?;
-        expected
-            .execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
-                [private],
-            )
-            .db()?;
-        expected.pragma_update(None, "user_version", private).db()?;
+    for (migration_version, sql) in [
+        (
+            super::super::child_thread_states::VERSION,
+            super::super::child_thread_states::SQL,
+        ),
+        (
+            super::super::private_projects::VERSION,
+            super::super::private_projects::SQL,
+        ),
+        (
+            super::super::sign_in_evidence_indexes::VERSION,
+            super::super::sign_in_evidence_indexes::SQL,
+        ),
+    ] {
+        if version >= migration_version {
+            expected.execute_batch(sql).db()?;
+            expected
+                .execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+                    [migration_version],
+                )
+                .db()?;
+            expected
+                .pragma_update(None, "user_version", migration_version)
+                .db()?;
+        }
     }
     Ok(expected)
 }

@@ -16,7 +16,12 @@ export type ComposerStatusNoticeProps = Pick<
 > & {
   imageStatus: string | null;
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
-  authRecovery?: { harnessId: string; scope: string; onSignedIn: () => void };
+  authRecovery?: {
+    harnessId: string;
+    scope: string;
+    receivedAt?: number | null;
+    onSignedIn: () => void;
+  };
 };
 
 export function unexplainedMissingBinding(

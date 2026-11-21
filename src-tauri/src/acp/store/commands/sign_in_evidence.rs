@@ -2,6 +2,21 @@
 use super::super::{StoreError, facts};
 use rusqlite::{Connection, OptionalExtension, params};
 
+const REFUSAL_SQL: &str = "SELECT created_at FROM session_facts WHERE project_id=?1 AND chat_id=?2
+         AND kind='commandSignInRefusal' AND json_extract(payload_json,'$.clientIntentId')=?3 LIMIT 1";
+const TERMINAL_SQL: &str = "SELECT terminal_at FROM turns
+         WHERE project_id=?1 AND chat_id=?2 AND client_intent_id=?3 AND session_id=?4 AND terminal_at IS NOT NULL
+         UNION ALL
+         SELECT terminal_at FROM agent_sessions
+         WHERE project_id=?1 AND chat_id=?2 AND id=?4 AND terminal_at IS NOT NULL
+           AND EXISTS(SELECT 1 FROM session_facts WHERE project_id=?1 AND chat_id=?2 AND session_id=?4
+             AND kind IN ('sessionStartIntent','sessionActivateIntent')
+             AND json_extract(payload_json,'$.clientIntentId')=?3)
+         LIMIT 1";
+const SESSION_SQL: &str = "SELECT session_id FROM session_facts WHERE project_id=?1 AND chat_id=?2
+             AND kind IN ('sessionStartIntent','sessionActivateIntent')
+             AND json_extract(payload_json,'$.clientIntentId')=?3 LIMIT 1";
+
 pub(crate) struct RefusalCommand<'a> {
     pub project_id: &'a str,
     pub chat_id: &'a str,
@@ -15,24 +30,9 @@ pub(crate) fn command_terminal_at(
     now_millis: i64,
 ) -> Result<i64, StoreError> {
     let transaction = connection.transaction()?;
-    let original = transaction.query_row(
-        "SELECT created_at FROM session_facts WHERE project_id=?1 AND chat_id=?2
-         AND kind='commandSignInRefusal' AND json_extract(payload_json,'$.clientIntentId')=?3 LIMIT 1",
-        params![command.project_id, command.chat_id, command.client_intent_id], |row| row.get::<_, i64>(0),
-    ).optional()?;
-    if let Some(original) = original {
-        return Ok(original);
-    }
-    let terminal_at = transaction
+    let original = transaction
         .query_row(
-            "SELECT terminal_at FROM turns
-         WHERE project_id=?1 AND chat_id=?2 AND client_intent_id=?3 AND terminal_at IS NOT NULL
-         UNION ALL
-         SELECT s.terminal_at FROM session_facts f JOIN agent_sessions s ON s.id=f.session_id
-         WHERE f.project_id=?1 AND f.chat_id=?2
-           AND f.kind IN ('sessionStartIntent','sessionActivateIntent')
-           AND json_extract(f.payload_json,'$.clientIntentId')=?3 AND s.terminal_at IS NOT NULL
-         LIMIT 1",
+            REFUSAL_SQL,
             params![
                 command.project_id,
                 command.chat_id,
@@ -40,17 +40,16 @@ pub(crate) fn command_terminal_at(
             ],
             |row| row.get::<_, i64>(0),
         )
-        .optional()?
-        .unwrap_or(now_millis);
-
-    // Configuration commands need no terminal Turn or Session. Persist their
-    // own terminal fact through the same capacity-accounted native ledger.
+        .optional()?;
+    if let Some(original) = original {
+        return Ok(original);
+    }
+    // Start requests have no session ID yet. Resolve the sparse command intent
+    // once, then use primary/unique keys for the terminal resource itself.
     let session_id = match command.session_id {
         Some(id) => id.to_owned(),
         None => transaction.query_row(
-            "SELECT session_id FROM session_facts WHERE project_id=?1 AND chat_id=?2
-             AND kind IN ('sessionStartIntent','sessionActivateIntent')
-             AND json_extract(payload_json,'$.clientIntentId')=?3 LIMIT 1",
+            SESSION_SQL,
             params![
                 command.project_id,
                 command.chat_id,
@@ -59,6 +58,22 @@ pub(crate) fn command_terminal_at(
             |row| row.get::<_, String>(0),
         )?,
     };
+    let terminal_at = transaction
+        .query_row(
+            TERMINAL_SQL,
+            params![
+                command.project_id,
+                command.chat_id,
+                command.client_intent_id,
+                session_id,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .unwrap_or(now_millis);
+
+    // Configuration commands need no terminal Turn or Session. Persist their
+    // own terminal fact through the same capacity-accounted native ledger.
     let revision = transaction.query_row(
         "SELECT projection_revision FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3",
         params![command.project_id, command.chat_id, session_id], |row| row.get::<_, i64>(0),
@@ -89,6 +104,77 @@ mod tests {
             client_intent_id: intent,
             session_id: Some("session-one"),
         }
+    }
+    #[test]
+    fn refusal_evidence_seeks_its_command_amid_unrelated_history() {
+        let mut connection = crate::acp::store::tests::setup();
+        connection
+            .execute_batch(include_str!(
+                "../../../../migrations/033_sign_in_evidence_indexes.sql"
+            ))
+            .unwrap();
+        connection.execute_batch(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+             INSERT INTO session_facts(project_id,chat_id,session_id,sequence,kind,payload_json)
+             SELECT 'project-one','chat-one','session-one',x,'adapterBatch','{}' FROM n;
+             INSERT INTO session_facts(project_id,chat_id,session_id,sequence,kind,payload_json)
+             VALUES('project-one','chat-one','session-one',10001,'sessionStartIntent','{\"clientIntentId\":\"start\"}');
+             UPDATE agent_sessions SET terminal_at=150;"
+        ).unwrap();
+        let mut start = command("start");
+        start.session_id = None;
+        assert_eq!(
+            command_terminal_at(&mut connection, start, 400).unwrap(),
+            150
+        );
+        assert_eq!(
+            command_terminal_at(&mut connection, command("start"), 600).unwrap(),
+            150
+        );
+        assert_eq!(
+            command_terminal_at(&mut connection, command("config"), 700).unwrap(),
+            700
+        );
+        for (sql, index) in [
+            (REFUSAL_SQL, "idx_session_facts_sign_in_refusal"),
+            (SESSION_SQL, "idx_session_facts_session_intent"),
+        ] {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap();
+            let plan = statement
+                .query_map(params!["project-one", "chat-one", "start"], |row| {
+                    row.get::<_, String>(3)
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert!(
+                plan.iter().any(|step| step.contains("SEARCH")
+                    && step.contains(index)
+                    && step.contains("<expr>=")),
+                "{plan:?}"
+            );
+            assert!(
+                !plan.iter().any(|step| step.starts_with("SCAN")),
+                "{plan:?}"
+            );
+        }
+        let mut statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {TERMINAL_SQL}"))
+            .unwrap();
+        let plan = statement
+            .query_map(
+                params!["project-one", "chat-one", "start", "session-one"],
+                |row| row.get::<_, String>(3),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            !plan.iter().any(|step| step.starts_with("SCAN")),
+            "{plan:?}"
+        );
     }
     #[test]
     fn command_refusal_is_persisted_once_and_replays_its_original_terminal_time() {

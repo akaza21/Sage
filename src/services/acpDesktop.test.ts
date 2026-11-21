@@ -214,6 +214,14 @@ const cancelRequest: CancelAcpTurnRequest = {
 };
 
 describe("safeFailure", () => {
+  it("keeps an undurable refusal's terminal time absent", () => {
+    expect(
+      safeFailure({ kind: "signInRequired", message: "Sign in." }),
+    ).toEqual({
+      kind: "signInRequired",
+      message: "Sign in.",
+    });
+  });
   it("preserves the distinct Steer outcome unknown conflict", () => {
     expect(
       safeFailure({

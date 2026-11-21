@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/032_private_chat_
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentPrivateProjects => return Ok(()),
+        SchemaClass::CurrentPrivateProjects | SchemaClass::CurrentSignInEvidenceIndexes => {
+            return Ok(());
+        }
         SchemaClass::CurrentChildThreadStates => {}
         _ => return invalid("private projects require the exact child thread states schema"),
     }

@@ -53,6 +53,7 @@ export interface ChatOwnershipSlice {
       error: string | null;
       errorKind?: AcpCommandFailure["kind"] | null;
       errorBindingId?: string | null;
+      errorReceivedAt?: number | null;
       modeError?: string | null;
       modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
       modeChanging?: boolean;
@@ -213,6 +214,7 @@ export const createChatOwnershipSlice: StateCreator<
         : {
             errorKind: actionState.errorKind,
             errorBindingId: actionState.errorBindingId ?? null,
+            errorReceivedAt: actionState.errorReceivedAt ?? null,
           }),
       modeError:
         actionState.modeError === undefined

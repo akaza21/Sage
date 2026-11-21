@@ -28,6 +28,7 @@ mod session_capabilities;
 mod session_facts_turn_index;
 mod session_resume_link;
 mod session_scope;
+mod sign_in_evidence_indexes;
 mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;

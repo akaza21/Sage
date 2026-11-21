@@ -66,6 +66,7 @@ function ChatSignInNotices({
         signInRequired && harness
           ? {
               harnessId: harness.id,
+              receivedAt: commandRefusal ? refusal?.errorReceivedAt : null,
               scope: JSON.stringify([
                 projectId,
                 epoch,

@@ -34,6 +34,10 @@ import { clearChatSignInError } from "../chatSignInRecovery";
 import { ChatHarnessControls } from "../ChatHarnessControls";
 import { ComposerNoticeSurface } from "../ChatSignInNotices";
 import {
+  HarnessAccountMenu,
+  ComposerHarnessSignInNotice,
+} from "../../harness/HarnessSignInStatus";
+import {
   harnessSignInStatus,
   refreshHarnessSignIn,
   resetHarnessSignInForTest,
@@ -146,10 +150,10 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
-  it.each([100, 200])(
-    "keeps an untimestamped native refusal after a cached read at %i until a later account read succeeds",
-    async (cachedAt) => {
-      vi.spyOn(Date, "now").mockReturnValue(200);
+  it.each(["read before delivery", "read after delivery"])(
+    "keeps an untimestamped native refusal local (%s) until a fresh read succeeds",
+    async (ordering) => {
+      vi.spyOn(Date, "now").mockReturnValue(400);
       useWorkbenchStore.setState({
         project: {
           ...useWorkbenchStore.getState().project!,
@@ -177,7 +181,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
         ],
         selectedHarnessId: "account",
         harnessAccount: "managedChatgpt",
-        harnessAccountReadStartedAt: cachedAt,
+        harnessAccountReadStartedAt: 100,
         harnessDiscoveryPhase: "ready",
       });
       function Notices() {
@@ -195,6 +199,10 @@ describe("useAcpChatActions per-Chat ownership", () => {
         );
       }
       render(<Notices />);
+      render(<HarnessAccountMenu avatar="A" />);
+      const otherChat = render(
+        <ComposerHarnessSignInNotice harnessId="account" />,
+      );
       await waitFor(() =>
         expect(harnessSignInStatus("account").state).toBe("signedIn"),
       );
@@ -224,16 +232,6 @@ describe("useAcpChatActions per-Chat ownership", () => {
           null,
         );
       });
-      await act(async () => {
-        await entered.promise;
-        refusal.reject({
-          kind: "signInRequired",
-          message: "Credentials expired.",
-        });
-        await sending;
-      });
-      expect(result.current.errorKind).toBe("signInRequired");
-      expect(await screen.findByText("Account isn't signed in")).toBeVisible();
       const account = {
         projectId: "project-a" as SageProjectId,
         projectGeneration: "0" as ProjectGeneration,
@@ -241,23 +239,51 @@ describe("useAcpChatActions per-Chat ownership", () => {
         rootId: "root",
         runtimeEpoch: "1" as RuntimeEpoch,
         account: "managedChatgpt",
-        accountReadStartedAt: 150,
+        accountReadStartedAt: 300,
         models: [],
         defaultModelId: null,
       } as Awaited<ReturnType<typeof acpHarnessDesktop.discoverCodex>>;
-      await act(async () => {
+      const finishRead = async () => {
         read.resolve(account);
         await checking;
+      };
+      await act(async () => {
+        await entered.promise;
+        // Native persistence failed before discovery; IPC delivery can lag it.
+        if (ordering === "read before delivery") await finishRead();
+        refusal.reject({
+          kind: "signInRequired",
+          message: "Credentials expired.",
+        });
+        await sending;
+        if (ordering === "read after delivery") await finishRead();
       });
       expect(result.current.errorKind).toBe("signInRequired");
-      expect(screen.getByText("Account isn't signed in")).toBeVisible();
+      expect(await screen.findByText("Recheck Account sign-in")).toBeVisible();
+      expect(harnessSignInStatus("account")).toMatchObject({
+        state: "signedIn",
+        evidenceAt: 300,
+      });
+      expect(
+        screen.queryByLabelText("Harness sign-in needs attention"),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Sign in to Account" }),
+      ).toBeEnabled();
+      expect(otherChat.container).toBeEmptyDOMElement();
+      vi.mocked(acpHarnessDesktop.discoverCodex).mockResolvedValueOnce(account);
+      await act(async () => {
+        await refreshHarnessSignIn("account");
+      });
+      expect(result.current.errorKind).toBe("signInRequired");
+      expect(screen.getByText("Recheck Account sign-in")).toBeVisible();
       vi.mocked(acpHarnessDesktop.discoverCodex).mockResolvedValueOnce({
         ...account,
-        accountReadStartedAt: 300,
+        accountReadStartedAt: 500,
       });
       fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
       await waitFor(() => expect(result.current.errorKind).toBeNull());
-      expect(screen.queryByText("Account isn't signed in")).toBeNull();
+      expect(screen.queryByText("Recheck Account sign-in")).toBeNull();
     },
   );
   it.each([
