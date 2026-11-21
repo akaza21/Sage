@@ -1,11 +1,4 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
@@ -26,7 +19,7 @@ afterEach(() => {
   resetBrowserDesktopForTests();
 });
 
-it("stops after one failed automatic draft load and waits for explicit Retry", async () => {
+it("stops after one failed automatic draft load without adding failure UI or an unhandled rejection", async () => {
   resetBrowserDesktopForTests();
   await useWorkbenchStore.getState().initialize();
   await useWorkbenchStore.getState().createProject({
@@ -34,12 +27,11 @@ it("stops after one failed automatic draft load and waits for explicit Retry", a
     sourceTokens: [],
   });
   let attempts = 0;
-  let allowedAttempts = 1;
   const unsubscribe = useWorkbenchStore.subscribe((state, previous) => {
     if (state.newChatDraftOpening && !previous.newChatDraftOpening) {
       attempts += 1;
       // Fail immediately on a runaway load, before it can starve the runner.
-      expect(attempts).toBeLessThanOrEqual(allowedAttempts);
+      expect(attempts).toBeLessThanOrEqual(1);
     }
   });
   const unhandled: unknown[] = [];
@@ -56,11 +48,10 @@ it("stops after one failed automatic draft load and waits for explicit Retry", a
 
   try {
     const mounted = render(<Center />);
-    const failure = await screen.findByRole("alert", {
-      name: "New chat failed to load",
-    });
     await settleLazyModules();
-    expect(failure).toHaveTextContent("New chat could not be loaded.");
+    expect(
+      screen.queryByRole("alert", { name: "New chat failed to load" }),
+    ).not.toBeInTheDocument();
     expect(attempts).toBe(1);
     expect(useWorkbenchStore.getState().newChatDraft).toBeNull();
 
@@ -69,17 +60,6 @@ it("stops after one failed automatic draft load and waits for explicit Retry", a
     await settleLazyModules();
     expect(attempts).toBe(1);
 
-    allowedAttempts = 2;
-    fireEvent.click(
-      within(
-        screen.getByRole("alert", { name: "New chat failed to load" }),
-      ).getByRole("button", { name: "Retry" }),
-    );
-    await settleLazyModules();
-    expect(attempts).toBe(2);
-    expect(
-      screen.getByRole("alert", { name: "New chat failed to load" }),
-    ).toBeVisible();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

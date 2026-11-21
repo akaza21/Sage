@@ -68,9 +68,6 @@ export function AgentChatPanes({
   const draftOpened = useWorkbenchStore(
     (state) => state.agentCenter === "draft",
   );
-  const draftLoadFailed = useWorkbenchStore(
-    (state) => state.newChatDraftOpenOutcome === "failed",
-  );
   useEffect(
     () =>
       visible
@@ -250,25 +247,7 @@ export function AgentChatPanes({
     return (
       <Activity mode={visible ? "visible" : "hidden"}>
         <div className="active-canvas" role="tabpanel">
-          {draftLoadFailed ? (
-            <section role="alert" aria-label="New chat failed to load">
-              <p>New chat could not be loaded.</p>
-              <button
-                type="button"
-                onClick={() =>
-                  void useWorkbenchStore
-                    .getState()
-                    .openNewChatDraft(
-                      project?.isInternal ? undefined : project?.id,
-                    )
-                }
-              >
-                Retry
-              </button>
-            </section>
-          ) : (
-            <ChatSurface />
-          )}
+          <ChatSurface />
         </div>
       </Activity>
     );
