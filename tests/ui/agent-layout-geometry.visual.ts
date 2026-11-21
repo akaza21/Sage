@@ -299,6 +299,24 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   expect(await backgroundColor(composer.locator(".composer__harness"))).toBe(
     "rgba(0, 0, 0, 0)",
   );
+
+  // The chat's harness is no longer among the discovered candidates while
+  // others are still listed (detecting): the trigger shows the generic
+  // harness mark, never a candidate's brand and never a settings gear.
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        id: `${harness.id}-other`,
+        brand: "claude",
+        installState: "detecting",
+      })),
+    });
+  });
+  await expect(logo).toHaveAttribute("data-harness-icon", "generic");
+  await expect(trigger.locator(".lucide-settings")).toHaveCount(0);
 });
 
 test("a long harness name shows whole or not at all as the composer narrows", async ({
