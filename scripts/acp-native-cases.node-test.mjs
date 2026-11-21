@@ -219,19 +219,33 @@ test("curated Codex journeys hydrate Models and Goal before the first turn", () 
     new URL("../src-tauri/src/acp/fixture/cases.rs", import.meta.url),
     "utf8",
   );
-  const cases = [...source.matchAll(/r#"(\[.*?\])"#/gu)]
-    .map((match) => JSON.parse(match[1]))
-    .filter((steps) => steps.some(({ kind }) => kind === "codexTurnStart"));
-  // Includes the partial-turn-at-shutdown journey's hydrated first turn.
-  assert.equal(cases.length, 7);
-  for (const steps of cases) {
-    assert.deepEqual(steps.slice(4, 9), [
-      { op: "awaitClient", kind: "codexModelList" },
-      { op: "emitKnownFrame", shape: "codexModelListResult" },
-      { op: "awaitClient", kind: "codexGoalGet" },
-      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
-      { op: "awaitClient", kind: "codexTurnStart" },
-    ]);
+  const cases = [...source.matchAll(/"([^"]+)",\s+r#"(\[.*?\])"#/gu)]
+    .map((match) => ({ id: match[1], steps: JSON.parse(match[2]) }))
+    .filter(({ steps }) => steps.some(({ kind }) => kind === "codexTurnStart"));
+  // Includes private Chat startup and the partial shutdown journey's first turn.
+  assert.equal(cases.length, 8);
+  assert.deepEqual(cases.map(({ id }) => id).sort(), [
+    "characterization-browser-bootstrap",
+    "characterization-cancel-reuse",
+    "characterization-resume-turn-success",
+    "characterization-two-turn-success",
+    "codex-item-completed-then-exit",
+    "codex-journey-turn-success",
+    "codex-partial-turn-at-shutdown",
+    "private-chat-cwd",
+  ]);
+  for (const { id, steps } of cases) {
+    assert.deepEqual(
+      steps.slice(4, 9),
+      [
+        { op: "awaitClient", kind: "codexModelList" },
+        { op: "emitKnownFrame", shape: "codexModelListResult" },
+        { op: "awaitClient", kind: "codexGoalGet" },
+        { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+        { op: "awaitClient", kind: "codexTurnStart" },
+      ],
+      id,
+    );
   }
 });
 
