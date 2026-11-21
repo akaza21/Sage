@@ -21,6 +21,7 @@ import {
 } from "./harnessSignIn";
 
 export { HarnessTurnSignInRecovery } from "./HarnessTurnSignInRecovery";
+export { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
 
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./HarnessSignInMenu"),

@@ -1,6 +1,9 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
-import { HarnessSignInRecovery } from "./HarnessSignInStatus";
+import {
+  HarnessSignInRecovery,
+  SignInRequiredMessage,
+} from "./HarnessSignInStatus";
 
 export function HarnessTurnSignInRecovery({
   page,
@@ -18,9 +21,15 @@ export function HarnessTurnSignInRecovery({
       ? undefined
       : state.harnesses.find((entry) => entry.bindingId === bindingId),
   );
+  if (!harness) return null;
   const owner = useWorkbenchStore.getState().captureChatOwnership(page.chatId);
-  return harness ? (
+  return (
     <HarnessSignInRecovery
+      refusal={
+        <p>
+          <SignInRequiredMessage harness={harness} />
+        </p>
+      }
       recovery={{
         harnessId: harness.id,
         scope: JSON.stringify([page.projectId, page.chatId, turn.id]),
@@ -30,5 +39,5 @@ export function HarnessTurnSignInRecovery({
         },
       }}
     />
-  ) : null;
+  );
 }

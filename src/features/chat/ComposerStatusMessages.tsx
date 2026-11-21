@@ -1,5 +1,4 @@
 import { HarnessSignInPart } from "./lazyParts";
-import { SignInRequiredMessage } from "./HarnessSignInRequiredMessage";
 import {
   ComposerNoticeFrame,
   type ComposerStatusNoticeProps,
@@ -25,7 +24,10 @@ export function ComposerStatusMessages({
           refusal={
             signInHarness ? (
               <div className="composer__error" role="alert">
-                <SignInRequiredMessage harness={signInHarness} />
+                <HarnessSignInPart
+                  part="SignInRequiredMessage"
+                  harness={signInHarness}
+                />
               </div>
             ) : null
           }
