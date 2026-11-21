@@ -38,6 +38,15 @@ pub(super) struct TitleRequest {
 }
 
 impl TitleRequest {
+    fn settle_reply(&mut self, id: u64) -> Option<Step> {
+        let index = self
+            .pending
+            .iter()
+            .position(|(pending, _)| *pending == id)?;
+        // Keep the correlation ID so duplicate or late frames stay absorbed.
+        Some(self.pending.remove(index).1)
+    }
+
     pub(super) fn cancel(&mut self) {
         self.cancelled = true;
         if self.thread.is_none() && !self.pending.iter().any(|(_, step)| *step == Step::Start) {
@@ -79,13 +88,16 @@ impl CodexRuntime {
         if request.finished {
             return true;
         }
+        let Some(step) = request.settle_reply(id) else {
+            return true;
+        };
         request.result = Some(None);
-        request.cancel();
         // A malformed allocation or cleanup reply cannot prove remote unload.
-        if request.pending.iter().any(|(pending, step)| {
-            *pending == id && matches!(step, Step::Start | Step::Unsubscribe)
-        }) {
+        if matches!(step, Step::Start | Step::Unsubscribe) {
+            request.cancelled = true;
             request.cleanup_deadline = Some(Instant::now());
+        } else {
+            request.cancel();
         }
         true
     }
@@ -224,14 +236,9 @@ impl CodexRuntime {
             && let Some(id) = value["id"].as_u64()
             && request.ids.contains(&id)
         {
-            let Some(index) = request
-                .pending
-                .iter()
-                .position(|(pending, _)| *pending == id)
-            else {
+            let Some(step) = request.settle_reply(id) else {
                 return true;
             };
-            let (_, step) = request.pending.remove(index);
             if value.get("error").is_some() {
                 tracing::info!(
                     ?step,

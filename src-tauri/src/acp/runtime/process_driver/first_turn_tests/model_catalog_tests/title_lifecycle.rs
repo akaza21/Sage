@@ -36,6 +36,36 @@ fn oversized_title_config_frame_keeps_the_worker_and_local_title() {
 }
 
 #[test]
+fn consumed_title_turn_reply_allows_unsubscribe_and_a_following_foreground_turn() {
+    for frame_bytes in [false, true] {
+        title_lifecycle(Scenario::ConsumedTitleReply {
+            method: "turn/start",
+            frame_bytes,
+        });
+    }
+}
+
+#[test]
+fn consumed_title_start_reply_requires_recovery_for_uncertain_allocation() {
+    for frame_bytes in [false, true] {
+        title_lifecycle(Scenario::ConsumedTitleReply {
+            method: "thread/start",
+            frame_bytes,
+        });
+    }
+}
+
+#[test]
+fn consumed_title_unsubscribe_reply_requires_recovery_for_uncertain_cleanup() {
+    for frame_bytes in [false, true] {
+        title_lifecycle(Scenario::ConsumedTitleReply {
+            method: "thread/unsubscribe",
+            frame_bytes,
+        });
+    }
+}
+
+#[test]
 fn title_cancellation_deadline_releases_capacity_during_an_unfinished_foreground_turn() {
     title_lifecycle(Scenario::Cleanup { observe: true });
 }
@@ -60,8 +90,17 @@ fn partial_title_write_enters_supervisor_recovery_before_any_further_writes() {
 enum Scenario {
     Complete,
     ForegroundAlreadyActive,
-    InvalidTitleReply { frame_bytes: bool, cancelled: bool },
-    Cleanup { observe: bool },
+    InvalidTitleReply {
+        frame_bytes: bool,
+        cancelled: bool,
+    },
+    ConsumedTitleReply {
+        method: &'static str,
+        frame_bytes: bool,
+    },
+    Cleanup {
+        observe: bool,
+    },
     WriteFailure(FrameWriteOutcome),
 }
 
@@ -152,6 +191,57 @@ fn title_lifecycle(scenario: Scenario) {
         let active=active.accept_terminal(&cursor).unwrap_or_else(|_|panic!("accept terminal"));
         let mut reusable=active.try_into_completed(mailbox.as_ref()).unwrap_or_else(|_|panic!("reusable"));
         let mut late_title_reply = None;
+        if let Scenario::ConsumedTitleReply { method: rejected, frame_bytes } = scenario {
+            for method in ["config/read", "thread/start", "turn/start", "thread/unsubscribe"] {
+                reusable.completed.poll_title(method == "thread/unsubscribe",&mut reusable.transport).unwrap();
+                let request = writes.lock().unwrap().last().unwrap().clone();
+                assert_eq!(request["method"],method);
+                let result = if method == rejected {
+                    json!({"oversized": if frame_bytes { json!("x".repeat(1_048_576)) } else { json!(vec![0;513]) }})
+                } else {
+                    match method {
+                        "config/read" => json!({"config":{}}),
+                        "thread/start" => json!({"thread":{"id":"temporary"},"sandbox":{"type":"readOnly"}}),
+                        _ => json!({"turn":{"id":"title-turn"}}),
+                    }
+                };
+                let mut bytes = serde_json::to_vec(&json!({"id":request["id"],"result":result})).unwrap();
+                bytes.push(b'\n');
+                for chunk in bytes.chunks(8192) {
+                    reusable.completed.accept_idle_stdout_chunk(chunk,fixture.now_millis+10,&mut reusable.transport).await.unwrap();
+                }
+                if method == "turn/start" {
+                    reusable.completed.accept_idle_stdout_chunk(b"{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"temporary\",\"turn\":{\"status\":\"completed\"}}}\n",fixture.now_millis+11,&mut reusable.transport).await.unwrap();
+                }
+                if method == rejected {
+                    // A duplicate reply must remain absorbed after its step is settled.
+                    let duplicate = match method {
+                        "thread/start" => json!({"id":request["id"],"error":{"code":-32603,"message":"Late duplicate"}}),
+                        "thread/unsubscribe" => json!({"id":request["id"],"result":{"status":"notLoaded"}}),
+                        _ => json!({"id":request["id"],"result":{"turn":{"id":"late-title-turn"}}}),
+                    };
+                    let mut bytes = serde_json::to_vec(&duplicate).unwrap();bytes.push(b'\n');
+                    late_title_reply = Some(bytes);
+                    break;
+                }
+            }
+            if rejected != "turn/start" {
+                reusable.completed.accept_idle_stdout_chunk(late_title_reply.as_ref().unwrap(),fixture.now_millis+12,&mut reusable.transport).await.unwrap();
+                assert_eq!(reusable.completed.poll_title(true,&mut reusable.transport),Err(HostError::RecoveryRequired));
+                let before = writes.lock().unwrap().len();
+                let (_,reason) = super::super::super::live_runner::drive_for_test(FirstTurnWorkerState::Reusable(Box::new(reusable)),&context).await;
+                assert_ne!(reason,TreeExit::ParentShutdown);
+                assert_eq!(writes.lock().unwrap().len(),before,"uncertain allocation or cleanup must prevent further writes");
+                return;
+            }
+            assert!(reusable.completed.poll_title(true,&mut reusable.transport).unwrap());
+            let unsubscribe = writes.lock().unwrap().last().unwrap().clone();
+            assert_eq!(unsubscribe["method"],"thread/unsubscribe");
+            let mut bytes = serde_json::to_vec(&json!({"id":unsubscribe["id"],"result":{"status":"notLoaded"}})).unwrap();
+            bytes.push(b'\n');
+            reusable.completed.accept_idle_stdout_chunk(&bytes,fixture.now_millis+12,&mut reusable.transport).await.unwrap();
+            assert!(!reusable.completed.poll_title(false,&mut reusable.transport).unwrap());
+        }
         if let Scenario::InvalidTitleReply { frame_bytes, cancelled } = scenario {
             reusable.completed.poll_title(false, &mut reusable.transport).unwrap();
             let request = writes.lock().unwrap().last().unwrap().clone();
@@ -186,7 +276,7 @@ fn title_lifecycle(scenario: Scenario) {
             }
             assert_eq!(result, Ok(false));
         }
-        if cancel_foreground || title_failure.is_some() || matches!(scenario, Scenario::InvalidTitleReply { .. }) {
+        if cancel_foreground || title_failure.is_some() || matches!(scenario, Scenario::InvalidTitleReply { .. } | Scenario::ConsumedTitleReply { .. }) {
             // Start the auxiliary turn, then withhold every cancellation/unload reply.
             let mut answered = writes.lock().unwrap().len();
             for _ in 0..if cancel_foreground { 3 } else { 0 } {
@@ -240,6 +330,22 @@ fn title_lifecycle(scenario: Scenario) {
                 }
                 active.turn.driver.poll_title().unwrap();
                 assert!(active.turn.driver.teardown_cause().is_none());
+                if matches!(scenario, Scenario::ConsumedTitleReply { .. }) {
+                    let prompt = writes.lock().unwrap().last().unwrap().clone();
+                    assert_eq!(prompt["method"],"turn/start");
+                    assert_eq!(prompt["params"]["threadId"],fixture.external_session.as_str());
+                    for event in [
+                        json!({"id":prompt["id"],"result":{"turn":{"id":"following-turn"}}}),
+                        json!({"method":"turn/started","params":{"threadId":fixture.external_session.as_str(),"turn":{"id":"following-turn","status":"inProgress"}}}),
+                        json!({"method":"item/completed","params":{"threadId":fixture.external_session.as_str(),"turnId":"following-turn","item":{"id":"following-answer","type":"agentMessage","text":"Foreground work continues."}}}),
+                        json!({"method":"turn/completed","params":{"threadId":fixture.external_session.as_str(),"turn":{"id":"following-turn","status":"completed"}}}),
+                    ] {
+                        let mut bytes=serde_json::to_vec(&event).unwrap();bytes.push(b'\n');mailbox.try_push_chunk(bytes).unwrap();
+                        active.turn.driver.run_next(mailbox.as_ref()).await.unwrap();
+                    }
+                    assert_eq!(active.turn.driver.latest_durable_turn_cursor().unwrap().state(),TurnState::Completed);
+                    assert!(active.turn.driver.teardown_cause().is_none());
+                }
                 return;
             }
             assert!(writes.lock().unwrap().iter().any(|r| r["method"]=="turn/interrupt"));
