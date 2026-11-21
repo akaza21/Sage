@@ -20,6 +20,9 @@ pub struct WorkbenchTab {
     /// moves `updated_at` but not this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<i64>,
+    /// Native chat discovery policy, separate from attached tab lifetime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_listed: Option<bool>,
     pub resource: Option<ResourceRef>,
     #[serde(default)]
     pub repository: Option<RepositoryRef>,
@@ -83,6 +86,8 @@ pub struct MoveChatRequest {
 pub struct ArchivedChatSummary {
     pub id: String,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_listed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

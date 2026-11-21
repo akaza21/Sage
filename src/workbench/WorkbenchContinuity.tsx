@@ -1,15 +1,14 @@
 import { useEffect, useRef } from "react";
+import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import { useDraftShown } from "./shownAgentChat";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
 import "./harness-browser-mode.css";
 import "./workbench-window-mode.css";
 import {
-  agentCenterChatAction,
+  agentCenterNeedsDraft,
   isAgentArtifactTabKind,
   lastArtifactTabId,
-  type AgentCenterDecision,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
 
@@ -53,56 +52,28 @@ export function EditorContinuityKeeper({
   return null;
 }
 
-function agentCenterAttemptKey(
-  decision: AgentCenterDecision,
-  projectId: string | null,
-): string | null {
-  const scope = projectId ?? "";
-  if (decision.action === "create") return `create:${scope}`;
-  return null;
-}
-
 export function AgentCenterKeeper({
   windowMode,
 }: {
   windowMode: WorkbenchWindowMode;
 }) {
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
+  const focusedChatId = usePinnedAgentChatOwner();
+  const projectId = useWorkbenchStore((state) =>
+    windowMode === "agent" &&
+    state.project &&
+    !state.projectTransitioning &&
+    state.agentCenter !== "draft" &&
+    agentCenterNeedsDraft(state.tabs, state.activeTabId, focusedChatId)
+      ? state.project.id
+      : null,
   );
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const draftShown = useDraftShown();
-  const attemptedRef = useRef<string | null>(null);
-
   useEffect(() => {
-    if (windowMode !== "agent") {
-      attemptedRef.current = null;
-      return;
-    }
-    if (projectTransitioning || draftShown) return;
     const state = useWorkbenchStore.getState();
-    const decision = agentCenterChatAction(state.tabs, activeTabId);
-    if (decision.action === "none") {
-      attemptedRef.current = null;
-      return;
-    }
-    const attemptKey = agentCenterAttemptKey(
-      decision,
-      state.project?.id ?? null,
-    );
-    if (attemptKey === null || attemptedRef.current === attemptKey) return;
-    attemptedRef.current = attemptKey;
-    void state.createChat();
-  }, [
-    windowMode,
-    activeTabId,
-    projectTransitioning,
-    projectGeneration,
-    draftShown,
-  ]);
+    if (projectId && state.project?.id === projectId)
+      void state.openNewChatDraft(
+        state.project.isInternal ? undefined : projectId,
+      );
+  }, [projectId]);
 
   return null;
 }

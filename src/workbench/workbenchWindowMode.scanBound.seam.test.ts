@@ -4,10 +4,10 @@ import type { TabKind } from "../domain/chat";
 import {
   AGENT_CENTER_CHAT_SCAN_LIMIT,
   type AgentCenterScanTab,
-  agentCenterChatAction,
+  agentCenterNeedsDraft,
 } from "./workbenchWindowMode";
 
-describe("agentCenterChatAction scan bounds", () => {
+describe("agentCenterNeedsDraft scan bounds", () => {
   it("scans no more than the 64-tab native layout maximum", () => {
     expect(AGENT_CENTER_CHAT_SCAN_LIMIT).toBe(64);
     const tabs: AgentCenterScanTab[] = Array.from(
@@ -17,9 +17,9 @@ describe("agentCenterChatAction scan bounds", () => {
         kind: index === 64 ? "chat" : "file",
       }),
     );
-    expect(agentCenterChatAction(tabs, null)).toEqual({ action: "create" });
+    expect(agentCenterNeedsDraft(tabs, null)).toBe(true);
     tabs[63] = { id: "chat:63", kind: "chat" };
-    expect(agentCenterChatAction(tabs, null)).toEqual({ action: "none" });
+    expect(agentCenterNeedsDraft(tabs, null)).toBe(false);
   });
 
   it("declares a finite positive scan bound", () => {
@@ -42,9 +42,7 @@ describe("agentCenterChatAction scan bounds", () => {
       kind: "chat",
     };
 
-    expect(agentCenterChatAction(tabs, "file:0")).toEqual({
-      action: "none",
-    });
+    expect(agentCenterNeedsDraft(tabs, "file:0")).toBe(false);
   });
 
   it("falls back to creating a chat when none exists inside the bound", () => {
@@ -57,9 +55,7 @@ describe("agentCenterChatAction scan bounds", () => {
           : { id: `file:${index}`, kind: "file" },
     );
 
-    expect(agentCenterChatAction(tabs, "file:0")).toEqual({
-      action: "create",
-    });
+    expect(agentCenterNeedsDraft(tabs, "file:0")).toBe(true);
   });
 
   it("treats an active chat inside the bound as already centered", () => {
@@ -69,9 +65,7 @@ describe("agentCenterChatAction scan bounds", () => {
       { id: "file:2", kind: "file" },
     ];
 
-    expect(agentCenterChatAction(tabs, "chat:active")).toEqual({
-      action: "none",
-    });
+    expect(agentCenterNeedsDraft(tabs, "chat:active")).toBe(false);
   });
 
   it("never reads a tab beyond the native scan bound", () => {
@@ -95,12 +89,21 @@ describe("agentCenterChatAction scan bounds", () => {
       },
     });
 
-    expect(agentCenterChatAction(guarded, "file:0")).toEqual({
-      action: "create",
-    });
+    expect(agentCenterNeedsDraft(guarded, "file:0")).toBe(true);
   });
 
   it("keeps tab kinds limited to the domain tab-kind union", () => {
     expectTypeOf<AgentCenterScanTab["kind"]>().toEqualTypeOf<TabKind>();
   });
+});
+
+it("opens a draft instead of implicitly choosing a hidden empty chat, while preserving an explicitly open one", () => {
+  const tabs = [
+    { id: "legacy", kind: "chat" as const, chatListed: false },
+    { id: "file", kind: "file" as const },
+  ];
+  expect(agentCenterNeedsDraft(tabs, null)).toBe(true);
+  expect(agentCenterNeedsDraft(tabs, "file")).toBe(true);
+  expect(agentCenterNeedsDraft(tabs, "legacy")).toBe(false);
+  expect(agentCenterNeedsDraft(tabs, "file", "legacy")).toBe(false);
 });

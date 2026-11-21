@@ -508,3 +508,27 @@ it.each([false, true])(
     expect(useWorkbenchStore.getState().tabs).toEqual([]);
   },
 );
+
+it("uses the draft continuity path after project creation without creating a durable default chat", async () => {
+  render(<Workbench />);
+  await settleLazyModules();
+  await act(async () => {
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .createProject({ name: "Fresh project", sourceTokens: [] }),
+    ).toBe(true);
+  });
+  await settleLazyModules();
+  expect(
+    await screen.findByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  const state = useWorkbenchStore.getState();
+  expect(state.newChatDraft?.targetProjectId).toBe(state.project!.id);
+  expect(state.tabs.filter((tab) => tab.kind === "chat")).toEqual([]);
+  const project = screen
+    .getByRole("button", { name: "Project Fresh project" })
+    .closest(".project-entry")!;
+  expect(project.querySelectorAll(".project-chat-row")).toHaveLength(0);
+  expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual([]);
+});

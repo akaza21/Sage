@@ -182,7 +182,7 @@ fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, Sage
     fs::create_dir_all(&root).unwrap();
     let path = directory.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
@@ -328,6 +328,7 @@ fn populated_pair_and_durable_diff_ref_reopen_without_git_or_disk_fallback() {
                     status: None,
                     updated_at: None,
                     finished_at: None,
+                    chat_listed: None,
                     resource: Some(ResourceRef {
                         root_id: root_id.as_str().into(),
                         relative_path: "src/lib.rs".into(),

@@ -64,7 +64,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         std::fs::create_dir_all(&project_root).unwrap();
         let database_path = root.join("sage.db");
         let database = crate::database::open_database(&database_path).unwrap();
-        let project = database.create_project_from_root(&project_root).unwrap();
+        let project = database.create_project_with_chat(&project_root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("fixture-chat").unwrap();
         let now = sage_core::time::now_millis();

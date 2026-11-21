@@ -29,8 +29,6 @@ it.each(["chat-current", "diff:current"])(
     markChatRead("chat-current", 100);
     const item = {
       projectId: "project",
-      projectName: "Project",
-      projectChatCount: 2,
       chat: {
         id: "chat-current",
         title: "Original",
@@ -69,8 +67,6 @@ it.each(["chat-current", "diff:current"])(
 it("lists every recent task to fill the rail, without paging", () => {
   const items = Array.from({ length: 20 }, (_, index) => ({
     projectId: "project",
-    projectName: "Project",
-    projectChatCount: 20,
     chat: {
       id: `chat-${index}`,
       title: `Task ${index}`,

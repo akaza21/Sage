@@ -155,7 +155,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-side-chat-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        database.create_project_from_root(&root).unwrap();
+        database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();
         let parent = snapshot.active_tab_id.clone().unwrap();

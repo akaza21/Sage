@@ -57,10 +57,7 @@ export function ProjectChatNavigation({
   selected,
   hideArchived = false,
   flat = false,
-  projectChatCount,
-  allowArchiveLast = false,
   recent = false,
-  suppressActive = false,
 }: {
   projectId: string;
   chats: AgentRailChat[];
@@ -69,10 +66,7 @@ export function ProjectChatNavigation({
   selected: boolean;
   hideArchived?: boolean;
   flat?: boolean;
-  projectChatCount?: number;
-  allowArchiveLast?: boolean;
   recent?: boolean;
-  suppressActive?: boolean;
 }) {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -179,7 +173,7 @@ export function ProjectChatNavigation({
           );
         }
         const viewed = selected && tab.id === viewedChatId;
-        const focused = !suppressActive && selected && tab.id === activeTabId;
+        const focused = !recent && selected && tab.id === activeTabId;
         const status = parentChatStatus(tab.id, tab.status);
         const unread =
           interactions.unread.has(tab.id) ||
@@ -191,9 +185,6 @@ export function ProjectChatNavigation({
           });
         const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
-        const archiveDisabled =
-          projectTransitioning ||
-          (!allowArchiveLast && (projectChatCount ?? chatTabs.length) <= 1);
         const archiveError =
           rowError?.chatId === tab.id && rowError.action === "archive"
             ? rowError
@@ -298,7 +289,7 @@ export function ProjectChatNavigation({
                         : undefined
                     }
                     title="Archive chat"
-                    disabled={archiveDisabled}
+                    disabled={projectTransitioning}
                     onClick={archive}
                   >
                     <Archive size={14} aria-hidden="true" />
@@ -311,7 +302,7 @@ export function ProjectChatNavigation({
                   pinned={tab.pinned}
                   open={actionMenuChatId === tab.id}
                   disabled={projectTransitioning}
-                  archiveDisabled={archiveDisabled}
+                  archiveDisabled={projectTransitioning}
                   onOpenChange={(open) =>
                     setActionMenuChatId(open ? tab.id : null)
                   }

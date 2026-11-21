@@ -12,6 +12,7 @@ const MAX_TITLE_BYTES = 1_024;
 const MAX_RESPONSE_ELAPSED_MS = 1_000;
 
 export interface ProjectChatSearchRequest {
+  draftChatIds?: string[];
   projectId: string;
   projectGeneration: number;
   expectedTransitionEpoch: number;
@@ -84,6 +85,15 @@ export function validateProjectChatSearchRequest(
     !safeCount(request.expectedTransitionEpoch)
   ) {
     throw new Error("Project chat search requires a valid intent generation");
+  }
+  if (
+    request.draftChatIds &&
+    (request.draftChatIds.length > 128 ||
+      request.draftChatIds.some(
+        (id) => !boundedString(id, MAX_IDENTIFIER_BYTES),
+      ))
+  ) {
+    throw new Error("Project chat search draft IDs exceed their limits");
   }
   const query = request.query.trim();
   if (

@@ -66,7 +66,7 @@ fn preserves_overlapping_root(
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let user = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     let chat = Uuid::new_v4().to_string();
     create(&database, None, &chat).unwrap();
@@ -117,7 +117,7 @@ fn long_private_chat_descendant_cannot_be_registered_as_a_project_root() {
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let user = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     create(&database, None, &Uuid::new_v4().to_string()).unwrap();
     let scope = super::tests::layout(&database);
@@ -126,7 +126,7 @@ fn long_private_chat_descendant_cannot_be_registered_as_a_project_root() {
         .clone();
     let descendant = measured_descendant(&folder, true);
     fs::create_dir_all(&descendant).unwrap();
-    let result = database.create_project_from_root(&descendant);
+    let result = database.create_project_with_chat(&descendant);
     assert!(
         result.is_err(),
         "a long managed descendant must remain private"
@@ -173,7 +173,7 @@ fn round3_cleanup_releases_sqlite_and_rechecks_its_durable_receipt_before_forget
         fs::create_dir_all(root.join("user")).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let user = database
-            .create_project_from_root(&root.join("user"))
+            .create_project_with_chat(&root.join("user"))
             .unwrap();
         let id = Uuid::new_v4().to_string();
         let folder = storage_root(&database).unwrap().join(&id);

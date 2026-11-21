@@ -42,6 +42,12 @@ fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppR
     if let Ok(root) = database.image_artifact_root() {
         sage_images::reconcile_image_artifacts(&database.connection(), root)?;
     }
+    {
+        use crate::project_registry::ProjectRegistryStore;
+        if let Some(project) = database.active_project_id()? {
+            crate::chat_lifecycle::visibility::reopen_project(&database.connection(), &project)?;
+        }
+    }
     Ok(database)
 }
 
@@ -98,7 +104,7 @@ mod tests {
         };
         let reader = database.pinned_reader().unwrap().unwrap();
 
-        database.create_project_from_root(&directory).unwrap();
+        database.create_project_with_chat(&directory).unwrap();
 
         assert_eq!(projects(&database.connection()), 1);
         assert_eq!(projects(&reader), 0);
@@ -303,7 +309,7 @@ mod tests {
             std::env::temp_dir().join(format!("sage-search-reader-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = open_database(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let held = database.chat_search_reader().unwrap().unwrap();
         let shared = database.clone();
         let (send, receive) = std::sync::mpsc::sync_channel(1);
@@ -311,6 +317,7 @@ mod tests {
             let result = crate::chat_search::search_project_chats(
                 &shared,
                 &crate::chat_search::ProjectChatSearchRequest {
+                    draft_chat_ids: Vec::new(),
                     project_id: project.id,
                     project_generation: 0,
                     expected_transition_epoch: 0,

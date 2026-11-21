@@ -22,8 +22,6 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       draft.submission.status !== "released")
       ? draft
       : null;
-  if (!retainedDraft && projectId && projectId !== state.project?.id)
-    return state.createChat(projectId);
   if (!retainedDraft && !state.project)
     return (async () => {
       const created = await state.createChat(null);

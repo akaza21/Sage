@@ -58,7 +58,7 @@ impl Fixture {
         fs::create_dir_all(root.join("src/empty")).unwrap();
         fs::write(root.join("src/closed.rs"), "preserve\n").unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let root_id = project.roots[0].id.clone();
         let layout = ProjectLayoutRequest {
@@ -106,6 +106,7 @@ impl Fixture {
             status: None,
             updated_at: None,
             finished_at: None,
+            chat_listed: None,
             resource: Some(ResourceRef {
                 root_id: self.root_id.clone(),
                 relative_path: "src/empty/ghost.rs".into(),

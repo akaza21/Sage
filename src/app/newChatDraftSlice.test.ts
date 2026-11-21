@@ -332,3 +332,21 @@ it.each<{
     expect(useChatEffortDraft.getState().draft?.effort ?? null).toBe(effort);
   },
 );
+
+it("opens a foreign project's unsent draft without creating a chat or switching projects", async () => {
+  const state = useWorkbenchStore.getState();
+  const sourceId = state.project!.id;
+  expect(await state.createProject({ name: "Target", sourceTokens: [] })).toBe(
+    true,
+  );
+  const targetId = useWorkbenchStore.getState().project!.id;
+  await state.switchProject(sourceId);
+  const before = await ports.project.getBootstrapSnapshot();
+  await state.openNewChatDraft(targetId);
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    projectId: sourceId,
+    targetProjectId: targetId,
+    text: "",
+  });
+  expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
+});

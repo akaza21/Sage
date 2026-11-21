@@ -42,7 +42,7 @@ impl Fixture {
     fn project(&self, name: &str) -> (String, String) {
         let root = self.base.join(name);
         fs::create_dir_all(&root).unwrap();
-        let project = self.database.create_project_from_root(&root).unwrap();
+        let project = self.database.create_project_with_chat(&root).unwrap();
         let chat = self
             .database
             .bootstrap_snapshot()
@@ -268,7 +268,7 @@ fn only_the_chats_the_rail_shows_are_considered() {
         .into_iter()
         .map(|chat| chat.chat_id)
         .collect::<Vec<_>>();
-    let hidden = &chats[rail - 1..=rail];
+    let hidden = &chats[rail..=rail];
     assert_eq!(listed.len(), chats.len() - hidden.len());
     assert!(hidden.iter().all(|chat| !listed.contains(chat)));
     assert!(listed.contains(&chats[0]));

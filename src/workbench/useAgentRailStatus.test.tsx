@@ -22,7 +22,7 @@ afterEach(() => {
 
 function status(state: Parameters<typeof page>[0]): AcpChatStatus {
   const current = page(state);
-  return { ...current, latestTurn: current.turns[0] };
+  return { ...current, chatListed: true, latestTurn: current.turns[0] };
 }
 
 function seed() {

@@ -109,27 +109,13 @@ export function createChatArchiveActions(set: Set, get: Get) {
       [...get().projects, ...get().unscopedChats].find(
         (item) => item.id === sourceProjectId,
       )?.railChats ?? [];
-    const allowEmpty =
-      get().unscopedChats.some((item) => item.id === sourceProjectId) ||
-      (get().project?.id === sourceProjectId &&
-        get().project?.isInternal === true);
     if (
       !initial ||
       !sourceProjectId ||
       get().projectTransitioning ||
-      (!foreign &&
-        (!attachedChats?.some((tab) => tab.id === chatId) ||
-          (attachedChats.length <= 1 && !allowEmpty))) ||
-      (foreign &&
-        (!foreignChats.some((chat) => chat.id === chatId) ||
-          (foreignChats.length <= 1 && !allowEmpty)))
+      (!foreign && !attachedChats?.some((tab) => tab.id === chatId)) ||
+      (foreign && !foreignChats.some((chat) => chat.id === chatId))
     ) {
-      if (
-        (!foreign && attachedChats?.length === 1) ||
-        (foreign && foreignChats.length === 1)
-      ) {
-        set({ error: "The last attached chat cannot be archived" });
-      }
       return false;
     }
     set({ projectTransitioning: true, error: null });
@@ -174,7 +160,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
     }
     let requested: ProjectLayoutRequest;
     try {
-      requested = archiveChatLayout(current, chatId, allowEmpty);
+      requested = archiveChatLayout(current, chatId);
     } catch (error) {
       set({ projectTransitioning: false, error: errorMessage(error) });
       return false;
