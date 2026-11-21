@@ -30,12 +30,16 @@ export const accountChange =
     pending: "checking" | "waiting",
   ) => {
     const scope = authScope(get());
-    if (!scope) return;
+    if (!scope || get().pendingHarnessSignIn) return;
     const requestGeneration = get().harnessRequestGeneration;
     resetHarnessModelCache();
     set(
       pending === "waiting"
-        ? { harnessDiscoveryPhase: pending, harnessDiscoveryError: null }
+        ? {
+            harnessDiscoveryPhase: pending,
+            harnessDiscoveryError: null,
+            pendingHarnessSignIn: scope,
+          }
         : {
             harnessDiscoveryPhase: pending,
             harnessDiscoveryError: null,
@@ -66,6 +70,9 @@ export const accountChange =
         harnessDiscoveryPhase: "error",
         harnessDiscoveryError: errorMessage(error),
       });
+    } finally {
+      if (get().pendingHarnessSignIn === scope)
+        set({ pendingHarnessSignIn: null });
     }
   };
 

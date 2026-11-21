@@ -362,6 +362,30 @@
   gap: 1px;
 }
 
+.harness-account {
+  position: relative;
+  cursor: pointer;
+}
+
+.harness-account__attention {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-circle);
+  background: var(--color-warning);
+}
+
+.harness-account__menu {
+  min-width: 220px;
+}
+
+.harness-account__menu .menu-item {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .agent-rail-identity strong,
 .agent-rail-identity span {
   overflow: hidden;

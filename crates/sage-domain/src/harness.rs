@@ -109,6 +109,15 @@ pub enum HarnessBrand {
 pub struct HarnessSignIn {
     pub command: String,
     pub hint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_check: Option<HarnessSignInCheck>,
+}
+
+/// A curated status/login adapter, never inferred from a display name or ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HarnessSignInCheck {
+    ClaudeCli,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

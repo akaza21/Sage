@@ -15,5 +15,6 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     imported_history::apply(connection)?;
     session_capabilities::apply(connection)?;
     child_thread_states::apply(connection)?;
-    private_projects::apply(connection)
+    private_projects::apply(connection)?;
+    sign_in_evidence_indexes::apply(connection)
 }

@@ -1,6 +1,16 @@
-import { acpDesktop } from "../../services/acpDesktop";
+import {
+  signInHarnesses,
+  signInProvider,
+  subscribeAccountSignIn,
+} from "./harnessSignInProvider";
+import { useWorkbenchStore } from "../../app/store";
+import {
+  harnessSignInFailures,
+  harnessSignInEvidence,
+  rememberSignInEvidence,
+} from "../../services/acpHarnessDesktop";
 
-/** The native CLI owns sign-in truth; this bounded cache serves visible pickers. */
+/** Native account adapters own truth; visible surfaces share this bounded cache. */
 export type HarnessSignInState =
   | "unsupported"
   | "unknown"
@@ -12,19 +22,8 @@ export type HarnessSignInState =
 export interface HarnessSignInStatus {
   state: HarnessSignInState;
   checkedAt: number | null;
+  evidenceAt: number | null;
 }
-
-interface SignInProvider {
-  status: () => Promise<boolean>;
-  start: () => Promise<void>;
-}
-
-const PROVIDERS: Readonly<Record<string, SignInProvider>> = {
-  "claude-code": {
-    status: async () => (await acpDesktop.getClaudeAuthStatus()).loggedIn,
-    start: () => acpDesktop.startClaudeAuthLogin(),
-  },
-};
 
 const STATUS_TTL_MS = 60_000;
 const POLL_INTERVAL_MS = 3_000;
@@ -32,55 +31,141 @@ const POLL_ATTEMPTS = 40;
 const UNSUPPORTED: HarnessSignInStatus = {
   state: "unsupported",
   checkedAt: null,
+  evidenceAt: null,
 };
-const UNKNOWN: HarnessSignInStatus = { state: "unknown", checkedAt: null };
+const UNKNOWN: HarnessSignInStatus = {
+  state: "unknown",
+  checkedAt: null,
+  evidenceAt: null,
+};
 
 const statuses = new Map<string, HarnessSignInStatus>();
+const identities = new Map<string, string>();
 const listeners = new Set<() => void>();
+let unsubscribeAccount: (() => void) | undefined;
+let revision = 0;
+export const harnessSignInRevision = () => revision;
+function notify() {
+  revision += 1;
+  for (const listener of listeners) listener();
+}
 type SignInPoll = {
   resume?: () => void;
   starting?: Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
 };
-// Only curated providers own polls. All visible picker subscribers share one
+// Only installed capability providers own polls. All visible subscribers share one
 // lifetime; suspension retains intent and attempt counts without any timers.
 const polls = new Map<string, SignInPoll>();
 const refreshes = new Map<string, symbol>();
 
+function prune() {
+  let changed = false;
+  for (const [id, key] of identities) {
+    if (key !== signInProvider(id)?.key) {
+      stopPolling(id);
+      statuses.delete(id);
+      identities.delete(id);
+      refreshes.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) notify();
+}
+
 function publish(harnessId: string, status: HarnessSignInStatus) {
+  const provider = signInProvider(harnessId);
+  if (!provider) return;
+  prune();
+  const previous = harnessSignInStatus(harnessId);
+  if (
+    previous.evidenceAt != null &&
+    (status.evidenceAt == null ||
+      status.evidenceAt < previous.evidenceAt ||
+      (status.evidenceAt === previous.evidenceAt &&
+        (status.state !== "signedOut" || previous.state === "signedOut")))
+  )
+    return;
+  if (status.state === "unavailable" && previous.state === "signedOut")
+    status = { ...status, state: "signedOut" };
+  identities.set(harnessId, provider.key);
   statuses.set(harnessId, status);
-  for (const listener of listeners) listener();
+  const bindingId = signInHarnesses().find(
+    (entry) => entry.id === harnessId,
+  )?.bindingId;
+  if (
+    bindingId &&
+    status.evidenceAt != null &&
+    (status.state === "signedIn" ||
+      status.state === "signedOut" ||
+      status.state === "unavailable")
+  ) {
+    if (rememberSignInEvidence(bindingId, status.evidenceAt, status.state))
+      return;
+  }
+  notify();
 }
 
 export function harnessSupportsSignIn(harnessId: string): boolean {
-  return Object.hasOwn(PROVIDERS, harnessId);
+  return Boolean(signInProvider(harnessId));
 }
 
 export function harnessSignInStatus(harnessId: string): HarnessSignInStatus {
-  if (!harnessSupportsSignIn(harnessId)) return UNSUPPORTED;
-  return statuses.get(harnessId) ?? UNKNOWN;
+  const provider = signInProvider(harnessId);
+  if (!provider) return UNSUPPORTED;
+  const status =
+    identities.get(harnessId) === provider.key
+      ? (statuses.get(harnessId) ?? UNKNOWN)
+      : UNKNOWN;
+  const bindingId = signInHarnesses().find(
+    (entry) => entry.id === harnessId,
+  )?.bindingId;
+  const evidence = bindingId && harnessSignInEvidence.get(bindingId);
+  return evidence &&
+    (status.evidenceAt == null || evidence[0] >= status.evidenceAt)
+    ? { ...status, state: evidence[1], evidenceAt: evidence[0] }
+    : status;
 }
 
 export async function refreshHarnessSignIn(
   harnessId: string,
 ): Promise<HarnessSignInState> {
-  const provider = PROVIDERS[harnessId];
+  const provider = signInProvider(harnessId);
   if (!provider) return "unsupported";
+  if (provider.refreshRequirement) return "unavailable";
+  const nativeTransitionEpoch =
+    useWorkbenchStore.getState().nativeTransitionEpoch;
+  prune();
+  identities.set(harnessId, provider.key);
   const request = Symbol();
   refreshes.set(harnessId, request);
-  if (!statuses.has(harnessId))
-    publish(harnessId, { state: "checking", checkedAt: null });
-  let state: HarnessSignInState;
+  if (harnessSignInStatus(harnessId).state === "unknown")
+    publish(harnessId, {
+      state: "checking",
+      checkedAt: null,
+      evidenceAt: null,
+    });
+  let read: { state: HarnessSignInState; accountReadStartedAt: number | null };
   try {
-    state = (await provider.status()) ? "signedIn" : "signedOut";
+    read = await provider.status();
   } catch {
-    state = "unavailable";
+    read = { state: "unavailable", accountReadStartedAt: null };
   }
-  if (refreshes.get(harnessId) === request) {
-    refreshes.delete(harnessId);
-    publish(harnessId, { state, checkedAt: Date.now() });
+  if (refreshes.get(harnessId) === request) refreshes.delete(harnessId);
+  if (
+    signInProvider(harnessId)?.key === provider.key &&
+    useWorkbenchStore.getState().nativeTransitionEpoch === nativeTransitionEpoch
+  ) {
+    publish(harnessId, {
+      state: read.state,
+      checkedAt: Date.now(),
+      evidenceAt: read.accountReadStartedAt,
+    });
+    return read.state === "unavailable" || read.state === "unknown"
+      ? read.state
+      : harnessSignInStatus(harnessId).state;
   }
-  return state;
+  return "unavailable";
 }
 
 function stopPolling(harnessId: string) {
@@ -89,10 +174,12 @@ function stopPolling(harnessId: string) {
 }
 
 export function startHarnessSignIn(harnessId: string): Promise<void> {
+  prune();
   const pending = polls.get(harnessId)?.starting;
   if (pending) return pending;
-  const provider = PROVIDERS[harnessId];
+  const provider = signInProvider(harnessId);
   if (!provider) return Promise.reject(new Error("Sign-in is unavailable."));
+  identities.set(harnessId, provider.key);
   stopPolling(harnessId);
   const owner: SignInPoll = {};
   polls.set(harnessId, owner);
@@ -101,6 +188,14 @@ export function startHarnessSignIn(harnessId: string): Promise<void> {
     .then(() => {
       owner.starting = undefined;
       if (polls.get(harnessId) !== owner) return;
+      if (signInProvider(harnessId)?.key !== provider.key) {
+        stopPolling(harnessId);
+        return;
+      }
+      if (!provider.backgroundCheck) {
+        stopPolling(harnessId);
+        return;
+      }
       let attempts = 0;
       let reading = false;
       const poll = () => {
@@ -130,78 +225,67 @@ export function startHarnessSignIn(harnessId: string): Promise<void> {
 export function subscribeHarnessSignIn(listener: () => void) {
   const wake = !listeners.size;
   listeners.add(listener);
-  if (wake) for (const owner of polls.values()) owner.resume?.();
+  if (wake) {
+    unsubscribeAccount = subscribeAccountSignIn((id, state, evidenceAt) => {
+      publish(id, { state, checkedAt: Date.now(), evidenceAt });
+    }, prune);
+    for (const owner of polls.values()) owner.resume?.();
+  }
   return () => {
     listeners.delete(listener);
     if (!listeners.size) {
+      unsubscribeAccount?.();
+      unsubscribeAccount = undefined;
       for (const owner of polls.values()) clearTimeout(owner.timer);
     }
   };
-}
-
-const SIGN_IN_LABELS: Partial<Record<HarnessSignInState, string>> = {
-  signedIn: "Signed in",
-  signedOut: "Signed out",
-  checking: "Checking sign-in\u2026",
-  unavailable: "Sign-in status unavailable",
-};
-
-export function harnessSignInLabel(state: HarnessSignInState): string | null {
-  return SIGN_IN_LABELS[state] ?? null;
 }
 
 export function resetHarnessSignInForTest() {
   for (const harnessId of [...polls.keys()]) stopPolling(harnessId);
   refreshes.clear();
   statuses.clear();
+  harnessSignInEvidence.clear();
+  identities.clear();
+  unsubscribeAccount?.();
+  unsubscribeAccount = undefined;
   listeners.clear();
 }
 
-export function harnessSignInAction(
+/** All evidence compares native epoch ms, independent of delivery or replay order. */
+export function reportHarnessSignInRequired(
   harnessId: string,
-  harnessName: string,
-  state: HarnessSignInState,
-):
-  { label: string; accessibleLabel: string; onAction: () => void } | undefined {
-  const signIn = state === "signedOut";
-  if (signIn || state === "unavailable" || state === "unknown")
-    return {
-      label: signIn ? "Sign in" : "Check sign-in",
-      accessibleLabel: signIn
-        ? `Sign in to ${harnessName}`
-        : `Check ${harnessName} sign-in`,
-      onAction: () =>
-        void (signIn ? startHarnessSignIn : refreshHarnessSignIn)(
-          harnessId,
-        ).catch(() => undefined),
-    };
+  terminalAt: number,
+) {
+  publish(harnessId, {
+    state: "signedOut",
+    checkedAt: Date.now(),
+    evidenceAt: terminalAt,
+  });
 }
 
-export function ensureHarnessSignInChecked(harnessIds: readonly string[]) {
+export function ensureHarnessSignInChecked(
+  harnessIds: readonly string[],
+  onFocus = false,
+) {
   for (const harnessId of harnessIds) {
-    if (!harnessSupportsSignIn(harnessId) || refreshes.has(harnessId)) continue;
-    const checkedAt = statuses.get(harnessId)?.checkedAt;
-    if (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS)
+    const provider = signInProvider(harnessId);
+    if (!provider || provider.refreshRequirement || refreshes.has(harnessId))
+      continue;
+    const { state, checkedAt } = harnessSignInStatus(harnessId);
+    if (
+      (onFocus && state === "signedOut") ||
+      (provider.backgroundCheck &&
+        (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS))
+    )
       void refreshHarnessSignIn(harnessId);
   }
 }
 
-export interface HarnessSignInDecoration {
-  label: string | null;
-  action: ReturnType<typeof harnessSignInAction>;
+export function harnessesNeedingSignIn() {
+  return signInHarnesses().filter(
+    (harness) => harnessSignInStatus(harness.id).state === "signedOut",
+  );
 }
 
-export function harnessSignInDecorations(
-  harnesses: readonly { id: string; name: string }[],
-): Map<string, HarnessSignInDecoration> {
-  const decorations = new Map<string, HarnessSignInDecoration>();
-  for (const { id, name } of harnesses) {
-    if (!harnessSupportsSignIn(id)) continue;
-    const state = statuses.get(id)?.state ?? "unknown";
-    decorations.set(id, {
-      label: harnessSignInLabel(state),
-      action: harnessSignInAction(id, name, state),
-    });
-  }
-  return decorations;
-}
+harnessSignInFailures.changed = notify;

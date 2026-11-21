@@ -297,6 +297,7 @@ impl HarnessCatalog {
                 sage_domain::harness::HarnessSignIn {
                     command: sign_in.command.into(),
                     hint: sign_in.hint.into(),
+                    status_check: sign_in.status_check,
                 }
             });
             if let Some(discovered) = self.discovered(&definition.id) {
@@ -913,6 +914,11 @@ mod tests {
         let sign_in = codex.sign_in.expect("Codex sign-in guidance");
         assert_eq!(sign_in.command, "codex login");
         assert_eq!(sign_in.hint, "Sign in to your Codex account.");
+        let claude = by_id(&definitions, "claude-code");
+        let value = serde_json::to_value(claude).expect("serialized catalog entry");
+        assert_eq!(value["signIn"]["statusCheck"], "claudeCli");
+        let pi = serde_json::to_value(by_id(&definitions, "pi")).expect("serialized Pi");
+        assert!(pi["signIn"].get("statusCheck").is_none());
         let cursor = by_id(&definitions, "cursor-agent")
             .sign_in
             .expect("Cursor sign-in guidance");

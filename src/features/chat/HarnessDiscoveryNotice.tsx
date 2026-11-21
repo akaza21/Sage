@@ -88,9 +88,6 @@ function ModelDiscoveryNotice({
     (state) => state.projectTransitioning,
   );
   const retry = useWorkbenchStore((state) => state.retryHarnessDiscovery);
-  const requestSignIn = useWorkbenchStore(
-    (state) => state.requestHarnessSignIn,
-  );
   const confirmSignIn = useWorkbenchStore(
     (state) => state.confirmHarnessSignIn,
   );
@@ -106,12 +103,7 @@ function ModelDiscoveryNotice({
   const harnessName = harness.name;
 
   if (phase === "idle") {
-    return (
-      <div className="composer__notice" role="status">
-        Sign-in status for {harnessName} is unknown. Start a conversation to
-        check whether sign-in is required.
-      </div>
-    );
+    return null;
   }
   if (phase === "checking") {
     return (
@@ -121,19 +113,7 @@ function ModelDiscoveryNotice({
     );
   }
   if (phase === "signInRequired") {
-    return (
-      <div className="composer__notice" role="status">
-        Sign in to the account required by {harnessName} to load models.
-        <button
-          className="button button--compact"
-          type="button"
-          disabled={transitioning}
-          onClick={requestSignIn}
-        >
-          Sign in
-        </button>
-      </div>
-    );
+    return null;
   }
   if (phase === "consent") {
     return (

@@ -153,6 +153,65 @@ fn ephemeral_discovery_is_admitted_beside_live_sessions_with_spare_capacity() {
 }
 
 #[test]
+fn scoped_cancellation_preserves_live_admission_and_cancels_only_the_owned_operation() {
+    let gate = CodexOperationGate::new();
+    let live_prepared = gate.prepare_live().unwrap();
+    let live = gate.begin(&live_prepared).unwrap();
+    let live_cancel = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    live.register_cancellation(live_cancel.clone()).unwrap();
+    let prepared = gate.prepare().unwrap();
+    let cancel = gate.cancellation(&prepared);
+    let discovery = gate.begin(&prepared).unwrap();
+    let discovery_cancel = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    discovery
+        .register_cancellation(discovery_cancel.clone())
+        .unwrap();
+
+    cancel();
+
+    assert!(discovery_cancel.requested.load(Ordering::Acquire));
+    assert!(!live_cancel.requested.load(Ordering::Acquire));
+    assert_eq!(
+        gate.validate_admission(&prepared),
+        Err(CodexDiscoveryRunError::Timeout)
+    );
+    assert_eq!(gate.validate_admission(&live_prepared), Ok(()));
+    discovery.settle(Ok(()));
+    live.settle(Ok(()));
+}
+
+#[test]
+fn scoped_cancellation_before_begin_or_after_settlement_never_cancels_replacement_work() {
+    let gate = CodexOperationGate::new();
+    let prepared = gate.prepare().unwrap();
+    gate.cancellation(&prepared)();
+    assert!(matches!(
+        gate.begin(&prepared),
+        Err(CodexDiscoveryRunError::Timeout)
+    ));
+    drop(prepared);
+
+    let prepared = gate.prepare().unwrap();
+    let late_timeout = gate.cancellation(&prepared);
+    gate.begin(&prepared).unwrap().settle(Ok(()));
+    drop(prepared);
+    let replacement = gate.prepare().unwrap();
+    let active = gate.begin(&replacement).unwrap();
+    late_timeout();
+    let cancellation = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    assert_eq!(active.register_cancellation(cancellation.clone()), Ok(()));
+    assert!(!cancellation.requested.load(Ordering::Acquire));
+    assert_eq!(gate.validate_admission(&replacement), Ok(()));
+    active.settle(Ok(()));
+}
+
+#[test]
 fn binding_invalidation_cancels_every_live_operation() {
     let gate = CodexOperationGate::new();
     let cancellations: Vec<_> = (0..2)

@@ -97,7 +97,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     availableBinding,
     harnessStatus,
     foregroundError,
-    signInHarness,
     modeError,
     modeChanging,
     actionBusy,
@@ -216,29 +215,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     ...acpHistory,
     retentionIncomplete: acpRetentionIncomplete,
   });
-  const latestTurn = acpPage?.turns.at(-1);
-  const latestTurnSession = acpPage?.sessions.find(
-    (session) => session.id === latestTurn?.sessionId,
-  );
-  const latestTurnHarness = harnesses.find(
-    (harness) => harness.bindingId === latestTurnSession?.bindingId,
-  );
-  const ownerChatId = chatId ?? acpPage?.chatId ?? activeTabId;
-  const claudeAuthScope = `${project?.id ?? ""}:${epoch}:${ownerChatId ?? ""}:${latestTurn?.id ?? ""}`;
-  const dismissedAuthTurnId = useWorkbenchStore(
-    (state) => state.chatUiById[ownerChatId ?? ""]?.dismissedAuthTurnId,
-  );
-  const authOwner = useWorkbenchStore
-    .getState()
-    .captureChatOwnership(ownerChatId ?? undefined);
-  const claudeSignInRequired =
-    (selectedHarnessId === "claude-code" &&
-      acpActions.errorKind === "signInRequired") ||
-    (latestTurnHarness?.id === "claude-code" &&
-      dismissedAuthTurnId !== latestTurn?.id &&
-      latestTurn?.state === "failed" &&
-      latestTurn.terminalReason?.kind === "authRequired");
-
   return (
     <section
       ref={surfaceRef}
@@ -335,23 +311,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
-        signInHarness={
-          signInHarness ??
-          (claudeSignInRequired && !foregroundError ? latestTurnHarness : null)
-        }
-        onClaudeSignedIn={
-          claudeSignInRequired
-            ? () => {
-                if (authOwner && latestTurn)
-                  useWorkbenchStore
-                    .getState()
-                    .dismissChatAuthTurn(authOwner, latestTurn.id);
-                if (acpActions.errorKind === "signInRequired")
-                  acpActions.clearError();
-              }
-            : undefined
-        }
-        claudeAuthScope={claudeAuthScope}
+        chatAuth={{
+          page: acpPage,
+          errorKind: acpActions.errorKind,
+          boundChatId: chatId,
+        }}
         accessTarget={accessTarget}
         availableBinding={availableBinding}
         canPrompt={canPrompt}

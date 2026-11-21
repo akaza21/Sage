@@ -32,6 +32,7 @@ import {
 } from "./ComposerPlanAccess";
 
 export { ListedHarnessModels } from "./ListedHarnessModels";
+export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";
 
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,

@@ -15,7 +15,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentImportedHistory
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
-        | SchemaClass::CurrentPrivateProjects => {
+        | SchemaClass::CurrentPrivateProjects
+        | SchemaClass::CurrentSignInEvidenceIndexes => {
             return Ok(());
         }
         SchemaClass::CurrentResumeLink => {}

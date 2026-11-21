@@ -51,9 +51,9 @@ pub(crate) use child_transcript::{
 };
 pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{
-    CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline, CodexDiscoveryRunError,
-    CodexModelCatalog, CodexModelSnapshot, CodexProcessTransport, DiscoveryZeroProcess,
-    ProcessLaunchPolicy, discover_admitted,
+    AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
+    CodexDiscoveryRunError, CodexModelCatalog, CodexModelSnapshot, CodexProcessTransport,
+    DiscoveryZeroProcess, ProcessLaunchPolicy, discover_admitted,
 };
 #[cfg(test)]
 pub(crate) use discovery::{

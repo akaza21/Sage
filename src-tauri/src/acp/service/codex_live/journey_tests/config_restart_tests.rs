@@ -336,6 +336,7 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         let root = setup.root();
         let binding = setup.service.codex_registration().refresh().unwrap();
         let request = crate::acp::ipc::GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: root.project_id().clone(),
             project_generation: root.project_generation(),
             binding_id: sage_acp_protocol::intent::BindingId::new(

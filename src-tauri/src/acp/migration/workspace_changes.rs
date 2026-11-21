@@ -20,6 +20,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentSessionCapabilities
             | SchemaClass::CurrentChildThreadStates
             | SchemaClass::CurrentPrivateProjects
+            | SchemaClass::CurrentSignInEvidenceIndexes
     ) {
         return Ok(());
     }

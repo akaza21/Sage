@@ -1,3 +1,4 @@
+pub(crate) use super::sign_in_evidence::send_acp_turn_inner;
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
@@ -8,7 +9,7 @@ mod undone_relaunch;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
 use prompt_images::image_input_block;
 
-pub(crate) async fn send_acp_turn_inner(
+pub(super) async fn send_acp_turn(
     state: &AppState,
     mut request: SendAcpTurnRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {

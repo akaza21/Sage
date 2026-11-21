@@ -24,6 +24,7 @@ export function safeCodexDiscovery(
     !rootId ||
     !bindingId ||
     !runtimeEpoch ||
+    !Number.isSafeInteger(value.accountReadStartedAt) ||
     !isOneOf(value.account, [
       "managedChatgpt",
       "apiKey",
@@ -88,6 +89,7 @@ export function safeCodexDiscovery(
     bindingId: bindingId as CodexDiscoveryResponse["bindingId"],
     runtimeEpoch: runtimeEpoch as CodexDiscoveryResponse["runtimeEpoch"],
     account: value.account,
+    accountReadStartedAt: value.accountReadStartedAt as number,
     models,
     defaultModelId: defaultModelId as CodexDiscoveryResponse["defaultModelId"],
   };

@@ -3,15 +3,12 @@ import { useStore } from "zustand";
 
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../../app/sessionAccessModeStore";
-import { useWorkbenchStore } from "../../../app/store";
-import type { AttachedContext } from "../../../domain/attachedContext";
+import { useWorkbenchStore, type WorkbenchState } from "../../../app/store";
+import { harnessSignInFailures } from "../../../services/acpHarnessDesktop";
 import type {
   AcpCommandFailure,
-  CuratedBindingId,
-  CuratedModelId,
   ProjectGeneration,
   SageTurnId,
-  StagedSelection,
 } from "../../../domain/acp";
 import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
 import {
@@ -63,52 +60,30 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
 
 export function useAcpChatActions(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
-  const projectionRevision = useStore(
-    store,
-    (projection) => projection.page?.projectionRevision ?? null,
-  );
   const page = useStore(store, (projection) => projection.page);
+  const chatUi = (state: WorkbenchState) =>
+    state.chatUiById[boundChatId ?? state.activeTabId ?? ""];
   const sending = useWorkbenchStore((state) =>
-    boundChatId
-      ? (state.chatUiById[boundChatId]?.sending ?? false)
-      : state.sending,
+    boundChatId ? (chatUi(state)?.sending ?? false) : state.sending,
   );
   const chatError = useWorkbenchStore((state) =>
-    boundChatId
-      ? (state.chatUiById[boundChatId]?.error ?? null)
-      : state.chatError,
+    boundChatId ? (chatUi(state)?.error ?? null) : state.chatError,
   );
-  const errorKind = useWorkbenchStore((state) =>
-    boundChatId
-      ? (state.chatUiById[boundChatId]?.errorKind ?? null)
-      : state.activeTabId
-        ? (state.chatUiById[state.activeTabId]?.errorKind ?? null)
-        : null,
+  const errorKind = useWorkbenchStore(
+    (state) => chatUi(state)?.errorKind ?? null,
   );
-  const modeError = useWorkbenchStore((state) => {
-    const chatId = boundChatId ?? state.activeTabId;
-    return chatId ? (state.chatUiById[chatId]?.modeError ?? null) : null;
-  });
-  const modeErrorOwner = useWorkbenchStore((state) => {
-    const chatId = boundChatId ?? state.activeTabId;
-    return chatId ? (state.chatUiById[chatId]?.modeErrorOwner ?? null) : null;
-  });
-  const modeChanging = useWorkbenchStore((state) => {
-    const chatId = boundChatId ?? state.activeTabId;
-    return chatId ? (state.chatUiById[chatId]?.modeChanging ?? false) : false;
-  });
+  const modeError = useWorkbenchStore(
+    (state) => chatUi(state)?.modeError ?? null,
+  );
+  const modeErrorOwner = useWorkbenchStore(
+    (state) => chatUi(state)?.modeErrorOwner ?? null,
+  );
+  const modeChanging = useWorkbenchStore(
+    (state) => chatUi(state)?.modeChanging ?? false,
+  );
   const modeOwnerMatches =
     modeErrorOwner?.sessionId === page?.sessionConfig?.sageAgentSessionId &&
     modeErrorOwner?.runtimeEpoch === page?.sessionConfig?.runtimeEpoch;
-  const clearActiveChatError = useWorkbenchStore(
-    (state) => state.clearActiveChatError,
-  );
-  const captureChatOwnership = useWorkbenchStore(
-    (state) => state.captureChatOwnership,
-  );
-  const setChatActionState = useWorkbenchStore(
-    (state) => state.setChatActionState,
-  );
 
   const controller = useMemo(
     () =>
@@ -141,7 +116,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
           )
             return;
           const workbench = useWorkbenchStore.getState();
-          workbench.setChatActionState(
+          const chat = workbench.chatUiById[state.scope.chatId];
+          const accepted = workbench.setChatActionState(
             {
               projectId: state.scope.projectId,
               ownershipEpoch: state.ownershipEpoch,
@@ -151,10 +127,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
             },
             state.origin === "mode"
               ? {
-                  sending:
-                    workbench.chatUiById[state.scope.chatId]?.sending ?? false,
-                  error:
-                    workbench.chatUiById[state.scope.chatId]?.error ?? null,
+                  sending: chat?.sending ?? false,
+                  error: chat?.error ?? null,
                   modeError: state.error?.message ?? null,
                   modeErrorOwner: state.configOwner,
                   modeChanging: state.busy,
@@ -163,16 +137,11 @@ export function useAcpChatActions(boundChatId?: string | null) {
                   sending: state.busy,
                   error: state.error?.message ?? null,
                   errorKind: state.error?.failure.kind ?? null,
-                  modeError:
-                    workbench.chatUiById[state.scope.chatId]?.modeError ?? null,
-                  modeErrorOwner:
-                    workbench.chatUiById[state.scope.chatId]?.modeErrorOwner ??
-                    null,
-                  modeChanging:
-                    workbench.chatUiById[state.scope.chatId]?.modeChanging ??
-                    false,
+                  errorBindingId: state.error ? state.bindingId : null,
+                  errorReceivedAt: state.error?.receivedAt,
                 },
           );
+          if (accepted) harnessSignInFailures.command(state);
         },
         clearComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
@@ -194,7 +163,6 @@ export function useAcpChatActions(boundChatId?: string | null) {
     [boundChatId],
   );
 
-  void projectionRevision;
   return {
     busy: sending,
     error: chatError,
@@ -202,40 +170,14 @@ export function useAcpChatActions(boundChatId?: string | null) {
     modeError: modeOwnerMatches ? modeError : null,
     modeChanging: modeOwnerMatches && modeChanging,
     cancellableTurnId: page ? cancellableTurnId(page) : null,
-    submit: (
-      prompt: string,
-      attachedContext: readonly AttachedContext[],
-      bindingId: CuratedBindingId,
-      modelId: CuratedModelId | null,
-      staged?: StagedSelection,
-    ) => controller.submit(prompt, attachedContext, bindingId, modelId, staged),
+    submit: controller.submit,
     runSessionAction: controller.runSessionAction,
-    steer: (
-      prompt: string,
-      attachedContext: readonly AttachedContext[],
-      queuedMessageId?: Parameters<typeof controller.steer>[2],
-    ) => controller.steer(prompt, attachedContext, queuedMessageId),
-    cancel: (turnId: SageTurnId) => controller.cancel(turnId),
-    close: () => controller.close(),
-    end: () => controller.end(),
+    steer: controller.steer,
+    cancel: controller.cancel,
+    close: controller.close,
+    end: controller.end,
     setSessionMode: controller.setSessionMode,
     setSessionConfigOption: controller.setSessionConfigOption,
-    clearError: () => {
-      if (boundChatId) {
-        const ownership = captureChatOwnership(boundChatId);
-        if (!ownership) return;
-        const entry = useWorkbenchStore.getState().chatUiById[boundChatId];
-        setChatActionState(ownership, {
-          sending: entry?.sending ?? false,
-          error: null,
-          errorKind: null,
-          modeError: entry?.modeError ?? null,
-          modeErrorOwner: entry?.modeErrorOwner ?? null,
-        });
-        return;
-      }
-      clearActiveChatError();
-    },
   } satisfies {
     busy: boolean;
     error: string | null;
@@ -251,6 +193,5 @@ export function useAcpChatActions(boundChatId?: string | null) {
     end: typeof controller.end;
     setSessionMode: typeof controller.setSessionMode;
     setSessionConfigOption: typeof controller.setSessionConfigOption;
-    clearError: () => void;
   };
 }

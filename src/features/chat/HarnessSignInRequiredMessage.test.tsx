@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SignInRequiredMessage } from "./ClaudeAuthActions";
+import { SignInRequiredMessage } from "./HarnessSignInRequiredMessage";
 
 describe("SignInRequiredMessage", () => {
   it("names the command only when the harness has one", () => {

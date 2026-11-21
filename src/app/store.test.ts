@@ -3565,18 +3565,27 @@ describe("workbench resource and project navigation", () => {
         },
       ],
       selectedHarnessId: "future-auth",
-      harnessDiscoveryPhase: "waiting",
+      harnessDiscoveryPhase: "signInRequired",
     });
+    const login =
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      login.promise,
+    );
+    useWorkbenchStore.getState().requestHarnessSignIn();
+    const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
     const cancel = vi
       .spyOn(acpHarnessDesktop, "cancelCodexAuth")
-      .mockResolvedValue({
-        projectId: "project-a",
-        projectGeneration: "0",
-        bindingId: "future-auth-binding",
-        phase: "waiting",
-        revision: "2",
-      } as never);
+      .mockImplementation(async (scope) => {
+        login.resolve({ ...scope, phase: "signedOut", revision: "2" });
+        return { ...scope, phase: "waiting", revision: "2" };
+      });
     await useWorkbenchStore.getState().cancelHarnessSignIn();
+    await signingIn;
+    expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
+      "signInRequired",
+    );
+    expect(useWorkbenchStore.getState().pendingHarnessSignIn).toBeNull();
     expect(cancel).toHaveBeenCalledWith({
       projectId: "project-a",
       projectGeneration: "0",

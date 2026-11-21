@@ -11,6 +11,7 @@ use sage_acp_protocol::{
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct DiscoveryFlightKey {
+    pub(super) refresh: bool,
     pub(super) project_id: SageProjectId,
     pub(super) project_generation: ProjectGeneration,
     pub(super) root_id: SageRootId,

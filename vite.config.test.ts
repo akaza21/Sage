@@ -190,7 +190,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Recovery notices, sign-in actions and the sign-in sentence stay off the
   // ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
-  "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
   // Pasted-text staging, chips and messages load with a native chat's
@@ -228,7 +227,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/ExplorerSurface.tsx",
   "src/features/files/FileSurface.tsx",
   // Harness sign-in status loads when the desktop picker has harnesses.
-  "src/features/harness/harnessSignIn.ts",
+  "src/features/harness/HarnessSignInMenu.tsx",
+  "src/services/acpHarnessAuthResponse.ts",
   "src/features/files/MixedEolFileView.tsx",
   // New File hands focus to the editor through this, off the startup path.
   "src/features/files/editorFocusRequest.ts",

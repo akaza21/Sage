@@ -33,6 +33,14 @@ type SurfaceHarness = Pick<
   | "accessModes"
 >;
 
+const discoveryStatus: Partial<Record<HarnessDiscoveryPhase, string>> = {
+  checking: "Checking",
+  signInRequired: "Sign in required",
+  consent: "Sign-in consent",
+  waiting: "Waiting for sign in",
+  error: "Unavailable",
+};
+
 export function useChatSurfaceModel({
   harnesses,
   selectedHarnessId,
@@ -123,27 +131,18 @@ export function useChatSurfaceModel({
     );
     const harnessStatus = !selectedHarness
       ? "No harness"
-      : discoveryPhase === "checking"
-        ? "Checking"
-        : discoveryPhase === "signInRequired"
-          ? "Sign in required"
-          : discoveryPhase === "consent"
-            ? "Sign-in consent"
-            : discoveryPhase === "waiting"
-              ? "Waiting for sign in"
-              : discoveryPhase === "error"
-                ? "Unavailable"
-                : selectedHarness.source === "development"
-                  ? "Test simulator"
-                  : !harnessAvailable
-                    ? selectedHarness.installState === "installing"
-                      ? "Installing"
-                      : "Unavailable"
-                    : selectedSession?.state === "active"
-                      ? "Live"
-                      : selectedSession
-                        ? `${selectedSession.state[0].toUpperCase()}${selectedSession.state.slice(1)}`
-                        : "Ready";
+      : (discoveryStatus[discoveryPhase] ??
+        (selectedHarness.source === "development"
+          ? "Test simulator"
+          : !harnessAvailable
+            ? selectedHarness.installState === "installing"
+              ? "Installing"
+              : "Unavailable"
+            : selectedSession?.state === "active"
+              ? "Live"
+              : selectedSession
+                ? `${selectedSession.state[0].toUpperCase()}${selectedSession.state.slice(1)}`
+                : "Ready"));
     return {
       selectedHarness,
       useNativeAcp: Boolean(useNativeAcp),
@@ -368,11 +367,6 @@ export function useChatSurfaceModel({
       endedPage: page && !page.currentSessionId ? page : undefined,
     },
     foregroundError: acpActions.error ?? chatError,
-    // The sign-in sentence renders lazily in the composer, off the chat path.
-    signInHarness:
-      acpActions.errorKind === "signInRequired"
-        ? (model.selectedHarness ?? null)
-        : null,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
     modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,

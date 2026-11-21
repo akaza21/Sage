@@ -4,17 +4,26 @@ import { invokeNative } from "../ports/nativeInvoke";
 import { isOneOf, isRecord, safeMessage } from "./acpDesktopGuards";
 
 export function safeFailure(value: unknown): AcpCommandFailure {
-  if (
-    isRecord(value) &&
-    isOneOf(value.promptDispatch, ["notStarted", "unknown"] as const)
-  ) {
-    const { promptDispatch, ...detail } = value;
-    const failure = safeFailure(
-      isRecord(value.failure) ? value.failure : detail,
-    );
-    return { ...failure, promptDispatch };
-  }
+  if (value instanceof AcpDesktopError) return value.failure;
   if (isRecord(value)) {
+    const { terminalAt, accountReadStartedAt, ...detail } = value;
+    if (terminalAt !== undefined || accountReadStartedAt !== undefined)
+      return {
+        ...safeFailure(detail),
+        ...(Number.isSafeInteger(terminalAt)
+          ? { terminalAt: terminalAt as number }
+          : {}),
+        ...(Number.isSafeInteger(accountReadStartedAt)
+          ? { accountReadStartedAt: accountReadStartedAt as number }
+          : {}),
+      };
+    if (isOneOf(value.promptDispatch, ["notStarted", "unknown"] as const)) {
+      const { promptDispatch, ...detail } = value;
+      const failure = safeFailure(
+        isRecord(value.failure) ? value.failure : detail,
+      );
+      return { ...failure, promptDispatch };
+    }
     const kind = value.kind;
     const message = safeMessage(value.message);
     if (
@@ -69,11 +78,9 @@ export function safeFailure(value: unknown): AcpCommandFailure {
         message,
       };
     }
-    if (kind === "signInRequired" && message) {
-      return { kind, message };
-    }
     if (
-      (kind === "invalidRequest" ||
+      (kind === "signInRequired" ||
+        kind === "invalidRequest" ||
         kind === "rejected" ||
         kind === "recoveryRequired" ||
         kind === "internal") &&
@@ -87,11 +94,14 @@ export function safeFailure(value: unknown): AcpCommandFailure {
 
 export class AcpDesktopError extends Error {
   readonly failure: AcpCommandFailure;
+  readonly receivedAt: number | null;
 
   constructor(failure: AcpCommandFailure) {
     super(failure.message);
     this.name = "AcpDesktopError";
     this.failure = failure;
+    // Local recovery only: native account-read starts use the same epoch clock.
+    this.receivedAt = failure.terminalAt == null ? Date.now() : null;
   }
 }
 
@@ -103,7 +113,7 @@ export async function invokeAcp<T, Request extends object>(
     throw new AcpDesktopError({
       kind: "unavailable",
       reason: "desktopRuntimeUnavailable",
-      message: "ACP is available only in the Sage desktop runtime.",
+      message: "Sage desktop required.",
     });
   }
 

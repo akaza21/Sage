@@ -20,6 +20,7 @@ import {
 
 import { AcpProjectionOwnerContext } from "./AcpProjectionOwnerContext";
 import { coalescedRefresh } from "./coalescedRefresh";
+import { harnessSignInFailures } from "../../../services/acpHarnessDesktop";
 
 // The native side admits four page reads per Chat at once: these two, the live
 // snapshot's read and the history's earlier page.
@@ -111,7 +112,10 @@ export function useAcpChatProjection(
           cursor: null,
         })
           .then((projection) => {
-            completePageLoad(intent, projection);
+            if (disposed) return;
+            if (completePageLoad(intent, projection) === "accepted") {
+              harnessSignInFailures.page(projection);
+            }
           })
           .catch((error: unknown) => {
             failPageLoad(intent, errorMessage(error));

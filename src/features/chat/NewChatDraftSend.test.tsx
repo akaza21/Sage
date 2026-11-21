@@ -1784,6 +1784,7 @@ it.each(["sign-in", "discovery retry"] as const)(
         rootId: before.project!.roots[0].id,
         runtimeEpoch: "1" as never,
         account: "managedChatgpt",
+        accountReadStartedAt: 100,
         models: models.map((model) => ({ ...model, id: model.id as never })),
         defaultModelId: "model-a" as never,
       }));
@@ -1792,6 +1793,7 @@ it.each(["sign-in", "discovery retry"] as const)(
       discover.mockImplementationOnce(async (request) => ({
         ...(await signedIn(request)),
         account: "signedOut",
+        accountReadStartedAt: 100,
         models: [],
         defaultModelId: null,
       }));
@@ -1824,10 +1826,13 @@ it.each(["sign-in", "discovery retry"] as const)(
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(composer()).toHaveValue("Keep this account draft");
     if (recovery === "sign-in") {
-      fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
-      expect(screen.getByText(/official sign-in page/)).toBeVisible();
+      expect(
+        await screen.findByText("Other harness isn't signed in"),
+      ).toBeVisible();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Sign in to Other harness" }),
+      );
       expect(composer()).toHaveValue("Keep this account draft");
-      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     } else {
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Account discovery unavailable",

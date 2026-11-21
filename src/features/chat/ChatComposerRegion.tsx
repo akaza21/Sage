@@ -59,9 +59,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     projectTransitioning,
     workbenchError,
     chatError,
-    signInHarness,
-    onClaudeSignedIn,
-    claudeAuthScope,
+    chatAuth,
     availableBinding,
     canPrompt,
     discoveryPhase,
@@ -144,11 +142,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     <div className="chat-dock-frame">
       {!hidden ? (
         <ComposerStatusNotices
+          selectedHarnessId={selectedHarnessId}
           workbenchError={workbenchError}
           chatError={chatError}
-          signInHarness={signInHarness}
-          onClaudeSignedIn={onClaudeSignedIn}
-          claudeAuthScope={claudeAuthScope}
+          chatAuth={chatAuth}
           imageStatus={imageInput.status}
           missingBindingNotice={missingBindingNotice}
           discoveryPhase={discoveryPhase}

@@ -681,15 +681,7 @@ fn an_upgrade_keeps_the_end_each_stored_child_transcript_reached() {
                 [r#"{"childThreadId":"child-one","parentThreadId":"thread-1","turns":[{"id":"first","status":"completed","items":[]},{"id":"second","status":"failed","items":[]}]}"#],
             )
             .unwrap();
-        connection
-            .execute_batch(
-                "DROP TABLE acp_child_thread_states;
-                 DROP INDEX idx_projects_kind_created;
-                 ALTER TABLE projects DROP COLUMN kind;
-                 DELETE FROM schema_migrations WHERE version>=31;
-                 PRAGMA user_version=30;",
-            )
-            .unwrap();
+        crate::acp::migration::test_schema::rollback_to_version(&connection, 30).unwrap();
     }
     let (connection, _) = crate::acp::migration::open_or_migrate(&path)
         .unwrap()

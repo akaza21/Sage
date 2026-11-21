@@ -4,6 +4,8 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import type { AcpActionContext } from "./acpActionController";
+import { harnessSignInFailures } from "../../../services/acpHarnessDesktop";
+import { currentSession } from "./acpTurnState";
 
 export function sameScope(
   context: AcpActionContext | null,
@@ -33,12 +35,8 @@ export function createActionProjectionCommit(dependencies: {
     if (!sameScope(current, captured)) return null;
     const previous = current.page;
     const incoming = result.projection;
-    const previousEpoch = previous.sessions.find(
-      (session) => session.id === previous.currentSessionId,
-    )?.runtimeEpoch;
-    const incomingEpoch = incoming.sessions.find(
-      (session) => session.id === incoming.currentSessionId,
-    )?.runtimeEpoch;
+    const previousEpoch = currentSession(previous)?.runtimeEpoch;
+    const incomingEpoch = currentSession(incoming)?.runtimeEpoch;
     const page =
       !incoming.goal &&
       previous.goal &&
@@ -51,6 +49,8 @@ export function createActionProjectionCommit(dependencies: {
       captured.scope,
       page,
     );
-    return disposition === "accepted" ? page : null;
+    if (disposition !== "accepted") return null;
+    harnessSignInFailures.page(page);
+    return page;
   };
 }

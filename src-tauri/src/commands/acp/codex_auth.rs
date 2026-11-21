@@ -5,7 +5,7 @@ use crate::{
     acp::{
         bindings::codex::{CodexAuthDeadline, CodexDiscoveryRunError, NativeApiKey},
         ipc::{AcpIpcError, AcpUnavailableReason, CodexAuthResponse, CodexAuthScope},
-        service::CodexAuthAction,
+        service::{CodexAuthAction, PreparedCodexAuth},
     },
     state::AppState,
 };
@@ -86,11 +86,27 @@ pub async fn logout_codex_auth(
     run_codex_auth(&state, request, CodexAuthAction::Logout, false).await
 }
 
-async fn run_codex_auth(
+pub(crate) async fn run_codex_auth(
     state: &AppState,
     scope: CodexAuthScope,
     action: CodexAuthAction,
     consent: bool,
+) -> Result<CodexAuthResponse, AcpIpcError> {
+    let manager = state.acp.codex_auth_manager();
+    run_codex_auth_with(state, scope, action, consent, move |prepared| {
+        manager.run(prepared)
+    })
+    .await
+}
+
+pub(crate) async fn run_codex_auth_with(
+    state: &AppState,
+    scope: CodexAuthScope,
+    action: CodexAuthAction,
+    consent: bool,
+    worker: impl FnOnce(PreparedCodexAuth) -> Result<CodexAuthResponse, CodexDiscoveryRunError>
+    + Send
+    + 'static,
 ) -> Result<CodexAuthResponse, AcpIpcError> {
     let deadline = CodexAuthDeadline::new().map_err(codex_discovery_error)?;
     let transition = tokio::time::timeout_at(
@@ -115,11 +131,13 @@ async fn run_codex_auth(
         state.acp.codex_discovery_manager().forget_snapshot();
     }
     drop(transition);
-    let result = tauri::async_runtime::spawn_blocking(move || manager.run(prepared))
+    let result = tauri::async_runtime::spawn_blocking(move || worker(prepared))
         .await
         .map_err(|_| internal_error())?
         .map_err(codex_discovery_error)?;
-    state.acp.codex_discovery_manager().invalidate();
+    if changes_account {
+        state.acp.codex_discovery_manager().invalidate();
+    }
     Ok(result)
 }
 

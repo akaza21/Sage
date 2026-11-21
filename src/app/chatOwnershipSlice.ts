@@ -52,6 +52,8 @@ export interface ChatOwnershipSlice {
       sending: boolean;
       error: string | null;
       errorKind?: AcpCommandFailure["kind"] | null;
+      errorBindingId?: string | null;
+      errorReceivedAt?: number | null;
       modeError?: string | null;
       modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
       modeChanging?: boolean;
@@ -207,10 +209,13 @@ export const createChatOwnershipSlice: StateCreator<
       sending: actionState.sending,
       error:
         actionState.error === null ? null : boundedChatError(actionState.error),
-      errorKind:
-        actionState.errorKind === undefined
-          ? entry.errorKind
-          : actionState.errorKind,
+      ...(actionState.errorKind === undefined
+        ? {}
+        : {
+            errorKind: actionState.errorKind,
+            errorBindingId: actionState.errorBindingId ?? null,
+            errorReceivedAt: actionState.errorReceivedAt ?? null,
+          }),
       modeError:
         actionState.modeError === undefined
           ? entry.modeError
@@ -232,16 +237,13 @@ export const createChatOwnershipSlice: StateCreator<
   },
   clearActiveChatError: () => {
     const state = get();
-    const chatId = activeChatId(state);
-    if (!chatId) return;
-    const entry = state.chatUiById[chatId] ?? emptyEntry();
-    set({
-      chatError: null,
-      chatUiById: {
-        ...state.chatUiById,
-        [chatId]: { ...entry, error: null, errorKind: null },
-      },
-    });
+    const intent = state.captureChatOwnership();
+    if (intent)
+      state.setChatActionState(intent, {
+        sending: state.sending,
+        error: null,
+        errorKind: null,
+      });
   },
   setComposerText: (text) => {
     try {

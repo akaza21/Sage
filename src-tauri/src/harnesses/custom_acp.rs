@@ -60,6 +60,7 @@ impl HarnessCatalog {
         definition.sign_in = Some(HarnessSignIn {
             command: String::new(),
             hint: notice,
+            status_check: None,
         });
     }
 }

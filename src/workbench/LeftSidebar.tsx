@@ -10,7 +10,12 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
+import { harnessHasSignInCheck } from "../domain/harness";
+import {
+  ChatSearchPart,
+  ComposerOptionsPart,
+  lazyParts,
+} from "../features/chat/lazyParts";
 import {
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
@@ -73,7 +78,9 @@ export function LeftSidebar({
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
+  const harnesses = useWorkbenchStore((state) => state.harnesses);
   const project = useWorkbenchStore((state) => state.project);
+  const avatar = (project?.name.trim()[0] ?? "L").toLocaleUpperCase();
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createChat = useWorkbenchStore((state) => state.openNewChatDraft);
@@ -224,9 +231,13 @@ export function LeftSidebar({
       </div>
 
       <footer className="project-sidebar__account">
-        <span className="account-avatar" aria-hidden="true">
-          {(project?.name.trim()[0] ?? "L").toLocaleUpperCase()}
-        </span>
+        {!inert && harnesses.some(harnessHasSignInCheck) ? (
+          <ComposerOptionsPart part="HarnessAccountMenu" avatar={avatar} />
+        ) : (
+          <span className="account-avatar" aria-hidden="true">
+            {avatar}
+          </span>
+        )}
         <span className="agent-rail-identity">
           <strong>{project?.name ?? "Local"}</strong>
           <span>Local workspace</span>

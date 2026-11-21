@@ -14,7 +14,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentImportedHistory
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
-        | SchemaClass::CurrentPrivateProjects => return Ok(()),
+        | SchemaClass::CurrentPrivateProjects
+        | SchemaClass::CurrentSignInEvidenceIndexes => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),
     }

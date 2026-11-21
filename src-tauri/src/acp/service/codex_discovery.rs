@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::codex::{
-        AdmittedCodexBinding, CodexBindingRegistration, CodexDiscoveryDeadline,
+        AdmittedCodexBinding, AdmittedDiscovery, CodexBindingRegistration, CodexDiscoveryDeadline,
         CodexDiscoveryRunError, CodexProjectRootAuthority, discover_admitted,
     },
     ipc::{CodexDiscoveryResponse, GetCodexDiscoveryRequest},
@@ -12,6 +12,7 @@ use crate::acp::{
 use super::codex_operation::{ActiveCodexOperation, CodexOperationGate, PreparedCodexOperation};
 
 mod cache;
+mod probe;
 use cache::{
     CacheKey, CacheScope, DiscoveryCache, launchable_models, response_from, validate_scope,
 };
@@ -76,6 +77,7 @@ impl CodexDiscoveryManager {
         let invalidation_epoch = self.gate.current_epoch();
         let catalog_generation = self.registration.model_catalog().generation();
         let key = DiscoveryFlightKey {
+            refresh: request.refresh,
             project_id: request.project_id.clone(),
             project_generation: request.project_generation,
             root_id: project_root.root_id().clone(),
@@ -120,7 +122,25 @@ impl CodexDiscoveryManager {
 
     pub(crate) fn discover(
         &self,
+        prepared: PreparedCodexDiscovery,
+    ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
+        self.discover_with(prepared, |binding, root, epoch, deadline, active| {
+            discover_admitted(binding, root, epoch, deadline, |control| {
+                active.register_control(control)
+            })
+        })
+    }
+
+    fn discover_with(
+        &self,
         mut prepared: PreparedCodexDiscovery,
+        probe: impl FnOnce(
+            Arc<AdmittedCodexBinding>,
+            CodexProjectRootAuthority,
+            sage_acp_protocol::contract::RuntimeEpoch,
+            CodexDiscoveryDeadline,
+            &ActiveCodexOperation,
+        ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError>,
     ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
         if !prepared.owns_flight {
             let joined = prepared
@@ -129,7 +149,7 @@ impl CodexDiscoveryManager {
             return self.revalidate_joined(&prepared, &joined);
         }
         let flight = Arc::clone(&prepared.flight);
-        let result = self.discover_owned(&mut prepared);
+        let result = self.discover_owned(&mut prepared, probe);
         flight.complete(result.clone());
         prepared.completed = true;
         self.clear_flight(&flight);
@@ -139,6 +159,13 @@ impl CodexDiscoveryManager {
     fn discover_owned(
         &self,
         prepared: &mut PreparedCodexDiscovery,
+        probe: impl FnOnce(
+            Arc<AdmittedCodexBinding>,
+            CodexProjectRootAuthority,
+            sage_acp_protocol::contract::RuntimeEpoch,
+            CodexDiscoveryDeadline,
+            &ActiveCodexOperation,
+        ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError>,
     ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
         let operation = prepared
             .operation
@@ -146,13 +173,14 @@ impl CodexDiscoveryManager {
             .ok_or(CodexDiscoveryRunError::Cleanup)?;
         self.gate.validate_admission(operation)?;
         let (binding, scope) = self.resolve_scope(prepared)?;
-        if let Some(response) = self.cache.response_for(&scope)? {
+        if !prepared.request.refresh
+            && let Some(response) = self.cache.response_for(&scope)?
+        {
             self.gate.validate_admission(operation)?;
             return Ok(response);
         }
-        let operation_epoch = CodexOperationGate::prepared_epoch(operation);
         let active = self.gate.begin(operation)?;
-        let result = self.probe_admitted(prepared, &active, binding, scope, operation_epoch);
+        let result = self.probe_admitted(prepared, &active, binding, scope, probe);
         let settlement = if result == Err(CodexDiscoveryRunError::Cleanup) {
             Err(CodexDiscoveryRunError::Cleanup)
         } else {
@@ -235,55 +263,25 @@ impl CodexDiscoveryManager {
         Ok((binding, scope))
     }
 
-    fn probe_admitted(
-        &self,
-        prepared: &mut PreparedCodexDiscovery,
-        active: &ActiveCodexOperation,
-        binding: Arc<AdmittedCodexBinding>,
-        scope: CacheScope,
-        operation_epoch: u64,
-    ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
-        let runtime_epoch = self.gate.allocate_runtime_epoch()?;
-        let discovery = discover_admitted(
-            binding,
-            prepared
-                .project_root
-                .take()
-                .ok_or(CodexDiscoveryRunError::Cleanup)?,
-            runtime_epoch,
-            prepared.deadline,
-            |control| active.register_control(control),
-        )
-        .inspect_err(|error| {
-            self.cache.clear();
-            if *error == CodexDiscoveryRunError::Drift {
-                self.registration.invalidate_drift();
-            }
-        })?;
-        prepared.deadline.ensure_total()?;
-        discovery.revalidate().inspect_err(|_| self.cache.clear())?;
-        let response = response_from(
-            prepared.request.binding_id.clone(),
-            scope.clone(),
-            discovery.runtime_epoch(),
-            &discovery.content,
-        );
-        prepared.deadline.ensure_total()?;
-        self.publish(
-            operation_epoch,
-            prepared.catalog_generation,
-            CacheKey {
-                scope,
-                runtime_epoch,
-            },
-            response.clone(),
-        )?;
-        Ok(response)
-    }
-
     pub(crate) fn invalidate(&self) {
         self.gate.invalidate();
         self.forget_snapshot();
+    }
+
+    /// Joined waiters do not own the discovery operation's cancellation.
+    pub(crate) fn cancellation(
+        self: &Arc<Self>,
+        prepared: &PreparedCodexDiscovery,
+    ) -> impl FnOnce() + Send + 'static + use<> {
+        let cancel = prepared
+            .operation
+            .as_ref()
+            .map(|operation| self.gate.cancellation(operation));
+        move || {
+            if let Some(cancel) = cancel {
+                cancel();
+            }
+        }
     }
 
     /// Called when the account changes: a discovery prepared before now can
@@ -428,6 +426,8 @@ impl CodexDiscoveryManager {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    mod refresh_tests;
     use super::cache::CachedDiscovery;
     use super::*;
     use crate::acp::service::codex_operation::CodexOperationCancellation;
@@ -550,6 +550,7 @@ mod tests {
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
             runtime_epoch,
             account: CodexDiscoveryAccount::ManagedChatgpt,
+            account_read_started_at: 123,
             models: vec![CodexDiscoveryModel {
                 id: model_id.clone(),
                 name: RequiredText::new("modelName", "GPT Cache").unwrap(),
@@ -578,6 +579,7 @@ mod tests {
         let reused = entry.response_for(&changed).unwrap();
         assert_eq!(reused.project_generation, changed.project_generation);
         assert_eq!(reused.runtime_epoch, runtime_epoch);
+        assert_eq!(reused.account_read_started_at, 123);
         changed = scope.clone();
         changed.project_id = SageProjectId::parse("project-other").unwrap();
         assert!(entry.response_for(&changed).is_none());
@@ -873,6 +875,7 @@ mod tests {
     fn project_switch_after_preparation_rejects_discovery_before_launch() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: SageProjectId::parse("project-prepared").unwrap(),
             project_generation: ProjectGeneration::new(19).unwrap(),
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -902,6 +905,7 @@ mod tests {
     fn concurrent_matching_discovery_requests_join_and_release_the_operation_gate() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: SageProjectId::parse("project-joined").unwrap(),
             project_generation: ProjectGeneration::new(23).unwrap(),
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -954,6 +958,7 @@ mod tests {
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
         let manager = CodexDiscoveryManager::new(registration.clone());
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: SageProjectId::parse(format!("project-{label}")).unwrap(),
             project_generation: ProjectGeneration::new(29).unwrap(),
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
@@ -981,6 +986,16 @@ mod tests {
         assert!(owner.owns_flight);
         assert!(!joined.owns_flight);
         (manager, owner, joined)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_timed_out_joined_waiter_does_not_cancel_the_owners_discovery() {
+        let (manager, owner, joined) =
+            admitted_joined_flight("joined-timeout", CodexDiscoveryDeadline::new().unwrap());
+        manager.cancellation(&joined)();
+        let response = manager.discover(owner).unwrap();
+        assert_eq!(manager.discover(joined).unwrap(), response);
     }
 
     #[cfg(windows)]

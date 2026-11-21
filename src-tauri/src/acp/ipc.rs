@@ -90,6 +90,8 @@ pub struct AcpFileSnapshotResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GetCodexDiscoveryRequest {
+    #[serde(default)]
+    pub refresh: bool,
     pub project_id: SageProjectId,
     pub project_generation: ProjectGeneration,
     pub binding_id: BindingId,
@@ -154,6 +156,7 @@ pub struct CodexDiscoveryResponse {
     pub binding_id: BindingId,
     pub runtime_epoch: RuntimeEpoch,
     pub account: CodexDiscoveryAccount,
+    pub account_read_started_at: i64,
     pub models: Vec<CodexDiscoveryModel>,
     pub default_model_id: Option<ModelId>,
 }
@@ -401,6 +404,8 @@ pub enum AcpIpcError {
     },
     SignInRequired {
         message: SafeText<8192>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        terminal_at: Option<i64>,
     },
     RecoveryRequired {
         message: SafeText<8192>,
@@ -423,4 +428,13 @@ pub struct SendAcpTurnFailure {
     #[serde(flatten)]
     pub failure: AcpIpcError,
     pub prompt_dispatch: PromptDispatch,
+}
+
+/// Failed account reads retain their native start time, like successful reads.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountReadFailure {
+    #[serde(flatten)]
+    pub failure: AcpIpcError,
+    pub account_read_started_at: i64,
 }

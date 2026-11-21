@@ -144,6 +144,9 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         version if version == super::super::private_projects::VERSION => {
             SchemaClass::CurrentPrivateProjects
         }
+        version if version == super::super::sign_in_evidence_indexes::VERSION => {
+            SchemaClass::CurrentSignInEvidenceIndexes
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

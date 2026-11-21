@@ -39,6 +39,8 @@ export interface ChatOwnershipEntry {
   sending: boolean;
   error: string | null;
   errorKind: AcpCommandFailure["kind"] | null;
+  errorBindingId?: string | null;
+  errorReceivedAt?: number | null;
   modeError?: string | null;
   modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
   modeChanging?: boolean;

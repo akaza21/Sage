@@ -737,6 +737,7 @@ fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
         let result = get_codex_discovery_inner(
             &state,
             GetCodexDiscoveryRequest {
+                refresh: false,
                 project_id: project,
                 project_generation: ProjectGeneration::ZERO,
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -836,6 +837,7 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
         let project = SageProjectId::parse(project).unwrap();
         let held_transition = state.project_transitions.lock().await;
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -879,6 +881,7 @@ fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtim
         let project = SageProjectId::parse(project).unwrap();
         let live = state.acp.hold_live_operation_for_test();
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project,
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -928,6 +931,80 @@ async fn seed_codex_discovery_catalog(
 
 #[cfg(windows)]
 #[test]
+fn codex_auth_observation_preserves_the_catalog_for_a_real_session_start() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let chat = SageChatId::parse(chat).unwrap();
+        let model = sage_acp_protocol::intent::ModelId::new("modelId", "gpt-5-codex").unwrap();
+        seed_codex_discovery_catalog(&state, &project, model.clone()).await;
+        let binding = BindingId::new("bindingId", "codex-app-server").unwrap();
+        let discovered = get_codex_discovery_inner(
+            &state,
+            GetCodexDiscoveryRequest {
+                refresh: false,
+                project_id: project.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                binding_id: binding.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(discovered.models[0].id, model);
+
+        // Successful observation must preserve model authority. A worker-launch
+        // failure returns before invalidation and would not reproduce the bug.
+        let scope = crate::acp::ipc::CodexAuthScope {
+            project_id: project.clone(),
+            project_generation: ProjectGeneration::ZERO,
+            binding_id: binding.clone(),
+        };
+        let observed_scope = scope.clone();
+        let observed = super::acp::codex_auth::run_codex_auth_with(
+            &state,
+            scope,
+            crate::acp::service::CodexAuthAction::Observe,
+            false,
+            move |_prepared| {
+                Ok(crate::acp::ipc::CodexAuthResponse {
+                    project_id: observed_scope.project_id,
+                    project_generation: observed_scope.project_generation,
+                    binding_id: observed_scope.binding_id,
+                    phase: crate::acp::ipc::CodexAuthPhase::SignedIn,
+                    revision: "2".into(),
+                })
+            },
+        )
+        .await
+        .expect("the account observation must succeed");
+        assert_eq!(observed.phase, crate::acp::ipc::CodexAuthPhase::SignedIn);
+        let page = state
+            .acp
+            .load_chat_page(project.clone(), chat.clone(), None)
+            .unwrap();
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: binding,
+                model_id: Some(model.clone()),
+                effort: None,
+            },
+        )
+        .await
+        .expect("the discovered model must remain valid for session start");
+        assert!(result.projection.current_session_id.is_some());
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
 fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_runtime() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, _chat, root) = state_with_admitted_codex_project();
@@ -936,6 +1013,7 @@ fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_ru
         seed_codex_discovery_catalog(&state, &project, model.clone()).await;
         let live = state.acp.hold_live_operation_for_test();
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
@@ -971,6 +1049,7 @@ fn codex_discovery_refuses_an_uncached_catalog_only_when_live_sessions_fill_ever
         let (state, project, _chat, root) = state_with_admitted_codex_project();
         let project = SageProjectId::parse(project).unwrap();
         let request = || GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)

@@ -1,6 +1,37 @@
 use super::*;
 
 impl CodexOperationGate {
+    /// A caller's timeout owns only this admission, including before begin and
+    /// after settlement. It never invalidates other admissions or later work.
+    pub(in crate::acp::service) fn cancellation(
+        self: &Arc<Self>,
+        prepared: &PreparedCodexOperation,
+    ) -> impl FnOnce() + Send + 'static + use<> {
+        let gate = Arc::clone(self);
+        let cancelled = Arc::clone(&prepared.cancelled);
+        move || {
+            let cancellation = {
+                let mut active = gate
+                    .active
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                cancelled.store(true, Ordering::Release);
+                active
+                    .running
+                    .iter_mut()
+                    .find(|slot| Arc::ptr_eq(&slot.cancelled, &cancelled))
+                    .and_then(|slot| {
+                        slot.cancel_requested = true;
+                        slot.cancellation.clone()
+                    })
+            };
+            if let Some(cancellation) = cancellation {
+                let _ = cancellation
+                    .request_parent_shutdown_until(Instant::now() + Duration::from_millis(1));
+            }
+        }
+    }
+
     pub(in crate::acp::service) fn invalidate(&self) {
         let _ = self.invalidate_active().1;
     }

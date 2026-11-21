@@ -85,6 +85,7 @@ pub(crate) struct KnownHarnessSpec {
 pub(crate) struct KnownHarnessSignIn {
     pub(crate) command: &'static str,
     pub(crate) hint: &'static str,
+    pub(crate) status_check: Option<sage_domain::harness::HarnessSignInCheck>,
 }
 
 pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
@@ -95,6 +96,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "codex login",
             hint: "Sign in to your Codex account.",
+            status_check: None,
         }),
         brand: Some(HarnessBrand::Codex),
     },
@@ -105,6 +107,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "claude auth login",
             hint: "Complete sign-in in the terminal.",
+            status_check: Some(sage_domain::harness::HarnessSignInCheck::ClaudeCli),
         }),
         brand: Some(HarnessBrand::Claude),
     },
@@ -115,6 +118,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "pi",
             hint: "Then run /login.",
+            status_check: None,
         }),
         brand: Some(HarnessBrand::Pi),
     },
@@ -125,6 +129,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "gemini",
             hint: "Follow the sign-in prompts.",
+            status_check: None,
         }),
         brand: None,
     },
@@ -135,6 +140,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "opencode auth login",
             hint: "Choose the provider to sign in.",
+            status_check: None,
         }),
         brand: Some(HarnessBrand::OpenCode),
     },
@@ -145,6 +151,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         sign_in: Some(KnownHarnessSignIn {
             command: "cursor-agent login",
             hint: "Sign in to Cursor Agent.",
+            status_check: None,
         }),
         brand: None,
     },

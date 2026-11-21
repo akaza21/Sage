@@ -1,92 +1,91 @@
-import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
-import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
-import { lazyParts } from "./lazyParts";
+import { ComposerOptionsPart } from "./lazyParts";
+import { useWorkbenchStore } from "../../app/store";
+import { harnessHasSignInCheck } from "../../domain/harness";
+import type { ReactNode } from "react";
+import type { HarnessDefinition } from "../../domain/harness";
 
-const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
-  () => import("./ClaudeAuthActions"),
-);
-
-const EXPLAINED_PHASES: readonly HarnessDiscoveryPhase[] = [
-  "checking",
-  "signInRequired",
-  "consent",
-  "waiting",
-  "error",
-];
-
-export function ComposerStatusNotices({
-  workbenchError,
-  chatError,
-  signInHarness = null,
-  onClaudeSignedIn,
-  claudeAuthScope,
-  imageStatus,
-  missingBindingNotice,
-  discoveryPhase,
-}: Pick<
+export type ComposerStatusNoticeProps = Pick<
   ChatComposerRegionProps,
   | "workbenchError"
   | "chatError"
-  | "signInHarness"
-  | "onClaudeSignedIn"
-  | "claudeAuthScope"
+  | "chatAuth"
   | "missingBindingNotice"
   | "discoveryPhase"
-> & { imageStatus: string | null }) {
-  const showMissingBinding =
-    missingBindingNotice && !EXPLAINED_PHASES.includes(discoveryPhase);
-  if (
-    !workbenchError &&
-    !chatError &&
-    !signInHarness &&
-    !imageStatus &&
-    !showMissingBinding
-  )
-    return null;
+  | "selectedHarnessId"
+> & {
+  imageStatus: string | null;
+  signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
+  authRecovery?: {
+    harnessId: string;
+    scope: string;
+    receivedAt?: number | null;
+    onSignedIn: () => void;
+  };
+};
 
+export function unexplainedMissingBinding(
+  props: Pick<
+    ComposerStatusNoticeProps,
+    "missingBindingNotice" | "discoveryPhase"
+  >,
+) {
   return (
+    props.missingBindingNotice &&
+    (props.discoveryPhase === "idle" || props.discoveryPhase === "ready")
+  );
+}
+
+/** Errors remain available while the optional notice surface loads. */
+export function ComposerNoticeFrame(
+  props: ComposerStatusNoticeProps & { children?: ReactNode },
+) {
+  const { workbenchError, chatError, imageStatus, children } = props;
+  const errors = [workbenchError, chatError, imageStatus];
+  const missingBinding = unexplainedMissingBinding(props);
+  return errors.some(Boolean) || missingBinding || children ? (
     <div
       className="composer__notices"
       role="region"
       aria-label="Composer notices"
       tabIndex={0}
     >
-      {workbenchError ? (
-        <div className="composer__error" role="alert">
-          {workbenchError}
-        </div>
-      ) : null}
-      {chatError || signInHarness ? (
-        <div className="composer__error" role="alert">
-          {signInHarness ? (
-            <AuthPart
-              part="SignInRequiredMessage"
-              harness={signInHarness}
-              fallback={chatError}
-            />
-          ) : (
-            chatError
-          )}
-          {onClaudeSignedIn ? (
-            <AuthPart
-              part="ClaudeAuthActions"
-              key={claudeAuthScope}
-              onSignedIn={onClaudeSignedIn}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      {imageStatus ? (
-        <div className="composer__error" role="alert">
-          {imageStatus}
-        </div>
-      ) : null}
-      {showMissingBinding ? (
+      {children}
+      {errors.map((error, index) =>
+        error ? (
+          <div key={index} className="composer__error" role="alert">
+            {error}
+          </div>
+        ) : null,
+      )}
+      {missingBinding ? (
         <div className="composer__notice">
           No reviewed local binding is available for this harness.
         </div>
       ) : null}
     </div>
+  ) : null;
+}
+
+export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
+  const supported = useWorkbenchStore((state) =>
+    state.harnesses.some(
+      (harness) =>
+        harness.id === props.selectedHarnessId &&
+        harnessHasSignInCheck(harness),
+    ),
+  );
+  const refusal =
+    props.signInHarness ||
+    props.authRecovery ||
+    props.chatAuth?.errorKind === "signInRequired" ||
+    props.chatAuth?.page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
+  if (!supported && !refusal) return <ComposerNoticeFrame {...props} />;
+  return (
+    <ComposerOptionsPart
+      part="ComposerNoticeSurface"
+      {...props}
+      fallback={<ComposerNoticeFrame {...props} />}
+    />
   );
 }

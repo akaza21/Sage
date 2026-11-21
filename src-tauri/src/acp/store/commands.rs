@@ -1,3 +1,5 @@
+pub(crate) mod sign_in_evidence;
+
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use sage_acp_protocol::contract::{EntityRevision, SageItemId, SageTurnId};
