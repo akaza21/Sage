@@ -15,12 +15,6 @@ use sage_db::{database::Database, error::SqliteResultExt};
 use sage_domain::chat::ProjectLayoutRequest;
 
 pub(crate) trait ChatCreateStore {
-    fn reuse_empty_chat(
-        &self,
-        project_id: &str,
-        current_layout: &ProjectLayoutRequest,
-        chat_id: &str,
-    ) -> AppResult<String>;
     #[cfg(test)]
     fn create_chat(&self, current_layout: &ProjectLayoutRequest) -> AppResult<String>;
 
@@ -78,133 +72,87 @@ impl ChatCreateStore for Database {
         parent: Option<&str>,
         chat_id: Option<&str>,
     ) -> AppResult<String> {
-        create_project_chat(self, project_id, current_layout, parent, chat_id, false)
-    }
-
-    fn reuse_empty_chat(
-        &self,
-        project_id: &str,
-        current_layout: &ProjectLayoutRequest,
-        chat_id: &str,
-    ) -> AppResult<String> {
-        create_project_chat(self, project_id, current_layout, None, Some(chat_id), true)
-    }
-}
-
-fn create_project_chat(
-    database: &Database,
-    project_id: &str,
-    current_layout: &ProjectLayoutRequest,
-    parent: Option<&str>,
-    chat_id: Option<&str>,
-    reuse: bool,
-) -> AppResult<String> {
-    validate_chat_identifier("Project ID", project_id)?;
-    if let Some(chat_id) = chat_id {
-        validate_chat_identifier("Chat ID", chat_id)?;
-        if parent.is_some() {
-            return Err(AppError::InvalidRequest(
-                "Side Chat identity is assigned natively".into(),
-            ));
-        }
-    }
-    let mut connection = database.write_connection()?;
-    let transaction = connection.transaction().db()?;
-    if let Some(parent) = parent {
-        crate::side_chat_storage::validate_parent(&transaction, project_id, parent)?;
-    }
-    let active_project_id = transaction
-        .query_row(
-            "SELECT active_project_id FROM app_state WHERE singleton=1",
-            [],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .db()?;
-    let source_is_active = active_project_id.as_deref() == Some(project_id);
-    let tab_count = if source_is_active {
-        if current_layout.project_id != project_id {
-            return Err(AppError::InvalidRequest(
-                "Chat layout does not belong to the requested Project".into(),
-            ));
-        }
-        persist_layout_in(&transaction, current_layout)?;
-        current_layout.tabs.len() as i64
-    } else {
-        let exists: bool = transaction
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
-                [project_id],
-                |row| row.get(0),
-            )
-            .db()?;
-        if !exists {
-            return Err(AppError::InvalidRequest(
-                "Chat does not belong to that Project".into(),
-            ));
-        }
-        transaction
-            .query_row(
-                "SELECT COUNT(*) FROM workbench_tabs WHERE project_id=?1",
-                [project_id],
-                |row| row.get(0),
-            )
-            .db()?
-    };
-    // Revalidate after persisting the source layout, inside the same
-    // transaction that selects the Chat. Lookup is only a suggestion.
-    let reusable = if reuse {
-        Some(
-            chat_id
-                .map(|id| super::visibility::reusable_chat(&transaction, project_id, &[], Some(id)))
-                .transpose()?
-                .flatten()
-                .ok_or_else(|| {
-                    AppError::InvalidRequest("Chat is no longer eligible for reuse".into())
-                })?,
-        )
-    } else {
-        None
-    };
-    if reusable.is_none() {
+        validate_chat_identifier("Project ID", project_id)?;
         if let Some(chat_id) = chat_id {
             Uuid::parse_str(chat_id)
                 .map_err(|_| AppError::InvalidRequest("Chat creation ID must be a UUID".into()))?;
+            if parent.is_some() {
+                return Err(AppError::InvalidRequest(
+                    "Side Chat identity is assigned natively".into(),
+                ));
+            }
         }
-        if tab_count >= MAX_RESTORED_TABS as i64 {
-            return Err(AppError::ResourceLimit(format!(
-                "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
-            )));
+        let mut connection = self.write_connection()?;
+        let transaction = connection.transaction().db()?;
+        if let Some(parent) = parent {
+            crate::side_chat_storage::validate_parent(&transaction, project_id, parent)?;
         }
-    }
-    let switch_to_created = chat_id.is_some() && !source_is_active;
-    if switch_to_created {
-        crate::workbench_persistence::store::switch_project_in(
-            &transaction,
-            &sage_domain::project::ProjectSwitchRequest {
-                target_project_id: project_id.into(),
-                current_layout: current_layout.clone(),
-            },
-        )?;
-    }
-    let chat_id = if let Some(id) = reusable {
-        transaction
-            .execute(
-                "UPDATE project_layouts SET active_tab_id=?2,updated_at=?3 WHERE project_id=?1",
-                params![project_id, id, now_millis()],
+        let active_project_id = transaction
+            .query_row(
+                "SELECT active_project_id FROM app_state WHERE singleton=1",
+                [],
+                |row| row.get::<_, Option<String>>(0),
             )
             .db()?;
-        id
-    } else {
-        insert_chat_with_identity(
+        let source_is_active = active_project_id.as_deref() == Some(project_id);
+        if source_is_active {
+            if current_layout.tabs.len() >= MAX_RESTORED_TABS {
+                return Err(AppError::ResourceLimit(format!(
+                    "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
+                )));
+            }
+            if current_layout.project_id != project_id {
+                return Err(AppError::InvalidRequest(
+                    "Chat layout does not belong to the requested Project".into(),
+                ));
+            }
+            persist_layout_in(&transaction, current_layout)?;
+        } else {
+            let exists: bool = transaction
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
+                    [project_id],
+                    |row| row.get(0),
+                )
+                .db()?;
+            if !exists {
+                return Err(AppError::InvalidRequest(
+                    "Chat does not belong to that Project".into(),
+                ));
+            }
+            let tab_count: i64 = transaction
+                .query_row(
+                    "SELECT COUNT(*) FROM workbench_tabs WHERE project_id=?1",
+                    [project_id],
+                    |row| row.get(0),
+                )
+                .db()?;
+            if tab_count >= MAX_RESTORED_TABS as i64 {
+                return Err(AppError::ResourceLimit(format!(
+                    "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
+                )));
+            }
+        }
+        let switch_to_created = chat_id.is_some() && !source_is_active;
+        if switch_to_created {
+            crate::workbench_persistence::store::switch_project_in(
+                &transaction,
+                &sage_domain::project::ProjectSwitchRequest {
+                    target_project_id: project_id.into(),
+                    current_layout: current_layout.clone(),
+                },
+            )?;
+        }
+        let chat_id = insert_chat_with_identity(
             &transaction,
             project_id,
             source_is_active || switch_to_created,
             parent,
             chat_id,
-        )?
-    };
-    transaction.commit().db()?;
-    Ok(chat_id)
+        )?;
+        transaction.commit().db()?;
+        Ok(chat_id)
+    }
 }
 
 pub(crate) fn insert_new_chat(
@@ -231,7 +179,13 @@ pub(crate) fn insert_chat_with_identity(
             |row| row.get(0),
         )
         .db()?;
-    if chat_count >= LIMITS.durable.chats_per_project as i64 {
+    // Usage counters keep counting every stored row for the global safety
+    // ceiling. Only discoverable chats consume the per-project allowance.
+    let listed_count: i64 = transaction.query_row(
+        &format!("SELECT COUNT(*) FROM (SELECT 1 FROM chats c WHERE c.project_id=?1 AND {} LIMIT ?2)", super::visibility::listed_chat()),
+        params![project_id, LIMITS.durable.chats_per_project as i64], |row| row.get(0),
+    ).db()?;
+    if listed_count >= LIMITS.durable.chats_per_project as i64 {
         return Err(AppError::ResourceLimit(format!(
             "Project has reached its {}-Chat limit",
             LIMITS.durable.chats_per_project

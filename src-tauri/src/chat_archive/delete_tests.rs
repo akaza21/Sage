@@ -220,6 +220,22 @@ fn deleting_an_archived_chat_frees_a_slot_at_the_project_chat_limit() {
     let Fixture {
         database, project, ..
     } = &fixture;
+    use crate::chat_pin::ChatPinStore;
+    let pin = |chat_id: String| {
+        database
+            .pin_chat(&sage_domain::chat::PinChatRequest {
+                project_id: project.clone(),
+                chat_id,
+            })
+            .unwrap();
+    };
+    // The project cap counts discoverable chats. Keep every empty fixture
+    // explicitly, so this still exercises the actual project-cap boundary.
+    for tab in database.bootstrap_snapshot().unwrap().tabs {
+        if tab.kind == "chat" {
+            pin(tab.id);
+        }
+    }
     let limit = LIMITS.durable.chats_per_project as i64;
     let existing = count(
         database,
@@ -227,7 +243,7 @@ fn deleting_an_archived_chat_frees_a_slot_at_the_project_chat_limit() {
         project,
     );
     for _ in existing..limit {
-        new_chat(database, project).unwrap();
+        pin(new_chat(database, project).unwrap());
     }
     assert!(matches!(
         new_chat(database, project),

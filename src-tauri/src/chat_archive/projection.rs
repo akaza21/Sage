@@ -3,30 +3,17 @@ use sage_domain::chat::ArchivedChatSummary;
 
 const MAX_ARCHIVED_CHAT_BYTES: usize = MAX_ARCHIVED_CHATS * (512 + 1024);
 
+pub(crate) use archived_chats_in as listed_archived_chats_in;
+
 pub(crate) fn archived_chats_in(
     connection: &rusqlite::Connection,
     project_id: &str,
-) -> AppResult<Vec<ArchivedChatSummary>> {
-    archived_projection(connection, project_id, false)
-}
-
-pub(crate) fn listed_archived_chats_in(
-    connection: &rusqlite::Connection,
-    project_id: &str,
-) -> AppResult<Vec<ArchivedChatSummary>> {
-    archived_projection(connection, project_id, true)
-}
-
-fn archived_projection(
-    connection: &rusqlite::Connection,
-    project_id: &str,
-    listed_only: bool,
 ) -> AppResult<Vec<ArchivedChatSummary>> {
     let listed = crate::chat_lifecycle::visibility::listed_chat();
     let mut statement = connection.prepare(&format!(
         "SELECT c.id,c.title,{listed}
          FROM chats c
-         WHERE c.project_id=?1 AND (?3=0 OR {listed})
+         WHERE c.project_id=?1 AND {listed}
            AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
            AND NOT EXISTS(
              SELECT 1 FROM chat_tabs a
@@ -36,16 +23,13 @@ fn archived_projection(
          LIMIT ?2"
     )).db()?;
     let rows = statement
-        .query_map(
-            params![project_id, MAX_ARCHIVED_CHATS as i64 + 1, listed_only],
-            |row| {
-                Ok(ArchivedChatSummary {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    chat_listed: Some(row.get(2)?),
-                })
-            },
-        )
+        .query_map(params![project_id, MAX_ARCHIVED_CHATS as i64 + 1], |row| {
+            Ok(ArchivedChatSummary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                chat_listed: Some(row.get(2)?),
+            })
+        })
         .db()?
         .collect::<Result<Vec<_>, _>>()
         .db()?;

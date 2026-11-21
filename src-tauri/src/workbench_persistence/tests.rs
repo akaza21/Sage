@@ -617,6 +617,9 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
 #[test]
 fn durable_chat_capacity_rejects_creation_without_changing_the_layout() {
     let (database, project_id, first_chat_id) = database_with_project();
+    database
+        .append_simulator_turn(&first_chat_id, "Retain the initial chat", "Answer")
+        .unwrap();
     for ordinal in 1..LIMITS.durable.chats_per_project as i64 {
         insert_empty_chat(
             &database,

@@ -20,44 +20,19 @@ use sage_domain::{
 const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
 
 #[tauri::command]
-pub async fn get_reusable_chat(
-    state: State<'_, AppState>,
-    project_id: String,
-    protected_chat_ids: Vec<String>,
-) -> Result<Option<String>, String> {
-    let database = state.database.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::chat_lifecycle::validate_chat_identifier("Project ID", &project_id)
-            .and_then(|()| {
-                crate::chat_lifecycle::visibility::reusable_chat(
-                    &database.connection(),
-                    &project_id,
-                    &protected_chat_ids,
-                    None,
-                )
-            })
-            .map_err(|error| error.to_string())
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
 pub async fn create_chat(
     state: State<'_, AppState>,
     current_layout: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
     project_id: Option<String>,
     chat_id: Option<String>,
-    reuse: Option<bool>,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(create_or_reuse_chat_inner(
+    Ok(create_chat_inner(
         &state,
         current_layout,
         expected_transition_epoch,
         project_id,
         chat_id,
-        reuse.unwrap_or(false),
     )
     .await)
 }
@@ -147,32 +122,12 @@ pub async fn move_chat(
     .await)
 }
 
-#[cfg(test)]
 pub(crate) async fn create_chat_inner(
     state: &AppState,
     current_layout: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
     project_id: Option<String>,
     chat_id: Option<String>,
-) -> ProjectTransitionResult {
-    create_or_reuse_chat_inner(
-        state,
-        current_layout,
-        expected_transition_epoch,
-        project_id,
-        chat_id,
-        false,
-    )
-    .await
-}
-
-async fn create_or_reuse_chat_inner(
-    state: &AppState,
-    current_layout: Option<ProjectLayoutRequest>,
-    expected_transition_epoch: u64,
-    project_id: Option<String>,
-    chat_id: Option<String>,
-    reuse: bool,
 ) -> ProjectTransitionResult {
     execute_chat_transition(
         state,
@@ -191,22 +146,7 @@ async fn create_or_reuse_chat_inner(
                         "Project Chat creation requires a current layout".into(),
                     )
                 })?;
-                if reuse {
-                    database.reuse_empty_chat(
-                        &target,
-                        &layout,
-                        chat_id.as_deref().ok_or_else(|| {
-                            AppError::InvalidRequest("Chat reuse requires an identity".into())
-                        })?,
-                    )?;
-                } else {
-                    database.create_chat_with_identity(
-                        &target,
-                        &layout,
-                        None,
-                        chat_id.as_deref(),
-                    )?;
-                }
+                database.create_chat_with_identity(&target, &layout, None, chat_id.as_deref())?;
                 Ok(())
             }
         },

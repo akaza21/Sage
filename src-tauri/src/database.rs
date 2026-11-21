@@ -44,6 +44,7 @@ fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppR
     }
     {
         use crate::project_registry::ProjectRegistryStore;
+        crate::chat_lifecycle::visibility::release_hidden_tabs(&database.connection())?;
         if let Some(project) = database.active_project_id()? {
             crate::chat_lifecycle::visibility::reopen_project(&database.connection(), &project)?;
         }

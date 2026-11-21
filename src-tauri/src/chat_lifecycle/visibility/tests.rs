@@ -220,6 +220,7 @@ fn open_empty_remains_usable_but_switch_and_restart_release_hidden_selection() {
         Some(real.as_str())
     );
     let mut current = layout(&db);
+    assert!(current.tabs.iter().any(|tab| tab.id == empty));
     current.active_tab_id = Some(empty.clone());
     db.persist_project_layout(&current).unwrap();
     drop(db);
@@ -348,72 +349,70 @@ fn foreign_first_send_creation_keeps_its_explicit_selection_over_an_older_real_c
 }
 
 #[test]
-fn upgrade_at_capacity_reuses_the_oldest_eligible_chat_without_growing() {
-    let db = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
+fn legacy_hidden_welcome_chats_do_not_block_a_new_first_send_or_lose_history() {
+    let directory = TestDirectory::new();
+    let path = directory.0.join("sage.db");
+    let db = crate::database::open_database(&path).unwrap();
     let project = db
         .create_named_project_if_active("Upgrade", &[], None)
         .unwrap();
-    let ids: Vec<_> = (0..64).map(|_| create(&db)).collect();
-    assert!(listed(&db, &project.id).is_empty());
-    // Local typed input protects the oldest chat; native pinning, renaming,
-    // queued input, archives and any previous prompt protect the others.
-    db.connection()
-        .execute("UPDATE workbench_tabs SET pinned=1 WHERE id=?1", [&ids[1]])
-        .unwrap();
-    db.connection()
-        .execute(
-            "UPDATE chats SET title_source='user' WHERE id=?1",
-            [&ids[2]],
+    for index in 0..64 {
+        let chat = create(&db);
+        let mut connection = db.write_connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let now: i64 = transaction
+            .query_row("SELECT created_at FROM chats WHERE id=?1", [&chat], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        crate::session_events::seed_legacy_welcome(
+            &transaction,
+            &project.id,
+            &chat,
+            &format!("welcome-{index}"),
+            now,
+            r#"{"role":"assistant","text":"Historical onboarding"}"#,
+            "simulatorTurnCommitted",
         )
         .unwrap();
-    db.append_simulator_turn(&ids[3], "Existing prompt", "Answer")
+        transaction.commit().unwrap();
+    }
+    drop(db);
+    let db = crate::database::open_database(&path).unwrap();
+    let initial = db.bootstrap_snapshot().unwrap();
+    assert!(initial.tabs.is_empty());
+    assert!(initial.archived_chats.is_empty());
+    let identity = uuid::Uuid::new_v4().to_string();
+    let created = db
+        .create_chat_with_identity(&project.id, &layout(&db), None, Some(&identity))
         .unwrap();
-    db.connection()
-        .execute(
-            "UPDATE chats SET title_source='default' WHERE id=?1",
-            [&ids[3]],
-        )
-        .unwrap();
-    db.replace_chat_queued_prompts(
-        &project.id,
-        &ids[4],
-        &[DurableQueuedPrompt {
-            id: "queued".into(),
-            text: "Keep this".into(),
-            attached_context: Default::default(),
-            binding_id: "binding".into(),
-            model_id: None,
-            status: QueuedPromptStatus::Queued,
-        }],
-    )
-    .unwrap();
-    let selected = super::reusable_chat(&db.connection(), &project.id, &[ids[0].clone()], None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(selected, ids[5]);
-    let reused = db
-        .reuse_empty_chat(&project.id, &layout(&db), &selected)
-        .unwrap();
-    assert_eq!(reused, selected);
-    db.append_simulator_turn(&reused, "First send after upgrade", "Answer")
+    assert_eq!(created, identity);
+    db.append_simulator_turn(&created, "First send after upgrade", "Answer")
         .unwrap();
     let snapshot = db.bootstrap_snapshot().unwrap();
-    assert_eq!(snapshot.active_tab_id.as_deref(), Some(reused.as_str()));
-    assert_eq!(snapshot.tabs.len(), 64);
-    let count: i64 = db
+    assert_eq!(snapshot.active_tab_id, Some(created.clone()));
+    assert_eq!(snapshot.tabs.len(), 1);
+    assert_eq!(listed(&db, &project.id), vec![created]);
+    let retained: (i64, i64, i64) = db
         .connection()
         .query_row(
-            "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",
-            [&project.id],
-            |r| r.get(0),
+            "SELECT (SELECT COUNT(*) FROM chats),
+                (SELECT COUNT(*) FROM agent_sessions WHERE id LIKE 'welcome-%' AND state='closed'),
+                (SELECT COUNT(*) FROM turns WHERE session_id LIKE 'welcome-%')",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .unwrap();
-    assert_eq!(count, 64);
-    assert!(listed(&db, &project.id).contains(&reused));
+    assert_eq!(retained, (65, 64, 64));
 }
 
 #[test]
-fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
+fn empty_archive_restore_restart_and_switch_keeps_retention() {
+    assert_restore_retention(false);
+    assert_restore_retention(true);
+}
+
+fn assert_restore_retention(pinned: bool) {
     use crate::chat_archive::ChatArchiveStore;
     use crate::chat_pin::ChatPinStore;
     use sage_domain::chat::{ChatLifecycleRequest, PinChatRequest};
@@ -424,11 +423,13 @@ fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
         .create_named_project_if_active("Archive", &[], None)
         .unwrap();
     let chat = create(&db);
-    db.pin_chat(&PinChatRequest {
-        project_id: project.id.clone(),
-        chat_id: chat.clone(),
-    })
-    .unwrap();
+    if pinned {
+        db.pin_chat(&PinChatRequest {
+            project_id: project.id.clone(),
+            chat_id: chat.clone(),
+        })
+        .unwrap();
+    }
     db.archive_chat(&ChatLifecycleRequest {
         project_id: project.id.clone(),
         chat_id: chat.clone(),
@@ -445,11 +446,6 @@ fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
             .any(|c| c.id == chat && c.chat_listed == Some(true))
     );
     assert_eq!(search(&db, &project.id, ""), vec![chat.clone()]);
-    assert!(
-        super::reusable_chat(&db.connection(), &project.id, &[], None)
-            .unwrap()
-            .is_none()
-    );
     db.restore_chat(&ChatLifecycleRequest {
         project_id: project.id.clone(),
         chat_id: chat.clone(),
@@ -460,7 +456,12 @@ fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
     assert_eq!(restored.active_tab_id, Some(chat.clone()));
     assert!(restored.tabs.iter().any(|tab| tab.id == chat));
     assert!(restored.archived_chats.is_empty());
-    assert!(restored.tabs.iter().any(|tab| tab.id == chat && tab.pinned));
+    assert!(
+        restored
+            .tabs
+            .iter()
+            .any(|tab| tab.id == chat && !tab.pinned && tab.chat_listed == Some(true))
+    );
     drop(db);
     let db = crate::database::open_database(&path).unwrap();
     db.create_named_project_if_active("Other", &[], Some(&project.id))
@@ -478,15 +479,6 @@ fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
     );
     assert_eq!(listed(&db, &project.id), vec![chat.clone()]);
     assert_eq!(search(&db, &project.id, ""), vec![chat.clone()]);
-    assert!(
-        super::reusable_chat(&db.connection(), &project.id, &[], None)
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        db.reuse_empty_chat(&project.id, &layout(&db), &chat)
-            .is_err()
-    );
 }
 
 #[test]
@@ -530,4 +522,29 @@ fn fork_title_or_native_lineage_remains_discoverable_after_switch_and_restart() 
         assert!(listed(&db, &project.id).contains(&id));
         assert!(search(&db, &project.id, "Chat").contains(&id));
     }
+}
+
+#[test]
+fn live_project_switch_preserves_a_temporary_pair_and_its_layout_ownership() {
+    let db = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
+    let project = db
+        .create_named_project_if_active("Pair", &[], None)
+        .unwrap();
+    let parent = create(&db);
+    let side = db
+        .create_chat_with_parent(&project.id, &layout(&db), Some(&parent))
+        .unwrap();
+    db.create_named_project_if_active("Other", &[], Some(&project.id))
+        .unwrap();
+    db.switch_project(&ProjectSwitchRequest {
+        target_project_id: project.id,
+        current_layout: layout(&db),
+    })
+    .unwrap();
+    let restored = layout(&db);
+    assert_eq!(restored.tabs.len(), 2);
+    for id in [&parent, &side] {
+        assert!(restored.tabs.iter().any(|tab| &tab.id == id));
+    }
+    db.persist_project_layout(&restored).unwrap();
 }

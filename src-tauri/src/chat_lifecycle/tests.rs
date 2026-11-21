@@ -26,6 +26,14 @@ fn requested_creation_identity_survives_reopen_and_cannot_replace_another_chat()
     let path = root.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_with_chat(&root).unwrap();
+    let initial_chat = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    database
+        .append_simulator_turn(&initial_chat, "Existing chat", "Preserved answer")
+        .unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = Uuid::new_v4().to_string();
     assert_eq!(

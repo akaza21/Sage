@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/033_sign_in_evide
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentSignInEvidenceIndexes => return Ok(()),
+        SchemaClass::CurrentSignInEvidenceIndexes | SchemaClass::CurrentChatRetention => {
+            return Ok(());
+        }
         SchemaClass::CurrentPrivateProjects => {}
         _ => return invalid("sign-in evidence indexes require the exact private projects schema"),
     }
@@ -38,7 +40,7 @@ mod tests {
     fn retained_rows(connection: &Connection) -> Vec<Vec<Vec<Value>>> {
         [
             "SELECT * FROM projects ORDER BY id",
-            "SELECT * FROM chats ORDER BY id",
+            "SELECT id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source FROM chats ORDER BY id",
             "SELECT * FROM agent_sessions ORDER BY id",
             "SELECT * FROM session_facts ORDER BY session_id,sequence",
             "SELECT * FROM acp_session_usage ORDER BY session_id",
@@ -171,10 +173,11 @@ mod tests {
         let before = retained_rows(&connection);
         apply(&mut connection).unwrap();
         assert_eq!(retained_rows(&connection), before);
+        post_v18::apply(&mut connection).unwrap();
         let migrated = database_fingerprint(&connection).unwrap();
         post_v18::apply(&mut connection).unwrap();
         assert_eq!(database_fingerprint(&connection).unwrap(), migrated);
-        assert_eq!(migrated.schema, SchemaClass::CurrentSignInEvidenceIndexes);
+        assert_eq!(migrated.schema, fingerprint::CURRENT_SCHEMA);
         drop(connection);
 
         let (mut reopened, anchor) = open_or_migrate(&path).unwrap().into_parts();

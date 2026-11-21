@@ -660,10 +660,14 @@ fn private_chat_forks_keep_their_workspace_and_appear_once_each() {
         )
         .unwrap();
     let fork = fixture.fork("thread-private-fork").unwrap();
-    // A fork with no own prompt stays hidden until the user chooses to pin it.
-    // Its workspace and parent remain intact throughout.
+    // A native fork is discoverable immediately, even without its own prompt.
     let empty = fixture.database.bootstrap_snapshot().unwrap();
-    assert_eq!(empty.unscoped_chats[0].rail_chats.len(), 1);
+    let chats = &empty.unscoped_chats[0].rail_chats;
+    assert_eq!(chats.len(), 2);
+    for id in [&fixture.parent, &fork] {
+        assert_eq!(chats.iter().filter(|chat| &chat.id == id).count(), 1);
+    }
+    assert!(!chats.iter().find(|chat| chat.id == fork).unwrap().pinned);
     use crate::chat_pin::ChatPinStore;
     fixture
         .database

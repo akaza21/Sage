@@ -7,9 +7,9 @@ use sha2::{Digest, Sha256};
 mod expected;
 mod preflight;
 mod version;
-#[cfg(test)]
-pub(crate) use expected::historical_trigger_sql;
 use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_fingerprint};
+#[cfg(test)]
+pub(crate) use expected::{expected_schema_connection, historical_trigger_sql};
 use version::{class_for_version, reject_newer_history};
 
 pub(super) use preflight::reject_newer_live;
@@ -18,7 +18,7 @@ use sage_core::error::{AppError, AppResult};
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
-const MAX_SCHEMA_VERSION: usize = super::sign_in_evidence_indexes::VERSION as usize;
+const MAX_SCHEMA_VERSION: usize = super::chat_retention::VERSION as usize;
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -79,13 +79,14 @@ pub(super) enum SchemaClass {
     CurrentChildThreadStates,
     CurrentPrivateProjects,
     CurrentSignInEvidenceIndexes,
+    CurrentChatRetention,
 }
 
 #[cfg(test)]
-pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentSignInEvidenceIndexes;
+pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentChatRetention;
 
 #[cfg(test)]
-pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::sign_in_evidence_indexes::VERSION;
+pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::chat_retention::VERSION;
 
 impl SchemaClass {
     /// Every schema from v18 on, which opens and verifies in place: the
@@ -106,6 +107,7 @@ impl SchemaClass {
                 | Self::CurrentTurnUndoIntentIndexes
                 | Self::CurrentImportedHistory
                 | Self::CurrentSessionCapabilities
+                | Self::CurrentChatRetention
                 | Self::CurrentSignInEvidenceIndexes
                 | Self::CurrentPrivateProjects
                 | Self::CurrentChildThreadStates

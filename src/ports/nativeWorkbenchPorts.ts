@@ -156,16 +156,12 @@ const chat: ChatPort = {
   forkChat(request) {
     return invokeNative("fork_chat", { ...request });
   },
-  getReusableChat(projectId, protectedChatIds) {
-    return invokeNative("get_reusable_chat", { projectId, protectedChatIds });
-  },
-  createChat(currentLayout, expectedTransitionEpoch, projectId, chatId, reuse) {
+  createChat(currentLayout, expectedTransitionEpoch, projectId, chatId) {
     return invokeNative("create_chat", {
       currentLayout,
       expectedTransitionEpoch,
       projectId,
       chatId,
-      reuse,
     });
   },
   activateChat(currentLayout, expectedTransitionEpoch) {

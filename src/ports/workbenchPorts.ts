@@ -239,10 +239,6 @@ export interface RepositoryPort {
 }
 
 export interface ChatPort {
-  getReusableChat(
-    projectId: string,
-    protectedChatIds: string[],
-  ): Promise<string | null>;
   setChatProject(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
@@ -254,7 +250,6 @@ export interface ChatPort {
     expectedTransitionEpoch: number,
     projectId?: string | null,
     chatId?: string,
-    reuse?: boolean,
   ): Promise<ProjectTransitionResult>;
   activateChat(
     currentLayout: ProjectLayoutRequest,
@@ -377,7 +372,6 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "renameGitLocalBranch",
   ],
   chat: [
-    "getReusableChat",
     "activateChat",
     "archiveChat",
     "createChat",

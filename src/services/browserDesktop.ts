@@ -76,10 +76,6 @@ import {
   projectActiveChat,
   projectArchivedChats,
   committedTransition,
-  canReuseBrowserChat,
-  getReusableBrowserChat,
-  registerBrowserChat,
-  forgetBrowserChat,
 } from "./browserChatState";
 
 const scopeCommands = createBrowserScopeCommands({
@@ -91,15 +87,21 @@ const scopeCommands = createBrowserScopeCommands({
   hasSession: (chat) =>
     simulatorSessions.has(chat) ||
     (snapshot.activeTabId === chat && !!snapshot.sessionId),
-  canReuse: canReuseBrowserChat,
-  register: registerBrowserChat,
-  remove: forgetBrowserChat,
+  register: (chat) => {
+    durableChatIds.add(chat.id);
+    chatTitles.set(chat.id, chat.title);
+    messagesByChat.set(chat.id, []);
+  },
+  remove: (chat) => {
+    durableChatIds.delete(chat);
+    chatTitles.delete(chat);
+    messagesByChat.delete(chat);
+  },
   title: (chat) => chatTitles.get(chat) ?? "Chat",
   activate: projectActiveChat,
 });
 
 export const browserDesktop = {
-  getReusableChat: getReusableBrowserChat,
   createProject: scopeCommands.createProject,
   async getBootstrapSnapshot() {
     return structuredClone({ ...snapshot, messages: activeMessages() });
@@ -159,7 +161,6 @@ export const browserDesktop = {
     expectedTransitionEpoch: number,
     projectId?: string | null,
     chatId?: string,
-    reuse = false,
   ): Promise<ProjectTransitionResult> {
     if (
       projectId === null ||
@@ -170,21 +171,9 @@ export const browserDesktop = {
         expectedTransitionEpoch,
         projectId,
         chatId,
-        reuse,
       );
     }
     if (!currentLayout) throw new Error("Missing project layout");
-    if (reuse) {
-      if (
-        !chatId ||
-        !canReuseBrowserChat(snapshot.tabs.find((tab) => tab.id === chatId))
-      )
-        throw new Error("Chat is no longer eligible for reuse");
-      await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
-      snapshot.activeTabId = chatId;
-      projectActiveChat();
-      return committedTransition();
-    }
     assertBrowserChatCreation(
       currentLayout,
       expectedTransitionEpoch,
@@ -304,6 +293,9 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
+    snapshot.tabs = snapshot.tabs.map((tab) =>
+      tab.id === request.chatId ? { ...tab, chatListed: true } : tab,
+    );
     return committedTransition();
   },
   async deleteChat(

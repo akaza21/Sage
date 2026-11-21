@@ -598,7 +598,6 @@ describe("workbench resource and project navigation", () => {
       0,
       "project-a",
       newChat.id,
-      false,
     );
     expect(useWorkbenchStore.getState()).toMatchObject({
       nativeTransitionEpoch: 1,
