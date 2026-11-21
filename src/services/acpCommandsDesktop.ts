@@ -15,16 +15,6 @@ import { safeAcpMutationResponse } from "./acpDesktopResponses";
 
 export type { AcpCommandSource };
 
-export const commandSourceGroups = {
-  builtin: "Commands",
-  skill: "Skills",
-  prompt: "Prompts",
-  extension: "Extensions",
-  mcp: "MCP prompts",
-  plugin: "Plugins",
-  harness: "Other commands",
-} as const satisfies Record<AcpCommandSource, string>;
-
 export interface AvailableAcpCommand {
   name: string;
   description: string;

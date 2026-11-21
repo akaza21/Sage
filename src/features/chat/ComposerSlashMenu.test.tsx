@@ -510,6 +510,7 @@ describe("composer slash commands", () => {
       expect(within(listbox).getAllByRole("option")).toHaveLength(50),
     );
     expect(screen.getByText("and 98 more, type to search")).toBeInTheDocument();
+    expect(screen.queryByText("10 more — keep typing to narrow")).toBeNull();
     type("/built-59");
     await waitFor(() =>
       expect(names(screen.getByRole("listbox"))).toEqual(["/built-59"]),

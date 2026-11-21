@@ -39,6 +39,7 @@ export function TextFieldSuggestions({
   anchorRef: RefObject<HTMLElement | null>;
   ariaLabel: string;
   className?: string;
+  /** Overrides the automatic overflow footer. */
   footer?: ReactNode;
   items: readonly TextFieldSuggestion[];
   activeId: string | null;
@@ -129,7 +130,7 @@ export function TextFieldSuggestions({
           ),
         )}
       </div>
-      {items.length > rendered.length ? (
+      {!footer && items.length > rendered.length ? (
         <p className="text-field-suggestions__footer">
           {items.length - rendered.length} more — keep typing to narrow
         </p>

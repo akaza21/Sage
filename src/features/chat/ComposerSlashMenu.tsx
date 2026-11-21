@@ -15,7 +15,6 @@ import type {
 } from "../../domain/acp";
 import {
   acpCommandsDesktop,
-  commandSourceGroups,
   type AcpCommandList,
   type AcpCommandSource,
   type AvailableAcpCommand,
@@ -60,6 +59,16 @@ function liveOwnerKey(page: AcpChatPage | null): string {
  * seven sources of seven rows fit the list's 50 rendered rows.
  */
 const SECTION_ROWS = 7;
+
+const commandSourceGroups = {
+  builtin: "Commands",
+  skill: "Skills",
+  prompt: "Prompts",
+  extension: "Extensions",
+  mcp: "MCP prompts",
+  plugin: "Plugins",
+  harness: "Other commands",
+} as const satisfies Record<AcpCommandSource, string>;
 
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
