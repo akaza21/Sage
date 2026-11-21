@@ -27,7 +27,6 @@ export let simulatorSessions = new Map<
 >();
 export let durableChatIds = new Set(["tab-chat"]);
 export let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
-
 export function resetBrowserDesktopForTests() {
   resetBrowserDirectories();
   resetBrowserChatScopes();

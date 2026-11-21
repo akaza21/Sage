@@ -30,7 +30,6 @@ pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_
 /// callers can look up Turns for these rows alone.
 pub(crate) fn rail_chat_set() -> String {
     let private_chats = crate::private_chat::visible_chat_set();
-    let listed = crate::chat_lifecycle::visibility::listed_chat();
     format!(
         "(WITH private_chats AS {private_chats}
           SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
@@ -38,7 +37,7 @@ pub(crate) fn rail_chat_set() -> String {
             SELECT w.project_id AS project_id, w.id AS tab_id, c.id AS id,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_RECENCY_ORDER}) AS by_recency,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_POSITION_ORDER}) AS by_position
-            {RAIL_CHAT_TABS} AND {listed}
+            {RAIL_CHAT_TABS}
               AND (w.project_id IN (SELECT id FROM projects WHERE kind='user')
                 OR w.id IN (SELECT id FROM private_chats))
           ) ranked
@@ -142,8 +141,7 @@ fn rail_chat_columns() -> String {
     format!(
         "SELECT w.id, w.title, w.pinned, w.position, w.status,
                 COALESCE(c.updated_at, w.updated_at), {CHAT_FINISHED_AT}
-         {RAIL_CHAT_TABS} AND w.project_id = ?1 AND {}",
-        crate::chat_lifecycle::visibility::listed_chat()
+         {RAIL_CHAT_TABS} AND w.project_id = ?1"
     )
 }
 
@@ -170,12 +168,10 @@ pub(super) fn attach_rail_chats(
             rail_chat_columns()
         ))
         .db()?;
-    let mut total = connection
-        .prepare(&format!(
-            "SELECT COUNT(*) {RAIL_CHAT_TABS} AND w.project_id=?1 AND {}",
-            crate::chat_lifecycle::visibility::listed_chat()
-        ))
-        .db()?;
+    let mut total = connection.prepare(
+        "SELECT COUNT(*) FROM workbench_tabs w
+         WHERE w.project_id = ?1 AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0",
+    ).db()?;
     let read = |row: &rusqlite::Row<'_>| -> rusqlite::Result<RailChatRow> {
         Ok((
             row.get(0)?,
@@ -236,8 +232,7 @@ fn attach_rail_archived(
         if project.id.is_empty() || project.id.len() > 512 {
             continue;
         }
-        project.rail_archived =
-            crate::chat_archive::listed_archived_chats_in(connection, &project.id)?;
+        project.rail_archived = crate::chat_archive::archived_chats_in(connection, &project.id)?;
     }
     Ok(())
 }

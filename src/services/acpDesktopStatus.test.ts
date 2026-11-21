@@ -5,7 +5,6 @@ import { getChatStatus, safeChatStatus } from "./acpDesktopProjection";
 
 vi.mock("../ports/nativeInvoke", () => ({ invokeNative: vi.fn() }));
 const response = {
-  chatListed: true,
   projectId: "p",
   chatId: "c",
   title: "Chat",
@@ -24,8 +23,6 @@ it("decodes bounded status and rejects malformed native fields", () => {
   ).toBeNull();
   for (const invalid of [
     null,
-    { ...response, chatListed: undefined },
-    { ...response, chatListed: "yes" },
     { ...response, title: "x".repeat(8193) },
     { ...response, latestTurn: {} },
     { ...response, latestTurn: { state: "invented", updatedAt: 3 } },

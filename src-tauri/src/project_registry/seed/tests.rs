@@ -50,10 +50,11 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
             selected_resource: None,
         })
         .unwrap();
-    assert!(
+    assert_eq!(
         reopened.bootstrap_snapshot().unwrap().projects[0]
             .rail_chats
-            .is_empty()
+            .len(),
+        1
     );
     let result = reopened
         .append_simulator_turn(&chat, "first prompt", "real answer")

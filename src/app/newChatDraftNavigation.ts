@@ -24,21 +24,8 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       : null;
   if (!retainedDraft && !state.project)
     return (async () => {
-      const created = await state.createChat(null);
-      if (
-        created.status !== "confirmed" ||
-        get().activeTabId !== created.chatId
-      )
-        return;
-      openNewChatDraft(set, get);
-      const draft = get().newChatDraft;
-      if (draft)
-        set({
-          newChatDraft: {
-            ...draft,
-            submission: { status: "created", chatId: created.chatId },
-          },
-        });
+      await state.ensureLocalProject();
+      if (get().project) openNewChatDraft(set, get, projectId);
     })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;

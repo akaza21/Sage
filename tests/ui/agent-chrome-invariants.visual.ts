@@ -290,10 +290,6 @@ test.describe("Agent rail chat row", () => {
     await expect.poll(() => painted(state)).toBe(false);
     await expect.poll(() => painted(quick)).toBe(true);
 
-    // Archiving the last attached chat is now available: the unsent draft
-    // supplies the empty-project workbench instead of a default Chat row.
-    await page.keyboard.press("Tab");
-    await expect(row.getByRole("button", { name: /^Archive / })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(actions).toBeFocused();
     await expect.poll(() => painted(state)).toBe(false);

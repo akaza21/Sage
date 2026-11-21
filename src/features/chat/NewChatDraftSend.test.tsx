@@ -719,9 +719,6 @@ it("recovers after restoring an archived chat without losing either composer or 
     modelId: "model-b",
   });
   await state.createChat();
-  // Keep this recovery scenario on new allocation: a retained empty chat
-  // is not eligible to receive the draft's first send.
-  await state.pinChat(useWorkbenchStore.getState().activeTabId!);
   expect(await useWorkbenchStore.getState().archiveChat(archivedId)).toBe(true);
   useWorkbenchStore.setState({
     harnesses: [harness, otherHarness],

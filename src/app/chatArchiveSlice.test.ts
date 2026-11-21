@@ -110,15 +110,14 @@ it("still runs an archive that names its Project after a Project switch", async 
   });
 });
 
-it("reports native refusal when archiving the last project chat", async () => {
+it("still reports the last attached Chat in the Project it was started in", async () => {
   chunk.release();
   useWorkbenchStore.setState({ tabs: [tab("chat:a1", 0)] });
-  vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockResolvedValue({
-    committed: false,
-    transitionEpoch: 0,
-    snapshot: null,
-    recoveryError: "Native refusal",
-  });
-  await useWorkbenchStore.getState().archiveChat("chat:a1");
-  expect(useWorkbenchStore.getState().error).toBe("Native refusal");
+
+  await expect(
+    useWorkbenchStore.getState().archiveChat("chat:a1"),
+  ).resolves.toBe(false);
+  expect(useWorkbenchStore.getState().error).toBe(
+    "The last attached chat cannot be archived",
+  );
 });

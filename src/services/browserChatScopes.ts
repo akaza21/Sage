@@ -120,7 +120,6 @@ export function restoreScopedBrowserChat(
       ...createBrowserChatTab(scope.tabs, 0),
       id: chat,
       title,
-      chatListed: true,
     },
   ];
   scope.activeTabId = chat;

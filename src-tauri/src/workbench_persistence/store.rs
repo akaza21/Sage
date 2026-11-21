@@ -148,7 +148,6 @@ pub(crate) fn switch_project_in(
             "target project does not exist".into(),
         ));
     }
-    crate::chat_lifecycle::visibility::reopen_project(transaction, &request.target_project_id)?;
     let now = now_millis();
     transaction
         .execute(

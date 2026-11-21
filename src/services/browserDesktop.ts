@@ -232,9 +232,6 @@ export const browserDesktop = {
     const renamedLayout = renamedBrowserChatLayout(request, title, chatTitles);
     chatTitles.set(request.chatId, title);
     Object.assign(snapshot, renamedLayout);
-    snapshot.tabs = snapshot.tabs.map((tab) =>
-      tab.id === request.chatId ? { ...tab, chatListed: true } : tab,
-    );
     projectActiveChat();
     return committedTransition();
   },
@@ -256,7 +253,11 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
-    const next = archiveChatLayout(request.currentLayout, request.chatId);
+    const next = archiveChatLayout(
+      request.currentLayout,
+      request.chatId,
+      snapshot.project?.isInternal,
+    );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
     return committedTransition();
   },
@@ -293,9 +294,6 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
-    snapshot.tabs = snapshot.tabs.map((tab) =>
-      tab.id === request.chatId ? { ...tab, chatListed: true } : tab,
-    );
     return committedTransition();
   },
   async deleteChat(

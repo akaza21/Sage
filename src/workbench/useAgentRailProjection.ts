@@ -41,21 +41,13 @@ export function mirrorAgentRailStatus(page: AcpChatStatus) {
   if (
     !metadataChanged &&
     updatedAt === tab.updatedAt &&
-    finishedAt === tab.finishedAt &&
-    page.chatListed === tab.chatListed
+    finishedAt === tab.finishedAt
   )
     return;
   useWorkbenchStore.setState({
     tabs: state.tabs.map((item) =>
       item === tab
-        ? {
-            ...item,
-            title: page.title,
-            status,
-            updatedAt,
-            finishedAt,
-            chatListed: page.chatListed,
-          }
+        ? { ...item, title: page.title, status, updatedAt, finishedAt }
         : item,
     ),
   });

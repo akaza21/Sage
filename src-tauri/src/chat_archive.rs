@@ -10,11 +10,64 @@ use crate::{
     workbench_restore::validate_tab_projection,
 };
 use sage_db::database::Database;
-use sage_domain::chat::{ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab};
+use sage_domain::chat::{
+    ArchivedChatSummary, ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab,
+};
 
 pub(crate) const MAX_ARCHIVED_CHATS: usize = 64;
-mod projection;
-pub(crate) use projection::{archived_chats_in, listed_archived_chats_in};
+const MAX_ARCHIVED_CHAT_BYTES: usize = MAX_ARCHIVED_CHATS * (512 + 1024);
+
+pub(crate) fn archived_chats_in(
+    connection: &rusqlite::Connection,
+    project_id: &str,
+) -> AppResult<Vec<ArchivedChatSummary>> {
+    let mut statement = connection.prepare(
+        "SELECT c.id,c.title
+         FROM chats c
+         WHERE c.project_id=?1
+           AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
+           AND NOT EXISTS(
+             SELECT 1 FROM chat_tabs a
+             WHERE a.project_id=c.project_id AND a.chat_id=c.id
+           )
+         ORDER BY c.ordinal,c.id
+         LIMIT ?2",
+    ).db()?;
+    let rows = statement
+        .query_map(params![project_id, MAX_ARCHIVED_CHATS as i64 + 1], |row| {
+            Ok(ArchivedChatSummary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+            })
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
+    if rows.len() > MAX_ARCHIVED_CHATS {
+        return Err(AppError::ResourceLimit(format!(
+            "Project exceeds its {MAX_ARCHIVED_CHATS}-archived-Chat limit"
+        )));
+    }
+    let mut bytes = 0_usize;
+    for chat in &rows {
+        validate_chat_identifier("Archived Chat ID", &chat.id)?;
+        if chat.title.is_empty() || chat.title.len() > 1024 {
+            return Err(AppError::InvalidRequest(
+                "archived Chat title is invalid".into(),
+            ));
+        }
+        bytes = bytes
+            .checked_add(chat.id.len())
+            .and_then(|value| value.checked_add(chat.title.len()))
+            .ok_or_else(|| AppError::ResourceLimit("archived Chat metadata overflow".into()))?;
+    }
+    if bytes > MAX_ARCHIVED_CHAT_BYTES {
+        return Err(AppError::ResourceLimit(format!(
+            "archived Chat metadata exceeds its {MAX_ARCHIVED_CHAT_BYTES}-byte limit"
+        )));
+    }
+    Ok(rows)
+}
 
 pub(crate) trait ChatArchiveStore {
     fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()>;
@@ -59,15 +112,18 @@ impl ChatArchiveStore for Database {
                     "Chat is not attached to the active Project".into(),
                 ));
             }
+            if attached.len() <= 1
+                && !crate::private_chat::is_internal(&transaction, &request.project_id)?
+            {
+                return Err(AppError::InvalidRequest(
+                    "the last attached chat cannot be archived".into(),
+                ));
+            }
             let next_layout = archived_layout(&request.current_layout, &request.chat_id)?;
             persist_layout_in(&transaction, &next_layout)?;
         } else {
             archive_foreign_chat(&transaction, &request.project_id, &request.chat_id)?;
         }
-        transaction.execute(
-            "UPDATE chats SET retained_at=COALESCE(retained_at,?3) WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, sage_core::time::now_millis()],
-        ).db()?;
         transaction.commit().db()?;
         Ok(())
     }
@@ -116,7 +172,6 @@ impl ChatArchiveStore for Database {
                 status: Some("idle".into()),
                 updated_at: None,
                 finished_at: None,
-                chat_listed: None,
                 resource: None,
                 repository: None,
                 diff_ref: None,
@@ -127,10 +182,6 @@ impl ChatArchiveStore for Database {
         } else {
             restore_foreign_chat(&transaction, &request.project_id, &request.chat_id)?;
         }
-        transaction.execute(
-            "UPDATE chats SET retained_at=COALESCE(retained_at,?3) WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, sage_core::time::now_millis()],
-        ).db()?;
         transaction.commit().db()?;
         Ok(())
     }
@@ -242,6 +293,18 @@ fn archive_foreign_chat(
     project_id: &str,
     chat_id: &str,
 ) -> AppResult<()> {
+    let attached: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
+    if attached <= 1 && !crate::private_chat::is_internal(transaction, project_id)? {
+        return Err(AppError::InvalidRequest(
+            "the last attached chat cannot be archived".into(),
+        ));
+    }
     let tab_id: Option<String> = transaction
         .query_row(
             "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",

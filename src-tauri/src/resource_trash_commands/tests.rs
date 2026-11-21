@@ -106,7 +106,6 @@ impl Fixture {
             status: None,
             updated_at: None,
             finished_at: None,
-            chat_listed: None,
             resource: Some(ResourceRef {
                 root_id: self.root_id.clone(),
                 relative_path: "src/empty/ghost.rs".into(),

@@ -147,7 +147,6 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
     assert_eq!(private.active_tab_id.as_deref(), Some(chat.as_str()));
     assert_eq!(private.projects.len(), 1);
     assert_eq!(private.unscoped_chats.len(), 1);
-    assert!(private.unscoped_chats[0].rail_chats.is_empty());
     let folder = database.root_records(&project.id).unwrap()[0]
         .absolute_path
         .clone();
@@ -312,14 +311,8 @@ fn hidden_project_ids_cannot_be_selected_as_user_projects() {
             .is_err()
     );
     assert_eq!(layout(&database).project_id, before.project_id);
-    let snapshot = database.bootstrap_snapshot().unwrap();
-    assert_eq!(snapshot.unscoped_chats.len(), 1);
-    assert!(snapshot.unscoped_chats[0].rail_chats.is_empty());
     assert_eq!(
-        database
-            .connection()
-            .query_row("SELECT COUNT(*) FROM chats", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
+        database.bootstrap_snapshot().unwrap().unscoped_chats.len(),
         2
     );
     drop(database);
@@ -337,12 +330,7 @@ fn private_chat_capacity_never_silently_hides_older_chats() {
     database.create_project_with_chat(&root).unwrap();
     let real = layout(&database);
     for _ in 0..MAX_UNSCOPED_CHATS {
-        let chat = Uuid::new_v4().to_string();
-        create(&database, None, &chat).unwrap();
-        database
-            .connection()
-            .execute("UPDATE chats SET title_source='user' WHERE id=?1", [&chat])
-            .unwrap();
+        create(&database, None, &Uuid::new_v4().to_string()).unwrap();
     }
     let before = layout(&database);
     let refused = create(&database, None, &Uuid::new_v4().to_string()).unwrap_err();

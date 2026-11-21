@@ -288,10 +288,6 @@ fn moves_a_sessionless_chat_from_a_non_active_project_without_switching() {
         .unwrap();
     let work = database.create_project_with_chat(&second_root).unwrap();
     let sage = database.create_project_with_chat(&third_root).unwrap();
-    database
-        .connection()
-        .execute("UPDATE chats SET title_source='user'", [])
-        .unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     database
         .move_chat(&MoveChatRequest {

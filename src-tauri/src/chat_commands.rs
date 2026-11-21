@@ -368,7 +368,6 @@ mod tests {
                 status: None,
                 updated_at: None,
                 finished_at: None,
-                chat_listed: None,
                 resource: Some(selected_resource.clone()),
                 repository: None,
                 diff_ref: None,

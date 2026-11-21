@@ -17,8 +17,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
         | SchemaClass::CurrentPrivateProjects
-        | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentChatRetention => return Ok(()),
+        | SchemaClass::CurrentSignInEvidenceIndexes => return Ok(()),
         SchemaClass::CurrentV23 => {}
         _ => return invalid("session resume links require exact schema v23"),
     }

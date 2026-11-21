@@ -9,8 +9,6 @@ import {
   type RefObject,
 } from "react";
 
-import { unsentChatIdsJson } from "../app/unsentChatIds";
-import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import { harnessHasSignInCheck } from "../domain/harness";
 import {
@@ -85,7 +83,6 @@ export function LeftSidebar({
   const namedProject = project?.isInternal ? null : project;
   const avatar = (namedProject?.name.trim()[0] ?? "L").toLocaleUpperCase();
   const tabs = useWorkbenchStore((state) => state.tabs);
-  const unsentChatIds = useWorkbenchStore(unsentChatIdsJson);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createChat = useWorkbenchStore((state) => state.openNewChatDraft);
   const interactions = useAgentRailInteractions();
@@ -104,7 +101,6 @@ export function LeftSidebar({
   );
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const railChatId = useRailChatId(activeTabId);
-  const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
   const sidebarRef = useRef<HTMLElement>(null);
   const attachSidebar = useCallback(
     (node: HTMLElement | null) => {
@@ -116,27 +112,26 @@ export function LeftSidebar({
   const previousChatId = useRef(railChatId);
   const [creatingProject, setCreatingProject] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  // Native owns discovery. These bounded local exceptions keep the currently
-  // open chat and input the user has not sent yet reachable until released.
-  const groups = useMemo(() => {
-    const protectedChatIds: string[] = JSON.parse(unsentChatIds);
-    const currentChats = tabs.filter(
-      (tab) =>
-        tab.kind === "chat" &&
-        (tab.chatListed !== false ||
-          tab.id === viewedChatId ||
-          protectedChatIds.includes(tab.id)),
-    );
-    return [false, true].flatMap((isInternal) => {
-      const active = Boolean(project?.isInternal) === isInternal;
-      return groupAgentRailProjects({
-        projects: isInternal ? unscopedChats : projects,
-        isInternal,
-        currentProjectId: active ? (project?.id ?? null) : null,
-        currentChats: active ? currentChats : [],
-      });
-    });
-  }, [project, projects, unscopedChats, tabs, viewedChatId, unsentChatIds]);
+  const groups = useMemo(
+    () => [
+      ...groupAgentRailProjects({
+        projects,
+        currentProjectId: project?.isInternal ? null : (project?.id ?? null),
+        currentChats: project?.isInternal
+          ? []
+          : tabs.filter((tab) => tab.kind === "chat"),
+      }),
+      ...groupAgentRailProjects({
+        projects: unscopedChats,
+        isInternal: true,
+        currentProjectId: project?.isInternal ? project.id : null,
+        currentChats: project?.isInternal
+          ? tabs.filter((tab) => tab.kind === "chat")
+          : [],
+      }),
+    ],
+    [project, projects, unscopedChats, tabs],
+  );
   const prefs = useAgentRailViewPrefs();
   useEffect(() => {
     if (projectTransitioning) return;
@@ -158,7 +153,8 @@ export function LeftSidebar({
     );
   }, [groups]);
   const sections = useMemo(
-    () => deriveAgentRailSections(groups, prefs.ordering, railChatId),
+    () =>
+      deriveAgentRailSections(groups, undefined, prefs.ordering, railChatId),
     [groups, prefs.ordering, railChatId],
   );
 

@@ -8,7 +8,6 @@ import {
   type RefObject,
 } from "react";
 
-import { unsentChatIdsJson } from "../../app/unsentChatIds";
 import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -219,17 +218,7 @@ export function ChatSearchControl({
         query: normalized,
         isCurrent: () =>
           requestGeneration.current === intent && matchesScope(scope),
-        search: (request) => {
-          const state = useWorkbenchStore.getState();
-          const draftChatIds =
-            state.project?.id === request.projectId
-              ? (JSON.parse(unsentChatIdsJson(state)) as string[])
-              : [];
-          return projectChatSearchDesktop.search({
-            ...request,
-            ...(draftChatIds.length ? { draftChatIds } : {}),
-          });
-        },
+        search: (request) => projectChatSearchDesktop.search(request),
       });
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
       setResponse(result);

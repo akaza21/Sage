@@ -12,8 +12,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
         | SchemaClass::CurrentPrivateProjects
-        | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentChatRetention => {
+        | SchemaClass::CurrentSignInEvidenceIndexes => {
             return Ok(());
         }
         SchemaClass::CurrentTurnUndoIntentIndexes => {}

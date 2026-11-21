@@ -64,15 +64,27 @@ pub(crate) trait ChatPurgeStore {
         project: &str,
         chat: &str,
         admit: impl Fn(&Connection) -> AppResult<()>,
-    ) -> AppResult<()>;
-}
+    ) -> AppResult<()> {
+        self.purge_chat_with_finalizer(project, chat, admit, |_| Ok(()))
+    }
 
-impl ChatPurgeStore for Database {
-    fn purge_chat(
+    /// Finish related ownership changes in the same transaction as deletion.
+    fn purge_chat_with_finalizer(
         &self,
         project: &str,
         chat: &str,
         admit: impl Fn(&Connection) -> AppResult<()>,
+        finalize: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
+    ) -> AppResult<()>;
+}
+
+impl ChatPurgeStore for Database {
+    fn purge_chat_with_finalizer(
+        &self,
+        project: &str,
+        chat: &str,
+        admit: impl Fn(&Connection) -> AppResult<()>,
+        finalize: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
     ) -> AppResult<()> {
         admit(&self.connection())?;
         history_guards(&self.connection())?;
@@ -91,6 +103,7 @@ impl ChatPurgeStore for Database {
             }
             let images = take_chat_images(&transaction, project, chat, IMAGE_BATCH)?;
             delete_chat_rows(&transaction, project, chat)?;
+            finalize(&transaction)?;
             for (_, sql) in guards {
                 transaction.execute_batch(&sql).db()?;
             }

@@ -114,7 +114,7 @@ const repository: RepositoryPort = {
   getFileDiff(resource, scope) {
     return invokeNative("get_file_diff", {
       resource,
-      scope,
+      ...(scope ? { scope } : {}),
     });
   },
   getFileGitBase(resource, knownOid) {
@@ -160,8 +160,8 @@ const chat: ChatPort = {
     return invokeNative("create_chat", {
       currentLayout,
       expectedTransitionEpoch,
-      projectId,
-      chatId,
+      ...(projectId ? { projectId } : {}),
+      ...(chatId ? { chatId } : {}),
     });
   },
   activateChat(currentLayout, expectedTransitionEpoch) {

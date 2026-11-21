@@ -89,8 +89,7 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
         | SchemaClass::CurrentPrivateProjects
-        | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentChatRetention => {
+        | SchemaClass::CurrentSignInEvidenceIndexes => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
                 return invalid("published current schema coexists with a replacement stage");

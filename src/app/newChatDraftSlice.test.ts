@@ -9,6 +9,7 @@ import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
 import { durableChatIds } from "../services/browserChatState";
+import { browserSnapshot as snapshot } from "../services/browserWorkspaceFixture";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -26,10 +27,10 @@ afterEach(() => {
 
 async function readyProjectDraft(
   text: string,
-  projectId = useWorkbenchStore.getState().project!.id,
+  projectId: string | null = useWorkbenchStore.getState().project!.id,
 ) {
   const state = useWorkbenchStore.getState();
-  await state.openNewChatDraft(projectId);
+  await state.openNewChatDraft(projectId ?? undefined);
   useWorkbenchStore.setState({
     harnesses: [
       {
@@ -48,26 +49,36 @@ async function readyProjectDraft(
   state.updateNewChatDraft({ text });
 }
 
-it("restores an empty archived chat in the active project without an error phase", async () => {
-  const state = useWorkbenchStore.getState();
-  const result = await state.createChat(state.project!.id);
-  expect(result.status).toBe("confirmed");
-  const chatId = useWorkbenchStore.getState().activeTabId!;
-  expect(await state.archiveChat(chatId)).toBe(true);
-  expect(
-    useWorkbenchStore
-      .getState()
-      .archivedChats.some((chat) => chat.id === chatId),
-  ).toBe(true);
-  expect(await state.restoreChat(chatId)).toBe(true);
-  expect(useWorkbenchStore.getState()).toMatchObject({
-    phase: "ready",
-    error: null,
-    activeTabId: chatId,
+it("opens and abandons a fresh-profile draft without allocating a chat, then creates one on send", async () => {
+  Object.assign(snapshot, {
+    project: null,
+    projects: [],
+    unscopedChats: [],
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+    messages: [],
+    sessionId: null,
   });
-  expect(
-    useWorkbenchStore.getState().tabs.find((tab) => tab.id === chatId),
-  ).toMatchObject({ pinned: false, chatListed: true });
+  durableChatIds.clear();
+  const state = useWorkbenchStore.getState();
+  await state.initialize();
+  await state.openNewChatDraft();
+  expect(durableChatIds.size).toBe(0);
+  expect(useWorkbenchStore.getState().newChatDraft?.submission.status).toBe(
+    "released",
+  );
+  state.discardNewChatDraft();
+  expect(durableChatIds.size).toBe(0);
+  await readyProjectDraft("First private prompt", null);
+  await state.sendNewChatDraft();
+  expect(durableChatIds.size).toBe(1);
+  expect(useWorkbenchStore.getState().composerText).toBe(
+    "First private prompt",
+  );
+  expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
 });
 
 it("creates a new chat for a project draft even when an empty chat exists", async () => {

@@ -5,30 +5,6 @@ import {
 } from "./shared/transcriptSelection";
 
 test.use({ deviceScaleFactor: 1 });
-test("CP-42: unlisted empty pair stays visible when the parent regains focus", async ({
-  page,
-}) => {
-  await openSelectionScenario(page);
-  await dragAnswerPhrase(page);
-  await page
-    .getByRole("button", { name: "Ask in side chat", exact: true })
-    .click();
-  await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
-  await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
-    useWorkbenchStore.setState((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.kind === "chat" ? { ...tab, chatListed: false } : tab,
-      ),
-    }));
-  });
-  const parent = page.locator(".agent-chat-pane").first();
-  await parent.locator("textarea").focus();
-  await expect(parent).toHaveClass(/agent-chat-pane--focused/);
-  await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
-  await expect(page.locator(".agent-chat-center__side-tab")).toBeVisible();
-});
-
 test("CP-42: temporary seeded right split, close confirmation, persisted opt-out", async ({
   page,
 }) => {

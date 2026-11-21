@@ -5,9 +5,7 @@ pub(super) const SQL: &str = include_str!("../../../migrations/032_private_chat_
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentPrivateProjects
-        | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentChatRetention => {
+        SchemaClass::CurrentPrivateProjects | SchemaClass::CurrentSignInEvidenceIndexes => {
             return Ok(());
         }
         SchemaClass::CurrentChildThreadStates => {}

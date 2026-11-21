@@ -38,16 +38,12 @@ fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppR
     if let Err(error) = database.purge_side_chats() {
         tracing::warn!(?error, "temporary Chat cleanup will retry later");
     }
+    if let Err(error) = crate::chat_lifecycle::cleanup::legacy_empty_chats(&database) {
+        tracing::warn!(?error, "legacy empty Chat cleanup will retry later");
+    }
     crate::private_chat::cleanup_empty(&database);
     if let Ok(root) = database.image_artifact_root() {
         sage_images::reconcile_image_artifacts(&database.connection(), root)?;
-    }
-    {
-        use crate::project_registry::ProjectRegistryStore;
-        crate::chat_lifecycle::visibility::release_hidden_tabs(&database.connection())?;
-        if let Some(project) = database.active_project_id()? {
-            crate::chat_lifecycle::visibility::reopen_project(&database.connection(), &project)?;
-        }
     }
     Ok(database)
 }
@@ -318,7 +314,6 @@ mod tests {
             let result = crate::chat_search::search_project_chats(
                 &shared,
                 &crate::chat_search::ProjectChatSearchRequest {
-                    draft_chat_ids: Vec::new(),
                     project_id: project.id,
                     project_generation: 0,
                     expected_transition_epoch: 0,

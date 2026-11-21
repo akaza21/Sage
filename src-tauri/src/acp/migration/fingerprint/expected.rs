@@ -61,7 +61,7 @@ fn memoized(
     Ok(slot.get_or_init(|| fingerprint).clone())
 }
 
-pub(crate) fn expected_schema_connection(version: u32) -> AppResult<Connection> {
+fn expected_schema_connection(version: u32) -> AppResult<Connection> {
     let mut expected = Connection::open_in_memory().db()?;
     expected.execute_batch(INITIAL).db()?;
     if version >= 2 {
@@ -391,10 +391,6 @@ pub(crate) fn expected_schema_connection(version: u32) -> AppResult<Connection> 
         (
             super::super::sign_in_evidence_indexes::VERSION,
             super::super::sign_in_evidence_indexes::SQL,
-        ),
-        (
-            super::super::chat_retention::VERSION,
-            super::super::chat_retention::SQL,
         ),
     ] {
         if version >= migration_version {

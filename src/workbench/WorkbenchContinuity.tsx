@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
@@ -57,13 +56,12 @@ export function AgentCenterKeeper({
 }: {
   windowMode: WorkbenchWindowMode;
 }) {
-  const focusedChatId = usePinnedAgentChatOwner();
   const projectId = useWorkbenchStore((state) =>
     windowMode === "agent" &&
     state.project &&
     !state.projectTransitioning &&
     state.agentCenter !== "draft" &&
-    agentCenterNeedsDraft(state.tabs, state.activeTabId, focusedChatId)
+    agentCenterNeedsDraft(state.tabs, state.activeTabId)
       ? state.project.id
       : null,
   );

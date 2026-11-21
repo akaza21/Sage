@@ -105,27 +105,22 @@ export function AgentChatPanes({
   const [narrow, setNarrow] = useState(false);
   const previousFocusedId = usePinnedAgentChatOwner();
   const [lastFocusedId, setLastFocusedId] = useState<string | null>(null);
-  const retainedChatId = previousFocusedId ?? lastFocusedId;
-  const chatIds = useMemo(
-    () => collectChatTabIds(tabs, activeTabId, retainedChatId),
-    [tabs, activeTabId, retainedChatId],
-  );
+  const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
   const splitPercent = useSideChatState((state) => state.split);
+  const pairedId = useSideChatState((state) => state.pairedId);
   const side = useSideChatState((state) =>
     state.sides.find(
       (entry) =>
-        entry.id === state.pairedId &&
         entry.projectId === project?.id &&
-        tabs.some((tab) => tab.kind === "chat" && tab.id === entry.id) &&
-        tabs.some(
-          (tab) => tab.kind === "chat" && tab.id === entry.parentChatId,
-        ),
+        chatIds.includes(entry.id) &&
+        chatIds.includes(entry.parentChatId),
     ),
   );
   const splitRequested =
     !draftOpened &&
     Boolean(
       side &&
+      pairedId === side.id &&
       (!activeTabId ||
         !chatIds.includes(activeTabId) ||
         activeTabId === side.id ||
@@ -136,7 +131,7 @@ export function AgentChatPanes({
   const shownChatId = focusedAgentChatId(
     focusCandidates,
     activeTabId,
-    retainedChatId,
+    previousFocusedId ?? lastFocusedId,
   );
   const draftShown = useWorkbenchStore((state) =>
     draftShownFor(state, shownChatId),
@@ -314,7 +309,7 @@ export function AgentChatPanes({
               })}
             </div>
           </div>
-          {splitRequested || chatIds.some(isSideChatId) ? (
+          {chatIds.some(isSideChatId) ? (
             <TranscriptPart part="SideChatDialogs" />
           ) : null}
         </Activity>

@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 
-import { unsentChatIdsJson } from "../app/unsentChatIds";
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import type { ArchivedChatSummary } from "../domain/workbench";
@@ -17,7 +16,7 @@ import ChatRowErrorNotice from "./ChatRowErrorNotice";
 
 export default function ArchivedChatList({
   projectId,
-  chats: candidates,
+  chats,
 }: {
   projectId: string;
   chats: ArchivedChatSummary[];
@@ -25,14 +24,7 @@ export default function ArchivedChatList({
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<ArchivedChatSummary | null>(null);
   const deleteChat = useWorkbenchStore((state) => state.deleteChat);
-  const protectedChatIds: string[] = JSON.parse(
-    useWorkbenchStore(unsentChatIdsJson),
-  );
-  const chats = candidates.filter(
-    (chat) => chat.chatListed !== false || protectedChatIds.includes(chat.id),
-  );
   const listId = `archived-chat-list-${projectId}`;
-  if (chats.length === 0) return null;
   return (
     <div className="archived-chats">
       <button

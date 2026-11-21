@@ -26,15 +26,14 @@ fn requested_creation_identity_survives_reopen_and_cannot_replace_another_chat()
     let path = root.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_with_chat(&root).unwrap();
-    let initial_chat = database
-        .bootstrap_snapshot()
-        .unwrap()
-        .active_tab_id
-        .unwrap();
-    database
-        .append_simulator_turn(&initial_chat, "Existing chat", "Preserved answer")
-        .unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
+    database
+        .append_simulator_turn(
+            initial.active_tab_id.as_ref().unwrap(),
+            "Existing chat",
+            "Preserved answer",
+        )
+        .unwrap();
     let chat_id = Uuid::new_v4().to_string();
     assert_eq!(
         database
@@ -619,16 +618,13 @@ fn creates_a_chat_on_a_non_active_project_without_switching() {
         .iter()
         .find(|item| item.id == cross.id)
         .unwrap();
-    assert!(cross_item.rail_chats.is_empty());
-    let retained: i64 = database
-        .connection()
-        .query_row(
-            "SELECT COUNT(*) FROM chats WHERE id IN (?1,?2)",
-            rusqlite::params![seeded, created],
-            |row| row.get(0),
-        )
+    assert!(cross_item.rail_chats.iter().any(|chat| chat.id == seeded));
+    let created_chat = cross_item
+        .rail_chats
+        .iter()
+        .find(|chat| chat.id == created)
         .unwrap();
-    assert_eq!(retained, 2);
+    assert_eq!(created_chat.title, "Chat: Chat");
     let sessions: i64 = database
         .connection()
         .query_row(

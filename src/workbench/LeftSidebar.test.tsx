@@ -9,7 +9,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { pinAgentChatOwner, clearAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import {
@@ -236,27 +235,17 @@ it("announces the New chat shortcut without printing it in the row", () => {
 });
 
 it("keeps New chat available when no folder project is open", async () => {
-  const createChat = vi.fn(async () => {
+  const ensureLocalProject = async () => {
     useWorkbenchStore.setState({
       project: { id: "local", name: "Local", roots: [] },
-      tabs: [
-        {
-          id: "local-chat",
-          kind: "chat",
-          title: "Local chat",
-          position: 0,
-          pinned: false,
-          dirty: false,
-        },
-      ],
-      activeTabId: "local-chat",
+      tabs: [],
+      activeTabId: null,
     });
-    return { status: "confirmed" as const, chatId: "local-chat" };
-  });
+  };
   useWorkbenchStore.setState({
     project: null,
     projects: [],
-    createChat,
+    ensureLocalProject,
   });
   render(<LeftSidebar />);
   const button = screen.getByRole("button", { name: "New chat" });
@@ -267,9 +256,14 @@ it("keeps New chat available when no folder project is open", async () => {
     ),
   ).toBeInTheDocument();
   fireEvent.click(button);
-  expect(
-    await screen.findByRole("button", { name: "Open chat Local chat" }),
-  ).toBeVisible();
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      projectId: "local",
+      targetProjectId: null,
+      submission: { status: "released" },
+    });
+  });
+  expect(useWorkbenchStore.getState().tabs).toEqual([]);
 });
 
 it("lists chats under every project folder and opens a foreign chat", () => {
@@ -435,8 +429,7 @@ it("restores a foreign-folder archived chat without switching first", async () =
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("opens an unsent draft from a foreign project menu without switching first", async () => {
-  const switchProject = vi.fn(async () => undefined);
+it("opens an unsent draft from a foreign project menu", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [
@@ -468,7 +461,6 @@ it("opens an unsent draft from a foreign project menu without switching first", 
       },
     ],
     activeTabId: "chat:sage",
-    switchProject,
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
@@ -478,18 +470,16 @@ it("opens an unsent draft from a foreign project menu without switching first", 
   fireEvent.click(
     screen.getByRole("menuitem", { name: "New chat in project" }),
   );
-  await vi.waitFor(() => {
-    expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
-      "cross",
-    );
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      projectId: "sage",
+      targetProjectId: "cross",
+      text: "",
+    });
   });
   expect(
     screen.queryByRole("button", { name: "Open chat Created foreign chat" }),
   ).toBeNull();
-  expect(
-    useWorkbenchStore.getState().projects.find((p) => p.id === "cross")
-      ?.railChats,
-  ).toHaveLength(1);
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
   expect(useWorkbenchStore.getState().activeTabId).toBe("chat:sage");
 });
@@ -971,141 +961,4 @@ it("disambiguates colliding sidebar names with paths and removes suffixes for un
   expect(
     screen.getByRole("button", { name: "Project Sage" }),
   ).toHaveTextContent(/^Sage$/);
-});
-
-it("keeps an open legacy empty usable, then hides it while retaining typed input", () => {
-  const chat = (id: string, position: number, chatListed: boolean) => ({
-    id,
-    kind: "chat" as const,
-    title: `Chat: ${id}`,
-    position,
-    pinned: false,
-    dirty: false,
-    chatListed,
-  });
-  useWorkbenchStore.setState({
-    project: { id: "p", name: "Project", roots: [] },
-    projects: [{ id: "p", name: "Project", rootCount: 0, lastOpenedAt: 1 }],
-    tabs: [
-      chat("legacy", 0, false),
-      chat("typed", 1, false),
-      chat("real", 2, true),
-    ],
-    activeTabId: "legacy",
-    projectTransitioning: false,
-    chatUiById: {
-      typed: {
-        composerText: "keep my draft",
-        attachedContext: [],
-        sending: false,
-        error: null,
-        errorKind: null,
-        modeError: null,
-        modeErrorOwner: null,
-        modeChanging: false,
-        requestGeneration: 0,
-      },
-    },
-  });
-  const { container } = render(<LeftSidebar />);
-  const rows = () =>
-    Array.from(container.querySelectorAll(".project-chat")).map(
-      (row) => row.textContent,
-    );
-  expect(rows()).toHaveLength(3);
-  act(() => useWorkbenchStore.setState({ activeTabId: "real" }));
-  expect(rows()).toHaveLength(2);
-  expect(rows().some((text) => text?.includes("legacy"))).toBe(false);
-  expect(rows().some((text) => text?.includes("typed"))).toBe(true);
-  expect(useWorkbenchStore.getState().tabs).toHaveLength(3);
-  act(() => useWorkbenchStore.setState({ chatUiById: {} }));
-  expect(rows()).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: /Show more/ })).toBeNull();
-});
-
-it("keeps the visible empty chat listed when its right-pane resource is active", () => {
-  useWorkbenchStore.setState({
-    project: { id: "p", name: "Project", roots: [] },
-    projects: [{ id: "p", name: "Project", rootCount: 0, lastOpenedAt: 1 }],
-    tabs: [
-      {
-        id: "empty",
-        kind: "chat",
-        title: "Chat: Empty",
-        position: 0,
-        pinned: false,
-        dirty: false,
-        chatListed: false,
-      },
-      {
-        id: "file",
-        kind: "file",
-        title: "Readme",
-        position: 1,
-        pinned: false,
-        dirty: false,
-      },
-    ],
-    activeTabId: "file",
-    projectTransitioning: false,
-    chatUiById: {},
-  });
-  pinAgentChatOwner("empty");
-  try {
-    render(<LeftSidebar />);
-    expect(
-      screen.getByRole("button", { name: "Open chat Empty" }),
-    ).toBeInTheDocument();
-    act(() => clearAgentChatOwner());
-    expect(
-      screen.queryByRole("button", { name: "Open chat Empty" }),
-    ).toBeNull();
-  } finally {
-    clearAgentChatOwner();
-  }
-});
-
-it("keeps an archived private chat's typed draft reachable in Recents", async () => {
-  useWorkbenchStore.setState({
-    project: {
-      id: "private",
-      name: "Choose project",
-      isInternal: true,
-      roots: [],
-    },
-    projects: [],
-    unscopedChats: [
-      {
-        id: "private",
-        name: "",
-        rootCount: 1,
-        lastOpenedAt: 1,
-        railChats: [],
-        railArchived: [],
-      },
-    ],
-    tabs: [],
-    activeTabId: null,
-    archivedChats: [{ id: "draft", title: "Chat: Draft", chatListed: false }],
-    chatUiById: {
-      draft: {
-        composerText: "Keep my input",
-        attachedContext: [],
-        sending: false,
-        error: null,
-        errorKind: null,
-        modeError: null,
-        modeErrorOwner: null,
-        modeChanging: false,
-        requestGeneration: 0,
-      },
-    },
-  });
-  render(<LeftSidebar />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Archived chats: 1" }),
-  );
-  expect(
-    await screen.findByRole("button", { name: /Restore chat Draft/ }),
-  ).toBeInTheDocument();
 });

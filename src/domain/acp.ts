@@ -349,7 +349,6 @@ export type AcpCommandFailure = AcpCommandFailureDetail & {
 };
 
 export interface AcpChatStatus {
-  chatListed: boolean;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

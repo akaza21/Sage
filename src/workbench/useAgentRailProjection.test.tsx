@@ -137,25 +137,6 @@ it("creates honestly untitled and unpinned browser chats", () => {
 function mirrorAgentRailProjection(page: AcpChatPage) {
   mirrorAgentRailStatus({
     ...page,
-    chatListed: true,
     latestTurn: normalizeProjectionPage(page).turns.at(-1) ?? null,
   });
 }
-
-it("refreshes native discovery after the first prompt and after Undo without changing tab lifetime", () => {
-  seed();
-  const status = {
-    projectId: "project-1" as never,
-    chatId: "chat-1" as never,
-    title: "Chat: Chat",
-    latestTurn: null,
-    chatListed: false,
-  };
-  mirrorAgentRailStatus(status);
-  expect(useWorkbenchStore.getState().tabs[0].chatListed).toBe(false);
-  mirrorAgentRailStatus({ ...status, chatListed: true });
-  expect(useWorkbenchStore.getState().tabs[0].chatListed).toBe(true);
-  mirrorAgentRailStatus(status);
-  expect(useWorkbenchStore.getState().tabs[0].chatListed).toBe(false);
-  expect(useWorkbenchStore.getState().tabs).toHaveLength(1);
-});

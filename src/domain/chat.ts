@@ -34,8 +34,6 @@ export interface WorkbenchTab {
   status?: SessionStatus;
   updatedAt?: number;
   finishedAt?: number;
-  /** Native discovery policy; attachment lifetime is independent. */
-  chatListed?: boolean;
   resource?: ResourceRef;
   repository?: RepositoryRef;
   diffRef?: AgentDiffRef;
@@ -74,7 +72,6 @@ export interface MoveChatRequest {
 export interface ArchivedChatSummary {
   id: string;
   title: string;
-  chatListed?: boolean;
 }
 
 export interface ChatMessage {

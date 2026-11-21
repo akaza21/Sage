@@ -659,11 +659,6 @@ fn project_list_includes_bounded_chats_for_every_project() {
             rusqlite::params![sage.id, latest, sage_core::time::now_millis() + 10_000],
         )
         .unwrap();
-    // These rows model user-named saved chats for ordering and cap checks.
-    database
-        .connection()
-        .execute("UPDATE chats SET title_source='user'", [])
-        .unwrap();
     let projects = database.project_list().unwrap();
     let cross_item = projects.iter().find(|item| item.id == cross.id).unwrap();
     let sage_item = projects.iter().find(|item| item.id == sage.id).unwrap();
@@ -707,11 +702,6 @@ fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
         .unwrap();
     database
         .create_project_with_chat(&folders.root("active"))
-        .unwrap();
-    // These rows model user-named saved chats for ordering and cap checks.
-    database
-        .connection()
-        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let item = projects.iter().find(|item| item.id == project.id).unwrap();
@@ -759,11 +749,6 @@ fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
         .unwrap();
     database
         .create_project_with_chat(&folders.root("active"))
-        .unwrap();
-    // These rows model user-named saved chats for ordering and cap checks.
-    database
-        .connection()
-        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let item = projects.iter().find(|item| item.id == project.id).unwrap();
@@ -889,11 +874,6 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
     assert_eq!((tab.updated_at, tab.finished_at), (Some(9000), Some(5_000)));
     database
         .create_project_with_chat(&folders.root("other"))
-        .unwrap();
-    // These rows model user-named saved chats for ordering and cap checks.
-    database
-        .connection()
-        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let rail = projects.iter().find(|item| item.id == project.id).unwrap();

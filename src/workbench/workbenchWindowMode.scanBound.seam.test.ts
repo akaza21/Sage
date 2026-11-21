@@ -45,7 +45,7 @@ describe("agentCenterNeedsDraft scan bounds", () => {
     expect(agentCenterNeedsDraft(tabs, "file:0")).toBe(false);
   });
 
-  it("falls back to creating a chat when none exists inside the bound", () => {
+  it("falls back to an unsent draft when none exists inside the bound", () => {
     const total = AGENT_CENTER_CHAT_SCAN_LIMIT + 16;
     const tabs: AgentCenterScanTab[] = Array.from(
       { length: total },
@@ -95,15 +95,4 @@ describe("agentCenterNeedsDraft scan bounds", () => {
   it("keeps tab kinds limited to the domain tab-kind union", () => {
     expectTypeOf<AgentCenterScanTab["kind"]>().toEqualTypeOf<TabKind>();
   });
-});
-
-it("opens a draft instead of implicitly choosing a hidden empty chat, while preserving an explicitly open one", () => {
-  const tabs = [
-    { id: "legacy", kind: "chat" as const, chatListed: false },
-    { id: "file", kind: "file" as const },
-  ];
-  expect(agentCenterNeedsDraft(tabs, null)).toBe(true);
-  expect(agentCenterNeedsDraft(tabs, "file")).toBe(true);
-  expect(agentCenterNeedsDraft(tabs, "legacy")).toBe(false);
-  expect(agentCenterNeedsDraft(tabs, "file", "legacy")).toBe(false);
 });

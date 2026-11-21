@@ -21,7 +21,6 @@ fn database_with_project() -> (Database, String, std::path::PathBuf) {
 
 fn request(project_id: &str, query: &str) -> ProjectChatSearchRequest {
     ProjectChatSearchRequest {
-        draft_chat_ids: Vec::new(),
         project_id: project_id.into(),
         project_generation: 7,
         expected_transition_epoch: 3,
@@ -41,8 +40,8 @@ fn empty_query_browses_bounded_chats_without_scanning_transcripts() {
         .unwrap();
     for ordinal in 1..70_i64 {
         database.connection().execute(
-            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
-             VALUES(?1,?2,?3,'Hidden chat',0,?3,?3,'user')",
+            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+             VALUES(?1,?2,?3,'Hidden chat',0,?3,?3)",
             rusqlite::params![format!("browse-{ordinal}"), project_id, ordinal],
         ).unwrap();
     }
@@ -401,8 +400,8 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
             let id = format!("chat-search-{ordinal}");
             connection
                 .execute(
-                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
-                     VALUES(?1,?2,?3,'needle',0,?3,?3,'user')",
+                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+                     VALUES(?1,?2,?3,'needle',0,?3,?3)",
                     rusqlite::params![id, project_id, ordinal],
                 )
                 .unwrap();

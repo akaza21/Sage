@@ -179,13 +179,7 @@ pub(crate) fn insert_chat_with_identity(
             |row| row.get(0),
         )
         .db()?;
-    // Usage counters keep counting every stored row for the global safety
-    // ceiling. Only discoverable chats consume the per-project allowance.
-    let listed_count: i64 = transaction.query_row(
-        &format!("SELECT COUNT(*) FROM (SELECT 1 FROM chats c WHERE c.project_id=?1 AND {} LIMIT ?2)", super::visibility::listed_chat()),
-        params![project_id, LIMITS.durable.chats_per_project as i64], |row| row.get(0),
-    ).db()?;
-    if listed_count >= LIMITS.durable.chats_per_project as i64 {
+    if chat_count >= LIMITS.durable.chats_per_project as i64 {
         return Err(AppError::ResourceLimit(format!(
             "Project has reached its {}-Chat limit",
             LIMITS.durable.chats_per_project

@@ -107,14 +107,6 @@ fn round3_capacity_keeps_failed_cleanup_owned_until_files_are_reclaimed() {
     assert_eq!(fs::read_dir(base).unwrap().count(), 0);
     create(&reopened, None, &Uuid::new_v4().to_string()).unwrap();
     assert_eq!(list(&reopened).unwrap().len(), 1);
-    assert!(list(&reopened).unwrap()[0].rail_chats.is_empty());
-    assert_eq!(
-        reopened
-            .connection()
-            .query_row("SELECT COUNT(*) FROM chats", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        1
-    );
     drop(reopened);
     fs::remove_dir_all(root).unwrap();
 }
@@ -270,7 +262,6 @@ fn cleanup_retries_reach_later_folders_and_failures_do_not_exhaust_live_chat_cap
     let _ = cleanup::empty_projects(&database);
     assert!(removable.iter().all(|folder| !folder.exists()));
     assert_eq!(list(&database).unwrap().len(), 1);
-    assert!(list(&database).unwrap()[0].rail_chats.is_empty());
     assert!(
         database
             .connection()

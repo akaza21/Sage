@@ -21,6 +21,7 @@ use std::fs;
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 mod cleanup;
+pub(crate) use cleanup::{reclaim_empty_in, require_empty_folder};
 pub(crate) const MAX_UNSCOPED_CHATS: i64 = 64;
 const MAX_PRIVATE_PROJECTS: i64 = MAX_UNSCOPED_CHATS + 64;
 
@@ -33,7 +34,7 @@ pub(crate) fn lock_storage() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
+pub(crate) fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
     Ok(database.profile_directory()?.join("chat-workspaces"))
 }
 
@@ -339,26 +340,24 @@ pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
     let connection = database.connection();
     let mut select = connection.prepare(&format!("SELECT p.id,p.last_opened_at,c.id,c.title,
         COALESCE(w.pinned,0),c.ordinal,w.status,c.updated_at,
-        EXISTS(SELECT 1 FROM chat_tabs WHERE chat_id=c.id), {}, {}
+        EXISTS(SELECT 1 FROM chat_tabs WHERE chat_id=c.id), {}
         FROM projects p JOIN chats c ON c.project_id=p.id
         JOIN {} owned ON owned.project_id=p.id AND owned.id=c.id
         LEFT JOIN workbench_tabs w ON w.id=c.id
-        WHERE {} OR p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)
         ORDER BY (p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)) DESC,c.updated_at DESC,c.id
-        LIMIT ?1", crate::project_registry::CHAT_FINISHED_AT, crate::chat_lifecycle::visibility::listed_chat(), visible_chat_set(), crate::chat_lifecycle::visibility::listed_chat())).db()?;
+        LIMIT ?1", crate::project_registry::CHAT_FINISHED_AT, visible_chat_set())).db()?;
     let rows = select
         .query_map([MAX_UNSCOPED_CHATS], |row| {
             let chat_id: String = row.get(2)?;
             let title: String = row.get(3)?;
             let attached: bool = row.get(8)?;
-            let listed: bool = row.get(10)?;
             Ok(ProjectListItem {
                 id: row.get(0)?,
                 name: "".into(),
                 root_count: 1,
                 parent_path: None,
                 last_opened_at: row.get(1)?,
-                rail_chats: if attached && listed {
+                rail_chats: if attached {
                     vec![sage_domain::project::AgentRailChat {
                         id: chat_id.clone(),
                         title: title.clone(),
@@ -372,14 +371,10 @@ pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
                     vec![]
                 },
                 rail_chats_truncated: false,
-                rail_archived: if attached || !listed {
+                rail_archived: if attached {
                     vec![]
                 } else {
-                    vec![sage_domain::chat::ArchivedChatSummary {
-                        id: chat_id,
-                        title,
-                        chat_listed: Some(true),
-                    }]
+                    vec![sage_domain::chat::ArchivedChatSummary { id: chat_id, title }]
                 },
             })
         })

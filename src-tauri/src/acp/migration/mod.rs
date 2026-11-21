@@ -1,6 +1,5 @@
 mod backup;
 mod build_intent;
-mod chat_retention;
 mod child_thread_states;
 mod config_choices;
 mod file_artifact;
