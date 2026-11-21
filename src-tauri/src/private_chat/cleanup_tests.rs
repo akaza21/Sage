@@ -3,7 +3,7 @@ use crate::chat_archive::{ChatArchiveStore, delete::ArchivedChatDeleteStore};
 use crate::project_registry::{ProjectRegistryStore, create::ProjectCreateStore};
 use sage_domain::chat::{ChatDeleteRequest, ChatLifecycleRequest};
 
-fn delete_chat(database: &Database, chat: &str) {
+pub(super) fn delete_chat(database: &Database, chat: &str) {
     let current = super::tests::layout(database);
     database
         .archive_chat(&ChatLifecycleRequest {
@@ -192,7 +192,7 @@ fn deleting_private_chat_preserves_overlapping_registered_project_files() {
                 "UPDATE project_roots SET absolute_path=?1, canonical_key=?2 WHERE project_id=?3",
                 params![
                     registered.to_str().unwrap(),
-                    crate::project_registry::canonical_comparison_key(&registered),
+                    crate::project_registry::conservative_overlap_key(&registered),
                     real.id
                 ],
             )

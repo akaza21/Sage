@@ -208,7 +208,7 @@ impl ReadTextFileService {
         if root.id != resource.root_id || root.project_id != owner.project_id.as_str() {
             return Err(ReadTextFailure::terminal(ReadTextFailureKind::Forbidden));
         }
-        Workspace::open(&root.project_id, &root.id, &root.absolute_path)
+        Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
             .map_err(|_| ReadTextFailure::terminal(ReadTextFailureKind::Forbidden))
     }
     /// Identity acknowledgement moves a still-tracked attempt into source I/O.

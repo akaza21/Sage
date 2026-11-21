@@ -17,6 +17,51 @@ pub(super) fn layout(database: &Database) -> ProjectLayoutRequest {
 }
 
 #[test]
+fn private_roots_are_plain_absolute_paths_including_previously_persisted_roots() {
+    let directory = std::env::current_dir()
+        .unwrap()
+        .join("work")
+        .join(format!("private-root-path-{}", Uuid::new_v4()));
+    fs::create_dir_all(&directory).unwrap();
+    let database_path = directory.join("sage.db");
+    let database = crate::database::open_database(&database_path).unwrap();
+    create(&database, None, &Uuid::new_v4().to_string()).unwrap();
+    let project = database.bootstrap_snapshot().unwrap().project.unwrap();
+    let expected = directory.join("chat-workspaces").join(&project.id);
+    let root = database.root_records(&project.id).unwrap().remove(0);
+    assert!(root.absolute_path.is_absolute());
+    assert!(!root.absolute_path.to_string_lossy().starts_with(r"\\?\"));
+    assert_eq!(root.absolute_path, expected);
+    assert!(expected.is_dir());
+    // Reproduce the spelling saved by the private-Chat feature before this fix.
+    let legacy = expected.canonicalize().unwrap();
+    let legacy_key = if cfg!(windows) {
+        legacy.to_string_lossy().to_lowercase()
+    } else {
+        legacy.to_string_lossy().into_owned()
+    };
+    database
+        .connection()
+        .execute(
+            "UPDATE project_roots SET absolute_path=?1,canonical_key=?2 WHERE id=?3",
+            params![legacy.to_str().unwrap(), legacy_key, root.id],
+        )
+        .unwrap();
+    drop(database);
+    let database = crate::database::open_database(&database_path).unwrap();
+    assert_eq!(
+        database.root_records(&project.id).unwrap()[0].absolute_path,
+        expected
+    );
+    assert_eq!(
+        database.root_record(&root.id).unwrap().absolute_path,
+        expected
+    );
+    drop(database);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn selecting_a_project_refuses_private_files_and_preserves_the_chat_until_explicit_deletion() {
     let root = std::env::current_dir()
         .unwrap()
@@ -105,7 +150,12 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
     let folder = database.root_records(&project.id).unwrap()[0]
         .absolute_path
         .clone();
-    assert!(folder.starts_with(root.canonicalize().unwrap().join("chat-workspaces")));
+    assert!(
+        std::path::Path::new(&crate::project_registry::conservative_overlap_key(&folder))
+            .starts_with(crate::project_registry::conservative_overlap_key(
+                &root.canonicalize().unwrap().join("chat-workspaces"),
+            ))
+    );
     assert!(folder.is_dir());
     set_project(&database, &layout(&database), &chat, Some(&real.id)).unwrap();
     assert_eq!(

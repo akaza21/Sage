@@ -24,7 +24,17 @@ pub(super) fn await_request(
     state: &mut WireState,
     expected_method: &str,
 ) -> Result<(), FixtureError> {
-    await_request_inner(input, output, state, expected_method, false)
+    await_request_inner(input, output, state, expected_method, false, None)
+}
+
+pub(super) fn await_request_in_cwd(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    state: &mut WireState,
+    expected_method: &str,
+    cwd: &std::path::Path,
+) -> Result<(), FixtureError> {
+    await_request_inner(input, output, state, expected_method, false, Some(cwd))
 }
 
 pub(super) fn await_goal_with_optional_models(
@@ -32,7 +42,7 @@ pub(super) fn await_goal_with_optional_models(
     output: &mut impl Write,
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
-    await_request_inner(input, output, state, "thread/goal/get", true)
+    await_request_inner(input, output, state, "thread/goal/get", true, None)
 }
 
 fn await_request_inner(
@@ -41,6 +51,7 @@ fn await_request_inner(
     state: &mut WireState,
     expected_method: &str,
     mut optional_models: bool,
+    cwd: Option<&std::path::Path>,
 ) -> Result<(), FixtureError> {
     for _ in 0..32 {
         let Some(request) = read_json_line(input, state)? else {
@@ -84,6 +95,18 @@ fn await_request_inner(
         }
         if !expected(expected_method, method) {
             return Err(FixtureError::InvalidArguments);
+        }
+        if let Some(expected_cwd) = cwd {
+            let received = request
+                .pointer("/params/cwd")
+                .and_then(Value::as_str)
+                .ok_or(FixtureError::InvalidArguments)?;
+            if received.starts_with(r"\\?\")
+                || crate::project_registry::authority_path_key(std::path::Path::new(received))
+                    != crate::project_registry::authority_path_key(expected_cwd)
+            {
+                return Err(FixtureError::InvalidArguments);
+            }
         }
         if let Some(id) = object.get("id").and_then(Value::as_u64) {
             state.last_request_id = Some(id);

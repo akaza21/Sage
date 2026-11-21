@@ -21,6 +21,75 @@ fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_root_identity_is_length_independent_and_preserves_special_components() {
+    let folders = Folders::new();
+    let drive_root = folders.root("root");
+    for root in [drive_root, PathBuf::from(r"\\server\share\root")] {
+        let ordinary = root.to_str().unwrap();
+        let verbatim = if let Some(unc) = ordinary.strip_prefix(r"\\") {
+            format!(r"\\?\UNC\{unc}")
+        } else {
+            format!(r"\\?\{ordinary}")
+        };
+        for suffix in [
+            String::new(),
+            format!(r"\{}", "component".repeat(8)).repeat(4),
+        ] {
+            let plain = format!("{ordinary}{suffix}");
+            let prefixed = format!("{verbatim}{suffix}");
+            let key = conservative_overlap_key(Path::new(&prefixed));
+            assert_eq!(conservative_overlap_key(Path::new(&plain)), key);
+            assert!(Path::new(&key).starts_with(conservative_overlap_key(&root)));
+            assert!(
+                !Path::new(&conservative_overlap_key(Path::new(&format!(
+                    "{plain}-sibling"
+                ))))
+                .starts_with(&key)
+            );
+        }
+        let literal =
+            |suffix: &str| conservative_overlap_key(Path::new(&format!(r"{verbatim}\{suffix}")));
+        for special in ["name.", "name ", "NUL", r".\name", r"name\..\other"] {
+            assert_ne!(literal(special), literal("name"), "{special}");
+        }
+        assert_ne!(literal(r"name\..\other"), literal("other"));
+        assert_eq!(literal("NAME"), literal("name"));
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn ordinary_and_legacy_verbatim_roots_share_one_identity_and_cannot_be_added_twice() {
+    let folders = Folders::new();
+    let root = folders.root("root");
+    let canonical = root.canonicalize().unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    database
+        .connection()
+        .execute(
+            "UPDATE project_roots SET absolute_path=?1,canonical_key=?2 WHERE project_id=?3",
+            params![
+                canonical.to_str().unwrap(),
+                canonical.to_string_lossy().to_lowercase(),
+                project.id
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        conservative_overlap_key(&root),
+        conservative_overlap_key(&canonical)
+    );
+    assert!(database.add_project_root(&project.id, &root).is_err());
+    assert_eq!(database.root_records(&project.id).unwrap().len(), 1);
+    database
+        .add_project_root(&project.id, &folders.root("second"))
+        .unwrap();
+    assert_eq!(database.root_records(&project.id).unwrap().len(), 2);
+}
+
 #[test]
 fn process_root_authority_rejects_unknown_and_foreign_roots() {
     runtime().block_on(async {

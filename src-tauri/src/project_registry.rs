@@ -1,4 +1,5 @@
 pub(crate) mod create;
+mod identity;
 mod launch_root;
 mod local;
 mod rail;
@@ -29,7 +30,9 @@ use sage_domain::{
 use sage_workspace::Workspace;
 
 pub use create::project_name;
+pub use identity::conservative_overlap_key;
 pub(crate) use launch_root::ProjectRootAuthority;
+pub use sage_core::win32_path::authority_path_key;
 
 use self::rail::load_project_list;
 use self::seed::{active_project_in, insert_root};
@@ -43,15 +46,6 @@ pub struct RootRecord {
     pub project_id: String,
     pub absolute_path: PathBuf,
     pub ordinal: i64,
-}
-
-pub fn canonical_comparison_key(path: &Path) -> String {
-    let value = path.to_string_lossy();
-    if cfg!(windows) {
-        value.replace('/', "\\").to_lowercase()
-    } else {
-        value.into_owned()
-    }
 }
 
 pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
@@ -136,12 +130,15 @@ impl ProjectRegistryStore for Database {
         let canonical = record.absolute_path.canonicalize().map_err(|_| {
             AppError::InvalidRequest("selected project root is missing or unavailable".into())
         })?;
-        if canonical.as_os_str() != record.absolute_path.as_os_str() || !canonical.is_dir() {
+        if authority_path_key(&canonical) != authority_path_key(&record.absolute_path)
+            || !canonical.is_dir()
+        {
             return Err(AppError::InvalidRequest(
                 "registered project root is not its canonical directory identity".into(),
             ));
         }
-        let workspace = Workspace::open(&record.project_id, &record.id, &record.absolute_path)?;
+        let workspace =
+            Workspace::open_registered_root(&record.project_id, &record.id, &record.absolute_path)?;
         ProjectRootAuthority::acquire(
             workspace,
             context.project_id().clone(),
@@ -245,7 +242,7 @@ impl ProjectRegistryStore for Database {
                 "resource root does not belong to the active project".into(),
             ));
         }
-        Workspace::open(&root.project_id, &root.id, &root.absolute_path)
+        Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
     }
 
     fn root_record(&self, root_id: &str) -> AppResult<RootRecord> {
@@ -258,7 +255,9 @@ impl ProjectRegistryStore for Database {
                     Ok(RootRecord {
                         id: row.get(0)?,
                         project_id: row.get(1)?,
-                        absolute_path: PathBuf::from(row.get::<_, String>(2)?),
+                        absolute_path: sage_core::win32_path::simplified(Path::new(
+                            &row.get::<_, String>(2)?,
+                        )),
                         ordinal: row.get(3)?,
                     })
                 },
@@ -276,7 +275,7 @@ impl ProjectRegistryStore for Database {
         let canonical = canonical_folder(root)?;
         let _private_storage = crate::private_chat::lock_storage();
         crate::private_chat::require_user_root(self, &canonical)?;
-        let canonical_key = canonical_comparison_key(&canonical);
+        let canonical_key = conservative_overlap_key(&canonical);
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;
         let active = active_project_in(&transaction)?;
@@ -297,16 +296,11 @@ impl ProjectRegistryStore for Database {
                 "project reached its {MAX_ROOTS_PER_PROJECT}-root limit"
             )));
         }
-        let duplicate = transaction
-            .query_row(
-                "SELECT EXISTS(
-               SELECT 1 FROM project_roots
-               WHERE project_id = ?1 AND canonical_key = ?2
-             )",
-                params![project_id, canonical_key],
-                |row| row.get::<_, bool>(0),
-            )
-            .db()?;
+        // At most eight roots. Compare their normalized identities so rows
+        // with the older verbatim canonical_key remain duplicate-safe too.
+        let duplicate = root_records_in(&transaction, project_id)?
+            .iter()
+            .any(|root| conservative_overlap_key(&root.absolute_path) == canonical_key);
         if duplicate {
             return Err(AppError::InvalidRequest(
                 "this canonical folder is already a project root".into(),
@@ -369,7 +363,9 @@ fn root_records_in(connection: &Connection, project_id: &str) -> AppResult<Vec<R
             Ok(RootRecord {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                absolute_path: PathBuf::from(row.get::<_, String>(2)?),
+                absolute_path: sage_core::win32_path::simplified(Path::new(
+                    &row.get::<_, String>(2)?,
+                )),
                 ordinal: row.get(3)?,
             })
         })
@@ -392,7 +388,7 @@ fn canonical_folder(root: &Path) -> AppResult<PathBuf> {
         ));
     }
     persisted_path_text(&canonical)?;
-    Ok(canonical)
+    Ok(sage_core::win32_path::simplified(&canonical))
 }
 
 pub(crate) fn folder_name(root: &Path) -> String {
@@ -425,5 +421,7 @@ fn root_summary(root: &RootRecord) -> ProjectRootSummary {
     }
 }
 
+#[cfg(all(test, windows))]
+mod authority_tests;
 #[cfg(test)]
 mod tests;

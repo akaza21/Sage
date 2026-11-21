@@ -17,6 +17,20 @@ const INITIAL: &str = include_str!("../../migrations/001_initial.sql");
 const DIFF_TABS: &str = include_str!("../../migrations/002_diff_tabs.sql");
 const EDITOR_BUFFERS: &str = include_str!("../../migrations/003_editor_buffers.sql");
 
+#[test]
+fn stored_legacy_root_refuses_noncanonical_existing_spelling() {
+    let root = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-root-identity-{}", Uuid::new_v4()));
+    fs::create_dir(&root).unwrap();
+    let canonical = root.canonicalize().unwrap();
+    assert_eq!(
+        super::roots::canonical_or_recorded_root(canonical.to_str().unwrap()).unwrap(),
+        canonical
+    );
+    assert!(super::roots::canonical_or_recorded_root(root.join(".").to_str().unwrap()).is_err());
+    fs::remove_dir(&root).unwrap();
+}
+
 fn seed_legacy(path: &Path, root: &Path, metadata: &str) {
     let connection = Connection::open(path).unwrap();
     connection.execute_batch(INITIAL).unwrap();
@@ -80,7 +94,8 @@ fn seed_legacy(path: &Path, root: &Path, metadata: &str) {
 
 #[test]
 fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(&root).unwrap();
@@ -130,7 +145,8 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
 
 #[test]
 fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("missing-root");
     fs::create_dir_all(&root).unwrap();
@@ -174,7 +190,8 @@ fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
 #[cfg(windows)]
 #[test]
 fn missing_root_buffer_case_aliases_roll_back_with_legacy_rows_intact() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("missing-root");
     fs::create_dir_all(&root).unwrap();
@@ -220,7 +237,8 @@ fn missing_root_buffer_case_aliases_roll_back_with_legacy_rows_intact() {
 #[cfg(windows)]
 #[test]
 fn missing_root_buffer_and_tab_case_aliases_roll_back() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("missing-root");
     fs::create_dir_all(&root).unwrap();
@@ -253,7 +271,8 @@ fn missing_root_buffer_and_tab_case_aliases_roll_back() {
 #[cfg(not(windows))]
 #[test]
 fn missing_root_case_distinct_resources_remain_independent() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("missing-root");
     fs::create_dir_all(&root).unwrap();
@@ -283,7 +302,8 @@ fn missing_root_case_distinct_resources_remain_independent() {
 
 #[test]
 fn failed_migration_rolls_back_without_destroying_legacy_rows() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(&root).unwrap();
@@ -325,7 +345,8 @@ fn failed_migration_rolls_back_without_destroying_legacy_rows() {
 
 #[test]
 fn over_limit_legacy_buffers_fail_before_collection_and_roll_back() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(&root).unwrap();
@@ -364,7 +385,8 @@ fn over_limit_legacy_buffers_fail_before_collection_and_roll_back() {
 
 #[test]
 fn over_limit_actual_legacy_buffer_bytes_fail_and_roll_back() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(&root).unwrap();
@@ -403,7 +425,8 @@ fn over_limit_actual_legacy_buffer_bytes_fail_and_roll_back() {
 
 #[test]
 fn noncanonical_legacy_resource_alias_rolls_back() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(&root).unwrap();
@@ -426,7 +449,8 @@ fn noncanonical_legacy_resource_alias_rolls_back() {
 #[cfg(windows)]
 #[test]
 fn windows_migration_recovers_actual_root_relative_casing() {
-    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    let folder = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
     let root = folder.join("root");
     fs::create_dir_all(root.join("src")).unwrap();

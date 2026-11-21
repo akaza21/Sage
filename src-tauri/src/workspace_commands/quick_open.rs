@@ -153,7 +153,9 @@ fn inputs(state: &AppState, project_id: &str) -> AppResult<IndexInputs> {
     }
     let roots = records
         .iter()
-        .filter_map(|record| Workspace::open(project_id, &record.id, &record.absolute_path).ok())
+        .filter_map(|record| {
+            Workspace::open_registered_root(project_id, &record.id, &record.absolute_path).ok()
+        })
         .map(|workspace| (workspace.root_id().to_owned(), workspace.root().to_owned()))
         .collect();
     let settings = state.settings.editor_settings()?;

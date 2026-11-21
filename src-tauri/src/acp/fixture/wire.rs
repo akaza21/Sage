@@ -215,7 +215,12 @@ fn await_client_kind(
     };
     match expected_method {
         Some(method) => {
-            codex::await_request(input, output, state, method)?;
+            if step.get("cwdMatchesProcess").and_then(Value::as_bool) == Some(true) {
+                let cwd = std::env::current_dir().map_err(|_| FixtureError::Io)?;
+                codex::await_request_in_cwd(input, output, state, method, &cwd)?;
+            } else {
+                codex::await_request(input, output, state, method)?;
+            }
             if method == "turn/interrupt" {
                 let _ = codex::emit_response("ack", state, output);
                 codex::emit_notification("interrupted", state, output)?;

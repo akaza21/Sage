@@ -83,11 +83,8 @@ impl BindingProjectRoot {
             Self::StandardAcp(root) => root.as_path(),
             Self::Pi(root) => root.as_path(),
         };
+        let path = sage_core::win32_path::simplified(path);
         let path = path.to_str().ok_or(BindingProjectRootError::NonUnicode)?;
-        let path = path
-            .strip_prefix(r"\\?\")
-            .or_else(|| path.strip_prefix(r"//?/"))
-            .unwrap_or(path);
         (!path.is_empty())
             .then(|| path.to_owned())
             .ok_or(BindingProjectRootError::Empty)

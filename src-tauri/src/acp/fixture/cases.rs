@@ -6,7 +6,11 @@ use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase};
 use sage_acp_protocol::native_cases::JOURNEY_CASES;
 
-const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
+const CHARACTERIZATION_CASES: [(&str, &str); 11] = [
+    (
+        "private-chat-cwd",
+        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart","cwdMatchesProcess":true},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexModelList"},{"op":"emitKnownFrame","shape":"codexModelListResult"},{"op":"awaitClient","kind":"codexGoalGet"},{"op":"emitKnownFrame","shape":"codexGoalMethodNotFound"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexDelta"},{"op":"emitKnownFrame","shape":"codexCompleted"},{"op":"awaitClient","kind":"codexUnsubscribe"},{"op":"emitKnownFrame","shape":"codexAck"}]"#,
+    ),
     (
         "characterization-browser-bootstrap",
         r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexModelList"},{"op":"emitKnownFrame","shape":"codexModelListResult"},{"op":"awaitClient","kind":"codexGoalGet"},{"op":"emitKnownFrame","shape":"codexGoalMethodNotFound"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexDelta"},{"op":"emitKnownFrame","shape":"codexCompleted"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexInterrupt"},{"op":"emitKnownFrame","shape":"codexAck"},{"op":"emitKnownFrame","shape":"codexInterrupted"},{"op":"awaitClient","kind":"codexUnsubscribe"},{"op":"emitKnownFrame","shape":"codexAck"}]"#,

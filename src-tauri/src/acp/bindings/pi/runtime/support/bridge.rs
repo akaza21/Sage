@@ -44,9 +44,12 @@ impl PiRuntime {
         root: &crate::project_registry::ProjectRootAuthority,
     ) -> Result<(), AdapterRuntimeError> {
         let (project, _, root_id) = root.scope();
-        let workspace =
-            sage_workspace::Workspace::open(project.as_str(), root_id.as_str(), root.as_path())
-                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let workspace = sage_workspace::Workspace::open_registered_root(
+            project.as_str(),
+            root_id.as_str(),
+            root.as_path(),
+        )
+        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         self.enable_bridge(workspace);
         Ok(())
     }

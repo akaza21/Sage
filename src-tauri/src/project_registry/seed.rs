@@ -3,7 +3,7 @@ use std::path::Path;
 use sage_core::error::AppResult;
 use sage_db::error::SqliteResultExt;
 
-use crate::project_registry::{canonical_comparison_key, persisted_path_text};
+use crate::project_registry::{conservative_overlap_key, persisted_path_text};
 use rusqlite::{OptionalExtension, params};
 
 pub(crate) fn insert_root(
@@ -22,7 +22,7 @@ pub(crate) fn insert_root(
                 root_id,
                 project_id,
                 persisted_path_text(canonical)?,
-                canonical_comparison_key(canonical),
+                conservative_overlap_key(canonical),
                 ordinal
             ],
         )

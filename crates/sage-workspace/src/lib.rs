@@ -35,6 +35,7 @@ pub(crate) mod name_order;
 pub mod path_glob;
 pub mod path_index;
 pub mod resource_trash;
+mod root_open;
 pub mod search;
 mod text_read;
 pub(crate) use text_read::{MAX_TEXT_FILE_BYTES, read_text_bytes_bounded};
@@ -94,21 +95,6 @@ impl RootIdentity {
 }
 
 impl Workspace {
-    pub fn open(project_id: &str, root_id: &str, root: &Path) -> AppResult<Self> {
-        let root = root.canonicalize()?;
-        if !root.is_dir() {
-            return Err(AppError::InvalidRequest(
-                "workspace root must be a directory".into(),
-            ));
-        }
-        Ok(Self {
-            project_id: project_id.into(),
-            root_id: root_id.into(),
-            root_identity: root_identity_path(&root)?,
-            root,
-        })
-    }
-
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -470,6 +456,28 @@ mod tests {
             .unwrap();
         let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
         (root, workspace)
+    }
+
+    #[test]
+    fn registered_root_accepts_canonical_spelling_and_refuses_aliases() {
+        let (root, workspace) = fixture_workspace();
+        let canonical = workspace.root();
+        assert!(Workspace::open_registered_root("project", "root", canonical).is_ok());
+        // PathBuf::push normalizes dots in Windows verbatim paths. Keep the
+        // actual noncanonical input spelling for the admission check.
+        let mut dotted = canonical.as_os_str().to_owned();
+        dotted.push(std::path::MAIN_SEPARATOR_STR);
+        dotted.push(".");
+        assert!(Workspace::open_registered_root("project", "root", Path::new(&dotted)).is_err());
+        #[cfg(unix)]
+        {
+            let alias = root.with_extension("alias");
+            std::os::unix::fs::symlink(canonical, &alias).unwrap();
+            assert!(Workspace::open("project", "root", &alias).is_ok());
+            assert!(Workspace::open_registered_root("project", "root", &alias).is_err());
+            fs::remove_file(alias).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -108,7 +108,8 @@ async fn mutate_git_file_inner_with_policy_override(
                 "Git resource root does not belong to the active Project".into(),
             )
         })?;
-    let workspace = Workspace::open(&target.project_id, &target.id, &target.absolute_path)?;
+    let workspace =
+        Workspace::open_registered_root(&target.project_id, &target.id, &target.absolute_path)?;
     let mutation_result = match process_policy {
         Some(policy) => {
             mutate_file_with_process_policy(&workspace, &request.resource, request.action, policy)
@@ -130,8 +131,9 @@ async fn mutate_git_file_inner_with_policy_override(
     let repository_roots = roots
         .into_iter()
         .map(|root| {
-            let workspace = Workspace::open(&root.project_id, &root.id, &root.absolute_path)
-                .map_err(|error| error.to_string());
+            let workspace =
+                Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
+                    .map_err(|error| error.to_string());
             (root.id, workspace)
         })
         .collect();

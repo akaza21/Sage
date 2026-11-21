@@ -19,6 +19,10 @@ use sage_acp_protocol::{
 };
 use std::{fs, sync::Arc};
 
+#[cfg(all(windows, feature = "acp-fixture"))]
+#[path = "private_chat_tests/live.rs"]
+mod live;
+
 #[test]
 fn private_chat_session_uses_its_registered_folder_and_freezes_scope_before_a_turn() {
     tauri::async_runtime::block_on(async {
@@ -52,6 +56,7 @@ fn private_chat_session_uses_its_registered_folder_and_freezes_scope_before_a_tu
         let folder = database.root_records(&project.id).unwrap()[0]
             .absolute_path
             .clone();
+        assert!(!folder.to_string_lossy().starts_with(r"\\?\"));
         let project_id = SageProjectId::parse(project.id.clone()).unwrap();
         let chat_id = SageChatId::parse(chat.clone()).unwrap();
         let state = crate::state::AppState::new(database.clone());
@@ -116,9 +121,12 @@ fn private_chat_session_uses_its_registered_folder_and_freezes_scope_before_a_tu
         let ActivationMode::New { native_root, .. } = &prepared.intent.mode else {
             panic!("expected a new session");
         };
+        assert!(!native_root.starts_with(r"\\?\"));
         assert_eq!(
-            std::path::Path::new(native_root).canonicalize().unwrap(),
-            folder
+            crate::project_registry::authority_path_key(
+                &std::path::Path::new(native_root).canonicalize().unwrap(),
+            ),
+            crate::project_registry::authority_path_key(&folder.canonicalize().unwrap()),
         );
         assert!(
             service

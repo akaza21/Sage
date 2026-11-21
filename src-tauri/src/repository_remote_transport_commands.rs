@@ -124,14 +124,15 @@ async fn transport_git_remote_inner(
                 "Git {action} root does not belong to the active Project"
             ))
         })?;
-    let workspace = Workspace::open(&target.project_id, &target.id, &target.absolute_path)?;
+    let workspace =
+        Workspace::open_registered_root(&target.project_id, &target.id, &target.absolute_path)?;
     let repository_roots = roots
         .iter()
         .map(|root| {
             let workspace = if root.id == target.id {
                 Ok(workspace.clone())
             } else {
-                Workspace::open(&root.project_id, &root.id, &root.absolute_path)
+                Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
             };
             (root.id.clone(), workspace)
         })

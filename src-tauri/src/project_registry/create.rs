@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::seed::{active_project_in, insert_root, seed_project};
 use super::{
-    MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, canonical_folder, folder_name,
+    MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_folder, conservative_overlap_key, folder_name,
     project_summary_in,
 };
 use sage_db::database::Database;
@@ -48,7 +48,7 @@ fn canonical_sources(roots: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
         .iter()
         .map(|root| {
             let canonical = canonical_folder(root)?;
-            if !seen.insert(canonical_comparison_key(&canonical)) {
+            if !seen.insert(conservative_overlap_key(&canonical)) {
                 return Err(AppError::InvalidRequest(
                     "the same folder is listed twice".into(),
                 ));

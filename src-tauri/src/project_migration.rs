@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::project_registry::{
-    MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, persisted_path_text,
+    MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, conservative_overlap_key, persisted_path_text,
 };
 use sage_workspace::validate_contract_path;
 
@@ -133,7 +133,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
     for root in roots {
         let canonical = canonical_or_recorded_root(&root.absolute_path)?;
         let root_id = Uuid::new_v4().to_string();
-        let canonical_key = canonical_comparison_key(&canonical);
+        let canonical_key = conservative_overlap_key(&canonical);
         if !seen_keys.insert((root.project_id.clone(), canonical_key.clone())) {
             return Err(AppError::InvalidRequest(format!(
                 "legacy project {} contains duplicate canonical roots",

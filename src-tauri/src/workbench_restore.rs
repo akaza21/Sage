@@ -396,7 +396,9 @@ pub fn tab_projection_bytes(tab: &WorkbenchTab) -> i64 {
 
 fn validate_resource_metadata(root: &RootRecord, resource: &ResourceRef) -> AppResult<()> {
     validate_contract_path(&resource.relative_path, false)?;
-    let Ok(workspace) = Workspace::open(&root.project_id, &root.id, &root.absolute_path) else {
+    let Ok(workspace) =
+        Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
+    else {
         return Ok(());
     };
     if workspace

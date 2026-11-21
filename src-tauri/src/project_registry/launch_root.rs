@@ -79,7 +79,9 @@ impl ProjectRootAuthority {
         let canonical = self.canonical_path.canonicalize().map_err(|_| {
             AppError::InvalidRequest("selected project root is missing or unavailable".into())
         })?;
-        if canonical != self.canonical_path || !canonical.is_dir() {
+        if super::authority_path_key(&canonical) != super::authority_path_key(&self.canonical_path)
+            || !canonical.is_dir()
+        {
             return Err(AppError::InvalidRequest(
                 "selected project root is no longer canonical".into(),
             ));

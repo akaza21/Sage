@@ -531,3 +531,25 @@ fn installed_skills_list_per_cwd_and_a_change_reaches_only_a_read_that_skips_the
         );
     }
 }
+#[test]
+fn session_cwd_assertion_accepts_the_process_folder_and_rejects_other_spellings() {
+    let expected = std::env::current_dir().unwrap();
+    let paths = [
+        Some((expected.clone(), true)),
+        Some((expected.join("other"), false)),
+        cfg!(windows).then(|| (expected.canonicalize().unwrap(), false)),
+    ];
+    for (cwd, accepted) in paths.into_iter().flatten() {
+        let request =
+            serde_json::json!({"id": 1, "method": "thread/start", "params": {"cwd": cwd}});
+        let mut input = std::io::Cursor::new(format!("{request}\n").into_bytes());
+        let result = super::codex::await_request_in_cwd(
+            &mut input,
+            &mut Vec::new(),
+            &mut WireState::new(),
+            "thread/start",
+            &expected,
+        );
+        assert_eq!(result.is_ok(), accepted, "cwd: {}", cwd.display());
+    }
+}

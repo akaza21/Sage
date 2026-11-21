@@ -73,8 +73,11 @@ pub(super) fn execute(request: HelperRequest) -> AppResult<WorkspaceSearchRespon
         .roots
         .into_iter()
         .map(|root| {
-            let source = match Workspace::open(&root.project_id, &root.root_id, &root.absolute_path)
-            {
+            let source = match Workspace::open_registered_root(
+                &root.project_id,
+                &root.root_id,
+                &root.absolute_path,
+            ) {
                 Ok(workspace) => SearchRootSource::Available(workspace),
                 Err(error) => SearchRootSource::Unavailable(error.to_string()),
             };

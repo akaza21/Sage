@@ -26,6 +26,21 @@ import {
   setAgentRailOrganize,
 } from "./agentRailViewPrefs";
 
+it("uses the neutral workspace identity for a project-less chat", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "private-chat",
+      name: "Choose project",
+      isInternal: true,
+      roots: [],
+    },
+  });
+  const { container } = render(<LeftSidebar inert />);
+  const identity = container.querySelector(".agent-rail-identity")!;
+  expect(identity.querySelector("strong")).toHaveTextContent("Local");
+  expect(container.querySelector(".account-avatar")).toHaveTextContent("L");
+});
+
 it("leaves the brand and the window mode switch to the title bar", () => {
   render(<LeftSidebar />);
   expect(screen.queryByRole("banner")).toBeNull();

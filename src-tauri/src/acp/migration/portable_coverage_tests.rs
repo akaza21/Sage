@@ -48,6 +48,35 @@ impl Drop for TestDir {
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn legacy_root_keys_migrate_with_both_verbatim_and_ordinary_absolute_paths() {
+    use crate::project_registry::ProjectRegistryStore;
+    for ordinary in [false, true] {
+        let directory = TestDir::new();
+        create_v4(&directory.database(), false);
+        let canonical = directory.0.join("root").canonicalize().unwrap();
+        let expected = sage_core::win32_path::simplified(&canonical);
+        let stored = if ordinary { &expected } else { &canonical };
+        let connection = Connection::open(directory.database()).unwrap();
+        connection
+            .execute(
+                "UPDATE project_roots SET absolute_path=?1,canonical_key=?2 WHERE id='root-a'",
+                params![
+                    stored.to_str().unwrap(),
+                    canonical.to_string_lossy().to_lowercase()
+                ],
+            )
+            .unwrap();
+        drop(connection);
+        let database = crate::database::open_database(&directory.database()).unwrap();
+        assert_eq!(
+            database.root_record("root-a").unwrap().absolute_path,
+            expected
+        );
+    }
+}
+
 #[test]
 fn portable_apply_through_v13_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
     for version in [1_i64, 2, 3, 5, 6] {
@@ -601,7 +630,7 @@ fn create_v4(path: &PathBuf, event: bool) {
     let root = path.parent().unwrap().join("root");
     fs::create_dir_all(&root).unwrap();
     let canonical = root.canonicalize().unwrap();
-    connection.execute("INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES ('root-a','project-a',?1,?2,0)", params![canonical.to_string_lossy().into_owned(), crate::project_registry::canonical_comparison_key(&canonical)]).unwrap();
+    connection.execute("INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES ('root-a','project-a',?1,?2,0)", params![canonical.to_string_lossy().into_owned(), crate::project_registry::conservative_overlap_key(&canonical)]).unwrap();
     connection.execute("INSERT INTO workbench_tabs(id,project_id,kind,title,position,pinned,dirty,status,metadata_json,created_at,updated_at) VALUES ('chat-a','project-a','chat','Chat',0,0,0,NULL,'{}',1,1)", []).unwrap();
     if event {
         connection.execute("INSERT INTO agent_sessions(id,project_id,chat_tab_id,harness_id,status,last_committed_sequence,created_at,updated_at) VALUES ('session-a','project-a','chat-a','simulator','complete',1,1,2)", []).unwrap();

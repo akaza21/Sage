@@ -226,7 +226,16 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     *transition_epoch = committed_epoch;
-    on_committed_project_transition_epoch(*transition_epoch);
+    finish_committed_project_transition(state, committed_epoch).await
+}
+
+/// Complete every durable project identity change through the same native
+/// cleanup and projection routing, including changes initiated by a Chat.
+pub(crate) async fn finish_committed_project_transition(
+    state: &AppState,
+    committed_epoch: u64,
+) -> ProjectTransitionResult {
+    on_committed_project_transition_epoch(committed_epoch);
     let active_after = state.database.active_project_id().ok().flatten();
     let terminal_cleanup = active_after
         .and_then(|id| SageProjectId::parse(id).ok())
