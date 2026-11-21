@@ -61,7 +61,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
         std::fs::create_dir_all(&project_root).unwrap();
         let database = crate::database::open_database(&temp_root.path().join("sage.db")).unwrap();
         let project_id =
-            SageProjectId::parse(database.create_project_from_root(&project_root).unwrap().id)
+            SageProjectId::parse(database.create_project_with_chat(&project_root).unwrap().id)
                 .unwrap();
         let chat_id = SageChatId::parse(
             database

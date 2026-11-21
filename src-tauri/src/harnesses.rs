@@ -780,7 +780,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("sage-harness-projection-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        database.create_project_from_root(&root).unwrap();
+        database.create_project_with_chat(&root).unwrap();
         let mut state = crate::state::AppState::new(database);
         state.harnesses = catalog;
         let snapshot = tokio::runtime::Runtime::new()

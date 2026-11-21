@@ -238,7 +238,7 @@ mod tests {
             fs::write(root.join("file.txt"), "needle\n").unwrap();
             let database =
                 crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let state = Arc::new(AppState::new(database));
             let mut search_request = request("needle");
             search_request.project_id = project.id;

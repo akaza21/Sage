@@ -28,7 +28,7 @@ fn home_project_does_not_exhaust_private_storage_after_repeated_deletes() {
         .join(format!("private-home-{}", Uuid::new_v4()));
     fs::create_dir_all(home.join("profile")).unwrap();
     let database = crate::database::open_database(&home.join("profile/sage.db")).unwrap();
-    let project = database.create_project_from_root(&home).unwrap();
+    let project = database.create_project_with_chat(&home).unwrap();
     fs::write(home.join("keep.txt"), "home files").unwrap();
     for _ in 0..=MAX_PRIVATE_PROJECTS {
         let chat = Uuid::new_v4().to_string();
@@ -120,7 +120,7 @@ fn registration_refuses_managed_private_folders_for_new_and_existing_projects() 
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     create(&database, None, &Uuid::new_v4().to_string()).unwrap();
     let scope = super::tests::layout(&database);
@@ -133,7 +133,7 @@ fn registration_refuses_managed_private_folders_for_new_and_existing_projects() 
         &folder.join("nested"),
         &storage_root(&database).unwrap(),
     ] {
-        let error = database.create_project_from_root(path).unwrap_err();
+        let error = database.create_project_with_chat(path).unwrap_err();
         assert!(error.public_message().contains("managed private Chat"));
         assert!(
             database
@@ -171,7 +171,7 @@ fn deleting_private_chat_preserves_overlapping_registered_project_files() {
         fs::create_dir_all(root.join("user")).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let real = database
-            .create_project_from_root(&root.join("user"))
+            .create_project_with_chat(&root.join("user"))
             .unwrap();
         let chat = Uuid::new_v4().to_string();
         create(&database, None, &chat).unwrap();
@@ -329,7 +329,7 @@ fn cleanup_preserves_files_when_another_root_identity_cannot_be_resolved() {
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     let chat = Uuid::new_v4().to_string();
     create(&database, None, &chat).unwrap();

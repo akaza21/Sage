@@ -27,19 +27,15 @@ export function isAgentArtifactTabKind(kind: TabKind): kind is "file" | "diff" {
   return kind === "file" || kind === "diff";
 }
 
-export type AgentCenterDecision = { action: "none" } | { action: "create" };
-
-export function agentCenterChatAction(
+export function agentCenterNeedsDraft(
   tabs: ReadonlyArray<AgentCenterScanTab>,
   _activeTabId: string | null,
-): AgentCenterDecision {
+): boolean {
   const scanLimit = Math.min(tabs.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
   for (let index = 0; index < scanLimit; index += 1) {
-    if (tabs[index]?.kind === "chat") {
-      return { action: "none" };
-    }
+    if (tabs[index]?.kind === "chat") return false;
   }
-  return { action: "create" };
+  return true;
 }
 
 export function firstChatTabId(

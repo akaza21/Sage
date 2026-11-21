@@ -30,7 +30,7 @@ impl Fixture {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("file.txt"), "hello").unwrap();
         let database = crate::database::open_database(":memory:".as_ref()).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {
             root,
@@ -312,7 +312,7 @@ async fn acp_project_switch_globally_revokes_target_and_foreign_async_writers() 
     let other = f
         .service
         .database
-        .create_project_from_root(&f.root.join("other"))
+        .create_project_with_chat(&f.root.join("other"))
         .unwrap();
     assert_ne!(other.id, f.owner.project_id.as_str());
     let service = AcpService::new(f.service.database.clone()).unwrap();

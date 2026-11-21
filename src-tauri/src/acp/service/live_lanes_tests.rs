@@ -154,7 +154,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
     tauri::async_runtime::block_on(async {
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let project_id = SageProjectId::parse(project.id.clone()).unwrap();
         let service = AcpService::new_with_registry_publisher_for_test(
             database.clone(),

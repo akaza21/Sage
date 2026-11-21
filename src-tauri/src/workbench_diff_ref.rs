@@ -272,7 +272,7 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("src-a.ts"), "old\n").unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&folder).unwrap();
+        let project = database.create_project_with_chat(&folder).unwrap();
         let root_id = project.roots[0].id.clone();
         let mut snapshot = database.bootstrap_snapshot().unwrap();
         let mut tab = snapshot_tab(&project.id, &root_id);

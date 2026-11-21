@@ -24,8 +24,8 @@ fn round3_cross_project_creation_rolls_back_and_reports_both_validation_and_swit
             fs::create_dir_all(root.join("source")).unwrap();
             fs::create_dir_all(root.join("target")).unwrap();
             let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-            let source = database.create_project_from_root(&root.join("source")).unwrap();
-            let target = database.create_project_from_root(&root.join("target")).unwrap();
+            let source = database.create_project_with_chat(&root.join("source")).unwrap();
+            let target = database.create_project_with_chat(&root.join("target")).unwrap();
             let target_layout = layout(&database);
             database.switch_project(&ProjectSwitchRequest {
                 target_project_id: source.id.clone(), current_layout: target_layout,

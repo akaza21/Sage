@@ -10,7 +10,7 @@ async fn optional_baseline_releases_transition_before_waiting_and_never_blocks_s
     let root = std::env::temp_dir().join(format!("sage-send-capture-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(&project.id).unwrap();
     let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -119,7 +119,7 @@ async fn an_archive_during_the_unlocked_capture_fails_the_send_as_stale() {
     let root = std::env::temp_dir().join(format!("sage-send-archive-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let layout = |snapshot: sage_domain::project::BootstrapSnapshot| {
         sage_domain::chat::ProjectLayoutRequest {

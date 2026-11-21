@@ -79,7 +79,7 @@ fn startup_label_skips_a_browser_owned_by_another_project() {
     fs::create_dir(&first_root).unwrap();
     fs::create_dir(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let first = database.create_project_from_root(&first_root).unwrap();
+    let first = database.create_project_with_chat(&first_root).unwrap();
     let mut tabs = database.bootstrap_snapshot().unwrap().tabs;
     tabs.push(sage_domain::chat::WorkbenchTab {
         id: "browser-1".into(),
@@ -104,7 +104,7 @@ fn startup_label_skips_a_browser_owned_by_another_project() {
             selected_resource: None,
         })
         .unwrap();
-    let second = database.create_project_from_root(&second_root).unwrap();
+    let second = database.create_project_with_chat(&second_root).unwrap();
     assert_eq!(
         database.repair_active_project().unwrap().as_deref(),
         Some(second.id.as_str())
