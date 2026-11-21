@@ -1,5 +1,27 @@
 use super::*;
 
+#[test]
+fn retrying_a_cancelled_title_read_absorbs_oversized_old_replies() {
+    let mut fixture = running("retry-title");
+    fixture.runtime.start_title("").unwrap();
+    let first = poll(&mut fixture.runtime);
+    fixture.runtime.cancel_title();
+    fixture.runtime.start_title("").unwrap();
+    let second = poll(&mut fixture.runtime);
+    fixture
+        .runtime
+        .discard_invalid_response(&frame(
+            json!({"id":first["id"],"result":{"sessions":vec![0;513]}}),
+        ))
+        .unwrap();
+    assert!(fixture.runtime.title_pending());
+    fixture.runtime.ingest(&frame(json!({"id":second["id"],"result":{"sessions":[{"sessionId":SESSION,"title":"Check retry title reads"}]}})), &Mapper).unwrap();
+    assert_eq!(
+        fixture.runtime.take_title_result(),
+        Some(Some("Check retry title reads".into()))
+    );
+}
+
 fn poll(runtime: &mut NativeRuntime) -> Value {
     let egress = runtime.poll_title().expect("due read");
     serde_json::from_slice(egress.frame().payload()).unwrap()

@@ -242,17 +242,6 @@ impl DriverMailbox {
         self.push_ordered_reader_terminal(terminal)
     }
 
-    pub(crate) fn close(&self) {
-        let mut state = self.lock();
-        state.closed = true;
-        while let Some(message) = state.queue.pop() {
-            message.reject_closed();
-        }
-        state.terminal_queued = false;
-        self.ready.notify_all();
-        self.space.notify_all();
-    }
-
     pub(super) fn wait_next_until(
         &self,
         deadline_millis: Option<i64>,

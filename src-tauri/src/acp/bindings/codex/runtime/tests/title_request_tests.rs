@@ -135,6 +135,45 @@ fn not_loaded_unsubscribe_finishes_cleanup_without_a_closed_notification() {
 }
 
 #[test]
+fn retried_titles_absorb_retired_thread_events_without_changing_the_main_conversation() {
+    let mut runtime = titled_runtime();
+    let main = runtime.inner.clone();
+    runtime.start_title("first exchange").unwrap();
+    let config = request(&mut runtime);
+    absorb(
+        &mut runtime,
+        json!({"id":config["id"],"result":{"config":{}}}),
+    );
+    let start = request(&mut runtime);
+    absorb(
+        &mut runtime,
+        json!({"id":start["id"],"result":{"thread":{"id":"retired-title"},"sandbox":{"type":"readOnly"}}}),
+    );
+    runtime.cancel_title();
+    let unload = request(&mut runtime);
+    absorb(
+        &mut runtime,
+        json!({"id":unload["id"],"result":{"status":"notLoaded"}}),
+    );
+    runtime.start_title("first exchange again").unwrap();
+    for event in [
+        json!({"method":"thread/started","params":{"thread":{"id":"retired-title","ephemeral":true}}}),
+        json!({"method":"item/completed","params":{"threadId":"retired-title","turnId":"old-turn","item":{"id":"old-answer","type":"agentMessage","text":"late output"}}}),
+        json!({"method":"thread/closed","params":{"threadId":"retired-title"}}),
+    ] {
+        absorb(&mut runtime, event);
+    }
+    assert!(runtime.inner == main);
+    let config = request(&mut runtime);
+    assert_eq!(config["method"], "config/read");
+    absorb(
+        &mut runtime,
+        json!({"id":config["id"],"result":{"config":{}}}),
+    );
+    assert_eq!(request(&mut runtime)["method"], "thread/start");
+}
+
+#[test]
 fn failed_configuration_and_oversized_response_keep_the_main_session_usable() {
     let mut runtime = titled_runtime();
     let main = runtime.inner.clone();

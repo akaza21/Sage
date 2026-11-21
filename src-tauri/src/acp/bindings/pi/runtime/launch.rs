@@ -14,6 +14,9 @@ use super::PiRuntime;
 pub(crate) trait PiLaunch: Send {
     /// A launch is used at most once.
     fn launch_spec(&mut self, epoch: RuntimeEpoch) -> Result<LaunchSpec, AdapterRuntimeError>;
+    fn revalidate_title(&self) -> Result<(), AdapterRuntimeError> {
+        Err(AdapterRuntimeError::LaunchUnavailable)
+    }
 }
 
 impl PiRuntime {
@@ -26,9 +29,12 @@ impl PiRuntime {
 impl LaunchableRuntime for PiRuntime {
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         let epoch = self.runtime_epoch;
-        self.launch
+        let spec = self
+            .launch
             .as_mut()
             .ok_or(AdapterRuntimeError::LaunchUnavailable)?
-            .launch_spec(epoch)
+            .launch_spec(epoch)?;
+        self.title_launch = super::super::title_launch::TitleLaunch::capture(&spec);
+        Ok(spec)
     }
 }

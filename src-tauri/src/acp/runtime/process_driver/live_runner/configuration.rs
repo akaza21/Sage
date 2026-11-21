@@ -150,13 +150,7 @@ where
         }
         _ => true,
     };
-    if preempts_title
-        && let FirstTurnWorkerState::Reusable(parts) = &mut state
-        && parts
-            .completed
-            .poll_title(true, &mut parts.transport)
-            .is_err()
-    {
+    if preempts_title && state.poll_idle_title(true).is_err() {
         envelope.reject(HostError::RecoveryRequired);
         return (RunnerAction::Failure(state), None);
     }

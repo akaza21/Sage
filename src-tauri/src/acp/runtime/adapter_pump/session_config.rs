@@ -2,7 +2,7 @@ use super::*;
 use crate::acp::goal::GoalAction;
 use sage_acp_protocol::session_config::ConfigIntent;
 
-pub(super) fn poll_title<A: HarnessAdapter>(
+pub(crate) fn poll_title<A: HarnessAdapter>(
     adapter: &mut A,
     cancel: bool,
     transport: &mut impl EgressTransport,

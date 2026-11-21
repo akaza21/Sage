@@ -5,6 +5,7 @@ use crate::acp::bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressTo
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
+mod delivery;
 mod isolation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +28,13 @@ pub(super) struct TitleRequest {
     next: Option<Step>,
     pending: Vec<(u64, Step)>,
     ids: Vec<u64>,
+    retired_threads: Vec<String>,
+    attempts: u8,
     response: Option<String>,
     response_bytes: usize,
     pub(super) result: Option<Option<String>>,
     pub(super) cancelled: bool,
+    pub(super) preempted: bool,
     interrupted: bool,
     unsubscribed: bool,
     pub(super) finished: bool,
@@ -71,38 +75,13 @@ impl TitleRequest {
 }
 
 impl CodexRuntime {
-    pub(super) fn may_receive_title_response(&self) -> bool {
-        // Cancelled reads retain a bounded set of IDs for late replies.
-        self.title
-            .as_ref()
-            .is_some_and(|request| !request.ids.is_empty())
-    }
-    pub(super) fn reject_title_response(&mut self, id: u64) -> bool {
-        let Some(request) = self
-            .title
-            .as_mut()
-            .filter(|request| request.ids.contains(&id))
-        else {
-            return false;
-        };
-        if request.finished {
-            return true;
-        }
-        let Some(step) = request.settle_reply(id) else {
-            return true;
-        };
-        request.result = Some(None);
-        // A malformed allocation or cleanup reply cannot prove remote unload.
-        if matches!(step, Step::Start | Step::Unsubscribe) {
-            request.cancelled = true;
-            request.cleanup_deadline = Some(Instant::now());
-        } else {
-            request.cancel();
-        }
-        true
-    }
     pub(super) fn begin_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
-        if input.len() > 4096 || self.title.as_ref().is_some_and(|t| !t.finished) {
+        if input.len() > 4096
+            || self
+                .title
+                .as_ref()
+                .is_some_and(|t| !t.finished || t.attempts >= 3)
+        {
             return Err(AdapterRuntimeError::Operation);
         }
         tracing::info!(
@@ -141,13 +120,20 @@ impl CodexRuntime {
                 .map(|effort| effort.id.as_str().to_owned())
         });
         settings["model"] = json!(model);
+        let mut previous = self.title.take().unwrap_or_default();
+        if let Some(thread) = previous.thread.take() {
+            previous.retired_threads.push(thread);
+        }
         self.title = Some(TitleRequest {
             input: input.to_owned(),
             settings,
             effort,
             next: Some(Step::Config),
             pending: Vec::with_capacity(4),
-            ids: Vec::with_capacity(5),
+            // Three admitted tries, each with at most five wire requests.
+            ids: previous.ids,
+            retired_threads: previous.retired_threads,
+            attempts: previous.attempts + 1,
             ..TitleRequest::default()
         });
         Ok(())
@@ -232,6 +218,13 @@ impl CodexRuntime {
         let Some(request) = &mut self.title else {
             return false;
         };
+        let thread = value
+            .pointer("/params/threadId")
+            .or_else(|| value.pointer("/params/thread/id"))
+            .and_then(Value::as_str);
+        if thread.is_some_and(|thread| request.retired_threads.iter().any(|old| old == thread)) {
+            return true;
+        }
         if value.get("method").is_none()
             && let Some(id) = value["id"].as_u64()
             && request.ids.contains(&id)
@@ -364,15 +357,29 @@ impl CodexRuntime {
                     .pointer("/turn/status")
                     .and_then(serde_json::Value::as_str)
                     == Some("completed");
-                request.result = Some(if completed && !request.cancelled {
-                    request
-                        .response
-                        .take()
-                        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-                        .and_then(|value| value["title"].as_str().map(str::to_owned))
-                } else {
+                request.result = if request.preempted
+                    && params
+                        .pointer("/turn/status")
+                        .and_then(Value::as_str)
+                        .is_some_and(|status| matches!(status, "interrupted" | "cancelled"))
+                {
                     None
-                });
+                } else {
+                    Some(
+                        if completed
+                            && (!request.cancelled || request.preempted)
+                            && request.response_bytes <= 1024
+                        {
+                            request
+                                .response
+                                .take()
+                                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                                .and_then(|value| value["title"].as_str().map(str::to_owned))
+                        } else {
+                            None
+                        },
+                    )
+                };
                 request.cancelled = true;
                 request.interrupted = true;
             }
@@ -380,33 +387,6 @@ impl CodexRuntime {
                 request.finish();
             }
             _ => {}
-        }
-        true
-    }
-
-    pub(super) fn title_write(
-        &mut self,
-        id: u64,
-        resolution: crate::acp::bindings::adapter::EgressResolution,
-    ) -> bool {
-        let Some(request) = &mut self.title else {
-            return false;
-        };
-        if !request.ids.contains(&id) {
-            return false;
-        }
-        use crate::acp::bindings::adapter::EgressResolution::*;
-        if matches!(resolution, QueueRejected | WriteZeroBytes | DeliveryUnknown) {
-            request.result = Some(None);
-            if resolution == DeliveryUnknown {
-                // The JSON frame may be incomplete: no later writes are safe.
-                request.cancelled = true;
-                self.poisoned = true;
-                request.cleanup_deadline = Some(Instant::now());
-            } else {
-                request.pending.retain(|(pending, _)| *pending != id);
-                request.cancel();
-            }
         }
         true
     }
