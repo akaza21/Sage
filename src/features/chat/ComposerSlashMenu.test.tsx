@@ -472,8 +472,9 @@ describe("composer slash commands", () => {
     native.lists = [
       {
         revision: 1,
+        omitted: 88,
         commands: [
-          ...Array.from({ length: 10 }, (_, index) => ({
+          ...Array.from({ length: 60 }, (_, index) => ({
             name: `built-${index}`,
             description: "Built-in",
             inputHint: null,
@@ -484,6 +485,7 @@ describe("composer slash commands", () => {
             description: "Lint",
             inputHint: null,
             source: "skill",
+            sourceLabel: "repo",
           },
         ],
       },
@@ -492,7 +494,7 @@ describe("composer slash commands", () => {
     const { listbox } = await openMenu("/");
     await waitFor(() =>
       expect(
-        names(within(listbox).getByRole("group", { name: "Skills" })),
+        names(within(listbox).getByRole("group", { name: "Skills · repo" })),
       ).toEqual(["/lint"]),
     );
     expect(
@@ -500,13 +502,24 @@ describe("composer slash commands", () => {
         .getByRole("group", { name: "Commands" })
         .querySelectorAll("[role='option']"),
     ).toHaveLength(7);
+    expect(screen.getByText("and 53 more, type to search")).toBeInTheDocument();
     expect(
-      screen.getByText("3 more — keep typing to narrow"),
+      screen.getByText("Catalog truncated: 88 commands not shown"),
     ).toBeInTheDocument();
-    type("/built-9");
+    type("/built-");
     await waitFor(() =>
-      expect(names(screen.getByRole("listbox"))).toEqual(["/built-9"]),
+      expect(within(listbox).getAllByRole("option")).toHaveLength(50),
     );
+    expect(screen.getByText("and 10 more, type to search")).toBeInTheDocument();
+    expect(screen.queryByText("10 more — keep typing to narrow")).toBeNull();
+    type("/built-59");
+    await waitFor(() =>
+      expect(names(screen.getByRole("listbox"))).toEqual(["/built-59"]),
+    );
+    expect(screen.queryByText(/more, type to search/)).toBeNull();
+    expect(
+      screen.getByText("Catalog truncated: 88 commands not shown"),
+    ).toBeInTheDocument();
   });
 
   it("opens again after Escape once the focus leaves and returns", async () => {

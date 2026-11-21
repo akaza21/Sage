@@ -1,4 +1,5 @@
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
+use crate::acp::transport::validate_structure;
 use std::{collections::VecDeque, future::Future, pin::Pin, sync::Mutex};
 
 use crate::acp::{

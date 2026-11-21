@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::{
     bindings::standard_acp::surface::{panel, update_commands_with},
-    slash_commands::{AvailableCommand, CommandPanel},
+    slash_commands::{AvailableCommand, CommandPanel, CommandSource},
 };
 
 impl ClaudeRuntime {
@@ -23,6 +23,7 @@ impl ClaudeRuntime {
             active.external_id.as_str(),
             &mut active.commands,
             &first,
+            classify_command,
         )
     }
 }
@@ -45,4 +46,16 @@ fn panels() -> Vec<AvailableCommand> {
     .into_iter()
     .filter_map(Result::ok)
     .collect()
+}
+
+/// Older ACP installs report plugin namespaces in command names only.
+fn classify_command(mut command: AvailableCommand) -> AvailableCommand {
+    if command.source == CommandSource::Harness
+        && let Some((plugin, _)) = command.name.split_once(':')
+    {
+        let label = plugin.to_owned();
+        command.source = CommandSource::Plugin;
+        command = command.with_source_label(Some(&label));
+    }
+    command
 }

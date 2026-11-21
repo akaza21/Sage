@@ -113,9 +113,10 @@ impl SdkBridge {
                 inbound
                     .acp
                     .push(acp_result(id, settings.session_result(&self.session_id)));
+                let commands = self.commands.take();
                 inbound.acp.push(self.update(json!({
                     "sessionUpdate": "available_commands_update",
-                    "availableCommands": self.commands,
+                    "availableCommands": commands,
                 })));
             }
             Pending::Mode { id, mode } => {
