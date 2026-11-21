@@ -37,6 +37,8 @@ mod test_support;
 #[cfg(all(test, windows))]
 mod windows_literal_tests;
 mod wire;
+#[cfg(test)]
+pub(crate) use wire::title_wire;
 mod wire_payload;
 
 use std::ffi::OsString;

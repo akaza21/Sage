@@ -79,6 +79,28 @@ pub(crate) enum AdapterRuntimeError {
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
+    fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
+        None
+    }
+    fn title_completed(&mut self, _intent: &crate::acp::runtime::PumpIntent) {}
+    fn start_title(&mut self, _input: &str) -> Result<(), AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn poll_title(&mut self) -> Option<AdapterEgress> {
+        None
+    }
+    fn cancel_title(&mut self) {}
+    fn title_pending(&self) -> bool {
+        false
+    }
+    /// Failed cleanup requires the existing supervisor to prove process exit.
+    fn title_requires_teardown(&self) -> bool {
+        false
+    }
+    fn take_title_result(&mut self) -> Option<Option<String>> {
+        None
+    }
+
     fn receive_command_update(&mut self, _frame: &Frame) -> Result<(), AdapterRuntimeError> {
         Ok(())
     }

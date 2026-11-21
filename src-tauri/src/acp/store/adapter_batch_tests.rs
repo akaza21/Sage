@@ -25,6 +25,7 @@ mod session_surface_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;
 mod snapshot_tests;
+pub(super) mod title_attempt_tests;
 mod turn_activity_tests;
 mod workspace_tests;
 

@@ -4,6 +4,7 @@ mod elicitation;
 mod factory;
 mod ingress;
 mod launch;
+mod title_read;
 mod turn;
 use commands::response_id;
 pub(super) use commands::scoped_permission_id;
@@ -56,6 +57,7 @@ pub(super) struct StandardAcpRuntime {
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<super::translator::AdapterEvent>,
     safety_alerted: bool,
+    title_read: Option<title_read::TitleRead>,
 }
 
 struct ActiveSession {
@@ -157,6 +159,7 @@ impl StandardAcpRuntime {
             refusal_detail: None,
             deferred: Vec::new(),
             safety_alerted: false,
+            title_read: None,
         }
     }
 

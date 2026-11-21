@@ -8,6 +8,8 @@ use sage_acp_protocol::{
     session_config::ConfigMutation,
 };
 
+mod state;
+
 use super::adapter::{
     AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
     EgressToken, HarnessAdapter, RefusalDetail, ResourceMapper,
@@ -53,11 +55,19 @@ pub(crate) struct NativeRuntime(
         sage_acp_protocol::scheduler::RuntimeOwner,
         std::sync::Arc<sage_acp_protocol::usage::UsageChannel>,
     )>,
+    Option<crate::acp::service::chat_title::TitleScheduler>,
 );
 
 impl NativeRuntime {
+    pub(crate) fn attach_titles(
+        &mut self,
+        titles: crate::acp::service::chat_title::TitleScheduler,
+    ) {
+        self.5 = Some(titles);
+    }
+
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime), None, None, None, None)
+        Self(Box::new(runtime), None, None, None, None, None)
     }
 
     pub(crate) fn attach_commands(
@@ -109,6 +119,43 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
+        self.5.as_ref().map(|titles| titles.foreground_turn())
+    }
+    fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
+        self.0.start_title(input)
+    }
+    fn title_requires_teardown(&self) -> bool {
+        self.0.title_requires_teardown()
+    }
+    fn take_title_result(&mut self) -> Option<Option<String>> {
+        self.0.take_title_result()
+    }
+
+    fn title_completed(&mut self, intent: &crate::acp::runtime::PumpIntent) {
+        if let Some(titles) = &mut self.5 {
+            titles.completed(intent, &mut *self.0);
+        }
+    }
+    fn poll_title(&mut self) -> Option<AdapterEgress> {
+        match &mut self.5 {
+            Some(titles) => titles.poll(&mut *self.0),
+            None => self.0.poll_title(),
+        }
+    }
+    fn cancel_title(&mut self) {
+        if let Some(titles) = &mut self.5 {
+            titles.cancel(&mut *self.0);
+        } else {
+            self.0.cancel_title();
+        }
+    }
+    fn title_pending(&self) -> bool {
+        self.5
+            .as_ref()
+            .map_or_else(|| self.0.title_pending(), |titles| titles.pending())
+    }
+
     fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
         let result = self.0.receive_command_update(frame);
         if let Some((owner, channel)) = &self.3 {
@@ -369,38 +416,5 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
         self.0.held_batch()
-    }
-}
-
-impl NativeRuntime {
-    fn publish_config(&self) -> Result<(), AdapterRuntimeError> {
-        if let Some((owner, channel)) = &self.1 {
-            match self.0.session_config() {
-                Some(config) => channel.update(owner, config),
-                None => channel.remove(owner),
-            }
-            .map_err(|_| AdapterRuntimeError::Frame)?;
-            channel.set_hydrating(owner, self.0.config_hydrating());
-        }
-        Ok(())
-    }
-
-    fn publish_goal(&self) {
-        if let Some((owner, channel)) = &self.2
-            && let Some(goal) = self.0.goal_state()
-        {
-            channel.update(owner, goal);
-        }
-    }
-}
-
-impl Drop for NativeRuntime {
-    fn drop(&mut self) {
-        if let Some((owner, channel)) = &self.3 {
-            channel.clear(owner);
-        }
-        if let Some((owner, channel)) = &self.4 {
-            channel.clear(owner);
-        }
     }
 }

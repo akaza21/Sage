@@ -31,6 +31,7 @@ pub(crate) use activation_pump::{
 };
 #[cfg(test)]
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
+pub(crate) use adapter_pump::PumpIntent;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use adapter_pump::normalized_payload_bytes;
 #[cfg(test)]
@@ -41,7 +42,7 @@ pub(crate) use adapter_pump::{
     SessionPumpIntent,
 };
 #[cfg(test)]
-pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, PumpIntent, TurnScope};
+pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, TurnScope};
 pub(crate) use adapter_store_journal::SqliteAdapterBatchJournal;
 pub(crate) use bounded_thread::{BoundedThread, ThreadWaitError};
 mod process_driver;

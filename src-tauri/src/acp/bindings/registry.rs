@@ -26,6 +26,7 @@ mod record;
 mod record_reason;
 mod record_root;
 mod standard_acp;
+pub(crate) use record::TitleCapability;
 use record::{Admission, AdmittedBinding, RootPolicy};
 pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
 #[cfg(all(test, windows))]

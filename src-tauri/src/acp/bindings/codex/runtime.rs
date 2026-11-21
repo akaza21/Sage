@@ -29,6 +29,7 @@ mod harness;
 mod ingress;
 mod model_config;
 pub(crate) use model_config::launch_effort_option;
+mod title_request;
 mod usage;
 
 mod factory;
@@ -62,6 +63,8 @@ pub(crate) struct CodexRuntime {
     session_config: Option<sage_acp_protocol::session_config::SessionConfig>,
     usage: std::sync::Arc<sage_acp_protocol::usage::UsageCell>,
     rate_limits: super::incoming::rate_limits::RateLimits,
+    title: Option<title_request::TitleRequest>,
+    title_settings: Option<serde_json::Value>,
 }
 
 impl CodexRuntime {

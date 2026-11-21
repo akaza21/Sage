@@ -6,14 +6,17 @@ use sage_acp_protocol::intent::ExternalId;
 
 impl CodexRuntime {
     /// A response past the structural bounds every frame is held to. Only
-    /// an MCP list, a model page or a fork answer may be one; any other
-    /// fails the session.
+    /// an auxiliary title, MCP list, model page or fork answer may be one;
+    /// any other fails the session.
     pub(super) fn discard_invalid_answer(
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
             .ok_or(AdapterRuntimeError::Frame)?;
+        if self.reject_title_response(id) {
+            return super::support::one(AdapterEvent::Absorbed);
+        }
         match self.inner.take_mcp_list_answer(id) {
             Some(McpListAnswer::Awaited) => {
                 self.native_rpc_reply = Some(unbounded_mcp_list(frame.as_bytes()));
@@ -31,6 +34,32 @@ impl CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
+        }
+        let value: serde_json::Value =
+            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        if self.title_ingress(&value) {
+            return one(AdapterEvent::Absorbed);
+        }
+        if let Some(result) = value.get("result")
+            && result.pointer("/thread/id").is_some()
+        {
+            tracing::info!(
+                has_provider = result["modelProvider"].is_string(),
+                has_cwd = result["cwd"].is_string(),
+                "Codex thread authority received"
+            );
+        }
+        if let Some(result) = value.get("result")
+            && result
+                .pointer("/thread/id")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+            && result["modelProvider"].is_string()
+            && result["cwd"].is_string()
+        {
+            self.title_settings = Some(
+                serde_json::json!({"model":result["model"],"modelProvider":result["modelProvider"],"cwd":result["cwd"]}),
+            );
         }
         if let Some(pending) = self.inner.fork_pending() {
             let value: serde_json::Value =

@@ -13,7 +13,7 @@ use sage_acp_protocol::intent::ExternalId;
 use sage_core::limits::LIMITS;
 
 impl super::CodexRuntime {
-    fn next_id(&mut self) -> Result<u64, AdapterRuntimeError> {
+    pub(super) fn next_id(&mut self) -> Result<u64, AdapterRuntimeError> {
         self.next_request_id = self
             .next_request_id
             .checked_add(1)

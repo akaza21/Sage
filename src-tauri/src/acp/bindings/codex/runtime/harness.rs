@@ -14,6 +14,32 @@ use sage_acp_protocol::{
 use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
+    fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
+        self.begin_title(input)
+    }
+    fn poll_title(&mut self) -> Option<AdapterEgress> {
+        self.next_title_frame()
+    }
+    fn cancel_title(&mut self) {
+        if let Some(request) = &mut self.title {
+            request.cancel();
+        }
+    }
+    fn title_pending(&self) -> bool {
+        self.title.as_ref().is_some_and(|t| !t.finished)
+    }
+    fn title_requires_teardown(&self) -> bool {
+        self.poisoned
+            || self.title.as_ref().is_some_and(|t| {
+                !t.finished
+                    && t.cleanup_deadline
+                        .is_some_and(|d| std::time::Instant::now() >= d)
+            })
+    }
+    fn take_title_result(&mut self) -> Option<Option<String>> {
+        self.title.as_mut()?.result.take()
+    }
+
     fn frames_repeat_terminal(&self, frames: &[Frame], resources: &dyn ResourceMapper) -> bool {
         self.ingests_as_duplicate_terminals(frames, resources)
     }
@@ -116,7 +142,7 @@ impl HarnessAdapter for CodexRuntime {
     /// Each read whose reply may be past the frame bound keeps the decoder
     /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.inner.oversize_recoverable()
+        self.inner.oversize_recoverable() || self.may_receive_title_response()
     }
 
     fn answered_control(
@@ -155,6 +181,9 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        if self.reject_title_response(id) {
+            return Ok(());
+        }
         if self.inner.skills_oversized(id) {
             return Ok(());
         }
@@ -356,6 +385,9 @@ impl HarnessAdapter for CodexRuntime {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.request_id() {
+            if self.title_write(request_id, resolution) {
+                return Ok(());
+            }
             return self.resolve_request_egress(request_id, resolution);
         }
         if token.is_notification() {

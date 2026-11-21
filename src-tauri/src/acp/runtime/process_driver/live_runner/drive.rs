@@ -19,6 +19,26 @@ use super::{
 };
 
 mod active;
+#[cfg(all(test, feature = "acp-fixture"))]
+pub(in crate::acp::runtime::process_driver) async fn idle_command_for_test<A, R, T, Auth, C>(
+    state: WorkerState<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+    envelope: super::WorkerEnvelope,
+) -> WorkerState<A, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
+    match handle_worker(state, context, envelope, &mut None).await {
+        (RunnerAction::Continue(state), None) => state,
+        _ => panic!("expected a nonterminal idle command"),
+    }
+}
+
 #[cfg(test)]
 pub(in crate::acp::runtime::process_driver) async fn active_step_for_test<A, R, T, Auth, C>(
     state: WorkerState<A, R, T, C>,
@@ -64,6 +84,18 @@ where
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
+        let title_tick = if let FirstTurnWorkerState::Reusable(parts) = &mut state {
+            match parts.completed.poll_title(false, &mut parts.transport) {
+                Ok(pending) => pending.then(|| context.clock.now_millis().saturating_add(100)),
+                Err(_) => {
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                    return failed(state);
+                }
+            }
+        } else {
+            None
+        };
+
         match &mut state {
             FirstTurnWorkerState::Reusable(parts) => {
                 parts.completed.hydrate_model_config(&mut parts.transport);
@@ -135,7 +167,7 @@ where
             FirstTurnWorkerState::Idle(mut idle) => match context.mailbox.wait_next_until(
                 wait_deadline(
                     &pending_config,
-                    [eof_deadline_millis],
+                    [eof_deadline_millis, title_tick],
                     context.clock.as_ref(),
                 ),
                 context.clock.as_ref(),
@@ -186,7 +218,7 @@ where
                         None,
                     )
                 }
-                Ok(None) if pending_config.is_some() => (
+                Ok(None) if pending_config.is_some() || title_tick.is_some() => (
                     RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                     None,
                 ),
@@ -206,7 +238,7 @@ where
             FirstTurnWorkerState::Reusable(mut parts) => match context.mailbox.wait_next_until(
                 wait_deadline(
                     &pending_config,
-                    [eof_deadline_millis],
+                    [eof_deadline_millis, title_tick],
                     context.clock.as_ref(),
                 ),
                 context.clock.as_ref(),
@@ -265,7 +297,7 @@ where
                         None,
                     )
                 }
-                Ok(None) if pending_config.is_some() => (
+                Ok(None) if pending_config.is_some() || title_tick.is_some() => (
                     RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                     None,
                 ),

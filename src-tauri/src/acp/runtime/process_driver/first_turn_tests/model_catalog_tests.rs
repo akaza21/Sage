@@ -7,12 +7,16 @@ use super::*;
 
 #[path = "model_catalog_tests/lifecycle.rs"]
 mod lifecycle;
+#[cfg(feature = "acp-fixture")]
+#[path = "model_catalog_tests/title_lifecycle.rs"]
+mod title_lifecycle;
 
 struct CatalogTransport {
     writes: Arc<Mutex<Vec<Value>>>,
     mailbox: Arc<DriverMailbox>,
     shutdown_after: Option<usize>,
     skills_reads: Arc<AtomicUsize>,
+    title_failure: Option<FrameWriteOutcome>,
 }
 
 impl CatalogTransport {
@@ -26,6 +30,7 @@ impl CatalogTransport {
             mailbox,
             shutdown_after,
             skills_reads: Default::default(),
+            title_failure: None,
         }
     }
 }
@@ -33,6 +38,7 @@ impl CatalogTransport {
 impl crate::acp::runtime::EgressTransport for CatalogTransport {
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
         let request: Value = serde_json::from_slice(frame.payload()).unwrap();
+        let title_read = request["method"] == "config/read";
         // The idle skills read is its own traffic; these tests follow the
         // model catalog, and `skill_command_tests` follow the skills.
         if request["method"] == "skills/list" {
@@ -44,7 +50,13 @@ impl crate::acp::runtime::EgressTransport for CatalogTransport {
         if self.shutdown_after == Some(writes.len()) {
             drop(self.mailbox.submit_worker(WorkerCommand::Shutdown).unwrap());
         }
-        FrameWriteOutcome::Complete
+        if title_read {
+            self.title_failure
+                .take()
+                .unwrap_or(FrameWriteOutcome::Complete)
+        } else {
+            FrameWriteOutcome::Complete
+        }
     }
 }
 
@@ -97,7 +109,8 @@ pub(super) fn ready_adapter<Adapter: HarnessAdapter>(
             model: Some(RequiredText::new("model", "selected").unwrap()),
         })
         .unwrap();
-    let mut result = json!({"thread":{"id":external_session.as_str()}});
+    let mut result =
+        json!({"thread":{"id":external_session.as_str()},"modelProvider":"openai","cwd":"."});
     if confirmed_config {
         result["model"] = json!("selected");
         result["reasoningEffort"] = json!("high");
