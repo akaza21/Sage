@@ -1,11 +1,6 @@
 import type { AcpChatPage } from "../../../domain/acp";
 import type { GoalMutationAction } from "../../../domain/acpGoal";
 
-export function goalCapabilities(page: AcpChatPage | null | undefined) {
-  return page?.sessions?.find((item) => item.id === page.currentSessionId)
-    ?.capabilities?.goal;
-}
-
 export function canMutateGoal(
   page: AcpChatPage | null | undefined,
   action?: GoalMutationAction,

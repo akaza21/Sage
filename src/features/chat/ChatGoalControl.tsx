@@ -1,6 +1,6 @@
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
 import { Pause, Target } from "../../ui/leanIconNodesLazy";
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type {
   AcpGoalCapabilities,
   AcpGoalState,
@@ -37,6 +37,7 @@ export function ChatGoalControl({
   capabilities,
   editorOpen = false,
   onEditorClose,
+  onReady,
   canMutate = false,
   onMutation,
   detailsRef: externalDetailsRef,
@@ -45,6 +46,7 @@ export function ChatGoalControl({
   capabilities?: AcpGoalCapabilities;
   editorOpen?: boolean;
   onEditorClose?: () => void;
+  onReady?: (open: () => void) => () => void;
   canMutate?: boolean;
   onMutation?: (
     action: GoalMutationAction,
@@ -60,6 +62,17 @@ export function ChatGoalControl({
   >({ kind: "idle" });
   const [editing, setEditing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  useEffect(
+    () =>
+      onReady?.(() => {
+        if (capabilities?.set) setEditing(true);
+        else if (detailsRef.current) {
+          detailsRef.current.open = true;
+          detailsRef.current.querySelector("summary")?.focus();
+        }
+      }),
+    [onReady, capabilities?.set, detailsRef],
+  );
   const controls = canMutate && onMutation;
   const locked =
     mutation.kind === "pending" || mutation.kind === "outcomeUnknown";

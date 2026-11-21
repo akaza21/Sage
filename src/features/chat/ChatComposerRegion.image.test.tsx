@@ -244,6 +244,13 @@ describe("composer image input", () => {
     });
     const { rerenderComposer } = renderComposer({
       goal,
+      goalCapabilities: {
+        set: false,
+        pause: true,
+        resume: false,
+        tokenBudget: false,
+        clear: true,
+      },
       imageInputAvailable: true,
     });
     await settleLazyModules();

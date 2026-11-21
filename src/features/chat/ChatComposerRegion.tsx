@@ -73,6 +73,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     disabledReason,
     onRetryLoad,
     goal,
+    goalCapabilities,
     onSubmit,
     onTextChange,
     onRemoveContext,
@@ -90,7 +91,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const composerDisabled = !enabled || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
     goal,
-    dictationScope,
+    goalCapabilities,
     availableBinding && sessionHarnessId === selectedHarnessId,
   );
   const otherContext = attachedContext.filter((c) => !isTranscriptQuote(c));
@@ -203,9 +204,11 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {goal.kind === "goal" || goalDetails.capabilities?.set ? (
+            {goal.kind === "goal" ||
+            (goal.kind === "noGoal" && goalDetails.capabilities?.set) ? (
               <GoalPart
                 part="BoundChatGoalControl"
+                key={dictationScope}
                 state={goal}
                 chatId={dictationScope}
                 details={goalDetails}

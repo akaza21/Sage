@@ -11,7 +11,7 @@
       "editorSearch": 193112,
       "editorFile": 289989
     },
-    "webTotalJsGzipBytes": 461100,
+    "webTotalJsGzipBytes": 460850,
     "webTerminalLazyJsGzipBytes": 89516,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
@@ -308,15 +308,20 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 2400,
+        "maxGzipBytes": 2600,
         "maxCssGzipBytes": 850,
-        "reason": "Capability-driven native Goal actions and progress: 2148 B JS (baseline 1842 B), 595 B CSS (baseline 714 B), with 250 B headroom. Editor and details load only on request."
+        "reason": "Capability-driven native Goal actions, mutations and progress: 2305 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
+      },
+      {
+        "entry": "src/services/acpGoalSubscription.ts",
+        "maxGzipBytes": 600,
+        "reason": "The bounded native Goal notice decoder and subscription load only when an active native chat subscribes. No additional listener or queue is introduced."
       },
       {
         "entry": "src/features/chat/GoalDetails.tsx",
         "maxGzipBytes": 1100,
         "maxCssGzipBytes": 650,
-        "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip retains its existing cap."
+        "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip and content have separate caps."
       },
       {
         "entry": "src/features/chat/ComposerAttachments.tsx",
@@ -645,7 +650,7 @@
         "reason": "Harness discovery imports only harness validation and shared command guards. Transcript, permission and preview adapters remain behind the existing Chat and Preview lazy surfaces. No new dynamic imports or dependencies."
       },
       "hashMaskedRebase": "2026-11-12: path and initial-closure caps moved from emitted to hash-masked gzip bytes, so renaming an unrelated lazy chunk cannot move a startup path. Each cap was lowered by its path's masking difference on main (initial 146, agentOneChat 1346, editorShell 742, editorDiff 773, editorSearch 830, editorFile 1009 B), leaving headroom unchanged.",
-      "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure. T4 native goal capabilities measure 460777 B core gzip against 460623 B on the merged main baseline; the 461100 B core cap retains 323 B headroom. Goal strip and demand-only editor caps remain independent."
+      "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure."
     },
     "excludeHarnessProcesses": true,
     "excludeTerminalChildProcesses": true,

@@ -1,3 +1,4 @@
+import { goalMutations } from "../../../services/acpGoalMutations";
 import type { GoalMutationAction } from "../../../domain/acpGoal";
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
@@ -5,7 +6,7 @@ import type {
   AcpMutationResult,
   AcpSessionMutationIntent,
 } from "../../../domain/acp";
-import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
+import { AcpDesktopError } from "../../../services/acpDesktop";
 import type { GoalMutationOutcome } from "../ChatGoalControl";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
@@ -128,9 +129,9 @@ export function useGoalMutation(boundChatId?: string | null) {
     () =>
       createGoalMutationController({
         getContext: () => currentContext(boundChatId),
-        set: acpDesktop.setGoal,
-        pause: acpDesktop.pauseExistingGoal,
-        clear: acpDesktop.clearExistingGoal,
+        set: goalMutations.setGoal,
+        pause: goalMutations.pauseExistingGoal,
+        clear: goalMutations.clearExistingGoal,
         apply: (captured, result) => {
           const current = currentContext(boundChatId);
           if (

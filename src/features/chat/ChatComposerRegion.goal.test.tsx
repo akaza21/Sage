@@ -136,6 +136,13 @@ const props: ComponentProps<typeof ChatComposerRegion> = {
   project: { name: "Project" },
   usage: null,
   goal,
+  goalCapabilities: {
+    set: false,
+    pause: true,
+    resume: false,
+    tokenBudget: false,
+    clear: true,
+  },
   onSubmit: vi.fn(),
   onTextChange: vi.fn(),
   onRemoveContext: vi.fn(),
@@ -190,7 +197,19 @@ it("opens the shared editor from + Goal before any goal exists", async () => {
       })),
     },
   });
-  render(<ChatComposerRegion {...props} goal={{ kind: "noGoal" }} />);
+  render(
+    <ChatComposerRegion
+      {...props}
+      goal={{ kind: "noGoal" }}
+      goalCapabilities={{
+        set: true,
+        pause: false,
+        resume: false,
+        tokenBudget: false,
+        clear: true,
+      }}
+    />,
+  );
   await act(async () => chunk.release());
   await openOptions();
   fireEvent.click(await screen.findByRole("menuitem", { name: "Goal" }));

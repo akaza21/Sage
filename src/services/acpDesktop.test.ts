@@ -1,3 +1,4 @@
+import { goalMutations } from "./acpGoalMutations";
 import { acpHarnessDesktop, invokeCodexAuth } from "./acpHarnessDesktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -297,7 +298,7 @@ describe("ACP desktop bridge", () => {
     };
     invokeMock.mockResolvedValueOnce({ projection });
 
-    const paused = await acpDesktop.pauseExistingGoal(sessionRequest);
+    const paused = await goalMutations.pauseExistingGoal(sessionRequest);
 
     expect(invokeMock).toHaveBeenCalledWith("pause_existing_goal", {
       request: sessionRequest,
@@ -307,7 +308,7 @@ describe("ACP desktop bridge", () => {
     invokeMock.mockResolvedValueOnce({
       projection: { ...projection, goal: { kind: "noGoal" } },
     });
-    const cleared = await acpDesktop.clearExistingGoal(sessionRequest);
+    const cleared = await goalMutations.clearExistingGoal(sessionRequest);
     expect(invokeMock).toHaveBeenLastCalledWith("clear_existing_goal", {
       request: sessionRequest,
     });

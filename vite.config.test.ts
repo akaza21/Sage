@@ -182,6 +182,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // shows one.
   "src/features/chat/BoundChatGoalControl.tsx",
   "src/features/chat/GoalDetails.tsx",
+  "src/services/acpGoalSubscription.ts",
   // The Hand off trigger loads with the Editor chat header or a row menu.
   "src/features/chat/ChatHandoffControl.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",

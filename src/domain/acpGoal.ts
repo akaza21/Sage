@@ -11,14 +11,12 @@ export type GoalMutationAction = "set" | "pause" | "clear";
 export function decodeGoalCapabilities(
   value: unknown,
 ): AcpGoalCapabilities | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const fields = ["set", "pause", "resume", "tokenBudget", "clear"] as const;
-  const goal = value as Record<string, unknown>;
-  if (fields.some((field) => typeof goal[field] !== "boolean"))
-    return undefined;
-  return Object.fromEntries(
-    fields.map((field) => [field, goal[field]]),
-  ) as unknown as AcpGoalCapabilities;
+  return record(value) &&
+    ["set", "pause", "resume", "tokenBudget", "clear"].every(
+      (operation) => typeof value[operation] === "boolean",
+    )
+    ? (value as unknown as AcpGoalCapabilities)
+    : undefined;
 }
 
 import { safeOrdinal } from "./guards";
@@ -64,34 +62,35 @@ export interface AcpGoalChangedV1 {
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
-const bounded = (value: unknown, max: number): value is string =>
+const text = (value: unknown, max: number): value is string =>
   typeof value === "string" &&
-  ![...value].some(
-    (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
-  ) &&
-  utf8ByteLength(value) <= max;
+  value.length <= max * 2 &&
+  !value.includes("\0") &&
+  [...value].length <= max;
+const timestamp = (value: unknown): value is string | null =>
+  value === null ||
+  (text(value, 64) &&
+    !/\p{Cc}/u.test(value) &&
+    utf8ByteLength(value) <= 64);
 const counter = (value: unknown): value is number =>
   safeOrdinal(value) !== null;
 
 export function decodeAcpGoal(value: unknown): AcpGoalState | null {
   if (!record(value)) return null;
-  if (
-    value.kind === "unsupported" ||
-    value.kind === "offline" ||
-    value.kind === "loading" ||
-    value.kind === "unavailable" ||
-    value.kind === "noGoal"
-  ) {
-    return { kind: value.kind };
+  switch (value.kind) {
+    case "unsupported":
+    case "offline":
+    case "loading":
+    case "unavailable":
+    case "noGoal":
+      return { kind: value.kind };
   }
   if (value.kind !== "goal" || !record(value.snapshot)) return null;
   const goal = value.snapshot;
+  const progress = goal.progress;
   if (
-    typeof goal.objective !== "string" ||
-    goal.objective.includes("\0") ||
-    utf8ByteLength(goal.objective) > 16_000 ||
+    !text(goal.objective, 4_000) ||
     goal.objective.length === 0 ||
-    [...goal.objective].length > 4_000 ||
     ![
       "active",
       "paused",
@@ -99,39 +98,19 @@ export function decodeAcpGoal(value: unknown): AcpGoalState | null {
       "usageLimited",
       "budgetLimited",
       "complete",
-    ].includes(String(goal.status)) ||
+    ].includes(goal.status as string) ||
     (goal.tokenBudget !== null && !counter(goal.tokenBudget)) ||
     !counter(goal.tokensUsed) ||
     !counter(goal.timeUsedSeconds) ||
-    (goal.createdAt !== null && !bounded(goal.createdAt, 64)) ||
-    (goal.updatedAt !== null && !bounded(goal.updatedAt, 64)) ||
-    (goal.progress !== undefined &&
-      (!record(goal.progress) ||
-        !counter(goal.progress.iterations) ||
-        !counter(goal.progress.setAt) ||
-        !counter(goal.progress.tokensAtStart) ||
-        (goal.progress.lastReason !== null &&
-          (typeof goal.progress.lastReason !== "string" ||
-            goal.progress.lastReason.includes("\0") ||
-            [...goal.progress.lastReason].length > 512))))
+    !timestamp(goal.createdAt) ||
+    !timestamp(goal.updatedAt) ||
+    (progress !== undefined &&
+      (!record(progress) ||
+        !counter(progress.iterations) ||
+        !counter(progress.setAt) ||
+        !counter(progress.tokensAtStart) ||
+        (progress.lastReason !== null && !text(progress.lastReason, 512))))
   )
     return null;
   return { kind: "goal", snapshot: goal as unknown as AcpGoalSnapshot };
-}
-
-export function decodeAcpGoalNotice(value: unknown): AcpGoalChangedV1 | null {
-  if (!record(value) || value.schemaVersion !== 1) return null;
-  for (const key of [
-    "sageProjectId",
-    "sageChatId",
-    "sageAgentSessionId",
-  ] as const) {
-    if (!bounded(value[key], 512) || value[key].length === 0) return null;
-  }
-  if (
-    typeof value.runtimeEpoch !== "string" ||
-    !/^[1-9][0-9]*$/.test(value.runtimeEpoch)
-  )
-    return null;
-  return value as unknown as AcpGoalChangedV1;
 }
