@@ -11,9 +11,6 @@ pub struct HarnessDefinition {
     pub transport: HarnessTransport,
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
-    /// Derived usage for draft fallback; does not grant launch authority.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_used_at: Option<i64>,
     #[serde(default)]
     pub access_modes: Vec<sage_acp_protocol::access_mode::AccessModeCapability>,
     pub version: Option<String>,

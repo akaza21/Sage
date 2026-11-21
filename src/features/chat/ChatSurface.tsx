@@ -307,6 +307,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
 
       {unavailable ? (
         <HarnessUnavailableNotice
+          onEditSummaryMount={setEditSummaryContainer}
           existingChat={unavailableChat}
           workbenchError={error}
           chatError={

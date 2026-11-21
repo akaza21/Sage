@@ -79,7 +79,9 @@ export function HarnessUnavailableNotice({
   workbenchError = null,
   chatError = null,
   onRetryLoad,
+  onEditSummaryMount,
 }: {
+  onEditSummaryMount?: ChatComposerRegionProps["onEditSummaryMount"];
   existingChat?: boolean;
   workbenchError?: string | null;
   chatError?: ReactNode;
@@ -113,24 +115,27 @@ export function HarnessUnavailableNotice({
           </button>
         </div>
       ) : null}
-      <div className="chat-harness-unavailable" role="status">
-        <p>
-          {existingChat
-            ? "This chat used a harness that isn't available here."
-            : available
-              ? "The selected harness isn't available here."
-              : "No harness is available here. Install or enable a harness in Settings to start a chat."}
-        </p>
-        {available ? (
-          <button
-            type="button"
-            className="button button--compact"
-            disabled={transitioning}
-            onClick={() => void openDraft()}
-          >
-            Continue in a new chat
-          </button>
-        ) : null}
+      <div className="chat-dock surface surface--dock">
+        <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
+        <div className="chat-harness-unavailable" role="status">
+          <p>
+            {existingChat
+              ? "This chat used a harness that isn't available here."
+              : available
+                ? "The selected harness isn't available here."
+                : "No harness is available here. Install or enable a harness in Settings to start a chat."}
+          </p>
+          {available ? (
+            <button
+              type="button"
+              className="button button--compact"
+              disabled={transitioning}
+              onClick={() => void openDraft()}
+            >
+              Continue in a new chat
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );

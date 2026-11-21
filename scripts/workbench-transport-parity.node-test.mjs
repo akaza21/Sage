@@ -39,7 +39,6 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "description",
     "id",
     "installState",
-    "lastUsedAt",
     "name",
     "signIn",
     "source",

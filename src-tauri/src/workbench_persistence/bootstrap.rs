@@ -42,40 +42,7 @@ pub(super) fn restore_harnesses(
             catalog.restore_binding(&binding, &mut definitions);
         }
     }
-    restore_harness_usage(connection, &mut definitions)?;
     Ok(definitions)
-}
-
-/// Stream a bounded history into the small catalog, never into the WebView.
-pub(super) fn restore_harness_usage(
-    connection: &rusqlite::Connection,
-    definitions: &mut [HarnessDefinition],
-) -> AppResult<()> {
-    let limits = sage_core::limits::LIMITS;
-    let cap = (limits.durable.sessions_global + limits.migration.legacy_sessions) as i64;
-    let mut statement = connection
-        .prepare("SELECT binding_id, updated_at FROM agent_sessions LIMIT ?1")
-        .db()?;
-    let mut rows = statement.query([cap + 1]).db()?;
-    let mut count = 0;
-    while let Some(row) = rows.next().db()? {
-        count += 1;
-        if count > cap {
-            return Err(AppError::ResourceLimit(
-                "harness usage history exceeds its session limit".into(),
-            ));
-        }
-        let binding: String = row.get(0).db()?;
-        let used_at: i64 = row.get(1).db()?;
-        for harness in definitions.iter_mut().filter(|harness| {
-            harness.binding_id.as_deref() == Some(binding.as_str())
-                || (harness.transport == sage_domain::harness::HarnessTransport::LegacySimulator
-                    && harness.id == binding)
-        }) {
-            harness.last_used_at = Some(harness.last_used_at.unwrap_or(0).max(used_at));
-        }
-    }
-    Ok(())
 }
 
 pub(crate) trait BrowserTabNumberStore {

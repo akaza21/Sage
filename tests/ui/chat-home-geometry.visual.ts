@@ -4,7 +4,7 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
-test("unavailable chat recovery silently selects the most recent usable harness", async ({
+test("unavailable chat recovery silently selects the first usable harness in catalog order", async ({
   page,
 }) => {
   await openScenario(page, "agent-single", "agent");
@@ -21,20 +21,18 @@ test("unavailable chat recovery silently selects the most recent usable harness"
     ];
     useWorkbenchStore.setState({
       harnesses: [
-        { ...harness, installState: "unavailable", lastUsedAt: 300 },
+        { ...harness, installState: "unavailable" },
         {
           ...harness,
           id: "first-available",
           bindingId: "first-binding",
           name: "First available",
-          lastUsedAt: 100,
         },
         {
           ...harness,
-          id: "recent-available",
-          bindingId: "recent-binding",
-          name: "Recent available",
-          lastUsedAt: 200,
+          id: "second-available",
+          bindingId: "second-binding",
+          name: "Second available",
         },
       ],
     });
@@ -59,7 +57,7 @@ test("unavailable chat recovery silently selects the most recent usable harness"
   });
   await expect(
     draft.getByRole("button", { name: "Harness", exact: true }),
-  ).toHaveText("Recent available");
+  ).toHaveText("First available");
   await expect(
     draft.getByRole("button", { name: "Model", exact: true }),
   ).toHaveText("Usable model");

@@ -39,7 +39,6 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "description",
     "id",
     "installState",
-    "lastUsedAt",
     "name",
     "signIn",
     "source",

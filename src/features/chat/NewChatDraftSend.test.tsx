@@ -145,50 +145,73 @@ function mount(strict = false, compact = false) {
 }
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
-it.each([
-  { recent: true, expected: "other-draft-harness" },
-  { recent: false, expected: "draft-harness" },
-])(
-  "silently replaces an inherited unavailable harness (recent: $recent)",
-  async ({ recent, expected }) => {
-    const unavailable = {
-      ...harness,
-      id: "removed-harness",
-      installState: "unavailable" as const,
-    };
-    useWorkbenchStore.setState({
-      agentCenter: "chat",
-      newChatDraft: null,
-      harnesses: [
-        harness,
-        { ...otherHarness, lastUsedAt: recent ? 200 : null },
-        unavailable,
-      ],
-      selectedHarnessId: unavailable.id,
-      selectedModelId: "old-model",
-      models: [],
-    });
-    await useWorkbenchStore.getState().openNewChatDraft();
-    mount();
-    await settleLazyModules();
-    await waitFor(() =>
-      expect(useWorkbenchStore.getState().selectedHarnessId).toBe(expected),
-    );
-    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
-      harnessId: expected,
-      error: null,
-    });
-    expect(composer()).toHaveAttribute("placeholder", "Do anything");
-    expect(
-      screen.queryByRole("region", { name: "Composer notices" }),
-    ).toBeNull();
-    expect(
-      screen.queryByText(
-        /can't start this harness|reviewed local binding|selected harness is unavailable/,
-      ),
-    ).toBeNull();
-  },
-);
+it("silently replaces an inherited unavailable harness in catalog order", async () => {
+  const expected = "draft-harness";
+  const unavailable = {
+    ...harness,
+    id: "removed-harness",
+    installState: "unavailable" as const,
+  };
+  useWorkbenchStore.setState({
+    agentCenter: "chat",
+    newChatDraft: null,
+    harnesses: [harness, otherHarness, unavailable],
+    selectedHarnessId: unavailable.id,
+    selectedModelId: "old-model",
+    models: [],
+  });
+  await useWorkbenchStore.getState().openNewChatDraft();
+  mount();
+  await settleLazyModules();
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBe(expected),
+  );
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    harnessId: expected,
+    error: null,
+  });
+  expect(composer()).toHaveAttribute("placeholder", "Do anything");
+  expect(screen.queryByRole("region", { name: "Composer notices" })).toBeNull();
+  expect(
+    screen.queryByText(
+      /can't start this harness|reviewed local binding|selected harness is unavailable/,
+    ),
+  ).toBeNull();
+});
+
+it("uses an available harness for a draft after detecting bootstrap harnesses settle", async () => {
+  const snapshot = await ports.project.getBootstrapSnapshot();
+  vi.spyOn(ports.project, "getBootstrapSnapshot").mockResolvedValue({
+    ...snapshot,
+    harnesses: [harness, otherHarness].map((candidate) => ({
+      ...candidate,
+      installState: "detecting",
+      bindingId: null,
+    })),
+    selectedHarnessId: harness.id,
+    selectedModelId: null,
+  });
+  useWorkbenchStore.setState({ newChatDraft: null });
+  await useWorkbenchStore.getState().initialize();
+  expect(
+    useWorkbenchStore
+      .getState()
+      .harnesses.map((candidate) => candidate.installState),
+  ).toEqual(["detecting", "detecting"]);
+  expect(useWorkbenchStore.getState().selectedHarnessId).toBeNull();
+  await useWorkbenchStore
+    .getState()
+    .applyHarnessDiscovery([
+      { ...harness, installState: "unavailable" },
+      otherHarness,
+    ]);
+  expect(useWorkbenchStore.getState().selectedHarnessId).toBe(otherHarness.id);
+  await useWorkbenchStore.getState().openNewChatDraft();
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    harnessId: otherHarness.id,
+    error: null,
+  });
+});
 
 it("shows exactly one message when no draft harness is available", async () => {
   useWorkbenchStore.setState({

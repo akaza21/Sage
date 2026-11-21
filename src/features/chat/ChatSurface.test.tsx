@@ -528,7 +528,8 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.queryByRole("combobox", { name: "Message agent" }),
     ).toBeNull();
-    expect(useWorkbenchStore.getState().selectedHarnessId).toBe(
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBe("codex");
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
       "unavailable-binding:absent-binding",
     );
     expect(
@@ -4581,6 +4582,56 @@ describe("ChatSurface ACP resource integration", () => {
       rootId: "root-a",
       relativePath: "src/main.ts",
     });
+  });
+
+  it("keeps edited files and their Diff tabs available when the chat harness is unavailable", async () => {
+    matchConfiguredSession();
+    setTurnState("completed");
+    useWorkbenchStore.setState({
+      project: {
+        id: "project-a",
+        name: "Project A",
+        roots: ["a", "b"].map((id, ordinal) => ({
+          id: `root-${id}`,
+          name: id.toUpperCase(),
+          ordinal,
+          availability: "available",
+          message: null,
+        })),
+      },
+      projectGeneration: 0,
+      harnesses: useWorkbenchStore.getState().harnesses.map((harness) => ({
+        ...harness,
+        installState: "unavailable",
+      })),
+      projectTransitioning: false,
+    });
+    acpProjectionStoreFor("chat-a").setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+      } as never,
+      page: hooks.page,
+    });
+    render(<ChatSurface />);
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /file changed/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open diff B / src/main.ts" }),
+    );
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().tabs).toContainEqual(
+        expect.objectContaining({
+          kind: "diff",
+          resource: { rootId: "root-b", relativePath: "src/main.ts" },
+        }),
+      ),
+    );
   });
 
   it("rejects an old rendered ToolItem handler after owner rollover", async () => {

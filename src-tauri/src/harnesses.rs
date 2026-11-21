@@ -389,18 +389,10 @@ impl HarnessCatalog {
     pub(crate) fn preferred_available_harness_id(
         definitions: &[HarnessDefinition],
     ) -> Option<String> {
-        let mut best: Option<&HarnessDefinition> = None;
-        for harness in definitions
+        definitions
             .iter()
-            .filter(|harness| harness.install_state == "available")
-        {
-            if best.is_none_or(|best| {
-                harness.last_used_at.unwrap_or(0) > best.last_used_at.unwrap_or(0)
-            }) {
-                best = Some(harness);
-            }
-        }
-        best.map(|harness| harness.id.clone())
+            .find(|harness| harness.install_state == "available")
+            .map(|harness| harness.id.clone())
     }
 
     pub fn harness_id_for_binding(&self, binding_id: &str) -> Option<String> {

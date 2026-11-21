@@ -65,8 +65,6 @@ interface HarnessDefinitionBase {
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
   accountModelDiscovery: boolean;
-  /** Derived from durable session usage; never a WebView preference. */
-  lastUsedAt?: number | null;
   accessModes?: readonly SessionAccessModeCapability[];
   version?: string | null;
   versionChecking?: boolean;
@@ -121,8 +119,7 @@ export function preferredAvailableHarness(
     )
       continue;
     if (harness.id === rememberedId) return harness;
-    if (!best || (harness.lastUsedAt ?? 0) > (best.lastUsedAt ?? 0))
-      best = harness;
+    best ??= harness;
   }
   return best;
 }
