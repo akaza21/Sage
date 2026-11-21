@@ -281,6 +281,40 @@ it("keeps configuration choices on the same surface and project selection in Add
   ).toBeInTheDocument();
 });
 
+it.each([
+  ["ArrowDown", "Goal", "ArrowUp"],
+  ["ArrowUp", "Files and folders", "ArrowDown"],
+])(
+  "keeps project selection closed while %s moves between Add items",
+  async (key, sibling, returnKey) => {
+    useWorkbenchStore.setState({
+      projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
+    });
+    await renderActions(true, {
+      projectName: "A",
+      addActions: { onAttachFiles: vi.fn(), onOpenGoal: vi.fn() },
+    });
+    const project = screen.getByRole("menuitem", {
+      name: "Work in a project",
+    });
+    project.focus();
+    fireEvent.keyDown(project, { key });
+    expect(screen.getByRole("menuitem", { name: sibling })).toHaveFocus();
+    expect(project).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    fireEvent.keyDown(document.activeElement!, { key: returnKey });
+    expect(project).toHaveFocus();
+    fireEvent.keyDown(project, { key: "ArrowRight" });
+    expect(
+      await screen.findByRole("listbox", { name: "Work in a project" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Work in a project" }),
+    ).toHaveFocus();
+  },
+);
+
 it.each([false, true])(
   "closes Add and restores focus after changing a boolean from %s",
   async (currentValue) => {

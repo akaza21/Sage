@@ -207,10 +207,15 @@ export function SearchablePicker(props: SearchablePickerProps) {
         onKeyUp={coldOpen.onKeyUp}
         onKeyDown={(event) => {
           setKeyboardOpen(true);
-          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+          if (
+            !open &&
+            (triggerRole
+              ? event.key === "ArrowRight"
+              : event.key === "ArrowDown" || event.key === "ArrowUp")
+          ) {
             event.preventDefault();
-            setOpen(true);
-            return;
+            event.stopPropagation();
+            return setOpen(true);
           }
           if (coldOpen.onKeyDown(event) || searchable || !open) return;
           if (event.key === "Escape") {
