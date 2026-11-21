@@ -196,6 +196,25 @@ for (const width of [1888, 720, 480]) {
         name: "Chat location",
       });
       await expect(strip).toContainText("This computer");
+      const location = strip.getByRole("button", {
+        name: "Work in",
+        exact: true,
+      });
+      await location.click();
+      const targets = page.getByRole("listbox", { name: "Work in" });
+      await expect(
+        targets.getByRole("option", { name: "This computer", exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      const remote = targets.getByRole("option", { name: /Remote/ });
+      await expect(remote).toBeDisabled();
+      await expect(remote).toHaveAccessibleDescription("Not set up yet");
+      if (width === 1888)
+        await expect(
+          page.locator(".searchable-picker__popover"),
+        ).toHaveScreenshot("work-in-menu.png");
+      await page.keyboard.press("Escape");
+      await expect(location).toBeFocused();
+
       // The strip shows the composer's shortened workspace name.
       await expect(
         strip.getByRole("button", { name: /^Project: Sage parity project/ }),

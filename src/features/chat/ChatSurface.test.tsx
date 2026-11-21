@@ -534,7 +534,7 @@ describe("ChatSurface ACP resource integration", () => {
       expect(
         screen.getByRole("region", { name: "New chat" }),
       ).toBeInTheDocument();
-      const strip = screen.getByRole("group", { name: "Chat location" });
+      const strip = await screen.findByRole("group", { name: "Chat location" });
       expect(strip.nextElementSibling).toBe(
         container.querySelector(".chat-dock"),
       );

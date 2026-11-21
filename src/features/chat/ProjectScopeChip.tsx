@@ -1,10 +1,15 @@
+import {
+  NEW_PROJECT_ACTION,
+  NO_PROJECT_ACTION,
+} from "../../ui/projectPickerActions";
 import { useMemo, useState } from "react";
+import { projectNameOption } from "../../domain/projectNameOption";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import { selectProjectSwitchBlocked } from "../../app/workbenchSelectors";
-import { Folder, Plus, X } from "../../ui/leanIcons";
+import { Folder, X } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 import { lazyParts } from "./lazyParts";
@@ -15,28 +20,13 @@ import "./project-scope.css";
 const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
   () => import("./CreateChatProjectDialog"),
 );
-const NEW_PROJECT_ACTION = {
-  id: "scope:new",
-  label: "New project",
-  leadingIcon: Plus,
-  separatorBefore: true,
-  alwaysVisible: true,
-};
-const NO_PROJECT_ACTION = {
-  id: "scope:none",
-  label: "Don't work in a project",
-  leadingIcon: X,
-  alwaysVisible: true,
-};
 type ProjectScopeVariant = "inline" | "caption" | "menuItem";
 
 export function ProjectScopeChip({
   projectName,
   disabled = false,
-  open,
-  onOpenChange,
   variant = "inline",
-  popoverPlacement,
+  ...pickerProps
 }: {
   projectName: string;
   disabled?: boolean;
@@ -78,7 +68,6 @@ export function ProjectScopeChip({
       : projectName
     : "Choose project";
   const triggerLabel = menuItem ? "Work in a project" : label;
-  const projectTitle = `Project: ${label}`;
   const readOnly =
     disabled ||
     switchBlocked ||
@@ -87,33 +76,15 @@ export function ProjectScopeChip({
         draft.submission.status === "unconfirmed"
       : !!sessionId);
   const candidates = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const { name } of projects) {
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
     return [
-      ...projects.map(({ id, name, parentPath: parent }) => {
-        const duplicate = counts.get(name)! > 1;
-        return {
-          id,
-          leadingIcon: Folder,
-          label: id === projectId ? label : name,
-          subtitle: duplicate
-            ? parent
-              ? parent.length > 64
-                ? `...${parent.slice(-61)}`
-                : parent
-              : "No source folder"
-            : undefined,
-          accessibleLabel: duplicate
-            ? `${name}, ${parent ?? "No source folder"}${projects.some((other) => other.id !== id && other.name === name && other.parentPath === parent) ? `, ${id}` : ""}`
-            : name,
-        };
-      }),
+      ...projects.map((project) => ({
+        ...projectNameOption(project, projects),
+        leadingIcon: Folder,
+      })),
       NEW_PROJECT_ACTION,
       ...(scoped ? [NO_PROJECT_ACTION] : []),
     ];
-  }, [projects, projectId, label, scoped]);
+  }, [projects, scoped]);
   const choose = (id: string | null) => {
     if (readOnly) return;
     if (!draft && id !== projectId && hasActiveAcpTurn(chatId)) {
@@ -131,9 +102,10 @@ export function ProjectScopeChip({
   };
   return (
     <span
-      className={`project-scope project-scope--${variant === "menuItem" ? "menu-item" : variant}`}
+      className={`project-scope project-scope--${menuItem ? "menu-item" : variant}`}
     >
       <SearchablePicker
+        {...pickerProps}
         triggerRole={menuItem ? "menuitem" : undefined}
         className="project-scope__picker"
         appearance="plain"
@@ -145,10 +117,9 @@ export function ProjectScopeChip({
         chevron={false}
         portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
         popoverClassName="composer__popover"
-        popoverPlacement={popoverPlacement}
-        ariaLabel={scoped && !menuItem ? projectTitle : triggerLabel}
+        ariaLabel={scoped && !menuItem ? `Project: ${label}` : triggerLabel}
         stateTitle={
-          readOnly ? projectTitle : "Change the project for this chat"
+          readOnly ? `Project: ${label}` : "Change the project for this chat"
         }
         triggerIcon={caption ? undefined : <Folder size={14} />}
         triggerLabel={
@@ -165,8 +136,6 @@ export function ProjectScopeChip({
             </span>
           ) : undefined
         }
-        open={open}
-        onOpenChange={onOpenChange}
         candidates={candidates}
         disabled={readOnly}
         selectedId={projectId}
@@ -190,7 +159,7 @@ export function ProjectScopeChip({
           type="button"
           className="project-scope__clear"
           aria-label="Remove project from this chat"
-          title="Don't work in a project"
+          title={NO_PROJECT_ACTION.label}
           onClick={() => choose(null)}
         >
           <X size={12} />

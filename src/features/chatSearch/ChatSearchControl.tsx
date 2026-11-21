@@ -1,31 +1,20 @@
-import { Search, X } from "../../ui/leanIcons";
+import { Search } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type RefObject,
 } from "react";
 
 import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
-import { isImeComposing } from "../../ui/imeComposition";
-import {
-  hasNavigationModifier,
-  useActiveOption,
-} from "../../ui/listNavigation";
-import { ModalDialog } from "../../ui/ModalDialog";
-import { SearchablePicker } from "../../ui/SearchablePicker";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
-  admitChatSearchFolder,
   CHAT_SEARCH_ALL_FOLDERS_ID,
   chatSearchFolderOptions,
-  chatSearchResultKey,
   matchesChatSearchScope,
   type ChatSearchFanoutPick,
   type ChatSearchFanoutView,
@@ -40,11 +29,10 @@ import {
 } from "./chatSearchScope";
 
 import { lazyParts } from "../chat/lazyParts";
-import type * as ResultsChunk from "./ChatSearchResults";
-const SearchResultsPart = lazyParts<typeof ResultsChunk>(
-  () => import("./ChatSearchResults"),
+import type * as PaletteChunk from "./ChatSearchPalette";
+const PalettePart = lazyParts<typeof PaletteChunk>(
+  () => import("./ChatSearchPalette"),
 );
-
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
 /** Announce zero results here; the visible empty-state message is not a live region. */
@@ -105,6 +93,7 @@ export function ChatSearchControl({
   const projects = useWorkbenchStore((state) => state.projects);
   const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
   const [open, setOpen] = useState(false);
+  const [searchEnabled, setSearchEnabled] = useState(true);
   const [scope, setScope] = useState<ChatSearchScope | null>(null);
   const [query, setQuery] = useState("");
   const [phase, setPhase] = useState<SearchPhase>("idle");
@@ -149,7 +138,7 @@ export function ChatSearchControl({
   }, [close, open, scope]);
 
   const openSearch = (
-    searchProjectId?: string,
+    _searchProjectId?: string,
     focusReturn?: (() => void) | null,
   ) => {
     const state = useWorkbenchStore.getState();
@@ -158,13 +147,7 @@ export function ChatSearchControl({
     focusReturnRef.current = focusReturn ?? null;
     setScope({
       activeProjectId: state.project.id,
-      searchProjectId: admitChatSearchFolder(
-        chatSearchFolderOptions(state.projects, state.unscopedChats.length > 0),
-        searchProjectId,
-        state.project.isInternal
-          ? CHAT_SEARCH_ALL_FOLDERS_ID
-          : state.project.id,
-      ),
+      searchProjectId: CHAT_SEARCH_ALL_FOLDERS_ID,
       projectGeneration: state.projectGeneration,
       transitionEpoch: state.nativeTransitionEpoch,
     });
@@ -172,6 +155,7 @@ export function ChatSearchControl({
     setPhase("idle");
     setResponse(null);
     setError(null);
+    setSearchEnabled(true);
     setOpen(true);
     void import("./chatSearchExecution").catch(() => undefined);
     queryRef.current?.focus();
@@ -198,7 +182,7 @@ export function ChatSearchControl({
   };
 
   const searchQuery = useCallback(async () => {
-    if (!scope || searching.current) return;
+    if (!scope || !searchEnabled || searching.current) return;
     const normalized = query.trim();
     if (!matchesScope(scope)) {
       close(false);
@@ -219,6 +203,8 @@ export function ChatSearchControl({
         projectGeneration: scope.projectGeneration,
         expectedTransitionEpoch: scope.transitionEpoch,
         query: normalized,
+        isCurrent: () =>
+          requestGeneration.current === intent && matchesScope(scope),
         search: (request) => projectChatSearchDesktop.search(request),
       });
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
@@ -232,18 +218,13 @@ export function ChatSearchControl({
       searching.current = false;
       setSettledRequest((value) => value + 1);
     }
-  }, [close, query, scope]);
+  }, [close, query, scope, searchEnabled]);
 
   useEffect(() => {
-    if (!open || phase !== "idle") return;
+    if (!open || !searchEnabled || phase !== "idle") return;
     const timer = setTimeout(() => void searchQuery(), 200);
     return () => clearTimeout(timer);
-  }, [open, phase, query, searchQuery, settledRequest]);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    void searchQuery();
-  };
+  }, [open, phase, query, searchQuery, settledRequest, searchEnabled]);
 
   const selectResult = async (result: ChatSearchFanoutPick) => {
     if (!scope || !matchesScope(scope)) {
@@ -273,135 +254,34 @@ export function ChatSearchControl({
     });
   };
 
-  const chooseFolder = useCallback(
-    (searchProjectId: string) => {
-      if (!scope || searchProjectId === scope.searchProjectId) return;
-      requestGeneration.current += 1;
-      setScope({ ...scope, searchProjectId });
-      setPhase("idle");
-      setResponse(null);
-      setError(null);
-    },
-    [scope],
-  );
   const folders = useMemo(
     () => chatSearchFolderOptions(projects, unscopedChats.length > 0),
     [projects, unscopedChats],
   );
-  const listboxId = useId();
-  const shown = phase === "results" ? response : null;
-  const shownKeys = useMemo(
-    () => shown?.results.map(chatSearchResultKey) ?? [],
-    [shown],
-  );
-  // Nothing is active until the user moves, so Enter searches until then.
-  const option = useActiveOption(shownKeys, "none");
-  const [answered, setAnswered] = useState(shown);
-  if (answered !== shown) {
-    setAnswered(shown);
-    option.setActiveId(null);
-  }
-  const activeResult =
-    option.activeIndex >= 0 ? shown?.results[option.activeIndex] : undefined;
-  const folderCandidates = useMemo(
-    () => folders.map((folder) => ({ id: folder.id, label: folder.name })),
-    [folders],
-  );
-
   return (
     <>
       {showTrigger ? <ChatSearchTrigger triggerRef={triggerRef} /> : null}
       {open && scope ? (
-        <ModalDialog
-          className="chat-search-dialog"
-          labelledBy="chat-search-title"
-          initialFocusRef={queryRef}
-          onDismiss={() => close()}
-        >
-          <form className="chat-search-dialog__form" onSubmit={submit}>
-            <h2 id="chat-search-title">Search chats</h2>
-            <button
-              className="icon-button chat-search-dialog__close"
-              type="button"
-              aria-label="Close"
-              title="Close"
-              onClick={() => close()}
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-            <p>
-              Search chat titles and messages in the selected folder, or across
-              listed folders.
-            </p>
-            <label className="chat-search-dialog__query">
-              <span>Search chats</span>
-              <input
-                ref={queryRef}
-                autoFocus
-                aria-label="Search chats"
-                aria-activedescendant={
-                  option.activeId
-                    ? `${listboxId}-${option.activeIndex}`
-                    : undefined
-                }
-                aria-autocomplete="list"
-                aria-controls={shownKeys.length > 0 ? listboxId : undefined}
-                aria-expanded={shownKeys.length > 0}
-                disabled={projectTransitioning}
-                maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
-                role="combobox"
-                type="search"
-                value={query}
-                onChange={(event) => editQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (
-                    isImeComposing(event) ||
-                    hasNavigationModifier(event) ||
-                    shownKeys.length === 0
-                  )
-                    return;
-                  if (
-                    event.key === "ArrowDown" ||
-                    event.key === "ArrowUp" ||
-                    event.key === "PageDown" ||
-                    event.key === "PageUp"
-                  ) {
-                    // Home and End stay with the field's caret.
-                    event.preventDefault();
-                    option.move(event.key);
-                  } else if (event.key === "Enter" && activeResult) {
-                    event.preventDefault();
-                    void selectResult(activeResult);
-                  }
-                }}
-              />
-            </label>
-            <label className="chat-search-dialog__query">
-              <span>Search in</span>
-              <SearchablePicker
-                ariaLabel="Search in"
-                candidates={folderCandidates}
-                disabled={projectTransitioning}
-                onSelect={chooseFolder}
-                portalTarget="closest-dialog"
-                selectedId={scope.searchProjectId}
-              />
-            </label>
-            <p className="chat-search-dialog__status" role="status">
-              {searchStatus(phase, response)}
-            </p>
-            <SearchResultsPart
-              part="ChatSearchResults"
-              response={shown}
-              error={error}
-              scope={scope}
-              folders={folders}
-              listboxId={listboxId}
-              activeIndex={option.activeIndex}
-              onSelect={selectResult}
-            />
-          </form>
-        </ModalDialog>
+        <PalettePart
+          part="ChatSearchPalette"
+          queryRef={queryRef}
+          query={query}
+          disabled={projectTransitioning}
+          response={phase === "results" ? response : null}
+          status={searchStatus(phase, response)}
+          error={error}
+          folders={folders}
+          onQuery={editQuery}
+          onSearchEnabled={(enabled) => {
+            if (enabled === searchEnabled) return;
+            requestGeneration.current += 1;
+            setSearchEnabled(enabled);
+            setPhase("idle");
+          }}
+          onSearch={searchQuery}
+          onSelect={selectResult}
+          onClose={close}
+        />
       ) : null}
     </>
   );

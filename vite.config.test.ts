@@ -147,6 +147,10 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/workbench/ProjectChatHoverCard.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerLocationStrip.tsx",
+  "src/features/chatSearch/ChatSearchPalette.tsx",
+  "src/workbench/CollapsedProjectStatus.tsx",
+  "src/workbench/ProjectChatNavigation.tsx",
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...COMMAND_DYNAMIC_FACADES,
@@ -375,7 +379,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/artifactChipStats.ts",
   "src/workbench/LeftSidebar.tsx",
   "src/workbench/ProjectChatActionMenu.tsx",
-  "src/workbench/ProjectChatNavigation.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
   "src/workbench/useAgentArtifactPaneFocus.ts",
   "src/workbench/useSubagentPaneExpansion.ts",

@@ -46,6 +46,7 @@ pub struct ProjectChatSearchResult {
     pub attached: bool,
     pub matched_title: bool,
     pub snippet: Option<String>,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +91,7 @@ struct ChatRow {
     attached: bool,
     matched_title: bool,
     snippet: Option<String>,
+    updated_at: i64,
 }
 
 pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppResult<String> {
@@ -165,6 +167,7 @@ fn search_with_limits(
                 attached: chat.attached,
                 matched_title: chat.matched_title,
                 snippet: chat.snippet,
+                updated_at: chat.updated_at,
             };
             if results.len() == limits.max_results
                 || !fits_response_budget(
@@ -213,7 +216,7 @@ fn load_chats(
     let mut statement = connection.prepare(
         "SELECT c.id,c.title,EXISTS(
            SELECT 1 FROM chat_tabs a WHERE a.project_id=c.project_id AND a.chat_id=c.id
-         )
+         ),c.updated_at
          FROM chats c WHERE c.project_id=?1 AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
          ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC LIMIT ?2",
     ).db()?;
@@ -226,6 +229,7 @@ fn load_chats(
                 title,
                 attached: row.get(2)?,
                 snippet: None,
+                updated_at: row.get(3)?,
             })
         })
         .db()?;

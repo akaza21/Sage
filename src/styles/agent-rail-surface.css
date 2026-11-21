@@ -501,3 +501,15 @@
   min-width: var(--agent-rail-trailing-control);
   justify-content: center;
 }
+
+.project-row .project-row__name {
+  flex: 0 1 auto;
+}
+
+.project-row .project-row__suffix {
+  min-width: 0;
+  flex: 1 1 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-align: end;
+}

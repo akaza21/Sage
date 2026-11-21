@@ -37,6 +37,21 @@ const valid: ProjectChatSearchResponse = {
 };
 
 describe("Project Chat search domain", () => {
+  it("accepts native recency metadata and rejects invalid timestamps", () => {
+    const recent = {
+      ...valid,
+      results: [{ ...valid.results[0], updatedAt: 1234 }],
+    };
+    expect(parseProjectChatSearchResponse(recent)).toEqual(recent);
+    for (const updatedAt of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, null]) {
+      expect(() =>
+        parseProjectChatSearchResponse({
+          ...recent,
+          results: [{ ...recent.results[0], updatedAt }],
+        }),
+      ).toThrow("invalid project chat search response");
+    }
+  });
   it("admits empty-query browsing without relaxing response identity or match validation", () => {
     expect(() =>
       validateProjectChatSearchRequest({

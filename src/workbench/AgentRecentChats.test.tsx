@@ -23,7 +23,7 @@ afterEach(() => {
 
 it.each(["chat-current", "diff:current"])(
   "keeps the viewed Recent chat read across a rename with %s active",
-  (activeTabId) => {
+  async (activeTabId) => {
     useWorkbenchStore.setState({ activeTabId });
     pinAgentChatOwner("chat-current");
     markChatRead("chat-current", 100);
@@ -51,6 +51,7 @@ it.each(["chat-current", "diff:current"])(
       />
     );
     const view = render(recent("Original", 100));
+    await screen.findByRole("button", { name: "Open recent chat Original" });
     expect(screen.queryByLabelText("Unread updates")).toBeNull();
     view.rerender(recent("Renamed", 200));
     expect(
@@ -66,7 +67,7 @@ it.each(["chat-current", "diff:current"])(
     expect(screen.getByLabelText("Unread updates")).toBeVisible();
   },
 );
-it("lists every recent task to fill the rail, without paging", () => {
+it("lists every recent task to fill the rail, without paging", async () => {
   const items = Array.from({ length: 20 }, (_, index) => ({
     projectId: "project",
     projectName: "Project",
@@ -84,7 +85,7 @@ it("lists every recent task to fill the rail, without paging", () => {
     <AgentRecentChats items={items} currentProjectId="project" recent />,
   );
   expect(
-    screen.getAllByRole("button", { name: /^Open recent chat Task / }),
+    await screen.findAllByRole("button", { name: /^Open recent chat Task / }),
   ).toHaveLength(20);
   expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 
