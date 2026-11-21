@@ -86,6 +86,8 @@ test("keeps errors above the joined location and composer with harness controls 
   await expect(error).toHaveText("native project transition did not commit");
   await expect(dock.getByRole("alert")).toHaveCount(0);
   const strip = frame.getByRole("group", { name: "Chat location" });
+  // The location strip loads on demand; measure the notice after it mounts.
+  await expect(strip).toBeVisible();
   const errorBox = (await error.boundingBox())!;
   const stripBox = (await strip.boundingBox())!;
   const dockBox = (await dock.boundingBox())!;

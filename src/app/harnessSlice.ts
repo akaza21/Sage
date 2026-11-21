@@ -9,6 +9,7 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
+import { preferredAvailableHarness } from "../domain/harness";
 import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
 import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
@@ -284,16 +285,23 @@ export const createHarnessSlice: StateCreator<
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
       const generation = get().projectGeneration;
-      const selectable = harnesses.filter(
-        (candidate) =>
-          candidate.transport === "acp" &&
-          candidate.installState === "available",
-      );
       const selected = get().selectedHarnessId;
-      const next = selected
-        ? harnesses.find((candidate) => candidate.id === selected)
-        : selectable[0];
-      if (!next) return;
+      const next = preferredAvailableHarness(harnesses, selected);
+      if (!next) {
+        set({
+          selectedHarnessId: null,
+          selectedModelId: null,
+          models: [],
+          harnessRequestGeneration: nextProjectGeneration(
+            get().harnessRequestGeneration,
+          ),
+          harnessDiscoveryPhase: "ready",
+          harnessDiscoveryError: null,
+          harnessAccount: null,
+          harnessAccountReadStartedAt: null,
+        });
+        return;
+      }
       const retained = next.id === selected;
       if (
         retained &&

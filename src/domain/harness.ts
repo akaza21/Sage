@@ -107,6 +107,23 @@ export function harnessHasSignInCheck(
   );
 }
 
+export function preferredAvailableHarness(
+  harnesses: readonly HarnessDefinition[],
+  rememberedId?: string | null,
+): HarnessDefinition | null {
+  let best: HarnessDefinition | null = null;
+  for (const harness of harnesses) {
+    if (
+      harness.installState !== "available" ||
+      (harness.transport === "acp" && !harness.bindingId)
+    )
+      continue;
+    if (harness.id === rememberedId) return harness;
+    best ??= harness;
+  }
+  return best;
+}
+
 export interface ModelOption {
   id: string;
   name: string;
