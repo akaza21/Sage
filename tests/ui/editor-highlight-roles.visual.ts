@@ -77,16 +77,12 @@ test.describe("Editor highlight roles", () => {
     await openScenario(page, "editor", "editor");
     const { change, sourceTools } = await selectChange(page);
 
-    const selection = await resolvePaint(
-      page,
-      "var(--highlight-selection-fill)",
-      "inset 1px 0 0 var(--highlight-selection-edge)",
-    );
+    const selection = await resolvePaint(page, "var(--color-surface-hover)");
     await page.mouse.move(1, 1);
-    expect(await paint(change)).toEqual(selection);
+    expect(await paint(change.locator(".."))).toEqual(selection);
     // Selection stays visible while the pointer rests on the row.
     await hover(page, change);
-    expect(await paint(change)).toEqual(selection);
+    expect(await paint(change.locator(".."))).toEqual(selection);
 
     const countBadge = sourceTools
       .locator(".source-change-group > summary span:last-child")

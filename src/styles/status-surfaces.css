@@ -171,6 +171,25 @@
   cursor: pointer;
 }
 
+.status-bar__branch,
+.status-bar__branch .status-bar__button,
+.status-bar__branch .searchable-picker__trigger,
+.status-bar__branch .searchable-picker__trigger-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.status-bar__branch {
+  height: 100%;
+}
+
+.status-bar__branch .searchable-picker__trigger {
+  min-height: 0;
+  height: 100%;
+  font: inherit;
+}
+
 .status-bar__terminal {
   display: inline-flex;
   gap: 5px;

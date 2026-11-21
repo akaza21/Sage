@@ -1,7 +1,16 @@
 .source-change-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.source-change-row:hover {
+  background: var(--color-surface-hover);
+}
+
+.source-change-row[data-selected] {
+  background: var(--color-surface-hover);
 }
 
 .source-change-row--confirming {
@@ -12,7 +21,10 @@
   display: grid;
   width: 100%;
   height: var(--editor-list-row-height);
-  grid-template-columns: var(--editor-scm-decoration-size) minmax(0, 1fr) auto;
+  grid-template-columns:
+    var(--editor-scm-decoration-size) minmax(0, max-content)
+    minmax(0, 1fr);
+  min-width: 0;
   align-items: center;
   gap: var(--editor-list-gap);
   padding: 0 var(--editor-list-inline-padding);
@@ -39,8 +51,7 @@
 .source-change--selected {
   /* Selection stays visible under hover and over the conflict fill. */
   color: var(--color-text-primary);
-  background: var(--row-selected-fill, var(--color-surface-selected));
-  box-shadow: var(--row-selected-shadow, inset 2px 0 0 var(--color-accent));
+  background: transparent;
 }
 
 .source-change__status {
@@ -48,6 +59,17 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   text-align: center;
+  min-width: var(--editor-scm-decoration-size);
+  margin-right: var(--space-1);
+}
+
+.source-change__status--added,
+.source-change__status--untracked {
+  color: var(--color-success);
+}
+
+.source-change__status--deleted {
+  color: var(--color-danger);
 }
 
 .source-change__status--conflict {
@@ -56,16 +78,17 @@
   background: var(--color-danger);
 }
 
-.source-change__path {
+.source-change__name,
+.source-change__folder {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.source-change__counts {
+.source-change__folder {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
 }
 
 @media (forced-colors: active) {
@@ -149,6 +172,7 @@
 .source-change__discard-confirmation {
   display: flex;
   grid-column: 1 / -1;
+  grid-row: 2;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);

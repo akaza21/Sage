@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("StatusBar repository truth", () => {
-  it("shows one repository branch without claiming unsupported status", () => {
+  it("shows one repository branch without claiming unsupported status", async () => {
     useWorkbenchStore.setState({
       repositories: {
         roots: [
@@ -41,7 +41,7 @@ describe("StatusBar repository truth", () => {
 
     render(<StatusBar />);
 
-    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(await screen.findByText("main")).toBeInTheDocument();
     expect(screen.queryByText("0 problems")).toBeNull();
     expect(screen.queryByText("1 session")).toBeNull();
     expect(screen.queryByText("Trusted project")).toBeNull();
@@ -53,7 +53,7 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByText(/Word wrap:/)).toBeNull();
   });
 
-  it("summarizes repositories across multiple roots without choosing one branch", () => {
+  it("summarizes repositories across multiple roots without choosing one branch", async () => {
     useWorkbenchStore.setState({
       repositories: {
         roots: [
@@ -83,7 +83,9 @@ describe("StatusBar repository truth", () => {
 
     render(<StatusBar />);
 
-    expect(screen.getByText("1 repository across 2 roots")).toBeInTheDocument();
+    expect(
+      await screen.findByText("1 repository across 2 roots"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("main")).toBeNull();
   });
 
@@ -100,12 +102,47 @@ describe("StatusBar repository truth", () => {
     );
   });
 
-  it("reports indentation without mutating Editor appearance", () => {
+  it("shows divergence only beside a branch that has an upstream", async () => {
+    const root = {
+      rootId: "root-a",
+      state: "repository" as const,
+      branch: "topic",
+      upstream: "origin/topic",
+      ahead: 1,
+      behind: 0,
+      changes: [],
+      truncated: false,
+      elapsedMs: 1,
+      message: null,
+    };
+    useWorkbenchStore.setState({
+      repositories: { roots: [root], truncated: false, elapsedMs: 1 },
+    });
+    render(<StatusBar />);
+    expect(await screen.findByText("↑1 ↓0")).toHaveAttribute(
+      "title",
+      "origin/topic: 1 ahead, 0 behind",
+    );
+    act(() =>
+      useWorkbenchStore.setState({
+        repositories: {
+          roots: [{ ...root, upstream: null }],
+          truncated: false,
+          elapsedMs: 1,
+        },
+      }),
+    );
+    expect(screen.queryByText("↑1 ↓0")).not.toBeInTheDocument();
+  });
+
+  it("reports indentation without mutating Editor appearance", async () => {
     useEditorSettingsStore.setState({
       settings: { ...initialSettings.settings, "editor.tabSize": 4 },
     });
     render(<StatusBar />);
-    expect(screen.getByTitle("Indentation")).toHaveTextContent("Spaces: 4");
+    expect(await screen.findByTitle("Indentation")).toHaveTextContent(
+      "Spaces: 4",
+    );
     expect(screen.queryByRole("button", { name: /editor font/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /editor tab/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /word wrap/i })).toBeNull();
@@ -124,7 +161,7 @@ describe("StatusBar repository truth", () => {
     expect(screen.getByLabelText("Hide left sidebar")).toBeInTheDocument();
   });
 
-  it("shows an admitted File language and hides Diff or plain paths", () => {
+  it("shows an admitted File language and hides Diff or plain paths", async () => {
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -158,7 +195,7 @@ describe("StatusBar repository truth", () => {
       activeTabId: "file:app",
     });
     const { rerender } = render(<StatusBar />);
-    expect(screen.getByTitle("Editor language")).toHaveTextContent(
+    expect(await screen.findByTitle("Editor language")).toHaveTextContent(
       "TypeScript",
     );
 
@@ -171,8 +208,9 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByTitle("Editor language")).toBeNull();
   });
 
-  it("shows an admitted caret and hides a missing one", () => {
+  it("shows an admitted caret and hides a missing one", async () => {
     render(<StatusBar />);
+    await screen.findByTitle("Indentation");
     expect(screen.queryByTitle("Caret position")).toBeNull();
     expect(screen.queryByText("Ln 12, Col 4")).toBeNull();
 

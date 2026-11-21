@@ -1,125 +1,155 @@
 import { useId } from "react";
-
 import { useWorkbenchStore } from "../app/store";
-import { exclusiveGitSequence } from "../domain/gitCommit";
 import type { RootRepositoryStatus } from "../domain/workbench";
-import { repositoryPrimaryAction } from "../features/git/primaryAction";
+import { repositoryTransportAction } from "../features/git/primaryAction";
+import { canPushRemote, visibleRemotes } from "../features/git/remotes";
+import { SearchablePicker } from "../ui/SearchablePicker";
+import {
+  sourceActionChanges,
+  type SourceGroupAction,
+} from "../features/git/sourceControlActions";
+import { Check, Plus, RefreshCw } from "../ui/leanIcons";
 import { RepositoryCommitControl } from "./RepositoryCommitControl";
-
-interface SourceRepositoryControlProps {
-  repository: RootRepositoryStatus;
-  rootLabel: string;
-  controlsDisabled: boolean;
-  writable: boolean;
-}
-
-function branchLabel(repository: RootRepositoryStatus): string {
-  return (
-    repository.branch ??
-    (repository.state === "notRepository" ? "Not a repository" : "Unavailable")
-  );
-}
-
-function repositoryAccessibleName(
-  repository: RootRepositoryStatus,
-  rootLabel: string,
-): string {
-  const branch = branchLabel(repository);
-  if (repository.state !== "repository") {
-    return `${rootLabel} repository, ${branch.toLowerCase()}`;
-  }
-  const upstream = repository.upstream
-    ? `upstream ${repository.upstream}`
-    : "no upstream";
-  return `${rootLabel} repository, branch ${branch}, ${upstream}, ${repository.ahead ?? 0} ahead, ${repository.behind ?? 0} behind`;
-}
+import { SourceRepositoryMenu } from "./SourceRepositoryMenu";
 
 export function SourceRepositoryControl({
   repository,
   rootLabel,
   controlsDisabled,
   writable,
-}: SourceRepositoryControlProps) {
+  showName,
+  onGroupAction,
+}: {
+  repository: RootRepositoryStatus;
+  rootLabel: string;
+  controlsDisabled: boolean;
+  writable: boolean;
+  showName: boolean;
+  onGroupAction: (action: SourceGroupAction) => void;
+}) {
+  const formId = useId();
   const reasonId = useId();
-  const pullRepository = useWorkbenchStore((state) => state.pullRepository);
-  const pushRemote = useWorkbenchStore((state) => state.pushRemote);
-  const branch = branchLabel(repository);
-  const action = writable ? repositoryPrimaryAction(repository) : null;
-  const sequence = exclusiveGitSequence(repository);
-  const showCommitControl =
-    writable &&
-    repository.state === "repository" &&
-    (sequence !== null || action === null || action.kind === "commit");
-  const transportAction = action && action.kind !== "commit" ? action : null;
-  const trackingTitle = repository.upstream
-    ? `${repository.upstream} · ${repository.ahead ?? 0} ahead, ${repository.behind ?? 0} behind`
-    : `No upstream · ${repository.ahead ?? 0} ahead, ${repository.behind ?? 0} behind`;
-
+  const refresh = useWorkbenchStore((state) => state.refreshRepository);
+  const loadInventory = useWorkbenchStore(
+    (state) => state.loadRepositoryInventory,
+  );
+  const pull = useWorkbenchStore((state) => state.pullRepository);
+  const push = useWorkbenchStore((state) => state.pushRemote);
+  const action = writable ? repositoryTransportAction(repository) : null;
+  const transport = action;
+  const publishRemotes =
+    writable && !repository.upstream && !action
+      ? visibleRemotes(repository.remotes).filter((remote) =>
+          canPushRemote(repository, remote),
+        )
+      : [];
   return (
     <>
       <div
-        className="source-root__summary"
+        className="source-root__header"
         role="group"
-        aria-label={repositoryAccessibleName(repository, rootLabel)}
+        aria-label={`Changes in ${rootLabel}`}
       >
-        <span className="source-root__name" title={rootLabel}>
-          {rootLabel}
+        <span
+          className="source-root__name"
+          title={showName ? rootLabel : undefined}
+        >
+          {showName ? rootLabel : "Changes"}
         </span>
-        <span className="source-root__branch" title={`Branch ${branch}`}>
-          {branch}
-        </span>
-        {repository.state === "repository" ? (
-          <span className="source-root__identity" title={trackingTitle}>
-            <span className="source-root__upstream">
-              {repository.upstream ?? "No upstream"}
-            </span>
-            <span
-              className="source-root__divergence"
-              aria-label={`${repository.ahead ?? 0} ahead, ${repository.behind ?? 0} behind`}
-            >
-              ↑{repository.ahead ?? 0} ↓{repository.behind ?? 0}
-            </span>
-          </span>
-        ) : null}
-        {transportAction ? (
+        <div className="source-root__actions">
+          <button
+            type="submit"
+            form={formId}
+            className="source-change__action"
+            aria-label="Commit changes"
+            title="Commit"
+            disabled={
+              controlsDisabled ||
+              !writable ||
+              (repository.changes.length === 0 && !repository.mergeInProgress)
+            }
+          >
+            <Check size={14} aria-hidden="true" />
+          </button>
           <button
             type="button"
-            className="source-root__primary"
-            disabled={controlsDisabled || transportAction.reason !== null}
-            aria-describedby={
-              transportAction.reason !== null ? reasonId : undefined
+            className="source-change__action"
+            aria-label="Stage All Changes"
+            title="Stage All Changes"
+            disabled={
+              controlsDisabled ||
+              !writable ||
+              sourceActionChanges(repository, "stage").length === 0
             }
-            title={
-              transportAction.reason ??
-              (transportAction.kind === "pull"
-                ? "Pull the current upstream"
-                : `${transportAction.label} using ${transportAction.remote}`)
-            }
+            onClick={() => onGroupAction("stage")}
+          >
+            <Plus size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="source-change__action"
+            aria-label="Refresh Source Control"
+            title="Refresh"
+            disabled={controlsDisabled}
             onClick={() => {
-              if (transportAction.kind === "pull") {
-                void pullRepository(repository.rootId);
-              } else if (
-                transportAction.kind === "push" ||
-                transportAction.kind === "publish"
-              ) {
-                void pushRemote(repository.rootId, transportAction.remote);
-              }
+              void refresh();
+              void loadInventory();
             }}
           >
-            {transportAction.label}
+            <RefreshCw size={14} aria-hidden="true" />
           </button>
-        ) : null}
+          <SourceRepositoryMenu
+            repository={repository}
+            rootLabel={rootLabel}
+            controlsDisabled={controlsDisabled}
+            writable={writable}
+            onGroupAction={onGroupAction}
+          />
+        </div>
       </div>
-      {transportAction?.reason ? (
-        <p id={reasonId} className="source-root__action-reason">
-          {transportAction.reason}
-        </p>
-      ) : null}
-      {showCommitControl ? (
+      {writable ? (
         <RepositoryCommitControl
+          key={repository.rootId}
+          formId={formId}
           repository={repository}
           rootLabel={rootLabel}
           controlsDisabled={controlsDisabled}
+        />
+      ) : null}
+      {transport ? (
+        <button
+          type="button"
+          className="source-root__primary"
+          disabled={controlsDisabled || transport.reason !== null}
+          title={transport.reason ?? transport.label}
+          aria-describedby={transport.reason ? reasonId : undefined}
+          onClick={() => {
+            if (transport.kind === "pull") void pull(repository.rootId);
+            else if (transport.kind === "push" || transport.kind === "publish")
+              void push(repository.rootId, transport.remote);
+          }}
+        >
+          {transport.label}
+        </button>
+      ) : null}
+      {transport?.reason ? (
+        <p id={reasonId} className="source-root__action-reason">
+          {transport.reason}
+        </p>
+      ) : null}
+      {publishRemotes.length > 1 ? (
+        <SearchablePicker
+          ariaLabel="Publish Branch"
+          appearance="plain"
+          triggerClassName="source-root__primary"
+          triggerLabel="Publish Branch"
+          selectedId={null}
+          disabled={controlsDisabled}
+          candidates={publishRemotes.map((remote) => ({
+            id: remote,
+            label: remote,
+          }))}
+          onSelect={(remote) => void push(repository.rootId, remote)}
         />
       ) : null}
     </>

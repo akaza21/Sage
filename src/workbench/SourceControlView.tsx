@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "../ui/leanIcons";
 
 import { useWorkbenchStore } from "../app/store";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
-import { SourceBranchList } from "./SourceBranchList";
 import { SourceChangeGroups } from "./SourceChangeGroups";
-import { SourceCommitList } from "./SourceCommitList";
-import { SourceRemoteList } from "./SourceRemoteList";
 import { SourceRepositoryControl } from "./SourceRepositoryControl";
 import { SearchablePicker } from "../ui/SearchablePicker";
+import {
+  mutateSourceGroup,
+  type SourceGroupAction,
+} from "../features/git/sourceControlActions";
 import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 
 function disambiguatedRootLabel(
@@ -48,6 +49,9 @@ export function SourceControlView() {
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
   const mutation = useWorkbenchStore((state) => state.repositoryMutation);
+  const mutationError = useWorkbenchStore(
+    (state) => state.repositoryMutationError,
+  );
   const commit = useWorkbenchStore((state) => state.repositoryCommit);
   const checkout = useWorkbenchStore((state) => state.repositoryCheckout);
   const checkoutError = useWorkbenchStore(
@@ -55,20 +59,6 @@ export function SourceControlView() {
   );
   const remote = useWorkbenchStore((state) => state.repositoryRemote);
   const remoteError = useWorkbenchStore((state) => state.repositoryRemoteError);
-  const checkoutLocalBranch = useWorkbenchStore(
-    (state) => state.checkoutLocalBranch,
-  );
-  const createLocalBranch = useWorkbenchStore(
-    (state) => state.createLocalBranch,
-  );
-  const deleteLocalBranch = useWorkbenchStore(
-    (state) => state.deleteLocalBranch,
-  );
-  const renameLocalBranch = useWorkbenchStore(
-    (state) => state.renameLocalBranch,
-  );
-  const fetchRemote = useWorkbenchStore((state) => state.fetchRemote);
-  const pushRemote = useWorkbenchStore((state) => state.pushRemote);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -81,7 +71,9 @@ export function SourceControlView() {
     (state) => state.mutateRepositoryFile,
   );
   const openDiff = useWorkbenchStore((state) => state.openDiff);
+  const [batchPending, setBatchPending] = useState(false);
   const controlsDisabled =
+    batchPending ||
     refreshing ||
     transitioning ||
     mutation !== null ||
@@ -155,20 +147,22 @@ export function SourceControlView() {
     <>
       <div className="sidebar__heading">
         <span>Source Control</span>
-        <button
-          type="button"
-          aria-label="Refresh Source Control"
-          disabled={controlsDisabled}
-          onClick={() => {
-            void refresh();
-            void loadRepositoryInventory();
-          }}
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-        </button>
+        {selectedRepositories.length === 0 ? (
+          <button
+            type="button"
+            aria-label="Refresh Source Control"
+            disabled={controlsDisabled}
+            onClick={() => {
+              void refresh();
+              void loadRepositoryInventory();
+            }}
+          >
+            <RefreshCw size={14} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       <div className="source-control-list">
-        {repositoryRefs.length > 0 ? (
+        {repositoryRefs.length > 1 ? (
           <div className="source-control-selector">
             <SearchablePicker
               ariaLabel="Select repository"
@@ -214,6 +208,15 @@ export function SourceControlView() {
           const writable =
             repository.state === "repository" &&
             (!selectedRepository || isRootRepository(selectedRepository));
+          const runGroupAction = async (action: SourceGroupAction) => {
+            if (controlsDisabled) return;
+            setBatchPending(true);
+            try {
+              await mutateSourceGroup(repository, action);
+            } finally {
+              setBatchPending(false);
+            }
+          };
           return (
             <section className="source-root" key={repository.rootId}>
               <SourceRepositoryControl
@@ -221,60 +224,10 @@ export function SourceControlView() {
                 rootLabel={rootLabel}
                 controlsDisabled={controlsDisabled}
                 writable={writable}
-              />
-              <SourceBranchList
-                rootLabel={rootLabel}
-                branch={repository.branch}
-                branches={repository.branches}
-                truncated={repository.branchesTruncated}
-                checkoutDisabled={controlsDisabled}
-                createDisabled={controlsDisabled}
-                deleteDisabled={controlsDisabled}
-                renameDisabled={controlsDisabled}
-                onCheckout={
-                  writable
-                    ? (name) =>
-                        void checkoutLocalBranch(repository.rootId, name)
-                    : undefined
+                showName={
+                  repositoryRefs.length > 1 || selectedRepositories.length > 1
                 }
-                onCreate={
-                  writable
-                    ? (name) => void createLocalBranch(repository.rootId, name)
-                    : undefined
-                }
-                onDelete={
-                  writable
-                    ? (name) => void deleteLocalBranch(repository.rootId, name)
-                    : undefined
-                }
-                onRename={
-                  writable
-                    ? (from, to) =>
-                        void renameLocalBranch(repository.rootId, from, to)
-                    : undefined
-                }
-              />
-              <SourceCommitList
-                rootLabel={rootLabel}
-                commits={repository.recentCommits}
-                truncated={repository.recentCommitsTruncated}
-              />
-              <SourceRemoteList
-                rootLabel={rootLabel}
-                remotes={repository.remotes}
-                truncated={repository.remotesTruncated}
-                repository={writable ? repository : undefined}
-                transportDisabled={controlsDisabled}
-                onFetch={
-                  writable
-                    ? (name) => void fetchRemote(repository.rootId, name)
-                    : undefined
-                }
-                onPush={
-                  writable
-                    ? (name) => void pushRemote(repository.rootId, name)
-                    : undefined
-                }
+                onGroupAction={runGroupAction}
               />
               {checkoutError?.rootId === repository.rootId ? (
                 <p className="sidebar__error" role="alert">
@@ -284,6 +237,11 @@ export function SourceControlView() {
               {remoteError?.rootId === repository.rootId ? (
                 <p className="sidebar__error" role="alert">
                   {remoteError.message}
+                </p>
+              ) : null}
+              {mutationError?.resource.rootId === repository.rootId ? (
+                <p className="sidebar__error" role="alert">
+                  {mutationError.message}
                 </p>
               ) : null}
               {repository.message ? (
@@ -302,6 +260,9 @@ export function SourceControlView() {
               ) : null}
               <SourceChangeGroups
                 changes={repository.changes.slice(0, 300)}
+                onGroupAction={
+                  writable && !repository.truncated ? runGroupAction : undefined
+                }
                 repository={selectedRepository ?? undefined}
                 rootName={rootLabel}
                 rebaseInProgress={repository.rebaseInProgress === true}

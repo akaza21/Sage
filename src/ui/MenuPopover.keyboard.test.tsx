@@ -46,6 +46,44 @@ function Menu({
 const item = (name: string) => screen.getByRole("menuitem", { name });
 
 describe("MenuPopover keyboard", () => {
+  it("leaves a nested dialog's arrow keys with its input instead of focusing the outer menu", () => {
+    function NestedInput() {
+      const trigger = useRef<HTMLButtonElement>(null);
+      const child = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={trigger}>Actions</button>
+          <MenuPopover
+            id="outer"
+            open
+            ariaLabel="Outer"
+            triggerRef={trigger}
+            onDismiss={() => undefined}
+          >
+            <button ref={child} role="menuitem">
+              Rename
+            </button>
+            <MenuPopover
+              id="inner"
+              open
+              role="dialog"
+              ariaLabel="Rename"
+              triggerRef={child}
+              onDismiss={() => undefined}
+            >
+              <input aria-label="Branch name" />
+            </MenuPopover>
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<NestedInput />);
+    const input = screen.getByRole("textbox", { name: "Branch name" });
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input).toHaveFocus();
+  });
+
   it("lands on the first item when Down is pressed with no item focused", () => {
     render(<Menu items={[{ name: "Copy" }, { name: "Paste" }]} />);
     const menu = screen.getByRole("menu", { name: "Actions" });

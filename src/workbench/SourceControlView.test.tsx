@@ -253,8 +253,8 @@ it("projects repository loading, empty, and error states through ResourceStateNo
   });
   rerender(<SourceControlView />);
   expect(
-    screen.getByRole("button", { name: "Select repository" }),
-  ).toBeInTheDocument();
+    screen.queryByRole("button", { name: "Select repository" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText("No repositories found")).not.toBeInTheDocument();
 });
 
@@ -286,7 +286,9 @@ it("does not say no repositories were found above a listed repository", () => {
   });
   render(<SourceControlView />);
   expect(screen.queryByText("No repositories found")).toBeNull();
-  expect(screen.getByTitle("Branch main")).toBeVisible();
+  expect(
+    screen.getByRole("group", { name: "Changes in Root A" }),
+  ).toBeVisible();
 });
 
 it("shows native-proven identity and dispatches the selected publish action", async () => {
@@ -320,17 +322,19 @@ it("shows native-proven identity and dispatches the selected publish action", as
   render(<SourceControlView />);
   expect(
     screen.getByRole("group", {
-      name: "Root A repository, branch main, no upstream, 0 ahead, 0 behind",
+      name: "Changes in Root A",
     }),
   ).toBeVisible();
-  expect(screen.getByTitle("Branch main")).toBeVisible();
-  expect(screen.getByTitle("No upstream · 0 ahead, 0 behind")).toBeVisible();
-  expect(screen.getByText("No upstream")).toBeVisible();
   expect(
-    screen.queryByRole("form", {
+    screen.getByRole("group", { name: "Changes in Root A" }),
+  ).toBeVisible();
+  expect(screen.queryByTitle("No upstream · 0 ahead, 0 behind")).toBeNull();
+  expect(screen.queryByText("No upstream")).toBeNull();
+  expect(
+    screen.getByRole("form", {
       name: "Commit staged changes in Root A",
     }),
-  ).toBeNull();
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Publish Branch" }));
   await waitFor(() =>
     expect(pushRemote).toHaveBeenCalledWith("root-a", "origin"),
@@ -377,10 +381,10 @@ it("dispatches Pull for the native-proven behind primary action", async () => {
   render(<SourceControlView />);
 
   expect(
-    screen.queryByRole("form", {
+    screen.getByRole("form", {
       name: "Commit staged changes in Root A",
     }),
-  ).toBeNull();
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Pull" }));
   await waitFor(() => expect(pullRepository).toHaveBeenCalledWith("root-a"));
 });
@@ -417,12 +421,12 @@ it("dispatches Push to the remote proven by the current upstream", async () => {
   });
   render(<SourceControlView />);
 
-  expect(screen.getByText("↑2 ↓0")).toBeVisible();
+  expect(screen.queryByText("↑2 ↓0")).toBeNull();
   expect(
-    screen.queryByRole("form", {
+    screen.getByRole("form", {
       name: "Commit staged changes in Root A",
     }),
-  ).toBeNull();
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Push" }));
   await waitFor(() =>
     expect(pushRemote).toHaveBeenCalledWith("root-a", "upstream"),
@@ -464,10 +468,10 @@ it("explains why a diverged branch cannot be synced automatically", () => {
   expect(sync).toHaveAccessibleDescription(reason);
   expect(screen.getByText(reason)).toBeVisible();
   expect(
-    screen.queryByRole("form", {
+    screen.getByRole("form", {
       name: "Commit staged changes in Root A",
     }),
-  ).toBeNull();
+  ).toBeVisible();
 });
 
 it("selects a nested repository, opens its Diff, and offers no mutations", async () => {
@@ -520,9 +524,9 @@ it("selects a nested repository, opens its Diff, and offers no mutations", async
     expect(selectRepository).toHaveBeenCalledWith(nestedRepository),
   );
 
-  const selectedChange = screen.getByRole("button", {
+  const selectedChange = screen.getAllByRole("button", {
     name: "Open diff for packages/tool/src/app.ts",
-  });
+  })[0];
   expect(selectedChange).toHaveAttribute("aria-current", "true");
   fireEvent.click(selectedChange);
 
@@ -595,7 +599,7 @@ it("does not show root changes while nested status is loading", () => {
   ).toBeNull();
 });
 
-it("does not mark a local branch current while HEAD is detached", () => {
+it("does not mark a local branch current while HEAD is detached", async () => {
   const detached: RootRepositoryStatus = {
     ...rootStatus,
     branch: "01234567 (detached)",
@@ -624,14 +628,20 @@ it("does not mark a local branch current while HEAD is detached", () => {
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
-  const list = screen.getByRole("list", { name: "Local branches in Root A" });
+  const list = screen.getByRole("listbox", { name: "Switch branch in Root A" });
   expect(list).toHaveTextContent("main");
   expect(list).toHaveTextContent("topic");
   expect(list).not.toHaveTextContent("(current)");
 });
 
-it("lists local branches and marks the current named branch", () => {
+it("lists local branches and marks the current named branch", async () => {
   useWorkbenchStore.setState({
     project: {
       id: "project-a",
@@ -656,9 +666,17 @@ it("lists local branches and marks the current named branch", () => {
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
-  const list = screen.getByRole("list", { name: "Local branches in Root A" });
-  expect(list).toHaveTextContent("main (current)");
+  const list = screen.getByRole("listbox", { name: "Switch branch in Root A" });
+  expect(
+    within(list).getByRole("option", { name: "main (current)" }),
+  ).toHaveAttribute("aria-selected", "true");
   expect(list).toHaveTextContent("topic");
   expect(list).not.toHaveTextContent("topic (current)");
 });
@@ -689,6 +707,10 @@ it("lists recent commits newest first with a shortened SHA", () => {
 
   render(<SourceControlView />);
 
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Recent commits…" }));
   const list = screen.getByRole("list", { name: "Recent commits in Root A" });
   expect(list.querySelectorAll(".source-commit__sha")[0]).toHaveTextContent(
     "aaaaaaa",
@@ -702,14 +724,22 @@ it("lists recent commits newest first with a shortened SHA", () => {
   expect(list).not.toHaveTextContent(
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   );
-  const remotes = screen.getByRole("list", { name: "Remotes in Root A" });
-  expect(remotes).toHaveTextContent("origin");
-  expect(remotes).toHaveTextContent("upstream");
-  expect(remotes).not.toHaveTextContent("http");
-  expect(remotes).not.toHaveTextContent(".git");
+  fireEvent.keyDown(list, { key: "Escape" });
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  const menu = screen.getByRole("menu", { name: "Source Control actions" });
+  expect(
+    within(menu).getByRole("menuitem", { name: "Fetch origin" }),
+  ).toBeVisible();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Push upstream" }),
+  ).toBeVisible();
+  expect(menu).not.toHaveTextContent("http");
+  expect(menu).not.toHaveTextContent(".git");
 });
 
-it("places the commit control before repository detail lists", () => {
+it("places the commit control before change groups without inline branch forms", () => {
   const stagedStatus: RootRepositoryStatus = {
     ...rootStatus,
     changes: [
@@ -750,14 +780,15 @@ it("places the commit control before repository detail lists", () => {
   const commitControl = screen.getByRole("form", {
     name: "Commit staged changes in Root A",
   });
-  const branchList = screen.getByRole("list", {
-    name: "Local branches in Root A",
-  });
-
+  const staged = screen.getByText("Staged Changes");
   expect(
-    commitControl.compareDocumentPosition(branchList) &
+    commitControl.compareDocumentPosition(staged) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+  expect(
+    screen.queryByRole("form", { name: "New branch in Root A" }),
+  ).toBeNull();
+  expect(screen.queryByText("Branches")).toBeNull();
 });
 
 it("distinguishes repository errors from loading and informational states", () => {
@@ -1111,8 +1142,14 @@ it("offers a switch control for a listed non-current local branch", async () => 
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: "Switch to topic" }));
+  fireEvent.click(screen.getByRole("option", { name: "Switch to topic" }));
   await waitFor(() => {
     expect(checkoutLocalBranch).toHaveBeenCalledWith("root-a", "topic");
   });
@@ -1148,7 +1185,14 @@ it("offers a New branch form that creates an unlisted valid name without switchi
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
+  fireEvent.click(screen.getByRole("option", { name: "Create new branch…" }));
   fireEvent.change(screen.getByRole("textbox", { name: "New branch name" }), {
     target: { value: "feature" },
   });
@@ -1159,7 +1203,7 @@ it("offers a New branch form that creates an unlisted valid name without switchi
   expect(createLocalBranch).toHaveBeenCalledTimes(1);
 });
 
-it("refuses Create branch for a listed or unsafe name", () => {
+it("refuses Create branch for a listed or unsafe name", async () => {
   const createLocalBranch = vi.fn(async () => true);
   useWorkbenchStore.setState({
     project: {
@@ -1186,7 +1230,14 @@ it("refuses Create branch for a listed or unsafe name", () => {
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
+  fireEvent.click(screen.getByRole("option", { name: "Create new branch…" }));
   const create = screen.getByRole("button", { name: "Create branch" });
   expect(create).toBeDisabled();
   fireEvent.change(screen.getByRole("textbox", { name: "New branch name" }), {
@@ -1228,14 +1279,23 @@ it("offers Delete for a listed non-current local branch and hides it for current
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: "Delete topic" }));
-  await waitFor(() => {
-    expect(deleteLocalBranch).toHaveBeenCalledWith("root-a", "topic");
-  });
-  expect(
-    screen.queryByRole("button", { name: "Delete main" }),
-  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("option", { name: "Delete branch…" }));
+  const remove = screen.getByRole("button", { name: "Delete branch" });
+  expect(remove).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Branch to delete" }));
+  fireEvent.click(screen.getByRole("option", { name: "topic" }));
+  expect(remove).toBeEnabled();
+  fireEvent.click(remove);
+  await waitFor(() =>
+    expect(deleteLocalBranch).toHaveBeenCalledWith("root-a", "topic"),
+  );
 });
 
 it("offers Rename branch for a listed name to a valid unlisted name", async () => {
@@ -1275,7 +1335,14 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
+  fireEvent.click(screen.getByRole("option", { name: "Rename branch…" }));
   // Query inside the form, and name only the options used: the branch list
   // beside it holds 128 buttons, and a role query by name computes each name
   // through jsdom's style cascade, which takes seconds under load.
@@ -1319,7 +1386,7 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
   expect(renameLocalBranch).toHaveBeenCalledTimes(1);
 });
 
-it("refuses Rename branch for a listed or unsafe destination", () => {
+it("refuses Rename branch for a listed or unsafe destination", async () => {
   const renameLocalBranch = vi.fn(async () => true);
   useWorkbenchStore.setState({
     project: {
@@ -1346,7 +1413,14 @@ it("refuses Rename branch for a listed or unsafe destination", () => {
   });
 
   render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Switch branch in Root A" }),
+  );
 
+  fireEvent.click(screen.getByRole("option", { name: "Rename branch…" }));
   const rename = screen.getByRole("button", { name: "Rename branch" });
   expect(rename).toBeDisabled();
   fireEvent.change(
@@ -1393,11 +1467,17 @@ it("offers fetch and push on listed remote names without URLs", async () => {
 
   render(<SourceControlView />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Fetch origin" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Fetch origin" }));
   await waitFor(() => {
     expect(fetchRemote).toHaveBeenCalledWith("root-a", "origin");
   });
-  fireEvent.click(screen.getByRole("button", { name: "Push upstream" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Push upstream" }));
   await waitFor(() => {
     expect(pushRemote).toHaveBeenCalledWith("root-a", "upstream");
   });
@@ -1465,8 +1545,8 @@ it("uses the live selected root status after staging a selected root file", asyn
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Publish Branch" })).toBeEnabled();
   expect(
-    screen.queryByRole("form", { name: "Commit staged changes in Root A" }),
-  ).toBeNull();
+    screen.getByRole("form", { name: "Commit staged changes in Root A" }),
+  ).toBeVisible();
 
   fireEvent.click(
     screen.getByRole("button", { name: "Stage src/app.ts in Root A" }),
@@ -1486,7 +1566,9 @@ it("uses the live selected root status after staging a selected root file", asyn
     expect(
       screen.getByRole("button", { name: "Unstage src/app.ts in Root A" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Publish Branch" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Publish Branch" }),
+    ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Commit staged changes in Root A" }),
     ).toBeDisabled();

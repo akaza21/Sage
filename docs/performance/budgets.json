@@ -512,8 +512,13 @@
       },
       {
         "entry": "src/workbench/SourceControlView.tsx",
-        "maxGzipBytes": 6786,
-        "reason": "Editor Source Control tool and bounded changes list; loads only when Source Control is selected."
+        "maxGzipBytes": 7300,
+        "reason": "Editor Source Control panel and bounded changes list; loads only when Source Control is selected. Core and startup caps stay unchanged."
+      },
+      {
+        "entry": "src/workbench/StatusBarDetails.tsx",
+        "maxGzipBytes": 2600,
+        "reason": "Visible native branch status and bounded branch quick pick shared with SCM. The panel stays separate; closed branch popovers and forms unmount."
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
