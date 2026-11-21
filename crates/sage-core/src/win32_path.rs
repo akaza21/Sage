@@ -7,7 +7,46 @@
 //! reserved device-name components stay verbatim, as do ordinary spellings of
 //! 260 or more UTF-16 code units.
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
+
+/// Key for accepting a path as a stored canonical root. Only equivalent
+/// drive/UNC prefixes are normalized; component spelling and case stay exact.
+/// This is comparison data, never a filesystem or harness path.
+pub fn authority_path_key(path: &Path) -> OsString {
+    #[cfg(windows)]
+    {
+        use std::{
+            os::windows::ffi::{OsStrExt, OsStringExt},
+            path::{Component, Prefix},
+        };
+        if let Some(Component::Prefix(prefix)) = path.components().next() {
+            let mut key = match prefix.kind() {
+                Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => {
+                    OsString::from(format!(r"\\?\{}:", char::from(drive)))
+                }
+                Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+                    let mut key = OsString::from(r"\\?\UNC\");
+                    key.push(server);
+                    key.push(r"\");
+                    key.push(share);
+                    key
+                }
+                _ => return path.as_os_str().to_owned(),
+            };
+            let tail: Vec<u16> = path
+                .as_os_str()
+                .encode_wide()
+                .skip(prefix.as_os_str().encode_wide().count())
+                .collect();
+            key.push(OsString::from_wide(&tail));
+            return key;
+        }
+    }
+    path.as_os_str().to_owned()
+}
 
 /// Win32's path limit in UTF-16 code units, including the terminating NUL.
 const MAX_PATH: usize = 260;
@@ -81,6 +120,49 @@ pub fn windows_reserved_device_name(filename: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn authority_accepts_only_prefix_equivalence_at_every_length() {
+        let drive = std::env::temp_dir().canonicalize().unwrap();
+        for verbatim in [
+            drive.to_str().unwrap().to_owned(),
+            r"\\?\UNC\server\share\Root".into(),
+        ] {
+            let ordinary = if let Some(unc) = verbatim.strip_prefix(r"\\?\UNC\") {
+                format!(r"\\{unc}")
+            } else {
+                verbatim.strip_prefix(r"\\?\").unwrap().to_owned()
+            };
+            for suffix in [
+                String::new(),
+                format!(r"\{}", "component".repeat(8)).repeat(4),
+            ] {
+                let plain = format!("{ordinary}{suffix}");
+                let prefixed = format!("{verbatim}{suffix}");
+                assert_eq!(
+                    authority_path_key(Path::new(&plain)),
+                    authority_path_key(Path::new(&prefixed))
+                );
+            }
+            let key = |tail: &str| authority_path_key(Path::new(&format!(r"{verbatim}\{tail}")));
+            assert_ne!(key("Repo"), key("repo"));
+            for literal in ["name.", "name ", "NUL", r".\name", r"name\..\other"] {
+                assert_ne!(key(literal), key("name"));
+            }
+            assert_ne!(key(r"name\..\other"), key("other"));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn authority_preserves_non_unicode_components() {
+        use std::os::windows::ffi::OsStringExt;
+        let base = std::env::temp_dir();
+        let first = base.join(OsString::from_wide(&[0xd800]));
+        let second = base.join(OsString::from_wide(&[0xd801]));
+        assert_ne!(authority_path_key(&first), authority_path_key(&second));
+    }
 
     #[test]
     fn verbatim_paths_are_simplified_only_when_equivalent() {

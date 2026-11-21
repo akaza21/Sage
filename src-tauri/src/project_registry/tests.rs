@@ -39,18 +39,18 @@ fn windows_root_identity_is_length_independent_and_preserves_special_components(
         ] {
             let plain = format!("{ordinary}{suffix}");
             let prefixed = format!("{verbatim}{suffix}");
-            let key = canonical_comparison_key(Path::new(&prefixed));
-            assert_eq!(canonical_comparison_key(Path::new(&plain)), key);
-            assert!(Path::new(&key).starts_with(canonical_comparison_key(&root)));
+            let key = conservative_overlap_key(Path::new(&prefixed));
+            assert_eq!(conservative_overlap_key(Path::new(&plain)), key);
+            assert!(Path::new(&key).starts_with(conservative_overlap_key(&root)));
             assert!(
-                !Path::new(&canonical_comparison_key(Path::new(&format!(
+                !Path::new(&conservative_overlap_key(Path::new(&format!(
                     "{plain}-sibling"
                 ))))
                 .starts_with(&key)
             );
         }
         let literal =
-            |suffix: &str| canonical_comparison_key(Path::new(&format!(r"{verbatim}\{suffix}")));
+            |suffix: &str| conservative_overlap_key(Path::new(&format!(r"{verbatim}\{suffix}")));
         for special in ["name.", "name ", "NUL", r".\name", r"name\..\other"] {
             assert_ne!(literal(special), literal("name"), "{special}");
         }
@@ -79,8 +79,8 @@ fn ordinary_and_legacy_verbatim_roots_share_one_identity_and_cannot_be_added_twi
         )
         .unwrap();
     assert_eq!(
-        canonical_comparison_key(&root),
-        canonical_comparison_key(&canonical)
+        conservative_overlap_key(&root),
+        conservative_overlap_key(&canonical)
     );
     assert!(database.add_project_root(&project.id, &root).is_err());
     assert_eq!(database.root_records(&project.id).unwrap().len(), 1);

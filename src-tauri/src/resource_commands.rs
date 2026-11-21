@@ -86,12 +86,13 @@ async fn build_bootstrap_snapshot_with_repository_status(
     let roots = state.database.root_records(&project.id)?;
     let mut repository_roots = Vec::with_capacity(roots.len());
     for root in roots {
-        let workspace = Workspace::open(&root.project_id, &root.id, &root.absolute_path)
-            .and_then(|workspace| {
-                editor::recover_pending_saves(&state.database, &workspace)?;
-                Ok(workspace)
-            })
-            .map_err(|error| error.to_string());
+        let workspace =
+            Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
+                .and_then(|workspace| {
+                    editor::recover_pending_saves(&state.database, &workspace)?;
+                    Ok(workspace)
+                })
+                .map_err(|error| error.to_string());
         repository_roots.push((root.id, workspace));
     }
     snapshot.repositories = sage_git::project_status(repository_roots).await;
@@ -214,8 +215,9 @@ pub async fn get_repository_status(
         .map_err(|error| error.to_string())?
         .into_iter()
         .map(|root| {
-            let workspace = Workspace::open(&root.project_id, &root.id, &root.absolute_path)
-                .map_err(|error| error.to_string());
+            let workspace =
+                Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
+                    .map_err(|error| error.to_string());
             (root.id, workspace)
         })
         .collect();

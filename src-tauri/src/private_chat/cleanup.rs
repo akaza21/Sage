@@ -130,8 +130,8 @@ fn require_unreferenced(
     id: &str,
     folder: &Path,
 ) -> AppResult<()> {
-    use crate::project_registry::canonical_comparison_key;
-    let folder = std::path::PathBuf::from(canonical_comparison_key(folder));
+    use crate::project_registry::conservative_overlap_key;
+    let folder = std::path::PathBuf::from(conservative_overlap_key(folder));
     let mut statement = connection
         .prepare("SELECT absolute_path FROM project_roots WHERE project_id<>?1")
         .db()?;
@@ -146,7 +146,7 @@ fn require_unreferenced(
             Err(error) => return Err(error.into()),
         };
         for root in [Some(stored.clone()), resolved].into_iter().flatten() {
-            let root = std::path::PathBuf::from(canonical_comparison_key(&root));
+            let root = std::path::PathBuf::from(conservative_overlap_key(&root));
             // Ancestor projects may contain the entire Sage profile. They do
             // not own this managed folder; only a root at or inside it does.
             if root.starts_with(&folder) {
@@ -180,8 +180,8 @@ pub(super) fn admit_base(path: &Path) -> AppResult<()> {
     let canonical = path.canonicalize()?;
     if canonical
         .parent()
-        .map(crate::project_registry::canonical_comparison_key)
-        != Some(crate::project_registry::canonical_comparison_key(&parent))
+        .map(crate::project_registry::authority_path_key)
+        != Some(crate::project_registry::authority_path_key(&parent))
     {
         return Err(AppError::InvalidRequest(
             "private Chat storage escaped its profile".into(),

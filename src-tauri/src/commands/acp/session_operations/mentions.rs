@@ -53,7 +53,12 @@ pub(super) async fn resolve_mentions(
             .iter()
             .filter_map(|root| {
                 Some(MentionRoot {
-                    workspace: Workspace::open(&project, &root.id, &root.absolute_path).ok()?,
+                    workspace: Workspace::open_registered_root(
+                        &project,
+                        &root.id,
+                        &root.absolute_path,
+                    )
+                    .ok()?,
                     name: crate::project_registry::folder_name(&root.absolute_path),
                 })
             })

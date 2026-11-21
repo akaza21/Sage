@@ -53,7 +53,7 @@ pub(super) fn resolve_workspace(
                 "file rename root does not belong to the active Project".into(),
             )
         })?;
-    Workspace::open(&root.project_id, &root.id, &root.absolute_path)
+    Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
 }
 
 pub(super) fn ensure_resources_closed(

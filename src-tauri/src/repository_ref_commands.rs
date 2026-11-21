@@ -284,7 +284,15 @@ fn contained_relative(root: &std::path::Path, relative: &str) -> AppResult<std::
             path.push(part);
         }
     }
-    let root = root.canonicalize()?;
+    let canonical_root = root.canonicalize()?;
+    if crate::project_registry::authority_path_key(root)
+        != crate::project_registry::authority_path_key(&canonical_root)
+    {
+        return Err(AppError::InvalidRequest(
+            "repository root is not its stored canonical directory identity".into(),
+        ));
+    }
+    let root = canonical_root;
     let path = path
         .canonicalize()
         .map_err(|_| AppError::InvalidRequest("selected repository path does not exist".into()))?;

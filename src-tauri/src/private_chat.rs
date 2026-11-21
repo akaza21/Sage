@@ -38,7 +38,7 @@ fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
 }
 
 pub(crate) fn require_user_root(database: &Database, root: &std::path::Path) -> AppResult<()> {
-    use crate::project_registry::canonical_comparison_key;
+    use crate::project_registry::conservative_overlap_key;
     let profile = match database.profile_directory() {
         Ok(profile) => profile,
         // Memory databases cannot own private workspace folders.
@@ -47,8 +47,8 @@ pub(crate) fn require_user_root(database: &Database, root: &std::path::Path) -> 
     };
     let base = profile.canonicalize()?.join("chat-workspaces");
     let base = base.canonicalize().unwrap_or(base);
-    if std::path::Path::new(&canonical_comparison_key(root))
-        .starts_with(canonical_comparison_key(&base))
+    if std::path::Path::new(&conservative_overlap_key(root))
+        .starts_with(conservative_overlap_key(&base))
     {
         return Err(AppError::InvalidRequest(
             "Sage's managed private Chat folders cannot be registered as project roots".into(),

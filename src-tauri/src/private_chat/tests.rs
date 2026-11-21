@@ -151,8 +151,8 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
         .absolute_path
         .clone();
     assert!(
-        std::path::Path::new(&crate::project_registry::canonical_comparison_key(&folder))
-            .starts_with(crate::project_registry::canonical_comparison_key(
+        std::path::Path::new(&crate::project_registry::conservative_overlap_key(&folder))
+            .starts_with(crate::project_registry::conservative_overlap_key(
                 &root.canonicalize().unwrap().join("chat-workspaces"),
             ))
     );

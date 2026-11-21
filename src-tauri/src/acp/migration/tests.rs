@@ -2572,7 +2572,7 @@ fn project_and_root_preflight_bounds_accept_exact_and_reject_plus_one() {
              VALUES ('root-b','project-a',?1,?2,1)",
             params![
                 root.to_string_lossy().into_owned(),
-                crate::project_registry::canonical_comparison_key(&root)
+                crate::project_registry::conservative_overlap_key(&root)
             ],
         )
         .unwrap();
@@ -3095,7 +3095,7 @@ fn create_v4(path: &Path, project_id: &str, event: bool) {
     fs::create_dir_all(&root).unwrap();
     let root = root.canonicalize().unwrap();
     let root_text = root.to_string_lossy().into_owned();
-    let root_key = crate::project_registry::canonical_comparison_key(&root);
+    let root_key = crate::project_registry::conservative_overlap_key(&root);
     connection
         .execute(
             "INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal)

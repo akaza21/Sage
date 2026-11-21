@@ -308,7 +308,7 @@ fn resolve_workspace(
                 "{TRASH_NAME} root does not belong to the active Project"
             ))
         })?;
-    Workspace::open(&root.project_id, &root.id, &root.absolute_path)
+    Workspace::open_registered_root(&root.project_id, &root.id, &root.absolute_path)
 }
 
 fn validate_request(request: &TrashProjectResourceRequest) -> AppResult<()> {

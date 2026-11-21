@@ -94,10 +94,10 @@ fn private_chat_fixture_answer_reaches_the_view_after_command_creates_its_worksp
         assert!(!cwd.starts_with(r"\\?\"), "session cwd: {cwd}");
         let folder = directory.join("chat-workspaces").join(&project.id);
         assert_eq!(
-            crate::project_registry::canonical_comparison_key(
+            crate::project_registry::authority_path_key(
                 &std::path::Path::new(&cwd).canonicalize().unwrap()
             ),
-            crate::project_registry::canonical_comparison_key(&folder.canonicalize().unwrap()),
+            crate::project_registry::authority_path_key(&folder.canonicalize().unwrap()),
         );
         super::super::tests::seed_codex_discovery(
             &state.acp,

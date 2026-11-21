@@ -123,10 +123,10 @@ fn private_chat_session_uses_its_registered_folder_and_freezes_scope_before_a_tu
         };
         assert!(!native_root.starts_with(r"\\?\"));
         assert_eq!(
-            crate::project_registry::canonical_comparison_key(
+            crate::project_registry::authority_path_key(
                 &std::path::Path::new(native_root).canonicalize().unwrap(),
             ),
-            crate::project_registry::canonical_comparison_key(&folder.canonicalize().unwrap()),
+            crate::project_registry::authority_path_key(&folder.canonicalize().unwrap()),
         );
         assert!(
             service

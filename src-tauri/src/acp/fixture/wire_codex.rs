@@ -102,8 +102,8 @@ fn await_request_inner(
                 .and_then(Value::as_str)
                 .ok_or(FixtureError::InvalidArguments)?;
             if received.starts_with(r"\\?\")
-                || crate::project_registry::canonical_comparison_key(std::path::Path::new(received))
-                    != crate::project_registry::canonical_comparison_key(expected_cwd)
+                || crate::project_registry::authority_path_key(std::path::Path::new(received))
+                    != crate::project_registry::authority_path_key(expected_cwd)
             {
                 return Err(FixtureError::InvalidArguments);
             }

@@ -6,7 +6,7 @@ use sage_db::error::SqliteResultExt;
 
 use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
-    project_registry::{RootRecord, canonical_comparison_key},
+    project_registry::{RootRecord, authority_path_key, conservative_overlap_key},
 };
 use sage_workspace::validate_contract_path;
 
@@ -137,8 +137,7 @@ fn validate_root_keys(connection: &Connection, roots: &[RootRecord]) -> AppResul
         }
         match root.absolute_path.canonicalize() {
             Ok(canonical)
-                if canonical_comparison_key(&canonical)
-                    != canonical_comparison_key(&root.absolute_path) =>
+                if authority_path_key(&canonical) != authority_path_key(&root.absolute_path) =>
             {
                 return invalid_request("legacy project root spelling is not canonical");
             }
@@ -161,8 +160,9 @@ fn validate_root_keys(connection: &Connection, roots: &[RootRecord]) -> AppResul
                 |row| row.get(0),
             )
             .db()?;
-        if canonical_comparison_key(Path::new(&stored))
-            != canonical_comparison_key(&root.absolute_path)
+        // The persisted key is a folded duplicate index, not root authority.
+        if conservative_overlap_key(Path::new(&stored))
+            != conservative_overlap_key(&root.absolute_path)
         {
             return invalid_request("legacy project root canonical identity is corrupt");
         }

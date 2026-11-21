@@ -5,7 +5,7 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::project_registry::{canonical_comparison_key, persisted_path_text};
+use crate::project_registry::{authority_path_key, conservative_overlap_key, persisted_path_text};
 use sage_domain::resource::ResourceRef;
 use sage_workspace::{Workspace, validate_contract_path};
 
@@ -16,7 +16,7 @@ pub(super) struct MigratedResourceSpellings {
 
 impl MigratedResourceSpellings {
     pub(super) fn record(&mut self, root_id: &str, relative_path: &str) -> AppResult<()> {
-        let comparison_key = canonical_comparison_key(Path::new(relative_path));
+        let comparison_key = conservative_overlap_key(Path::new(relative_path));
         let key = (root_id.into(), comparison_key);
         if let Some(existing) = self.by_comparison_key.get(&key) {
             if existing != relative_path {
@@ -38,7 +38,7 @@ pub(super) fn canonical_migrated_path(
     relative_path: &str,
 ) -> AppResult<String> {
     validate_contract_path(relative_path, false)?;
-    let Ok(workspace) = Workspace::open(project_id, root_id, root) else {
+    let Ok(workspace) = Workspace::open_registered_root(project_id, root_id, root) else {
         return Ok(relative_path.into());
     };
     let resource = ResourceRef {
@@ -56,6 +56,11 @@ pub(super) fn canonical_migrated_path(
 pub(super) fn canonical_or_recorded_root(recorded: &str) -> AppResult<PathBuf> {
     let path = Path::new(recorded);
     if let Ok(canonical) = path.canonicalize() {
+        if authority_path_key(path) != authority_path_key(&canonical) {
+            return Err(AppError::InvalidRequest(
+                "legacy project root spelling is not canonical".into(),
+            ));
+        }
         if !canonical.is_dir() {
             return Err(AppError::InvalidRequest(
                 "legacy project root is not a directory".into(),
