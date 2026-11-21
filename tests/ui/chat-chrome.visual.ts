@@ -284,6 +284,11 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       page,
     }) => {
       await openChrome(page, harness, width, "home");
+      await page.evaluate(async () => {
+        const { installUnsentChatFixture } =
+          await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+        installUnsentChatFixture();
+      });
       const home = page.getByRole("region", { name: "New chat", exact: true });
       const heading = home.getByRole("heading", {
         name: "What should we work on?",

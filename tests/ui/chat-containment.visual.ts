@@ -337,9 +337,33 @@ for (const forcedColors of ["none", "active"] as const) {
     await expect(picker).toHaveCount(0);
     await expect(options).toHaveCount(0);
     await openComposerOptions(page);
-    await project.click();
+    // Session mode requires an established session, which fixes Chat scope.
+    // The unsent-chat matrix below exercises the interactive Project picker.
+    await expect(project).toBeDisabled();
+    await expect(project).toHaveAttribute("title", "Project: Sage");
+    await page.keyboard.press("Escape");
+    await expect(options).toHaveCount(0);
+    await prepare(page, profiles[0], false, false);
+    await page.evaluate(async () => {
+      const { installUnsentChatFixture } =
+        await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+      installUnsentChatFixture();
+    });
+    await openComposerOptions(page);
+    const draftProject = options.getByRole("menuitem", {
+      name: "Work in a project",
+      exact: true,
+    });
+    await expect(draftProject).toBeEnabled();
+    await draftProject.click();
     const projectPicker = page.locator(".searchable-picker__popover");
     await expectOverlay(projectPicker, viewports[3]);
+    await expect(
+      projectPicker.getByRole("option", {
+        name: "Don't work in a project",
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(projectPicker).toHaveCount(0);
   });
@@ -693,6 +717,13 @@ for (const profile of profiles) {
           reducedMotion: "no-preference",
         });
         await prepare(page, profile, true, false);
+        if (target === "Project") {
+          await page.evaluate(async () => {
+            const { installUnsentChatFixture } =
+              await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+            installUnsentChatFixture();
+          });
+        }
         const composer = page.locator("form.composer").first();
         if (target === "Harness") {
           const harness = composer.getByRole("button", {
@@ -781,7 +812,9 @@ for (const profile of profiles) {
             );
           }),
         ).toBe(true);
-        const selected = picker.getByRole("option").last();
+        // New project and Don't work in a project are now trailing actions;
+        // keep this geometry test in its current project after selection.
+        const selected = picker.getByRole("option", { selected: true });
         await selected.scrollIntoViewIfNeeded();
         expect(
           await selected.evaluate((element) => {

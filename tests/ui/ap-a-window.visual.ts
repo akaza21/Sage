@@ -98,16 +98,19 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
       });
       const sent = turn(request.chatId, initial.turns.length, "completed", []);
       sent.items = [
-        textItem(
-          {
-            chatId: request.chatId,
-            turnId: sent.id,
-            ordinal: 0,
-            createdAt: sent.createdAt,
-          },
-          "user",
-          request.prompt,
-        ),
+        {
+          ...textItem(
+            {
+              chatId: request.chatId,
+              turnId: sent.id,
+              ordinal: 0,
+              createdAt: sent.createdAt,
+            },
+            "user",
+            request.prompt,
+          ),
+          projectId: request.projectId,
+        },
       ];
       current = {
         ...initial,
@@ -130,6 +133,9 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   const composer = draft.getByRole("combobox", { name: "Message agent" });
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue("");
+  await expect(
+    draft.getByRole("button", { name: "Choose project", exact: true }),
+  ).toBeEnabled();
   await expect(panes).toHaveCount(0);
   expect(await listedIds()).toEqual(originalChats);
   await expect(chatRows.and(page.locator('[aria-current="page"]'))).toHaveCount(
@@ -151,6 +157,17 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
     (id) => !originalChats.includes(id),
   );
   await expect(panes.first()).toHaveAttribute("data-chat-id", createdId!);
+  await expect(
+    page
+      .getByRole("region", { name: "Recents", exact: true })
+      .locator(`.project-chat[data-chat-id="${createdId}"]`),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      return useWorkbenchStore.getState().project?.isInternal;
+    }),
+  ).toBe(true);
   await expect(
     panes.getByText("Start one chat from the unsaved draft", { exact: true }),
   ).toHaveCount(1);
@@ -319,8 +336,13 @@ for (const [control, organize] of [
     page,
   }) => {
     await page.setViewportSize({ width: 1888, height: 1080 });
-    // agent-dual has an unpinned chat, so Recents has a row to list.
+    // In project organization, Recents lists private chats, not project rows.
     await openScenario(page, "agent-dual", "agent");
+    await page.evaluate(async () => {
+      const { installPrivateRecentFixture } =
+        await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+      installPrivateRecentFixture();
+    });
     await page.evaluate(async (mode) => {
       const { setAgentRailOrganize } =
         await import("/src/workbench/agentRailViewPrefs.ts");
