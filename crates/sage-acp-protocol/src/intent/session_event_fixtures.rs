@@ -2,6 +2,7 @@ use super::*;
 
 pub fn notice(level: SessionNoticeLevel, text: &str) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        diagnostic: false,
         level,
         text: RequiredText::new("noticeText", text).unwrap(),
         source: None,

@@ -126,8 +126,10 @@ function notice(id: string) {
 }
 it("rechecks signed-out Claude on return within the cache TTL", async () => {
   install("cli-fixture");
-  render(notice("cli-fixture"));
-  expect(await screen.findByText("Claude Code isn't signed in")).toBeVisible();
+  render(<HarnessAccountMenu avatar="W" />);
+  expect(
+    await screen.findByRole("button", { name: "Account: sign-in needed" }),
+  ).toBeVisible();
   vi.useFakeTimers();
   signedIn = true;
   let complete!: (value: {
@@ -156,20 +158,27 @@ it("rechecks signed-out Claude on return within the cache TTL", async () => {
   expect(screen.queryByText("Claude Code isn't signed in")).toBeNull();
 });
 it.each(harnesses)(
-  "$name uses the same composer notice and clears after login",
+  "$name can sign in from the account menu",
   async (harness) => {
     install(harness.id);
-    render(notice(harness.id));
+    render(<HarnessAccountMenu avatar="W" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Account: sign-in needed" }),
+    );
     expect(
-      await screen.findByText(`${harness.name} isn't signed in`),
+      await screen.findByRole("menuitem", {
+        name: `Sign in to ${harness.name}`,
+      }),
     ).toBeVisible();
     fireEvent.click(
-      screen.getByRole("button", { name: `Sign in to ${harness.name}` }),
+      screen.getByRole("menuitem", { name: `Sign in to ${harness.name}` }),
     );
     await act(async () => {
       await refreshHarnessSignIn(harness.id);
     });
-    expect(screen.queryByText(`${harness.name} isn't signed in`)).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: `Sign in to ${harness.name}` }),
+    ).toBeNull();
   },
 );
 it.each(harnesses)("$name stays silent when signed in", async (harness) => {
@@ -228,10 +237,15 @@ it("unknown, unsupported and uninstalled harnesses stay quiet", async () => {
   expect(screen.queryByLabelText("Harness sign-in needs attention")).toBeNull();
 });
 
-it("uses Codex recovery as a sign-in problem", async () => {
+it("keeps cached sign-in problems out of the composer and location area", async () => {
   install("account-fixture");
-  render(notice("account-fixture"));
-  expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
+  await refreshHarnessSignIn("account-fixture");
+  const view = render(notice("account-fixture"));
+  await act(async () => {
+    await import("../chat/ComposerAddActions");
+  });
+  expect(view.container).toBeEmptyDOMElement();
+  expect(screen.queryByText("Codex isn't signed in")).toBeNull();
 });
 
 it("keeps failed and unknown checks silent", async () => {
@@ -272,7 +286,7 @@ it("updates the account badge from Settings account state without changing harne
       harnessDiscoveryPhase: "signInRequired",
     }),
   );
-  expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
+  expect(screen.queryByText("Codex isn't signed in")).toBeNull();
   expect(
     screen.getByLabelText("Harness sign-in needs attention"),
   ).toBeVisible();
@@ -296,15 +310,18 @@ it("updates the account badge from Settings account state without changing harne
 it("reports a failed login with a retry action instead of discarding it", async () => {
   install("cli-fixture");
   loginFailure = true;
-  render(notice("cli-fixture"));
+  render(<HarnessAccountMenu avatar="W" />);
   fireEvent.click(
-    await screen.findByRole("button", { name: "Sign in to Claude Code" }),
+    await screen.findByRole("button", { name: "Account: sign-in needed" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Sign in to Claude Code" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Could not start sign-in.",
   );
   expect(
-    screen.getByRole("button", { name: "Sign in to Claude Code" }),
+    screen.getByRole("menuitem", { name: "Sign in to Claude Code" }),
   ).toBeEnabled();
 });
 
@@ -449,7 +466,7 @@ it("keeps a newer expired-account fact across inventory refresh and view remount
     harnessAccountReadStartedAt: ++nativeTime,
     harnessDiscoveryPhase: "ready",
   });
-  const view = render(notice("account-fixture"));
+  const view = render(<HarnessAccountMenu avatar="W" />);
   act(() =>
     useWorkbenchStore.setState({
       harnessAccount: "signedOut",
@@ -457,12 +474,18 @@ it("keeps a newer expired-account fact across inventory refresh and view remount
       harnessDiscoveryPhase: "signInRequired",
     }),
   );
-  expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
+  expect(
+    await screen.findByRole("button", { name: "Account: sign-in needed" }),
+  ).toBeVisible();
   act(() => useWorkbenchStore.setState({ harnesses: [...harnesses] }));
-  expect(screen.getByText("Codex isn't signed in")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Account: sign-in needed" }),
+  ).toBeVisible();
   view.unmount();
-  render(notice("account-fixture"));
-  expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
+  render(<HarnessAccountMenu avatar="W" />);
+  expect(
+    await screen.findByRole("button", { name: "Account: sign-in needed" }),
+  ).toBeVisible();
 });
 
 it.each(harnesses)(

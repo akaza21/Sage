@@ -39,8 +39,14 @@ fn session_events(events: &[AdapterEvent]) -> Vec<SessionScopedEvent> {
         .collect()
 }
 
-fn notice(level: SessionNoticeLevel, source: &str, text: &str) -> SessionScopedEvent {
+fn notice(
+    level: SessionNoticeLevel,
+    source: &str,
+    text: &str,
+    diagnostic: bool,
+) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        diagnostic,
         level,
         text: RequiredText::new("text", text).unwrap(),
         source: Some(RequiredText::new("source", source).unwrap()),
@@ -69,7 +75,8 @@ fn warning_with_no_active_turn_becomes_a_session_warning() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Model metadata is missing; using defaults."
+            "Codex warning: Model metadata is missing; using defaults.",
+            false
         )]
     );
 }
@@ -110,6 +117,7 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
                 SessionNoticeLevel::Info,
                 "codex deprecation",
                 &format!("Codex deprecation notice: Notice {index}."),
+                false,
             )
         })
         .collect();
@@ -123,7 +131,8 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Sandbox is degraded."
+            "Codex warning: Sandbox is degraded.",
+            false
         )]
     );
 }
@@ -143,7 +152,8 @@ fn guardian_warning_during_a_turn_is_a_session_notice() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex approval reviewer",
-            "Codex approval reviewer warning: Automatic approval review is unavailable."
+            "Codex approval reviewer warning: Automatic approval review is unavailable.",
+            false
         )]
     );
 }
@@ -169,7 +179,8 @@ fn config_warning_names_the_file_line_and_details() {
             "codex config",
             "Codex configuration problem: Invalid configuration; using defaults.\n\
              In config.toml, line 4\n\
-             unknown variant `fast` for key `model_reasoning_effort`"
+             unknown variant `fast` for key `model_reasoning_effort`",
+            true,
         )]
     );
 }
@@ -188,7 +199,8 @@ fn deprecation_notice_is_an_info_notice_with_its_guidance() {
         [notice(
             SessionNoticeLevel::Info,
             "codex deprecation",
-            "Codex deprecation notice: `experimental_instructions_file` is deprecated."
+            "Codex deprecation notice: `experimental_instructions_file` is deprecated.",
+            false
         )]
     );
     let events = notify(
@@ -201,7 +213,8 @@ fn deprecation_notice_is_an_info_notice_with_its_guidance() {
         [notice(
             SessionNoticeLevel::Info,
             "codex deprecation",
-            "Codex deprecation notice: Old flag.\nUse the new flag."
+            "Codex deprecation notice: Old flag.\nUse the new flag.",
+            false
         )]
     );
 }
@@ -254,6 +267,7 @@ fn reroute_updates_the_effective_model_and_names_both_models() {
             "codex model",
             "Codex answered with gpt-6-astra-mini instead of the requested gpt-6-astra \
              because it flagged possible high-risk cybersecurity activity.",
+            false,
         ),
     ];
     assert_eq!(
@@ -397,7 +411,8 @@ fn upstream_additions_are_tolerated() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Heads up."
+            "Codex warning: Heads up.",
+            false
         )]
     );
     assert_eq!(
@@ -410,7 +425,8 @@ fn upstream_additions_are_tolerated() {
         notice(
             SessionNoticeLevel::Warning,
             "codex model",
-            "Codex answered with b instead of the requested a for a safety reason."
+            "Codex answered with b instead of the requested a for a safety reason.",
+            false
         )
     );
     assert!(matches!(
@@ -466,6 +482,23 @@ const IGNORED_SETTING_DETAILS: &str =
     "user [path] `computer_use.windows.always_allowed_app_ids` is ignored.";
 
 #[test]
+fn only_the_ignored_settings_summary_is_a_generic_configuration_diagnostic() {
+    for (message, diagnostic) in [
+        (IGNORED_SETTING.to_owned(), true),
+        ("Codex is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n`old_key` is ignored.".to_owned(), true),
+        ("Sandbox is degraded.".to_owned(), false),
+        ("Codex is ignoring sandbox restrictions.".to_owned(), false),
+        (format!("{IGNORED_SETTING} Sandbox is degraded."), false),
+    ] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        let warning = one_notice(&notify(&mut runtime, "warning", json!({"message": message})));
+        assert_eq!(warning.diagnostic, diagnostic, "{message}");
+        assert_eq!(warning.text.as_str(), format!("Codex warning: {message}"));
+    }
+}
+
+#[test]
 fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let config = json!({"summary": IGNORED_SETTING, "details": IGNORED_SETTING_DETAILS});
     let generic = json!({"message": format!("{IGNORED_SETTING}\n  {IGNORED_SETTING_DETAILS}")});
@@ -473,6 +506,7 @@ fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let first = one_notice(&notify(&mut runtime, "configWarning", config.clone()));
+    assert!(first.diagnostic);
     assert_eq!(first.source.unwrap().as_str(), "codex config");
     assert!(matches!(
         notify(&mut runtime, "warning", generic.clone()).as_slice(),
@@ -482,6 +516,7 @@ fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let first = one_notice(&notify(&mut runtime, "warning", generic));
+    assert!(first.diagnostic);
     assert_eq!(first.source.unwrap().as_str(), "codex");
     assert!(matches!(
         notify(&mut runtime, "configWarning", config).as_slice(),

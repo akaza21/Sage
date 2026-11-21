@@ -59,8 +59,9 @@ fn session_event(event: &AdapterEvent) -> SessionScopedEvent {
     event.clone()
 }
 
-fn warning(source: &str, text: &str) -> SessionScopedEvent {
+fn warning(source: &str, text: &str, diagnostic: bool) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        diagnostic,
         level: SessionNoticeLevel::Warning,
         text: RequiredText::new("text", text).unwrap(),
         source: Some(RequiredText::new("source", source).unwrap()),
@@ -93,7 +94,8 @@ fn startup_notices_journey_delivers_the_early_config_warning_on_bind_then_the_re
             "codex config",
             "Codex configuration problem: Invalid synthetic configuration; using defaults.\n\
              In config.toml, line 3\n\
-             unknown variant `turbo` for key `model_reasoning_effort`"
+             unknown variant `turbo` for key `model_reasoning_effort`",
+            true,
         )
     );
 
@@ -116,7 +118,8 @@ fn startup_notices_journey_delivers_the_early_config_warning_on_bind_then_the_re
             warning(
                 "codex model",
                 "Codex answered with fixture-model-safe instead of the requested fixture-model \
-                 because it flagged possible high-risk cybersecurity activity."
+                 because it flagged possible high-risk cybersecurity activity.",
+                false,
             ),
         ]
     );

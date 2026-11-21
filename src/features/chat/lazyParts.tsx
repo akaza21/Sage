@@ -28,6 +28,7 @@ import type * as EditSummaryChunk from "./acp/TurnEditSummary";
 import type * as ComposerOptionsChunk from "./ComposerAddActions";
 import type * as GoalChunk from "./BoundChatGoalControl";
 import type * as AttachmentsChunk from "./ComposerAttachments";
+import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -79,6 +80,7 @@ export function lazyParts<Chunk extends Components>(
       },
     ));
   function Part<K extends keyof Chunk & string>({
+    part: partName,
     fallback = null,
     onLoadFailed,
     ...props
@@ -87,7 +89,7 @@ export function lazyParts<Chunk extends Components>(
     fallback?: ReactNode;
     onLoadFailed?: () => void;
   } & ComponentProps<Chunk[K]>) {
-    const part: K = props.part;
+    const part: K = partName;
     const [Ready] = useState<AnyComponent | undefined>(() => {
       if (fellBack) {
         fellBack = false;
@@ -135,6 +137,9 @@ export const QuestionPart = lazyParts<typeof UserInputChunk>(
 );
 export const NoticePart = lazyParts<typeof SessionNoticeChunk>(
   () => import("./acp/SessionNoticeStrip"),
+);
+export const HarnessSignInPart = lazyParts<typeof HarnessSignInChunk>(
+  () => import("../harness/HarnessSignInStatus"),
 );
 export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
   () => import("../chatSearch/ChatSearchControl"),

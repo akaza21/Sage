@@ -1,9 +1,29 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   ComposerStatusNotices,
   type ComposerStatusNoticeProps,
 } from "./ComposerStatusNotices";
+
+const recoveryModule = vi.hoisted(() => {
+  let request!: () => void;
+  let reject!: (error: Error) => void;
+  return {
+    requested: new Promise<void>((resolve) => {
+      request = resolve;
+    }),
+    load: new Promise<never>((_, fail) => {
+      reject = fail;
+    }),
+    request: () => request(),
+    reject: () => reject(new Error("Recovery module unavailable")),
+  };
+});
+
+vi.mock("./ComposerAddActions", () => {
+  recoveryModule.request();
+  return recoveryModule.load;
+});
 
 const guidance = "No reviewed local binding is available for this harness.";
 const props: ComposerStatusNoticeProps = {
@@ -15,7 +35,10 @@ const props: ComposerStatusNoticeProps = {
   discoveryPhase: "ready",
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 it.each([
   ["idle", true],
@@ -33,22 +56,39 @@ it.each([
   },
 );
 
-it("preserves binding guidance and unrelated errors while sign-in UI loads", () => {
+it("preserves binding guidance and unrelated errors while recovery loads and fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(
     <ComposerStatusNotices
       {...props}
+      authRecovery={{
+        harnessId: "fixture",
+        scope: "chat-a",
+        onSignedIn: () => undefined,
+      }}
       signInHarness={{ name: "Harness", signIn: null }}
       workbenchError="Workspace could not be refreshed."
       chatError="The harness requires sign-in."
       imageStatus="Image upload failed."
     />,
   );
-  expect(screen.getByText(guidance)).toBeVisible();
-  expect(
-    screen.getAllByRole("alert").map((alert) => alert.textContent),
-  ).toEqual([
-    "Workspace could not be refreshed.",
-    "The harness requires sign-in.",
-    "Image upload failed.",
-  ]);
+  await act(async () => {
+    await recoveryModule.requested;
+  });
+  const expectNoticesVisible = () => {
+    expect(screen.getByText(guidance)).toBeVisible();
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.map((alert) => alert.textContent)).toEqual([
+      "Workspace could not be refreshed.",
+      "The harness requires sign-in.",
+      "Image upload failed.",
+    ]);
+    for (const alert of alerts) expect(alert).toBeVisible();
+  };
+  expectNoticesVisible();
+  await act(async () => {
+    recoveryModule.reject();
+    await vi.dynamicImportSettled();
+  });
+  expectNoticesVisible();
 });

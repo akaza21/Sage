@@ -316,6 +316,7 @@ export const SESSION_NOTICES_MAX = 16;
 
 export interface SessionNotice {
   level: "info" | "warning" | "error";
+  diagnostic?: boolean;
   text: string;
   source: string | null;
 }

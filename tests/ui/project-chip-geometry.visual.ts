@@ -14,6 +14,80 @@ import {
   dragAnswerPhrase,
 } from "./shared/transcriptSelection";
 
+for (const scoped of [false, true]) {
+  test(`project dropdown matches the compact search menu with project set: ${scoped}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openScenario(page, "agent-single", "agent");
+    await settleChatProjections(page);
+    await installChrome(page, true);
+    await page.evaluate(async (scoped) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      await useWorkbenchStore
+        .getState()
+        .openNewChatDraft(
+          scoped ? useWorkbenchStore.getState().project!.id : null,
+        );
+      const state = useWorkbenchStore.getState();
+      const project =
+        state.projects.find(
+          (entry) => entry.id === state.newChatDraft?.projectId,
+        ) ?? state.projects[0]!;
+      useWorkbenchStore.setState({
+        projects: [
+          { ...project, name: "Sage" },
+          ...["Alpha", "Reference sandbox", "Delta", "Go harness"].map(
+            (name, index) => ({ ...project, id: `sample-${index}`, name }),
+          ),
+        ],
+      });
+    }, scoped);
+    const trigger = page
+      .getByRole("group", { name: "Chat location" })
+      .getByRole("button", {
+        name: scoped ? "Project: Sage" : "Choose project",
+        exact: true,
+      });
+    await trigger.click();
+    const menu = page.locator(".searchable-picker__popover--menu");
+    const input = menu.getByPlaceholder("Search projects");
+    await expect(input).toBeFocused();
+    await expect(menu).toHaveCSS("outline-style", "none");
+    await expect(
+      menu.getByRole("option", {
+        name: "Don't work in a project",
+        exact: true,
+      }),
+    ).toHaveCount(scoped ? 1 : 0);
+    await expect(
+      menu.locator(".searchable-picker__selected-check"),
+    ).toHaveCount(scoped ? 1 : 0);
+    await menu.getByRole("option", { name: "Alpha", exact: true }).hover();
+    await expect(
+      menu.getByRole("option", { name: "Alpha", exact: true }),
+    ).toHaveCSS("box-shadow", "none");
+    const heading = (await page
+      .getByRole("heading", { name: "What should we work on?" })
+      .boundingBox())!;
+    const box = (await menu.boundingBox())!;
+    expect(
+      box.y >= heading.y + heading.height || box.y + box.height <= heading.y,
+    ).toBe(true);
+    await expect(page).toHaveScreenshot(
+      `project-dropdown-${scoped ? "selected" : "none"}.png`,
+    );
+    await input.press("ArrowDown");
+    await expect(menu).toHaveCSS("outline-style", "solid");
+    await input.press("Escape");
+    await expect(trigger).toBeFocused();
+    await trigger.press("ArrowDown");
+    await expect(menu).toBeVisible();
+    await expect(menu).toHaveCSS("outline-style", "solid");
+    await menu.getByPlaceholder("Search projects").press("Escape");
+  });
+}
+
 async function openSplitComposerScenario(page: Page) {
   await openSelectionScenario(page);
   await dragAnswerPhrase(page);
@@ -435,7 +509,12 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   await project.click();
   const menu = page.locator(".searchable-picker__popover--menu");
   await expect(menu).toBeVisible();
-  expect((await menu.boundingBox())!.width).toBe(248);
+  expect((await menu.boundingBox())!.width).toBeLessThanOrEqual(280);
+  await menu.getByPlaceholder("Search projects").fill("missing");
+  await expect(
+    menu.getByRole("option", { name: "Sage project with a long name" }),
+  ).toHaveCount(0);
+  expect((await menu.boundingBox())!.width).toBe(224);
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await page.emulateMedia({ forcedColors: "active" });
@@ -619,10 +698,16 @@ test("new chat can choose no project and distinguishes duplicate project names",
   await expect(
     page.getByRole("option", { name: "New project", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "Don't work in a project", exact: true }),
+  ).toHaveCount(0);
   await page
-    .getByRole("option", { name: "Don't work in a project", exact: true })
-    .click();
+    .getByRole("combobox", { name: "Choose project", exact: true })
+    .press("Escape");
   await choose.click();
+  await page
+    .getByRole("combobox", { name: "Choose project", exact: true })
+    .fill("");
   await page
     .getByRole("option", { name: "Sage, /work/first", exact: true })
     .click();

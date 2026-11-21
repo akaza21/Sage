@@ -9,14 +9,65 @@ afterEach(cleanup);
 const notices = safeSessionNotices([
   {
     level: "warning",
-    text: "Codex configuration problem: unknown key\nIn config.toml, line 4",
-    source: "codex config",
+    text: "Approval review needs attention",
+    source: "fixture",
+    diagnostic: false,
   },
-  { level: "info", text: "Codex answered with gpt-5 mini", source: null },
+  {
+    level: "info",
+    text: "Codex answered with gpt-5 mini",
+    source: null,
+    diagnostic: false,
+  },
   { level: "error", text: "Extension crashed", source: "pi extension" },
 ]);
 
 describe("SessionNoticeStrip", () => {
+  it("replays legacy actionable warnings visibly in chat", () => {
+    const legacy = safeSessionNotices([
+      {
+        level: "warning",
+        text: "The MCP server calendar needs you to sign in again; its tools are unavailable until then.",
+        source: "codex mcp",
+      },
+      { level: "warning", text: "Sandbox is degraded.", source: "codex" },
+      { level: "error", text: "Legacy blocking failure", source: null },
+    ]);
+    render(<SessionNoticeStrip session="restored" notices={legacy} />);
+    expect(
+      screen.getByText(
+        "The MCP server calendar needs you to sign in again; its tools are unavailable until then.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("Sandbox is degraded.")).toBeVisible();
+    expect(screen.getByText("Legacy blocking failure")).toBeVisible();
+  });
+  it("keeps protocol diagnostics out of chat while retaining blocking errors", () => {
+    const decoded = safeSessionNotices([
+      {
+        level: "warning",
+        text: "Unknown configuration key",
+        source: "fixture",
+        diagnostic: true,
+      },
+      {
+        level: "error",
+        text: "Session cannot start",
+        source: "fixture",
+        diagnostic: true,
+      },
+      {
+        level: "warning",
+        text: "Approval requires attention",
+        source: "fixture",
+        diagnostic: false,
+      },
+    ]);
+    render(<SessionNoticeStrip session="s1" notices={decoded} />);
+    expect(screen.queryByText("Unknown configuration key")).toBeNull();
+    expect(screen.getByText("Session cannot start")).toBeVisible();
+    expect(screen.getByText("Approval requires attention")).toBeVisible();
+  });
   it("shows each notice with its level and source, and dismisses one or all", () => {
     render(<SessionNoticeStrip session="s1" notices={notices} />);
     const items = screen.getAllByRole("listitem");
@@ -26,7 +77,7 @@ describe("SessionNoticeStrip", () => {
       "acp-session-notice acp-session-notice--error",
     ]);
     expect(items[0]!.textContent).toContain("Warning");
-    expect(items[0]!.textContent).toContain("codex config");
+    expect(items[0]!.textContent).toContain("fixture");
     expect(items[2]!.textContent).toContain("Extension crashed");
 
     fireEvent.click(

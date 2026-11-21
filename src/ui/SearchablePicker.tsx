@@ -1,4 +1,5 @@
 import {
+  createElement,
   useEffect,
   useCallback,
   useId,
@@ -7,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentProps,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import type { HarnessBrand } from "../domain/harness";
@@ -32,77 +34,24 @@ export interface SearchablePickerOption {
   subtitle?: string;
   /** Keep a terminal action available while filtering the choices. */
   alwaysVisible?: boolean;
+  leadingIcon?: ComponentType<{ size?: number }>;
+  separatorBefore?: boolean;
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
   icon?: HarnessBrand | "generic";
   logo?: string;
-  action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
 const preload = () => void preloadSearchablePicker().catch(() => undefined);
 
 type PopoverProps = ComponentProps<typeof PopoverChunk.SearchablePickerPopover>;
-const renderPopover = (
-  Loaded: typeof PopoverChunk.SearchablePickerPopover,
-  props: PopoverProps,
-) => <Loaded {...props} />;
-
 function PopoverSlot(props: PopoverProps) {
   const Loaded = loadedSearchablePickerPopover();
-  return Loaded ? renderPopover(Loaded, props) : null;
+  return Loaded ? createElement(Loaded, props) : null;
 }
 
-function usePopoverLoad(wanted: boolean, onFailure: () => void) {
-  const Loaded = useSyncExternalStore(
-    subscribeSearchablePicker,
-    loadedSearchablePickerPopover,
-  );
-  useEffect(
-    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
-    [],
-  );
-  useEffect(() => {
-    if (!wanted || Loaded) return;
-    let live = true;
-    void preloadSearchablePicker().catch(() => live && onFailure());
-    return () => {
-      live = false;
-    };
-  }, [Loaded, onFailure, wanted]);
-  return Loaded;
-}
-
-export function SearchablePicker({
-  ariaLabel,
-  candidates,
-  className,
-  disabled = false,
-  emptyLabel = "Select…",
-  footer,
-  onOptionRender,
-  open: controlledOpen,
-  onOpenChange,
-  popoverClassName,
-  popoverGap,
-  popoverPlacement,
-  triggerClassName,
-  triggerRole,
-  triggerIcon,
-  triggerLabel,
-  triggerDetail,
-  appearance = "field",
-  popoverAppearance = "list",
-  chevron = true,
-  sectionLabel,
-  searchable = true,
-  onSelect,
-  portalTarget = "document",
-  selectedId,
-  state,
-  stateDetail,
-  stateTitle,
-}: {
+type SearchablePickerProps = {
   ariaLabel: string;
   candidates: readonly SearchablePickerOption[];
   className?: string;
@@ -124,27 +73,50 @@ export function SearchablePicker({
   triggerDetail?: ReactNode;
   /** "plain" draws the trigger as text in its surroundings, with no field chrome. */
   appearance?: "field" | "plain";
-  /** "menu" draws the open list as a compact menu with a borderless search field. */
-  popoverAppearance?: "list" | "menu";
+  /** Draw the open list as a compact menu with a borderless search field. */
+  menuAppearance?: boolean;
   chevron?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
+  searchPlaceholder?: string;
   onSelect: (id: string) => void;
   portalTarget?: "closest-dialog" | "closest-popover" | "document";
   selectedId: string | null;
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
   stateTitle?: string;
-}) {
+};
+
+export function SearchablePicker(props: SearchablePickerProps) {
+  const {
+    ariaLabel,
+    candidates,
+    className,
+    disabled = false,
+    emptyLabel = "Select…",
+    open: controlledOpen,
+    onOpenChange,
+    triggerClassName,
+    triggerRole,
+    triggerIcon,
+    triggerLabel,
+    triggerDetail,
+    appearance = "field",
+    chevron = true,
+    searchable = true,
+    portalTarget = "document",
+    selectedId,
+    stateTitle,
+  } = props;
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(true);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
-  const [opened, setOpened] = useState(expanded);
-  if (expanded && !opened) setOpened(true);
   const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   if (expanded && loadFailed) setLoadFailed(false);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
@@ -161,11 +133,26 @@ export function SearchablePicker({
     },
     [searchable, setOpen],
   );
-  const failLoad = useCallback(() => {
-    setLoadFailed(true);
-    close();
-  }, [close]);
-  const Loaded = usePopoverLoad(expanded, failLoad);
+  const Loaded = useSyncExternalStore(
+    subscribeSearchablePicker,
+    loadedSearchablePickerPopover,
+  );
+  useEffect(
+    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
+    [],
+  );
+  useEffect(() => {
+    if (!expanded || Loaded) return;
+    let live = true;
+    void preloadSearchablePicker().catch(() => {
+      if (!live) return;
+      setLoadFailed(true);
+      close();
+    });
+    return () => {
+      live = false;
+    };
+  }, [Loaded, close, expanded]);
   const coldOpen = useColdOpen({
     dismiss: close,
     loaded: Boolean(Loaded),
@@ -190,7 +177,7 @@ export function SearchablePicker({
   }
 
   return (
-    <div className={["searchable-picker", className].filter(Boolean).join(" ")}>
+    <div className={`searchable-picker ${className ?? ""}`}>
       <button
         ref={triggerRef}
         type="button"
@@ -212,10 +199,24 @@ export function SearchablePicker({
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
         onPointerEnter={preload}
-        onPointerDown={preload}
+        onPointerDown={() => {
+          setKeyboardOpen(false);
+          preload();
+        }}
         onFocus={preload}
         onKeyUp={coldOpen.onKeyUp}
         onKeyDown={(event) => {
+          setKeyboardOpen(true);
+          if (
+            !open &&
+            (triggerRole
+              ? event.key === "ArrowRight"
+              : event.key === "ArrowDown" || event.key === "ArrowUp")
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            return setOpen(true);
+          }
           if (coldOpen.onKeyDown(event) || searchable || !open) return;
           if (event.key === "Escape") {
             event.preventDefault();
@@ -248,41 +249,23 @@ export function SearchablePicker({
           detail="Open it again to retry."
         />
       ) : null}
-      {opened && Loaded ? (
+      {expanded && Loaded ? (
         <PopoverSlot
-          ariaLabel={ariaLabel}
-          candidates={candidates}
-          close={close}
-          disabled={disabled}
-          draft={draft}
-          expanded={expanded}
-          focusMoved={coldOpen.focusMoved}
-          footer={footer}
-          id={id}
-          onOptionRender={onOptionRender}
-          onSelect={onSelect}
-          open={open}
-          popoverClassName={[
-            popoverAppearance === "menu"
-              ? "searchable-picker__popover--menu"
-              : null,
-            popoverClassName,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          popoverGap={popoverGap}
-          popoverPlacement={popoverPlacement}
-          portalTarget={portalTarget}
-          searchable={searchable}
-          sectionLabel={sectionLabel}
-          selected={selected}
-          selectedId={selectedId}
-          setDraft={setDraft}
-          setOpen={setOpen}
-          state={state}
-          stateDetail={stateDetail}
-          stateTitle={stateTitle}
-          triggerRef={triggerRef}
+          {...props}
+          {...{
+            close,
+            draft,
+            query: query ?? draft,
+            onQueryChange: setQuery,
+            focusMoved: coldOpen.focusMoved,
+            id,
+            portalTarget,
+            searchable,
+            keyboardOpen,
+            selected,
+            setDraft,
+            triggerRef,
+          }}
         />
       ) : null}
     </div>

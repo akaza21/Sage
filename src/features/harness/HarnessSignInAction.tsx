@@ -35,14 +35,16 @@ export function HarnessLoginAction({
           canCancel
             ? `Cancel sign-in to ${harness.name}`
             : check
-              ? "Check sign-in"
+              ? menuItem
+                ? `Check sign-in for ${harness.name}`
+                : "Check sign-in"
               : `Sign in to ${harness.name}`
         }
-        disabled={Boolean(checkRequirement) || (canCancel ? cancelling : busy)}
+        disabled={!!checkRequirement || (canCancel ? cancelling : busy)}
         onClick={() => {
+          setError(null);
           if (canCancel) {
             setCancelling(true);
-            setError(null);
             void useWorkbenchStore
               .getState()
               .cancelHarnessSignIn()
@@ -51,11 +53,10 @@ export function HarnessLoginAction({
             return;
           }
           setBusy(true);
-          setError(null);
           const action = check
             ? refreshHarnessSignIn(harness.id).then((state) => {
                 if (state !== "signedIn" && state !== "signedOut")
-                  throw new Error("Check unavailable");
+                  throw new Error(state);
                 if (state === "signedOut")
                   setError(`${harness.name} is still signed out.`);
               })

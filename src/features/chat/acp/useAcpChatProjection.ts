@@ -44,9 +44,12 @@ export function useAcpChatLoadFailure(boundChatId?: string | null) {
 export function useAcpChatProjection(
   enabled = true,
   boundChatId?: string | null,
+  mode: "read" | "subscribe" = "read",
 ) {
   const owners = useContext(AcpProjectionOwnerContext);
-  const externallyOwned = !!boundChatId && owners?.has(boundChatId) === true;
+  const externallyOwned =
+    mode === "subscribe" ||
+    (!!boundChatId && owners?.has(boundChatId) === true);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -82,9 +85,9 @@ export function useAcpChatProjection(
     (state) => state.takeProjectionChange,
   );
   useEffect(() => {
-    if (!boundChatId) return;
+    if (!boundChatId || externallyOwned) return;
     return () => releaseAcpProjectionStore(boundChatId);
-  }, [boundChatId]);
+  }, [boundChatId, externallyOwned]);
 
   useEffect(() => {
     if (externallyOwned) return;

@@ -37,11 +37,16 @@ pub(super) fn warning(
 ) -> Result<IngressDisposition, IngressError> {
     let thread = optional_text(params, "threadId", ID_BYTES)?;
     let message = human(params, "message")?;
-    let notice = notice(
+    let mut notice = notice(
         SessionNoticeLevel::Warning,
         "codex",
         format!("Codex warning: {message}"),
     )?;
+    // `warning` has only message/threadId, no category or code. Match only
+    // Codex's ignored-setting summary; other warnings remain actionable.
+    if ignored_settings_warning(&message) {
+        notice = diagnostic(notice);
+    }
     // A named thread cannot be told apart from a foreign one before a
     // thread is bound, so it is ignored rather than failing.
     if thread.is_some() && adapter.bound_thread_id().is_none() {
@@ -57,6 +62,24 @@ pub(super) fn warning(
         None => thread_less(adapter, notice),
         Some(session) => single(session, notice),
     }
+}
+
+fn ignored_settings_warning(message: &str) -> bool {
+    let Some((count, rest)) = message
+        .strip_prefix("Codex is ignoring ")
+        .and_then(|text| text.split_once(' '))
+    else {
+        return false;
+    };
+    !count.is_empty()
+        && count.bytes().all(|byte| byte.is_ascii_digit())
+        && matches!(
+            rest.lines().next(),
+            Some(
+                "unrecognized configuration setting. Check for typos or deprecated settings."
+                    | "unrecognized configuration settings. Check for typos or deprecated settings."
+            )
+        )
 }
 
 pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
@@ -125,7 +148,11 @@ pub(super) fn config_warning(
     if let Some(details) = &details {
         let _ = write!(message, "\n{details}");
     }
-    let notice = notice(SessionNoticeLevel::Warning, "codex config", message)?;
+    let notice = diagnostic(notice(
+        SessionNoticeLevel::Warning,
+        "codex config",
+        message,
+    )?);
     let reported = match &details {
         Some(details) => format!("{summary}\n{details}"),
         None => summary,
@@ -357,10 +384,18 @@ pub(super) fn notice(
 ) -> Result<SessionScopedEvent, IngressError> {
     let message = clip(&message, SESSION_NOTICE_TEXT_BYTES);
     Ok(SessionScopedEvent::Notice(SessionNotice {
+        diagnostic: false,
         level,
         text: RequiredText::new("noticeText", message).map_err(|_| IngressError::Content)?,
         source: Some(RequiredText::new("noticeSource", source).map_err(|_| IngressError::Content)?),
     }))
+}
+
+fn diagnostic(mut event: SessionScopedEvent) -> SessionScopedEvent {
+    if let SessionScopedEvent::Notice(notice) = &mut event {
+        notice.diagnostic = true;
+    }
+    event
 }
 
 fn optional_text<'a>(
