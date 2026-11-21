@@ -53,7 +53,7 @@ export function createActionProjectionCommit(dependencies: {
       page,
     );
     if (disposition !== "accepted") return null;
-    harnessSignInFailures.page?.(page);
+    harnessSignInFailures.page(page);
     return page;
   };
 }

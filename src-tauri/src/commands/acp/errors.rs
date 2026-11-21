@@ -23,13 +23,20 @@ pub(super) fn persisted_sign_in_error(
 ) -> AcpIpcError {
     if let AcpIpcError::SignInRequired { terminal_at, .. } = &mut failure {
         let refused_at = sage_core::time::now_millis();
+        let mut connection = match state.database.write_connection() {
+            Ok(connection) => connection,
+            Err(error) => {
+                tracing::warn!(?error, "sign-in refusal evidence was not admitted");
+                return failure;
+            }
+        };
         match crate::acp::store::commands::sign_in_evidence::command_terminal_at(
-            &mut state.database.connection(),
+            &mut connection,
             command,
             refused_at,
         ) {
             Ok(stored) => *terminal_at = Some(stored),
-            Err(error) => return store_error(error),
+            Err(error) => tracing::warn!(?error, "sign-in refusal evidence was not stored"),
         }
     }
     failure
@@ -307,6 +314,10 @@ pub(super) fn intent_error(error: IntentError) -> AcpIpcError {
         message: safe_message("The ACP intent is stale or belongs to another resource."),
     }
 }
+
+#[cfg(test)]
+#[path = "errors_storage_tests.rs"]
+mod storage_tests;
 
 #[cfg(test)]
 mod tests {

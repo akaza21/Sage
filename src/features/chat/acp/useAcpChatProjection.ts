@@ -114,7 +114,7 @@ export function useAcpChatProjection(
           .then((projection) => {
             if (disposed) return;
             if (completePageLoad(intent, projection) === "accepted") {
-              harnessSignInFailures.page?.(projection);
+              harnessSignInFailures.page(projection);
             }
           })
           .catch((error: unknown) => {

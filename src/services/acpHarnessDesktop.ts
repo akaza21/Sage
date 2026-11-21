@@ -9,29 +9,73 @@ import type {
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 
-// The account cache connects on first use. Until then there is no cached fact
-// to supersede. This port retains no events or views.
 export interface HarnessSignInCommand {
   bindingId?: string;
   busy: boolean;
   error: { failure: AcpCommandFailure } | null;
 }
+// Evidence outlives lazy UI initialization without retaining pages or errors.
+type SignInEvidence = readonly [
+  evidenceAt: number,
+  state: "signedIn" | "signedOut" | "unavailable",
+];
+export const harnessSignInEvidence = new Map<string, SignInEvidence>();
+export function rememberSignInEvidence(
+  bindingId: string | undefined,
+  evidenceAt: number | null | undefined,
+  state: SignInEvidence[1],
+) {
+  if (!bindingId || evidenceAt == null) return;
+  const previous = harnessSignInEvidence.get(bindingId);
+  if (
+    !previous ||
+    previous[0] < evidenceAt ||
+    (previous[0] === evidenceAt &&
+      state === "signedOut" &&
+      previous[1] !== state)
+  ) {
+    harnessSignInEvidence.set(bindingId, [evidenceAt, state]);
+    if (harnessSignInEvidence.size > 32)
+      harnessSignInEvidence.delete(harnessSignInEvidence.keys().next().value!);
+    harnessSignInFailures.changed?.();
+    return true;
+  }
+}
 export const harnessSignInFailures: {
-  command?: (state: HarnessSignInCommand) => void;
-  page?: (page: AcpChatPage) => void;
-} = {};
+  changed?: () => void;
+  command: (state: HarnessSignInCommand) => void;
+  page: (page: AcpChatPage) => void;
+} = {
+  command({ bindingId, busy, error }: HarnessSignInCommand) {
+    if (busy && error?.failure.kind === "signInRequired")
+      rememberSignInEvidence(bindingId, error.failure.terminalAt, "signedOut");
+  },
+  page(page: AcpChatPage) {
+    for (const turn of page.turns)
+      if (
+        turn.state === "failed" &&
+        turn.terminalReason?.kind === "authRequired"
+      )
+        rememberSignInEvidence(
+          page.sessions.find((session) => session.id === turn.sessionId)
+            ?.bindingId,
+          turn.terminalAt,
+          "signedOut",
+        );
+  },
+};
 
 // Harness discovery runs before Chat; it must not retain transcript adapters.
 export const acpHarnessDesktop = {
-  async startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+  startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("start_codex_auth", { ...request, consent: true });
   },
 
-  async cancelCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+  cancelCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("cancel_codex_auth", request);
   },
 
-  async logoutCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+  logoutCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("logout_codex_auth", request);
   },
 

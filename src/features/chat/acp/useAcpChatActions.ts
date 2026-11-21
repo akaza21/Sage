@@ -140,7 +140,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
                   errorBindingId: state.error ? state.bindingId : null,
                 },
           );
-          if (accepted) harnessSignInFailures.command?.(state);
+          if (accepted) harnessSignInFailures.command(state);
         },
         clearComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();

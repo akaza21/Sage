@@ -6,9 +6,9 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import {
   harnessSignInFailures,
-  type HarnessSignInCommand,
+  harnessSignInEvidence,
+  rememberSignInEvidence,
 } from "../../services/acpHarnessDesktop";
-import type { AcpChatPage } from "../../domain/acp";
 
 /** Native account adapters own truth; visible surfaces share this bounded cache. */
 export type HarnessSignInState =
@@ -90,6 +90,19 @@ function publish(harnessId: string, status: HarnessSignInStatus) {
     status = { ...status, state: "signedOut" };
   identities.set(harnessId, provider.key);
   statuses.set(harnessId, status);
+  const bindingId = signInHarnesses().find(
+    (entry) => entry.id === harnessId,
+  )?.bindingId;
+  if (
+    bindingId &&
+    status.evidenceAt != null &&
+    (status.state === "signedIn" ||
+      status.state === "signedOut" ||
+      status.state === "unavailable")
+  ) {
+    if (rememberSignInEvidence(bindingId, status.evidenceAt, status.state))
+      return;
+  }
   notify();
 }
 
@@ -98,10 +111,20 @@ export function harnessSupportsSignIn(harnessId: string): boolean {
 }
 
 export function harnessSignInStatus(harnessId: string): HarnessSignInStatus {
-  if (!harnessSupportsSignIn(harnessId)) return UNSUPPORTED;
-  if (identities.get(harnessId) !== signInProvider(harnessId)?.key)
-    return UNKNOWN;
-  return statuses.get(harnessId) ?? UNKNOWN;
+  const provider = signInProvider(harnessId);
+  if (!provider) return UNSUPPORTED;
+  const status =
+    identities.get(harnessId) === provider.key
+      ? (statuses.get(harnessId) ?? UNKNOWN)
+      : UNKNOWN;
+  const bindingId = signInHarnesses().find(
+    (entry) => entry.id === harnessId,
+  )?.bindingId;
+  const evidence = bindingId && harnessSignInEvidence.get(bindingId);
+  return evidence &&
+    (status.evidenceAt == null || evidence[0] >= status.evidenceAt)
+    ? { ...status, state: evidence[1], evidenceAt: evidence[0] }
+    : status;
 }
 
 export async function refreshHarnessSignIn(
@@ -222,6 +245,7 @@ export function resetHarnessSignInForTest() {
   for (const harnessId of [...polls.keys()]) stopPolling(harnessId);
   refreshes.clear();
   statuses.clear();
+  harnessSignInEvidence.clear();
   identities.clear();
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
@@ -264,32 +288,4 @@ export function harnessesNeedingSignIn() {
   );
 }
 
-function reportBindingSignInRequired(
-  bindingId: string | undefined,
-  terminalAt: number | null | undefined,
-) {
-  if (terminalAt == null) return;
-  const harness = signInHarnesses().find(
-    (entry) => entry.bindingId === bindingId,
-  );
-  if (harness) reportHarnessSignInRequired(harness.id, terminalAt);
-}
-Object.assign(harnessSignInFailures, {
-  command({ bindingId, busy, error }: HarnessSignInCommand) {
-    if (busy && error?.failure.kind === "signInRequired")
-      reportBindingSignInRequired(bindingId, error.failure.terminalAt);
-  },
-  page(page: AcpChatPage) {
-    for (const turn of page.turns) {
-      if (
-        turn.state === "failed" &&
-        turn.terminalReason?.kind === "authRequired"
-      )
-        reportBindingSignInRequired(
-          page.sessions.find((session) => session.id === turn.sessionId)
-            ?.bindingId,
-          turn.terminalAt,
-        );
-    }
-  },
-});
+harnessSignInFailures.changed = notify;
