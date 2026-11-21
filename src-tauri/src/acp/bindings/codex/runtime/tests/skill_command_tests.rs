@@ -48,6 +48,73 @@ fn read_skills(runtime: &mut CodexRuntime, skills: Value) {
 }
 
 #[test]
+fn oversized_codex_catalog_reaches_shared_admission_through_wire_ingress() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let id = request_id(&query);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(runtime);
+    let skills: Vec<_> = (0..600)
+        .map(|i| skill(&format!("cmd{i:03}"), true))
+        .collect();
+    let incoming = skills_reply(id, json!(skills));
+    runtime.validate_ingress(&incoming).unwrap();
+    let batch = runtime.ingest(&incoming, &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    let list = runtime.available_commands().snapshot();
+    assert_eq!((list.commands.len(), list.omitted), (512, 92));
+    assert_eq!(list.commands[0].name, "compact");
+    assert_eq!(list.commands.last().unwrap().name, "cmd507");
+    assert!(list.validate(list.revision, "/cmd507").is_ok());
+    assert!(list.validate(list.revision, "/cmd508").is_err());
+}
+
+#[test]
+fn codex_catalog_ceiling_keeps_unrelated_arrays_and_uncorrelated_replies_bounded() {
+    use crate::acp::transport::StructuralError;
+    for count in [2048, 2049] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        let query = runtime.discover_commands().unwrap().unwrap();
+        let id = request_id(&query);
+        runtime
+            .resolve_egress(query.into_token(), EgressResolution::Queued)
+            .unwrap();
+        let oversized = json!(vec![Value::Null; 513]);
+        let invalid_method =
+            frame(json!({"id":id,"method":null,"result":{"data":[{"skills":oversized}]}}));
+        assert_eq!(
+            runtime.validate_ingress(&invalid_method),
+            Err(StructuralError::MethodType)
+        );
+        assert!(runtime.ingest(&invalid_method, &Mapper).is_err());
+        for value in [
+            json!({"id":id+1,"result":{"data":[{"skills":oversized}]}}),
+            json!({"id":id,"error":{},"result":{"data":[{"skills":oversized}]}}),
+            json!({"id":id,"result":{"data":oversized}}),
+            json!({"id":id,"result":{"data":[{"skills":[],"errors":oversized}]}}),
+            json!({"id":id,"result":{"data":[{"skills":[{"aliases":oversized}]}]}}),
+        ] {
+            let incoming = frame(value);
+            assert_eq!(
+                runtime.validate_ingress(&incoming),
+                Err(StructuralError::ArrayTooLarge)
+            );
+            assert!(runtime.ingest(&incoming, &Mapper).is_err());
+        }
+        let skills: Vec<_> = (0..count)
+            .map(|i| skill(&format!("cmd{i:04}"), true))
+            .collect();
+        let incoming = skills_reply(id, json!(skills));
+        assert_eq!(runtime.validate_ingress(&incoming).is_ok(), count == 2048);
+        assert_eq!(runtime.ingest(&incoming, &Mapper).is_ok(), count == 2048);
+    }
+}
+
+#[test]
 fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_changed() {
     let mut runtime = fixture_runtime();
     assert!(runtime.discover_commands().unwrap().is_none());
@@ -56,6 +123,8 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
         json!({"name":"two words","description":"d","enabled":true,"path":"p","scope":"repo"});
     let mut short = skill("pdf", true);
     short["interface"] = json!({"shortDescription":"Read PDFs"});
+    let mut plugin = skill("lint", true);
+    plugin["pluginId"] = json!("quality");
     read_skills(
         &mut runtime,
         json!([
@@ -63,7 +132,7 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
             skill("off", false),
             invalid,
             skill("pdf", true),
-            skill("lint", true)
+            plugin
         ]),
     );
     let list = runtime.available_commands().snapshot();
@@ -74,7 +143,9 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
         .filter(|c| c.source == CommandSource::Skill)
         .collect();
     assert_eq!(skills[0].description, "Read PDFs");
+    assert_eq!(skills[0].source_label.as_deref(), Some("user"));
     assert_eq!(skills[1].description, "lint in full");
+    assert_eq!(skills[1].source_label.as_deref(), Some("quality"));
     assert!(runtime.discover_commands().unwrap().is_none());
     runtime
         .ingest(

@@ -249,6 +249,12 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             intent,
         )
     }
+    pub(crate) fn validate_ingress(
+        &self,
+        frame: &Frame,
+    ) -> Result<(), crate::acp::transport::StructuralError> {
+        self.adapter.validate_ingress(frame)
+    }
     pub(crate) fn discard_invalid_response(
         &mut self,
         frame: &Frame,

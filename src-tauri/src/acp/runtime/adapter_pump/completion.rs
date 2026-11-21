@@ -88,7 +88,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 }
             }
             if let Some(current) = frame {
-                let batch = if validate_structure(&current).is_err() {
+                let batch = if self.adapter.validate_ingress(&current).is_err() {
                     self.adapter.discard_invalid_response(&current)
                 } else {
                     self.adapter.ingest(&current, &self.resources)
@@ -357,7 +357,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 // The same structural check idle ingestion applies first: a
                 // frame it would discard is never a proven duplicate.
                 if let Some(frame) = frame {
-                    if validate_structure(&frame).is_err() {
+                    if self.adapter.validate_ingress(&frame).is_err() {
                         return false;
                     }
                     frames.push(frame);

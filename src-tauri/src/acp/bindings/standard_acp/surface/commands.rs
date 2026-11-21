@@ -7,14 +7,12 @@ use crate::acp::{
 use serde_json::Value;
 use std::sync::Arc;
 
-use super::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS};
-
 pub(crate) fn update_commands(
     value: &Value,
     session: &str,
     commands: &mut Arc<CommandState>,
 ) -> Result<bool, AdapterRuntimeError> {
-    update_commands_with(value, session, commands, &[])
+    update_commands_with(value, session, commands, &[], |command| command)
 }
 
 /// A `first` row that is also one of the harness's own built-ins keeps the harness's
@@ -25,6 +23,7 @@ pub(crate) fn update_commands_with(
     session: &str,
     commands: &mut Arc<CommandState>,
     first: &[AvailableCommand],
+    classify: impl Fn(AvailableCommand) -> AvailableCommand,
 ) -> Result<bool, AdapterRuntimeError> {
     if value["params"]["update"]["sessionUpdate"] != "available_commands_update" {
         return Ok(false);
@@ -40,26 +39,27 @@ pub(crate) fn update_commands_with(
     }
     let parsed = super::command_list::parse_acp(&value["params"]["update"]["availableCommands"]);
     commands.replace(parsed.map(|listed| {
+        let mut listed: Vec<_> = listed.into_iter().map(classify).collect();
         if first.is_empty() {
             return listed;
         }
         let routed: Vec<_> = first
             .iter()
             .map(|own| {
-                let builtin = listed.iter().find(|harness| {
+                let builtin = listed.iter().position(|harness| {
                     harness.name == own.name && harness.source == CommandSource::Builtin
                 });
                 match builtin {
-                    Some(harness) => AvailableCommand {
-                        description: harness.description.clone(),
-                        aliases: harness.aliases.clone(),
-                        ..own.clone()
+                    Some(index) => AvailableCommand {
+                        dispatch: own.dispatch.clone(),
+                        input_hint: own.input_hint.clone(),
+                        ..listed.remove(index)
                     },
                     None => own.clone(),
                 }
             })
             .collect();
-        first_listed(routed.into_iter().chain(listed))
+        routed.into_iter().chain(listed).collect()
     }))?;
     Ok(true)
 }
@@ -76,20 +76,4 @@ pub(crate) fn panel(
         CommandSource::Builtin,
         CommandDispatch::Panel(panel),
     )
-}
-
-pub(crate) fn first_listed(
-    commands: impl IntoIterator<Item = AvailableCommand>,
-) -> Vec<AvailableCommand> {
-    let mut names = std::collections::HashSet::new();
-    let mut bytes = 0usize;
-    commands
-        .into_iter()
-        .filter(|command| names.insert(command.name.clone()))
-        .take(MAX_COMMANDS)
-        .take_while(|command| {
-            bytes += command.listed_bytes();
-            bytes <= MAX_COMMAND_BYTES
-        })
-        .collect()
 }

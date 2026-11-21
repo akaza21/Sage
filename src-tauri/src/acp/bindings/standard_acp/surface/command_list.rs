@@ -14,28 +14,50 @@ pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 mod entry;
 pub(crate) use entry::*;
 
-fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    if commands.len() > MAX_COMMANDS {
-        return Err(AdapterRuntimeError::BatchCount);
+/// Stable priority seam: T2 can rank curated commands ahead of built-ins here.
+fn priority(command: &AvailableCommand) -> u8 {
+    if command.source == CommandSource::Builtin {
+        1
+    } else {
+        2
     }
+}
+
+fn admit(mut commands: Vec<AvailableCommand>) -> (Vec<AvailableCommand>, u32) {
+    commands.sort_by_key(priority);
     let mut bytes = 0;
-    let mut names = std::collections::HashSet::with_capacity(commands.len());
-    for command in &commands {
+    let mut names = std::collections::HashSet::new();
+    let mut indices = Vec::new();
+    let mut omitted: u32 = 0;
+    let mut full = false;
+    for (index, command) in commands.iter().enumerate() {
         if !names.insert(command.name.as_str()) {
-            return Err(AdapterRuntimeError::Frame);
+            continue;
         }
-        bytes += command.listed_bytes();
-        if bytes > MAX_COMMAND_BYTES {
-            return Err(AdapterRuntimeError::BatchBytes);
+        let next = bytes + command.listed_bytes();
+        if full || indices.len() == MAX_COMMANDS || next > MAX_COMMAND_BYTES {
+            full = true;
+            omitted = omitted.saturating_add(1);
+            continue;
         }
+        bytes = next;
+        indices.push(index);
     }
-    Ok(commands)
+    drop(names);
+    let mut indices = indices.into_iter().peekable();
+    let kept = commands
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, command)| indices.next_if_eq(&index).map(|_| command))
+        .collect();
+    (kept, omitted)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct CommandList {
     pub(crate) revision: u64,
     pub(crate) commands: Vec<AvailableCommand>,
+    pub(crate) omitted: u32,
 }
 
 impl CommandList {
@@ -46,12 +68,18 @@ impl CommandList {
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
     ) -> Result<(), AdapterRuntimeError> {
         self.commands = Vec::new();
+        self.omitted = 0;
+        self.next_revision()?;
+        (self.commands, self.omitted) = admit(parsed?);
+        Ok(())
+    }
+
+    fn next_revision(&mut self) -> Result<(), AdapterRuntimeError> {
         self.revision = self
             .revision
             .checked_add(1)
             .filter(|revision| *revision <= 9_007_199_254_740_991)
             .ok_or(AdapterRuntimeError::Operation)?;
-        self.commands = admit(parsed?)?;
         Ok(())
     }
     pub(crate) fn find(&self, revision: u64, text: &str) -> Option<&AvailableCommand> {
@@ -102,10 +130,14 @@ impl CommandState {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
-        if list.commands == commands {
+        let (commands, omitted) = admit(commands);
+        if list.commands == commands && list.omitted == omitted {
             return Ok(());
         }
-        list.replace(Ok(commands))
+        list.next_revision()?;
+        list.commands = commands;
+        list.omitted = omitted;
+        Ok(())
     }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0

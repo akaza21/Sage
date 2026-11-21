@@ -1,4 +1,3 @@
-use super::MAX_COMMANDS;
 use crate::acp::bindings::adapter::AdapterRuntimeError;
 use serde::Serialize;
 use serde_json::Value;
@@ -7,6 +6,7 @@ const NAME_BYTES: usize = 128;
 const DESCRIPTION_BYTES: usize = 1024;
 const HINT_BYTES: usize = 256;
 const MAX_ALIASES: usize = 8;
+const SOURCE_LABEL_BYTES: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +88,51 @@ pub(crate) struct AvailableCommand {
     /// Aliases give no route of their own: a prompt still names the listed command to run as one.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) aliases: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source_label: Option<String>,
+    /// Harness provenance stays native; filesystem paths never enter the menu DTO.
+    #[serde(skip)]
+    pub(crate) source_info: Option<Box<CommandSourceInfo>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommandSourceInfo {
+    pub(crate) path: Option<String>,
+    pub(crate) source: Option<String>,
+    pub(crate) scope: Option<String>,
+    pub(crate) origin: Option<String>,
+    pub(crate) base_dir: Option<String>,
+}
+
+impl CommandSourceInfo {
+    pub(crate) fn from_wire(value: &Value) -> Option<Self> {
+        value.as_object()?;
+        let field = |name: &str, cap| {
+            value[name]
+                .as_str()
+                .and_then(|text| clipped(text, cap).ok())
+        };
+        Some(Self {
+            path: field("path", 1024),
+            source: field("source", 128),
+            scope: field("scope", 128),
+            origin: field("origin", 128),
+            base_dir: field("baseDir", 1024),
+        })
+    }
+
+    fn bytes(&self) -> usize {
+        [
+            &self.path,
+            &self.source,
+            &self.scope,
+            &self.origin,
+            &self.base_dir,
+        ]
+        .iter()
+        .map(|field| field.as_ref().map_or(0, String::len))
+        .sum()
+    }
 }
 
 fn opens_no_panel(dispatch: &CommandDispatch) -> bool {
@@ -125,7 +170,16 @@ impl AvailableCommand {
             source,
             dispatch,
             aliases: Vec::new(),
+            source_label: None,
+            source_info: None,
         })
+    }
+
+    pub(crate) fn with_source_label(mut self, label: Option<&str>) -> Self {
+        self.source_label = label
+            .filter(|label| !label.is_empty())
+            .and_then(|label| clipped(label, SOURCE_LABEL_BYTES).ok());
+        self
     }
 
     pub(crate) fn with_aliases<'a>(mut self, aliases: impl IntoIterator<Item = &'a str>) -> Self {
@@ -154,6 +208,11 @@ impl AvailableCommand {
             + self.input_hint.as_ref().map_or(0, String::len)
             + self.aliases.iter().map(String::len).sum::<usize>()
             + route
+            + self.source_label.as_ref().map_or(0, String::len)
+            + self
+                .source_info
+                .as_deref()
+                .map_or(0, CommandSourceInfo::bytes)
     }
 
     /// ACP has no source or alias fields, so an adapter may name them in `_meta.source` and
@@ -175,7 +234,9 @@ impl AvailableCommand {
             let aliases = value["_meta"]["aliases"]
                 .as_array()
                 .map_or(&[][..], Vec::as_slice);
-            command.with_aliases(aliases.iter().filter_map(Value::as_str))
+            command
+                .with_aliases(aliases.iter().filter_map(Value::as_str))
+                .with_source_label(value["_meta"]["sourceLabel"].as_str())
         })
     }
 }
@@ -211,7 +272,6 @@ fn clipped(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
 pub(crate) fn parse_acp(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
     value
         .as_array()
-        .filter(|values| values.len() <= MAX_COMMANDS)
         .ok_or(AdapterRuntimeError::BatchCount)?
         .iter()
         .map(AvailableCommand::from_acp)

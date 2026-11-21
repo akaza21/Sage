@@ -29,7 +29,7 @@ pub(super) fn initialized() -> SdkBridge {
     assert_eq!(acp[0]["result"]["sessionId"], SESSION);
     assert_eq!(
         acp[1]["params"]["update"]["availableCommands"],
-        json!([{"name":"compact","description":"Compact the chat","input":{"hint":"[focus]"}}])
+        json!([{"name":"compact","description":"Compact the chat","input":{"hint":"[focus]"},"_meta":{"source":"skill"}}])
     );
     bridge
 }
@@ -734,14 +734,31 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
             ]}),
         )
         .unwrap();
-    let listed = &updates(&commands)[0]["availableCommands"];
+    use crate::acp::slash_commands::{CommandList, parse_acp};
+    let mut listed = CommandList::default();
+    listed
+        .replace(parse_acp(&updates(&commands)[0]["availableCommands"]))
+        .unwrap();
+    assert_eq!(listed.omitted, 0);
+    let rows: Vec<_> = listed
+        .commands
+        .iter()
+        .map(|command| {
+            (
+                command.name.as_str(),
+                command.description.as_str(),
+                command.input_hint.as_deref(),
+                command.aliases.clone(),
+            )
+        })
+        .collect();
     assert_eq!(
-        listed,
-        &json!([
-            {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
-            {"name":"deploy","description":"Ship it","input":null,"_meta":{"aliases":["ship"]}},
-            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin","aliases":["usage"]}},
-        ])
+        rows,
+        [
+            ("review", "Review a PR", Some("<pr>"), vec![]),
+            ("cost", "Cost", None, vec!["usage".to_owned()]),
+            ("deploy", "Ship it", None, vec!["ship".to_owned()]),
+        ]
     );
 }
 

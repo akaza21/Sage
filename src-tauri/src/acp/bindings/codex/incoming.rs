@@ -287,7 +287,9 @@ fn ingest_inner<M: ResourceMapper>(
         return Err(IngressError::FrameBytes);
     }
     let value: Value = serde_json::from_slice(bytes).map_err(|_| IngressError::Malformed)?;
-    validate_shape(&value)?;
+    validate_shape(&value).or_else(|_| {
+        support::validate_shape_with_catalog(&value, adapter.command_catalog_path(bytes))
+    })?;
     if adapter.provisional_expired() {
         return Err(IngressError::Identity);
     }
