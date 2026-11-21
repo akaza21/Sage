@@ -25,8 +25,17 @@ pub enum SessionNoticeLevel {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionNotice {
     pub level: SessionNoticeLevel,
+    /// Non-blocking harness diagnostics belong in Settings, not the transcript.
+    #[serde(default = "legacy_notice_diagnostic")]
+    pub diagnostic: bool,
     pub text: RequiredText<SESSION_NOTICE_TEXT_BYTES>,
     pub source: Option<RequiredText<SESSION_NOTICE_SOURCE_BYTES>>,
+}
+
+// Old stored notices have no routing classification. Keep non-blocking legacy
+// details in diagnostics; Error notices still surface in the transcript.
+fn legacy_notice_diagnostic() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

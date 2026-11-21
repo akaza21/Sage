@@ -1777,10 +1777,7 @@ describe("composer permission mode picker", () => {
       "title",
       "Change the project for this chat",
     );
-    expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(project.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     fireEvent.click(project);
     fireEvent.click(screen.getByRole("option", { name: "Beta" }));
     expect(setChatProject).toHaveBeenCalledWith("beta", {

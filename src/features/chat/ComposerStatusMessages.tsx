@@ -1,5 +1,3 @@
-import { useWorkbenchStore } from "../../app/store";
-import { harnessHasSignInCheck } from "../../domain/harness";
 import { HarnessSignInPart } from "../harness/harnessSignInLazy";
 import {
   ComposerNoticeFrame,
@@ -13,14 +11,7 @@ export function ComposerStatusMessages({
   selectedHarnessId,
   ...props
 }: ComposerStatusNoticeProps) {
-  const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const observeSignIn =
-    authRecovery ||
-    signInHarness ||
-    harnesses.some(
-      (harness) =>
-        harness.id === selectedHarnessId && harnessHasSignInCheck(harness),
-    );
+  const observeSignIn = authRecovery || signInHarness;
   return (
     <ComposerNoticeFrame
       {...props}

@@ -39,8 +39,14 @@ fn session_events(events: &[AdapterEvent]) -> Vec<SessionScopedEvent> {
         .collect()
 }
 
-fn notice(level: SessionNoticeLevel, source: &str, text: &str) -> SessionScopedEvent {
+fn notice(
+    level: SessionNoticeLevel,
+    source: &str,
+    text: &str,
+    diagnostic: bool,
+) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        diagnostic,
         level,
         text: RequiredText::new("text", text).unwrap(),
         source: Some(RequiredText::new("source", source).unwrap()),
@@ -69,7 +75,8 @@ fn warning_with_no_active_turn_becomes_a_session_warning() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Model metadata is missing; using defaults."
+            "Codex warning: Model metadata is missing; using defaults.",
+            true
         )]
     );
 }
@@ -110,6 +117,7 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
                 SessionNoticeLevel::Info,
                 "codex deprecation",
                 &format!("Codex deprecation notice: Notice {index}."),
+                false,
             )
         })
         .collect();
@@ -123,7 +131,8 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Sandbox is degraded."
+            "Codex warning: Sandbox is degraded.",
+            true
         )]
     );
 }
@@ -143,7 +152,8 @@ fn guardian_warning_during_a_turn_is_a_session_notice() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex approval reviewer",
-            "Codex approval reviewer warning: Automatic approval review is unavailable."
+            "Codex approval reviewer warning: Automatic approval review is unavailable.",
+            false
         )]
     );
 }
@@ -169,7 +179,8 @@ fn config_warning_names_the_file_line_and_details() {
             "codex config",
             "Codex configuration problem: Invalid configuration; using defaults.\n\
              In config.toml, line 4\n\
-             unknown variant `fast` for key `model_reasoning_effort`"
+             unknown variant `fast` for key `model_reasoning_effort`",
+            true,
         )]
     );
 }
@@ -188,7 +199,8 @@ fn deprecation_notice_is_an_info_notice_with_its_guidance() {
         [notice(
             SessionNoticeLevel::Info,
             "codex deprecation",
-            "Codex deprecation notice: `experimental_instructions_file` is deprecated."
+            "Codex deprecation notice: `experimental_instructions_file` is deprecated.",
+            false
         )]
     );
     let events = notify(
@@ -201,7 +213,8 @@ fn deprecation_notice_is_an_info_notice_with_its_guidance() {
         [notice(
             SessionNoticeLevel::Info,
             "codex deprecation",
-            "Codex deprecation notice: Old flag.\nUse the new flag."
+            "Codex deprecation notice: Old flag.\nUse the new flag.",
+            false
         )]
     );
 }
@@ -254,6 +267,7 @@ fn reroute_updates_the_effective_model_and_names_both_models() {
             "codex model",
             "Codex answered with gpt-6-astra-mini instead of the requested gpt-6-astra \
              because it flagged possible high-risk cybersecurity activity.",
+            false,
         ),
     ];
     assert_eq!(
@@ -397,7 +411,8 @@ fn upstream_additions_are_tolerated() {
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
-            "Codex warning: Heads up."
+            "Codex warning: Heads up.",
+            true
         )]
     );
     assert_eq!(
@@ -410,7 +425,8 @@ fn upstream_additions_are_tolerated() {
         notice(
             SessionNoticeLevel::Warning,
             "codex model",
-            "Codex answered with b instead of the requested a for a safety reason."
+            "Codex answered with b instead of the requested a for a safety reason.",
+            false
         )
     );
     assert!(matches!(

@@ -34,6 +34,39 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
+it("searches projects and offers clearing only for a scoped chat", async () => {
+  const state = useWorkbenchStore.getState();
+  const project = state.projects[0]!;
+  const view = render(<ProjectScopeChip projectName="Choose project" />);
+  fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
+  expect(await screen.findByPlaceholderText("Search projects")).toBeVisible();
+  expect(
+    screen.queryByRole("option", { name: "Don't work in a project" }),
+  ).toBeNull();
+  const row = screen.getByRole("option", { name: project.name });
+  expect(row.querySelector("svg")).toBeInTheDocument();
+  fireEvent.click(row);
+  view.rerender(<ProjectScopeChip projectName={project.name} />);
+  fireEvent.click(
+    screen.getByRole("button", { name: `Project: ${project.name}` }),
+  );
+  const selected = await screen.findByRole("option", { name: project.name });
+  expect(selected).toHaveAttribute("aria-selected", "true");
+  expect(
+    selected.querySelector(".searchable-picker__selected-check"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("option", { name: "Don't work in a project" }),
+  ).toBeVisible();
+  fireEvent.change(screen.getByPlaceholderText("Search projects"), {
+    target: { value: "missing" },
+  });
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: project.name })).toBeNull(),
+  );
+  expect(screen.getByRole("option", { name: "New project" })).toBeVisible();
+});
+
 it("allows clearing a real project named Choose project", async () => {
   await useWorkbenchStore
     .getState()

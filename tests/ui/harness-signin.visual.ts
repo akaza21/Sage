@@ -8,7 +8,7 @@ import {
 test.use({ viewport: { width: 960, height: 800 } });
 
 for (const adapter of ["cli", "account"] as const) {
-  test(`${adapter} sign-in problems live above the composer and in the account menu`, async ({
+  test(`${adapter} sign-in problems stay in the account menu while composing`, async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -67,12 +67,12 @@ for (const adapter of ["cli", "account"] as const) {
         );
     }, adapter);
     const notices = page.getByRole("region", { name: "Composer notices" });
-    await expect(notices.getByText(`${name} isn't signed in`)).toBeVisible();
+    await expect(notices).toHaveCount(0);
     const input = page.getByRole("combobox", { name: "Message agent" });
-    const noticeBox = (await notices.boundingBox())!;
-    const inputBox = (await input.boundingBox())!;
-    expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(inputBox.y);
-    expect(noticeBox.height).toBeLessThanOrEqual(64);
+    await expect(input).toBeVisible();
+    await expect(
+      page.locator(".chat-dock-frame .harness-signin-notice"),
+    ).toHaveCount(0);
     const harness = page.getByRole("button", { name: "Harness", exact: true });
     await harness.click();
     await expect(
@@ -90,9 +90,13 @@ for (const adapter of ["cli", "account"] as const) {
     await expect(
       menu.getByRole("menuitem", { name: `Sign in to ${name}` }),
     ).toBeVisible();
+    await expect(
+      menu.getByRole("menuitem", { name: `Check sign-in for ${name}` }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(account).toBeFocused();
-    await notices.getByRole("button", { name: `Sign in to ${name}` }).click();
+    await account.click();
+    await menu.getByRole("menuitem", { name: `Sign in to ${name}` }).click();
     await expect(notices.getByText(`${name} isn't signed in`)).toHaveCount(0);
     await expect(
       page.getByRole("img", { name: "Harness sign-in needs attention" }),

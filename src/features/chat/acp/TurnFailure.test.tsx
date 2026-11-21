@@ -10,10 +10,43 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "./acpProjection.fixture";
 import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
+import { useWorkbenchStore } from "../../../app/store";
 
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it("offers sign-in inside the failed turn for its originating harness", async () => {
+    const initial = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "fixture",
+          name: "Team agent",
+          bindingId: "fixture-binding",
+          source: "builtIn",
+          description: "",
+          transport: "acp",
+          installState: "available",
+          accountModelDiscovery: false,
+          signIn: { command: "", hint: "", statusCheck: "claudeCli" },
+        },
+      ],
+    });
+    try {
+      const failed = page("failed", { kind: "authRequired" });
+      failed.sessions[0].bindingId = "fixture-binding" as never;
+      render(<TurnFailure turn={failed.turns[0]} page={failed} />);
+      const failure = screen.getByRole("group", { name: "Turn failed" });
+      expect(within(failure).getByText("Not signed in")).toBeVisible();
+      expect(
+        await within(failure).findByRole("button", {
+          name: "Sign in to Team agent",
+        }),
+      ).toBeEnabled();
+    } finally {
+      useWorkbenchStore.setState(initial, true);
+    }
+  });
   it("does not substitute an earlier error for a later failure without details", () => {
     const turn = page("failed", { kind: "other" }).turns[0];
     turn.items = [

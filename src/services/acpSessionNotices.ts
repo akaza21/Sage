@@ -14,7 +14,18 @@ function safeNotice(value: unknown): SessionNotice | null {
       ? null
       : safeText(value.source, 128);
   if (!text || (value.source != null && !source)) return null;
-  return { level: value.level as SessionNotice["level"], text, source };
+  if (value.diagnostic != null && typeof value.diagnostic !== "boolean")
+    return null;
+  return {
+    level: value.level as SessionNotice["level"],
+    text,
+    source,
+    diagnostic: value.diagnostic !== false,
+  };
+}
+
+export function isHarnessDiagnostic(notice: SessionNotice): boolean {
+  return notice.diagnostic !== false && notice.level !== "error";
 }
 
 /** Notices are display-only, so a malformed one is dropped, not the page. */

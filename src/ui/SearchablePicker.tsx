@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentProps,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import type { HarnessBrand } from "../domain/harness";
@@ -32,6 +33,8 @@ export interface SearchablePickerOption {
   subtitle?: string;
   /** Keep a terminal action available while filtering the choices. */
   alwaysVisible?: boolean;
+  leadingIcon?: ComponentType<{ size?: number }>;
+  separatorBefore?: boolean;
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
@@ -96,6 +99,7 @@ export function SearchablePicker({
   chevron = true,
   sectionLabel,
   searchable = true,
+  searchPlaceholder,
   onSelect,
   portalTarget = "document",
   selectedId,
@@ -129,6 +133,7 @@ export function SearchablePicker({
   chevron?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
+  searchPlaceholder?: string;
   onSelect: (id: string) => void;
   portalTarget?: "closest-dialog" | "closest-popover" | "document";
   selectedId: string | null;
@@ -138,6 +143,7 @@ export function SearchablePicker({
 }) {
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(true);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
@@ -212,10 +218,19 @@ export function SearchablePicker({
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
         onPointerEnter={preload}
-        onPointerDown={preload}
+        onPointerDown={() => {
+          setKeyboardOpen(false);
+          preload();
+        }}
         onFocus={preload}
         onKeyUp={coldOpen.onKeyUp}
         onKeyDown={(event) => {
+          setKeyboardOpen(true);
+          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+            event.preventDefault();
+            setOpen(true);
+            return;
+          }
           if (coldOpen.onKeyDown(event) || searchable || !open) return;
           if (event.key === "Escape") {
             event.preventDefault();
@@ -274,6 +289,9 @@ export function SearchablePicker({
           popoverPlacement={popoverPlacement}
           portalTarget={portalTarget}
           searchable={searchable}
+          searchPlaceholder={searchPlaceholder}
+          menuAppearance={popoverAppearance === "menu"}
+          keyboardOpen={keyboardOpen}
           sectionLabel={sectionLabel}
           selected={selected}
           selectedId={selectedId}

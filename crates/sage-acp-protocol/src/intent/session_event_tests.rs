@@ -10,6 +10,21 @@ fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionSco
 }
 
 #[test]
+fn legacy_notice_routing_is_conservative_and_new_notices_keep_explicit_routing() {
+    let legacy: SessionNotice =
+        serde_json::from_str(r#"{"level":"warning","text":"Unknown setting","source":null}"#)
+            .unwrap();
+    assert!(legacy.diagnostic);
+    let current = super::fixtures::notice(SessionNoticeLevel::Warning, "Approval needs attention");
+    let encoded = serde_json::to_value(&current).unwrap();
+    assert_eq!(encoded["diagnostic"], false);
+    assert_eq!(
+        serde_json::from_value::<SessionScopedEvent>(encoded).unwrap(),
+        current
+    );
+}
+
+#[test]
 fn notices_deduplicate_and_keep_only_the_newest() {
     let mut surface = SessionSurface::default();
     assert_eq!(

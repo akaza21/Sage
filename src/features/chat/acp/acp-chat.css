@@ -195,6 +195,13 @@
   overflow-wrap: anywhere;
 }
 
+.acp-turn__sign-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .acp-turn__retry {
   justify-self: start;
   padding: var(--space-1) var(--space-2);

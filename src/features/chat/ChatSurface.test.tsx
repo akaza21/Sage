@@ -43,6 +43,7 @@ import {
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { resetHarnessSignInForTest } from "../harness/harnessSignIn";
+import { HarnessAccountMenu } from "../harness/HarnessSignInStatus";
 import { useSideChatState } from "../../workbench/sideChatState";
 import { Workbench } from "../../workbench/Workbench";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
@@ -2748,11 +2749,11 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.page = { ...hooks.page, turns: [failedTurn, nextTurn] };
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
-    // A new turn removes the turn-specific recheck, while the known account
-    // problem remains visible until a status check confirms sign-in.
+    // A new turn removes inline recovery; persistent account status belongs
+    // to the sidebar rather than the composer or an older turn.
     expect(
-      screen.getByRole("button", { name: "Sign in to Claude Code" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Sign in to Claude Code" }),
+    ).toBeNull();
 
     hooks.page = {
       ...hooks.page,
@@ -4386,7 +4387,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(selectHarness).toHaveBeenCalledExactlyOnceWith("claude-code");
   });
 
-  it("starts bounded browser sign-in from the composer notice", async () => {
+  it("starts bounded browser sign-in from the account menu while the composer stays quiet", async () => {
     vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
       new Promise(() => {}),
     );
@@ -4398,14 +4399,21 @@ describe("ChatSurface ACP resource integration", () => {
       selectedModelId: null,
     });
     render(<ChatSurface />);
-    const notice = await screen.findByText("Codex isn't signed in");
-    expect(notice.closest(".composer__notices")).not.toBeNull();
-    expect(screen.getByLabelText("Message agent")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in to Codex" }));
+    render(<HarnessAccountMenu avatar="W" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Account: sign-in needed" }),
+    );
+    expect(screen.queryByText("Codex isn't signed in")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Sign in to Codex" }),
-    ).toBeDisabled();
-    expect(screen.getByText("Signing in…")).toBeVisible();
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
+    expect(screen.getByLabelText("Message agent")).toBeDisabled();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Sign in to Codex" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Cancel sign-in to Codex" }),
+    ).toBeEnabled();
   });
   it("does not let a stale ACP page mask simulator messages", async () => {
     useWorkbenchStore.setState({

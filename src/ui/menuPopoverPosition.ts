@@ -95,8 +95,17 @@ export function menuPopoverPosition(
       maxHeight,
     };
   }
+  // The empty-chat introduction is content to preserve above a dock menu.
+  const home =
+    dock &&
+    origin
+      .closest(".chat-surface")
+      ?.querySelector(".chat-home")
+      ?.getBoundingClientRect();
+  if (home && home.bottom <= anchor.top)
+    topEdge = Math.max(topEdge, home.bottom + gap);
   const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
-  const roomAbove = anchor.top - gap - GUTTER;
+  const roomAbove = anchor.top - gap - (home ? topEdge : GUTTER);
   const preferAbove = placement.startsWith("above-");
   const placeAbove = preferAbove
     ? surface.height <= roomAbove || roomAbove > roomBelow

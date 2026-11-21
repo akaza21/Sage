@@ -12,6 +12,7 @@ import { flushSync } from "react-dom";
 import { isImeComposing } from "./imeComposition";
 import { useActiveOption } from "./listNavigation";
 import { PickerOption } from "./PickerOption";
+import { Search } from "./leanIcons";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -42,6 +43,9 @@ export function SearchablePickerPopover({
   popoverPlacement,
   portalTarget,
   searchable,
+  searchPlaceholder = "Search…",
+  menuAppearance = false,
+  keyboardOpen = true,
   sectionLabel,
   selected,
   selectedId,
@@ -69,6 +73,9 @@ export function SearchablePickerPopover({
   popoverPlacement?: MenuPlacement;
   portalTarget: "closest-dialog" | "closest-popover" | "document";
   searchable: boolean;
+  searchPlaceholder?: string;
+  menuAppearance?: boolean;
+  keyboardOpen?: boolean;
   sectionLabel?: string;
   selected: SearchablePickerOption | undefined;
   selectedId: string | null;
@@ -80,6 +87,8 @@ export function SearchablePickerPopover({
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [focusMode, setFocusMode] = useState({ open, keyboard: keyboardOpen });
+  if (focusMode.open !== open) setFocusMode({ open, keyboard: keyboardOpen });
   const [query, setQuery] = useState(draft);
   const [holdFocus, setHoldFocus] = useState(focusMoved);
   if (!open && holdFocus) setHoldFocus(false);
@@ -106,6 +115,15 @@ export function SearchablePickerPopover({
   );
   const option = useActiveOption(selectableIds, "none");
   const setActiveId = option.setActiveId;
+  const activateFromPointer = useCallback(
+    (id: string) => {
+      setActiveId(id);
+      setFocusMode((current) =>
+        current.keyboard ? { ...current, keyboard: false } : current,
+      );
+    },
+    [setActiveId],
+  );
   if (!open && option.chosenId !== null) setActiveId(null);
   const active =
     option.activeIndex >= 0 ? selectable[option.activeIndex] : null;
@@ -150,6 +168,7 @@ export function SearchablePickerPopover({
     [dismiss, disabled, onSelect, setDraft, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!focusMode.keyboard) setFocusMode({ open, keyboard: true });
     if (disabled || isImeComposing(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -188,6 +207,7 @@ export function SearchablePickerPopover({
       className={[
         "searchable-picker__popover",
         "menu-popover--editor",
+        focusMode.keyboard ? "searchable-picker__popover--keyboard" : null,
         popoverClassName,
       ]
         .filter(Boolean)
@@ -201,7 +221,7 @@ export function SearchablePickerPopover({
       }
       initialFocus="selected"
       id={`${id}-popover`}
-      matchTriggerWidth
+      matchTriggerWidth={!menuAppearance}
       gap={popoverGap}
       placement={popoverPlacement}
       onDismiss={dismiss}
@@ -211,23 +231,31 @@ export function SearchablePickerPopover({
       triggerRef={triggerRef}
     >
       {searchable ? (
-        <input
-          ref={inputRef}
-          className="searchable-picker__input"
-          role="combobox"
-          aria-label={ariaLabel}
-          aria-activedescendant={active ? optionId(id, active.id) : undefined}
-          aria-autocomplete="list"
-          aria-controls={`${id}-listbox`}
-          aria-expanded={expanded}
-          placeholder="Search…"
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setActiveId(null);
-          }}
-          onKeyDown={onKeyDown}
-        />
+        <div
+          className={
+            menuAppearance ? "searchable-picker__search-row" : undefined
+          }
+        >
+          {menuAppearance ? <Search size={14} aria-hidden="true" /> : null}
+          <input
+            ref={inputRef}
+            className="searchable-picker__input"
+            role="combobox"
+            aria-label={ariaLabel}
+            aria-activedescendant={active ? optionId(id, active.id) : undefined}
+            aria-autocomplete="list"
+            aria-controls={`${id}-listbox`}
+            aria-expanded={expanded}
+            placeholder={searchPlaceholder}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setActiveId(null);
+            }}
+            onKeyDown={onKeyDown}
+            onPointerDown={() => setFocusMode({ open, keyboard: false })}
+          />
+        </div>
       ) : null}
       {selected ? (
         <p className="searchable-picker__current">Current: {selected.label}</p>
@@ -255,11 +283,12 @@ export function SearchablePickerPopover({
             active={candidate.id === active?.id}
             candidate={candidate}
             id={optionId(id, candidate.id)}
-            onActivate={searchable ? setActiveId : undefined}
+            onActivate={searchable ? activateFromPointer : undefined}
             onRender={onOptionRender}
             onSelect={selectCandidate}
             selected={candidate.id === selectedId}
             disabled={disabled}
+            showSelectedCheck={menuAppearance}
           />
         ))}
         {visible.length > rendered.length ? (

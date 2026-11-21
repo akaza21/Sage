@@ -8,6 +8,19 @@ import type {
 } from "../../../domain/acp";
 import { terminalItemLifecycles } from "./statusSemantics";
 
+export function turnBindingId(page: AcpChatPage, turn: TurnProjection) {
+  return page.sessions.find((session) => session.id === turn.sessionId)
+    ?.bindingId;
+}
+
+export function lastAssistantAnswer(items: readonly AcpItem[]) {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item.kind === "text" && item.payload.role === "assistant") return item;
+  }
+  return undefined;
+}
+
 export function promptAttachmentItems(
   items: readonly AcpItem[],
 ): Extract<AcpItem, { kind: "image" }>[] {

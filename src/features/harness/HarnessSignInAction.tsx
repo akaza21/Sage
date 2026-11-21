@@ -35,7 +35,9 @@ export function HarnessLoginAction({
           canCancel
             ? `Cancel sign-in to ${harness.name}`
             : check
-              ? "Check sign-in"
+              ? menuItem
+                ? `Check sign-in for ${harness.name}`
+                : "Check sign-in"
               : `Sign in to ${harness.name}`
         }
         disabled={Boolean(checkRequirement) || (canCancel ? cancelling : busy)}

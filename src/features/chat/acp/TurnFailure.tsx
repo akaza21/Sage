@@ -1,14 +1,22 @@
 import { useId } from "react";
 
-import type { TurnProjection } from "../../../domain/acp";
+import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
+import { lazyParts } from "../lazyParts";
+import type * as RecoveryChunk from "../../harness/HarnessTurnSignInRecovery";
+
+const RecoveryPart = lazyParts<typeof RecoveryChunk>(
+  () => import("../../harness/HarnessTurnSignInRecovery"),
+);
 
 export function TurnFailure({
   turn,
   onRetry,
+  page,
 }: {
   turn: TurnProjection;
   onRetry?: () => void;
+  page?: AcpChatPage;
 }) {
   const headingId = useId();
   if (turn.state !== "failed") return null;
@@ -23,6 +31,13 @@ export function TurnFailure({
       <p data-turn-reason-message="">{message}</p>
       {turn.terminalReason?.remediation ? (
         <p data-turn-reason-remediation="">{turn.terminalReason.remediation}</p>
+      ) : null}
+      {turn.terminalReason?.kind === "authRequired" && page ? (
+        <RecoveryPart
+          part="HarnessTurnSignInRecovery"
+          page={page}
+          turn={turn}
+        />
       ) : null}
       {onRetry ? (
         <button className="acp-turn__retry" type="button" onClick={onRetry}>

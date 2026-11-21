@@ -321,6 +321,7 @@ impl PiRuntime {
             } => (
                 Some(
                     self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                        diagnostic: false,
                         level,
                         text: RequiredText::new("noticeText", text)
                             .map_err(|_| AdapterRuntimeError::Frame)?,

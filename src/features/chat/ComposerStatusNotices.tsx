@@ -1,7 +1,5 @@
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { ComposerOptionsPart } from "./lazyParts";
-import { useWorkbenchStore } from "../../app/store";
-import { harnessHasSignInCheck } from "../../domain/harness";
 import type { ReactNode } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 
@@ -68,19 +66,11 @@ export function ComposerNoticeFrame(
 }
 
 export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
-  const supported = useWorkbenchStore((state) =>
-    state.harnesses.some(
-      (harness) =>
-        harness.id === props.selectedHarnessId &&
-        harnessHasSignInCheck(harness),
-    ),
-  );
   const refusal =
     props.signInHarness ||
     props.authRecovery ||
-    props.chatAuth?.errorKind === "signInRequired" ||
-    props.chatAuth?.page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
-  if (!supported && !refusal) return <ComposerNoticeFrame {...props} />;
+    props.chatAuth?.errorKind === "signInRequired";
+  if (!refusal) return <ComposerNoticeFrame {...props} />;
   return (
     <ComposerOptionsPart
       part="ComposerNoticeSurface"

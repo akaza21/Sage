@@ -48,10 +48,12 @@ export function ComposerHarnessSignInNotice({
   harnessId,
   recovery,
   refusal,
+  inline = false,
 }: {
   harnessId: string | null;
   recovery?: ComposerStatusNoticeProps["authRecovery"];
   refusal?: ComposerStatusNoticeProps["signInHarness"];
+  inline?: boolean;
 }) {
   const needsSignIn = useHarnessSignIn();
   const recoveryId = recovery?.harnessId;
@@ -103,7 +105,12 @@ export function ComposerHarnessSignInNotice({
       : undefined);
   if (!harness) return null;
   return (
-    <div className="composer__notice harness-signin-notice" role="status">
+    <div
+      className={
+        inline ? "acp-turn__sign-in" : "composer__notice harness-signin-notice"
+      }
+      role="status"
+    >
       <span>
         {recoveryState && recoveryState !== "signedOut"
           ? `Recheck ${harness.name} sign-in`
@@ -167,7 +174,10 @@ export function HarnessAccountMenu({ avatar }: { avatar: string }) {
           onDismiss={() => setOpen(false)}
         >
           {needsSignIn.map((harness) => (
-            <HarnessLoginAction key={harness.id} harness={harness} menuItem />
+            <div key={harness.id} role="none">
+              <HarnessLoginAction harness={harness} menuItem />
+              <HarnessLoginAction harness={harness} menuItem check />
+            </div>
           ))}
         </MenuPart>
       ) : null}

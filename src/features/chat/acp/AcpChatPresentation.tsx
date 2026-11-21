@@ -19,6 +19,8 @@ import {
   chronologicalTurnItems,
   promptAttachmentItems,
   rootActivities,
+  turnBindingId,
+  lastAssistantAnswer,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
@@ -72,6 +74,7 @@ const Turn = memo(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );
     const interactive = !inherited && turn.sessionId === page.currentSessionId;
+    const failurePage = latest && interactive ? page : undefined;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
       rootLabels && page.projectId && page.chatId && page.currentSessionId
         ? {
@@ -109,11 +112,7 @@ const Turn = memo(
       terminal,
     );
     const finalAnswer = terminal
-      ? [...chronologicalItems]
-          .reverse()
-          .find(
-            (item) => item.kind === "text" && item.payload.role === "assistant",
-          )
+      ? lastAssistantAnswer(chronologicalItems)
       : undefined;
     const liveThought = [...chronologicalItems]
       .reverse()
@@ -276,7 +275,7 @@ const Turn = memo(
                 Retry
               </button>
             ) : null}
-            <TurnFailure turn={turn} onRetry={onRetry} />
+            <TurnFailure turn={turn} onRetry={onRetry} page={failurePage} />
           </div>
           {!inherited && actions}
         </section>
@@ -302,6 +301,8 @@ const Turn = memo(
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
     left.latest === right.latest &&
+    turnBindingId(left.page, left.turn) ===
+      turnBindingId(right.page, right.turn) &&
     left.fileSummaryInDock === right.fileSummaryInDock &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,

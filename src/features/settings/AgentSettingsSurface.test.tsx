@@ -13,6 +13,13 @@ import type { SessionAccessModes } from "../../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { useAgentSettingsState } from "./agentSettingsState";
+import {
+  pinAgentChatOwner,
+  clearAgentChatOwner,
+} from "../../app/agentChatOwner";
+import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
+import { acpDesktop } from "../../services/acpDesktop";
+import { page as chatPage } from "../chat/acp/acpProjection.fixture";
 
 const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
@@ -87,7 +94,7 @@ it("states each harness's install state once and puts the sign-in command before
     ),
   ).toBeVisible();
   expect(
-    screen.getByText(
+    await screen.findByText(
       (_, node) =>
         node?.textContent === "Run pi in a terminal. Then run /login.",
     ),
@@ -220,6 +227,36 @@ afterEach(() => {
   useSessionAccessModeStore.setState(access, true);
   useUiAppearanceStore.setState(appearance, true);
   vi.restoreAllMocks();
+  clearAgentChatOwner();
+  clearAcpProjectionRegistry();
+});
+
+it("shows protocol diagnostics under the originating harness in Settings", async () => {
+  const page = chatPage("completed");
+  page.projectId = "project-a" as never;
+  page.sessions[0].bindingId = "binding-a" as never;
+  page.sessionNotices = [
+    {
+      level: "warning",
+      diagnostic: true,
+      text: "Unknown configuration key",
+      source: "fixture",
+    },
+    {
+      level: "error",
+      diagnostic: true,
+      text: "Session blocked",
+      source: "fixture",
+    },
+  ];
+  vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(page);
+  pinAgentChatOwner(page.chatId);
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  expect(
+    await screen.findByRole("region", { name: "Test harness diagnostics" }),
+  ).toHaveTextContent("Unknown configuration key");
+  expect(screen.queryByText("Session blocked")).toBeNull();
 });
 
 it("labels transient harness/model selection honestly and exposes only real access defaults", () => {

@@ -10,6 +10,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("opens downward when an upward composer menu would cover the empty-chat heading", () => {
+  document.body.innerHTML =
+    '<section class="chat-surface"><section class="chat-home"><h3>What should we work on?</h3></section><div class="chat-dock-frame"><button>Choose project</button></div></section><div id="menu"></div>';
+  const trigger = document.querySelector("button")!;
+  const menu = document.getElementById("menu")!;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.classList.contains("chat-home"))
+        return new DOMRect(200, 190, 500, 64);
+      if (this.classList.contains("chat-dock-frame"))
+        return new DOMRect(200, 275, 500, 140);
+      if (this === menu) return new DOMRect(0, 0, 224, 210);
+      return new DOMRect(350, 275, 100, 28);
+    },
+  );
+  const result = menuPopoverPosition(
+    trigger,
+    menu,
+    trigger,
+    4,
+    false,
+    "above-start",
+  );
+  expect(result.top).toBe(307);
+});
+
 it("opens a composer popover above the changed-files summary instead of covering it", () => {
   document.body.innerHTML =
     '<section class="chat-surface"><div class="chat-dock-frame"><div class="chat-edit-summary-zone">2 files changed</div><form class="composer"><button>Effort</button></form></div></section><div class="composer__effort-menu"></div>';

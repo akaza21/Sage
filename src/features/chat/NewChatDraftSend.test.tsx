@@ -1,3 +1,4 @@
+import { HarnessAccountMenu } from "../harness/HarnessSignInStatus";
 import { EditorContinuityKeeper } from "../../workbench/WorkbenchContinuity";
 import { StrictMode, useState } from "react";
 import {
@@ -1826,11 +1827,15 @@ it.each(["sign-in", "discovery retry"] as const)(
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(composer()).toHaveValue("Keep this account draft");
     if (recovery === "sign-in") {
-      expect(
-        await screen.findByText("Other harness isn't signed in"),
-      ).toBeVisible();
+      expect(screen.queryByText("Other harness isn't signed in")).toBeNull();
+      render(<HarnessAccountMenu avatar="W" />);
       fireEvent.click(
-        await screen.findByRole("button", { name: "Sign in to Other harness" }),
+        await screen.findByRole("button", { name: "Account: sign-in needed" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("menuitem", {
+          name: "Sign in to Other harness",
+        }),
       );
       expect(composer()).toHaveValue("Keep this account draft");
     } else {
