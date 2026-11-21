@@ -300,11 +300,20 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
     "rgba(0, 0, 0, 0)",
   );
 
-  // With no selected candidate (discovery still running), the trigger shows
-  // the generic harness mark, not a settings gear.
+  // The chat's harness is no longer among the discovered candidates while
+  // others are still listed (detecting): the trigger shows the generic
+  // harness mark, never a candidate's brand and never a settings gear.
   await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
-    useWorkbenchStore.setState({ harnesses: [] });
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        id: `${harness.id}-other`,
+        brand: "claude",
+        installState: "detecting",
+      })),
+    });
   });
   await expect(logo).toHaveAttribute("data-harness-icon", "generic");
   await expect(trigger.locator(".lucide-settings")).toHaveCount(0);
