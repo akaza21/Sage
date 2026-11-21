@@ -161,14 +161,14 @@ impl Lane<'_> {
         prepared
             .runtime
             .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
-        prepared
-            .runtime
-            .attach_titles(super::super::chat_title::TitleScheduler::new(
-                self.database.clone(),
-                Arc::clone(&self.publisher),
-                title_capability,
-                Arc::clone(&self.title_admission),
-            ));
+        let mut titles = super::super::chat_title::TitleScheduler::new(
+            self.database.clone(),
+            Arc::clone(&self.publisher),
+            title_capability,
+            Arc::clone(&self.title_admission),
+        );
+        titles.bind_wakeup(abort.owner.clone(), &mailbox);
+        prepared.runtime.attach_titles(titles);
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),

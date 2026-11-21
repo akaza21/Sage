@@ -77,6 +77,18 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn poll_title(
+        &mut self,
+        cancel: bool,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) -> Result<bool, crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::poll_title(
+            &mut self.adapter,
+            cancel,
+            transport,
+        )
+    }
+
     pub(crate) fn receive_command_update(
         &mut self,
         frame: &Frame,

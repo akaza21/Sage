@@ -10,6 +10,15 @@ use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 use super::{StoreError, facts};
 
 const CLAIM: &str = "chatTitleAttempt";
+// Every title marker is anchored to the first exchange. This lookup seeks
+// idx_session_facts_turn rather than scanning the whole Chat fact history.
+pub(super) const LATEST_SQL: &str =
+    "SELECT session_id,json_extract(payload_json,'$.state'),json_extract(payload_json,'$.token'),
+         COALESCE(json_extract(payload_json,'$.tries'),3) FROM session_facts
+         WHERE session_id=?1 AND turn_id=?2 AND kind=?3 ORDER BY sequence DESC LIMIT 1";
+
+mod pending;
+pub(crate) use pending::pending_owner;
 
 pub(crate) struct TitleAttempt {
     pub(crate) owner: RuntimeOwner,
@@ -34,6 +43,22 @@ pub(crate) fn claim(
     completed_turn: SageTurnId,
     admitted: bool,
 ) -> Result<TitleClaim, StoreError> {
+    claim_inner(connection, owner, Some(completed_turn), admitted)
+}
+
+pub(crate) fn retry(
+    connection: &mut Connection,
+    owner: RuntimeOwner,
+) -> Result<TitleClaim, StoreError> {
+    claim_inner(connection, owner, None, true)
+}
+
+fn claim_inner(
+    connection: &mut Connection,
+    owner: RuntimeOwner,
+    completed_turn: Option<SageTurnId>,
+    admitted: bool,
+) -> Result<TitleClaim, StoreError> {
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let row: Option<(String, String)> = transaction
@@ -47,23 +72,6 @@ pub(crate) fn claim(
         .optional()?;
     let Some((title, source)) = row else {
         return Ok(TitleClaim::Stopped);
-    };
-    let previous = latest(&transaction, &owner)?;
-    let tries = match &previous {
-        Some(previous) => {
-            if previous.session != owner.session_id.as_str()
-                || !previous.pending
-                || previous.tries >= 3
-            {
-                return Ok(TitleClaim::Stopped);
-            }
-            // Repeated busy completions do not append facts or spend tries.
-            if !admitted {
-                return Ok(TitleClaim::Pending);
-            }
-            previous.tries
-        }
-        None => 0,
     };
     let first: Option<String> = transaction
         .query_row(
@@ -80,13 +88,32 @@ pub(crate) fn claim(
     let Some(first) = first else {
         return Ok(TitleClaim::Stopped);
     };
-    if previous.is_none() && first != completed_turn.as_str() {
+    let previous = latest(&transaction, &owner, &first)?;
+    let tries = match &previous {
+        Some(previous) => {
+            if previous.session != owner.session_id.as_str()
+                || !previous.pending
+                || previous.tries >= 3
+            {
+                return Ok(TitleClaim::Stopped);
+            }
+            // Repeated busy completions do not append facts or spend tries.
+            if !admitted {
+                return Ok(TitleClaim::Pending);
+            }
+            previous.tries
+        }
+        None => 0,
+    };
+    if previous.is_none() && completed_turn.as_ref().map(SageTurnId::as_str) != Some(first.as_str())
+    {
         return Ok(TitleClaim::Stopped);
     }
+    let anchor = SageTurnId::parse(first).map_err(|_| StoreError::Corrupt("title anchor"))?;
     let attempt = TitleAttempt {
         owner,
-        anchor: SageTurnId::parse(first).map_err(|_| StoreError::Corrupt("title anchor"))?,
-        completed_turn,
+        completed_turn: completed_turn.unwrap_or_else(|| anchor.clone()),
+        anchor,
         token: uuid::Uuid::new_v4().to_string(),
         input: String::new(),
         title,
@@ -145,17 +172,22 @@ struct AttemptState {
 fn latest(
     connection: &Connection,
     owner: &RuntimeOwner,
+    anchor: &str,
 ) -> Result<Option<AttemptState>, StoreError> {
-    Ok(connection.query_row(
-        "SELECT session_id,json_extract(payload_json,'$.state'),json_extract(payload_json,'$.token'),
-         COALESCE(json_extract(payload_json,'$.tries'),3) FROM session_facts
-         WHERE project_id=?1 AND chat_id=?2 AND kind=?3 ORDER BY sequence DESC LIMIT 1",
-        params![owner.project_id.as_str(), owner.chat_id.as_str(), CLAIM],
-        |row| Ok(AttemptState {
-            session: row.get(0)?, pending: row.get::<_, String>(1)? == "pending",
-            token: row.get(2)?, tries: row.get(3)?,
-        }),
-    ).optional()?)
+    Ok(connection
+        .query_row(
+            LATEST_SQL,
+            params![owner.session_id.as_str(), anchor, CLAIM],
+            |row| {
+                Ok(AttemptState {
+                    session: row.get(0)?,
+                    pending: row.get::<_, String>(1)? == "pending",
+                    token: row.get(2)?,
+                    tries: row.get(3)?,
+                })
+            },
+        )
+        .optional()?)
 }
 
 fn append_state(
@@ -231,6 +263,8 @@ pub(crate) fn prefix(text: &str, bytes: usize) -> &str {
     &text[..end]
 }
 
+// Runtime ownership belongs to the running epoch. The first exchange belongs
+// to the session history and remains eligible after a park and reactivation.
 fn anchor_valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool, StoreError> {
     Ok(connection.query_row(
         concat!(
@@ -238,7 +272,7 @@ fn anchor_valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool,
          JOIN chat_session_heads h ON h.project_id=c.project_id AND h.chat_id=c.id
          JOIN agent_sessions s ON s.id=h.session_id
          JOIN session_runtime_epochs e ON e.session_id=s.id
-         JOIN turns t ON t.session_id=s.id AND t.runtime_epoch=e.runtime_epoch
+         JOIN turns t ON t.session_id=s.id
          WHERE c.project_id=?1 AND c.id=?2 AND s.id=?3 AND e.runtime_epoch=?4
          AND s.state IN ('ready','active') AND e.state='running'
          AND t.id=?5 AND t.state='completed' AND ",
@@ -261,7 +295,7 @@ fn anchor_valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool,
 
 pub(crate) fn valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool, StoreError> {
     Ok(anchor_valid(connection, attempt)?
-        && latest(connection, &attempt.owner)?.is_some_and(|state| {
+        && latest(connection, &attempt.owner, attempt.anchor.as_str())?.is_some_and(|state| {
             state.session == attempt.owner.session_id.as_str()
                 && !state.pending
                 && state.token == attempt.token

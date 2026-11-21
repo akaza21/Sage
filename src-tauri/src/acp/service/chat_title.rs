@@ -2,7 +2,7 @@
 //! a turn, journal or session-control lock and never on a waiting queue.
 use sage_db::database::Database;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
 
@@ -15,56 +15,9 @@ use crate::acp::{
     store::title_attempt::{self, TitleAttempt, TitleClaim},
 };
 
-/// Shared by every lane of the application, with no waiting queue.
-#[derive(Default)]
-pub(crate) struct TitleAdmission {
-    state: Mutex<AdmissionState>,
-}
-#[derive(Default)]
-struct AdmissionState {
-    busy: bool,
-    foreground: u64,
-    active_turns: usize,
-}
-impl TitleAdmission {
-    fn state(&self) -> std::sync::MutexGuard<'_, AdmissionState> {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-    pub(crate) fn foreground(&self) {
-        self.state().foreground += 1;
-    }
-    fn turn(self: &Arc<Self>) -> ForegroundLease {
-        let mut state = self.state();
-        state.foreground += 1;
-        state.active_turns += 1;
-        ForegroundLease(Arc::clone(self))
-    }
-    fn generation(&self) -> u64 {
-        self.state().foreground
-    }
-    fn acquire(self: &Arc<Self>) -> Option<(Lease, u64)> {
-        let mut state = self.state();
-        if state.busy || state.active_turns != 0 {
-            return None;
-        }
-        state.busy = true;
-        Some((Lease(Arc::clone(self)), state.foreground))
-    }
-}
-pub(crate) struct ForegroundLease(Arc<TitleAdmission>);
-impl Drop for ForegroundLease {
-    fn drop(&mut self) {
-        self.0.state().active_turns -= 1;
-    }
-}
-struct Lease(Arc<TitleAdmission>);
-impl Drop for Lease {
-    fn drop(&mut self) {
-        self.0.state().busy = false;
-    }
-}
+mod admission;
+pub(crate) use admission::{ForegroundLease, TitleAdmission};
+use admission::{Lease, Wake};
 
 struct Active {
     attempt: Box<TitleAttempt>,
@@ -93,6 +46,9 @@ pub(crate) struct TitleScheduler {
     admission: Arc<TitleAdmission>,
     active: Option<Active>,
     considered: bool,
+    wake: Option<Wake>,
+    suppress_wake: bool,
+    wake_checked: bool,
 }
 
 impl TitleScheduler {
@@ -112,7 +68,30 @@ impl TitleScheduler {
             admission,
             active: None,
             considered: false,
+            wake: None,
+            suppress_wake: false,
+            wake_checked: false,
         }
+    }
+
+    pub(crate) fn bind_wakeup(
+        &mut self,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+        mailbox: &Arc<crate::acp::runtime::DriverMailbox>,
+    ) {
+        if !matches!(
+            self.capability,
+            TitleCapability::ReadExisting | TitleCapability::GenerateIsolated
+        ) {
+            return;
+        }
+        if self.wake.is_some() {
+            return;
+        }
+        self.wake = self
+            .admission
+            .register(self.database.clone(), owner, mailbox);
+        self.admission.wake_pending();
     }
 
     pub(crate) fn completed(&mut self, intent: &PumpIntent, adapter: &mut dyn HarnessAdapter) {
@@ -140,16 +119,35 @@ impl TitleScheduler {
         completed_turn: sage_acp_protocol::contract::SageTurnId,
         adapter: &mut dyn HarnessAdapter,
     ) {
+        // Drop the database guard before the lease: releasing admission can
+        // read the next pending marker from the same connection.
+        let admission = self.admission.acquire(&owner);
+        self.record_completion(owner, completed_turn, admission, adapter);
+    }
+
+    fn record_completion(
+        &mut self,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+        completed_turn: sage_acp_protocol::contract::SageTurnId,
+        admission: Option<(Lease, u64)>,
+        adapter: &mut dyn HarnessAdapter,
+    ) {
         let Ok(mut connection) = self.database.write_connection() else {
             return;
         };
-        let admission = self.admission.acquire();
-        let mut attempt =
+        let attempt =
             match title_attempt::claim(&mut connection, owner, completed_turn, admission.is_some())
             {
                 Ok(TitleClaim::Started(attempt)) => attempt,
                 Ok(TitleClaim::Stopped) => {
                     self.considered = true;
+                    return;
+                }
+                Ok(TitleClaim::Pending) => {
+                    // Admission may have become free before this marker was
+                    // committed, after the release wakeup already queried it.
+                    drop(connection);
+                    self.admission.wake_pending();
                     return;
                 }
                 _ => return,
@@ -160,6 +158,16 @@ impl TitleScheduler {
         let Some((lease, foreground)) = admission else {
             return;
         };
+        self.launch(attempt, lease, foreground, adapter);
+    }
+
+    fn launch(
+        &mut self,
+        mut attempt: Box<TitleAttempt>,
+        lease: Lease,
+        foreground: u64,
+        adapter: &mut dyn HarnessAdapter,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(15);
         if let Err(error) = adapter.start_title(&attempt.input) {
             tracing::info!(?error, "Auxiliary chat title unavailable");
@@ -181,6 +189,7 @@ impl TitleScheduler {
     }
 
     pub(crate) fn cancel(&mut self, adapter: &mut dyn HarnessAdapter) {
+        self.suppress_wake = true;
         if let Some(active) = &mut self.active {
             if !active.cancelled {
                 tracing::info!("Auxiliary chat title preempted by foreground work");
@@ -197,6 +206,31 @@ impl TitleScheduler {
     }
 
     pub(crate) fn poll(&mut self, adapter: &mut dyn HarnessAdapter) -> Option<AdapterEgress> {
+        // Binding precedes durable activation. The first idle poll runs after
+        // activation commits, so an older epoch's pending marker can wake now.
+        if !self.wake_checked && self.wake.is_some() {
+            self.wake_checked = true;
+            self.admission.wake_pending();
+        }
+        if !std::mem::take(&mut self.suppress_wake)
+            && self.active.is_none()
+            && let Some(wake) = &self.wake
+            && wake.ready.swap(false, Ordering::AcqRel)
+        {
+            let owner = wake.owner.clone();
+            let admission = self.admission.acquire(&owner);
+            if let Some((lease, foreground)) = admission {
+                let attempt = self
+                    .database
+                    .write_connection()
+                    .ok()
+                    .and_then(|mut connection| title_attempt::retry(&mut connection, owner).ok());
+                if let Some(TitleClaim::Started(attempt)) = attempt {
+                    self.considered = true;
+                    self.launch(attempt, lease, foreground, adapter);
+                }
+            }
+        }
         let active = self.active.as_mut()?;
         // Observe a real failure before deciding whether foreground preemption
         // is retryable. Adapters may complete asynchronously between polls.
@@ -259,6 +293,14 @@ impl TitleScheduler {
             self.start(owner, turn, adapter);
         }
         egress
+    }
+}
+
+impl Drop for TitleScheduler {
+    fn drop(&mut self) {
+        if let Some(wake) = &self.wake {
+            self.admission.unregister(&wake.owner);
+        }
     }
 }
 

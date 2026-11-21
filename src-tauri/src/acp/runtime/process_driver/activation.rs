@@ -183,6 +183,7 @@ where
         now_millis: i64,
     ) -> Result<DriverProgress, ActivationDriverError> {
         match message {
+            ControlMessage::TitleWake => Ok(DriverProgress::default()),
             ControlMessage::StdoutChunk(chunk) => {
                 self.accept_chunk(&chunk, mailbox, now_millis).await
             }
@@ -298,6 +299,7 @@ where
     ) -> Result<(), ActivationDriverError> {
         while let Some(control) = mailbox.try_pop_control() {
             match control {
+                ControlMessage::TitleWake => {}
                 ControlMessage::Cancel(_) => progress.rejected_controls += 1,
                 ControlMessage::ProcessExit(exit) => {
                     self.record_exit(exit, self.clock.now_millis());

@@ -13,6 +13,8 @@ use crate::acp::{
 use sage_acp_protocol::intent::{SafeResourceRef, UnavailableResourceReason};
 use serde_json::{Value, json};
 
+mod wake_tests;
+
 struct Mapper;
 impl ResourceMapper for Mapper {
     fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {

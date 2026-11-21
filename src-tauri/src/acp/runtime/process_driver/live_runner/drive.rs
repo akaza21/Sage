@@ -84,16 +84,12 @@ where
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
-        let title_tick = if let FirstTurnWorkerState::Reusable(parts) = &mut state {
-            match parts.completed.poll_title(false, &mut parts.transport) {
-                Ok(pending) => pending.then(|| context.clock.now_millis().saturating_add(100)),
-                Err(_) => {
-                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
-                    return failed(state);
-                }
+        let title_tick = match state.poll_idle_title(false) {
+            Ok(pending) => pending.then(|| context.clock.now_millis().saturating_add(100)),
+            Err(_) => {
+                fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                return failed(state);
             }
-        } else {
-            None
         };
 
         match &mut state {
@@ -172,6 +168,10 @@ where
                 ),
                 context.clock.as_ref(),
             ) {
+                Ok(Some(ControlMessage::TitleWake)) => (
+                    RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                    None,
+                ),
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
                     match idle.accept_idle_stdout_chunk(&chunk) {
                         Ok(()) => (
@@ -243,6 +243,10 @@ where
                 ),
                 context.clock.as_ref(),
             ) {
+                Ok(Some(ControlMessage::TitleWake)) => (
+                    RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
+                    None,
+                ),
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
                     match parts
                         .completed
@@ -317,6 +321,7 @@ where
                 pending_deadline_millis(&pending_config, context.clock.as_ref()),
                 context.clock.as_ref(),
             ) {
+                Ok(Some(ControlMessage::TitleWake)) => (RunnerAction::Continue(retained), None),
                 Ok(Some(ControlMessage::StdoutChunk(chunk)))
                     if matches!(&retained, FirstTurnWorkerState::Prepared { .. }) =>
                 {

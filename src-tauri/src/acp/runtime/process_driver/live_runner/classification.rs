@@ -3,6 +3,7 @@ use crate::acp::runtime::process_driver::MailboxError;
 
 pub(super) fn control_kind(message: &ControlMessage) -> &'static str {
     match message {
+        ControlMessage::TitleWake => "title-wake",
         ControlMessage::StdoutChunk(_) => "stdout",
         ControlMessage::Prompt(_) => "prompt",
         ControlMessage::Cancel(_) => "cancel",
