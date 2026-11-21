@@ -150,8 +150,15 @@ where
         }
         _ => true,
     };
-    if preempts_title && let FirstTurnWorkerState::Reusable(parts) = &mut state {
-        parts.completed.poll_title(true, &mut parts.transport);
+    if preempts_title
+        && let FirstTurnWorkerState::Reusable(parts) = &mut state
+        && parts
+            .completed
+            .poll_title(true, &mut parts.transport)
+            .is_err()
+    {
+        envelope.reject(HostError::RecoveryRequired);
+        return (RunnerAction::Failure(state), None);
     }
     if matches!(&envelope.command, WorkerCommand::Shutdown) {
         if let Some(config) = pending_config.take() {

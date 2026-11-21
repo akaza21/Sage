@@ -16,9 +16,11 @@ enum Step {
     Unsubscribe,
 }
 
+#[derive(Default)]
 pub(super) struct TitleRequest {
     input: String,
     settings: Value,
+    effort: Option<String>,
     config: Option<Value>,
     thread: Option<String>,
     turn: Option<String>,
@@ -33,6 +35,30 @@ pub(super) struct TitleRequest {
     unsubscribed: bool,
     pub(super) finished: bool,
     pub(super) cleanup_deadline: Option<Instant>,
+}
+
+impl TitleRequest {
+    pub(super) fn cancel(&mut self) {
+        self.cancelled = true;
+        if self.thread.is_none() && !self.pending.iter().any(|(_, step)| *step == Step::Start) {
+            // Reads cannot allocate a remote thread. Retain only correlation IDs
+            // so a late response is absorbed without starting auxiliary work.
+            self.finish();
+            return;
+        }
+        self.cleanup_deadline
+            .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
+    }
+
+    fn finish(&mut self) {
+        self.finished = true;
+        self.input = String::new();
+        self.response = None;
+        self.settings = Value::Null;
+        self.effort = None;
+        self.config = None;
+        self.pending.clear();
+    }
 }
 
 impl CodexRuntime {
@@ -61,24 +87,29 @@ impl CodexRuntime {
         } else {
             model
         };
+        let effort = self.model_catalog.find(model).and_then(|model| {
+            model
+                .supported_efforts
+                .iter()
+                .find(|effort| effort.id.as_str() == "low")
+                .or_else(|| {
+                    model
+                        .supported_efforts
+                        .iter()
+                        .find(|effort| Some(&effort.id) == model.default_effort.as_ref())
+                })
+                .or_else(|| model.supported_efforts.first())
+                .map(|effort| effort.id.as_str().to_owned())
+        });
         settings["model"] = json!(model);
         self.title = Some(TitleRequest {
             input: input.to_owned(),
             settings,
-            config: None,
-            thread: None,
-            turn: None,
+            effort,
             next: Some(Step::Config),
             pending: Vec::with_capacity(4),
             ids: Vec::with_capacity(5),
-            response: None,
-            response_bytes: 0,
-            result: None,
-            cancelled: false,
-            interrupted: false,
-            unsubscribed: false,
-            finished: false,
-            cleanup_deadline: None,
+            ..TitleRequest::default()
         });
         Ok(())
     }
@@ -87,17 +118,6 @@ impl CodexRuntime {
         let request = self.title.as_mut()?;
         if request.finished {
             return None;
-        }
-        if request
-            .cleanup_deadline
-            .is_some_and(|deadline| Instant::now() >= deadline)
-        {
-            request.input = String::new();
-            request.response = None;
-            request.settings = Value::Null;
-            request.config = None;
-            // A timer is not evidence of unload. Keep the bounded operation
-            // and global lease until thread/closed or supervisor-proven exit.
         }
         let step = if request.cancelled && request.thread.is_some() {
             request.input = String::new();
@@ -108,15 +128,13 @@ impl CodexRuntime {
                 None
             } else if !request.unsubscribed {
                 request.unsubscribed = true;
-                request
-                    .cleanup_deadline
-                    .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
+                request.cancel();
                 Some(Step::Unsubscribe)
             } else {
                 None
             }
         } else if request.cancelled && request.pending.is_empty() {
-            request.finished = true;
+            request.finish();
             None
         } else {
             request.next.take()
@@ -134,9 +152,13 @@ impl CodexRuntime {
             }
             Step::Turn => {
                 let input = std::mem::take(&mut request.input);
-                json!({"threadId":request.thread,"input":[{"type":"text","text":input,"text_elements":[]}],
-                    "effort":"low","outputSchema":{"type":"object","properties":{"title":{"type":"string"}},
-                        "required":["title"],"additionalProperties":false}})
+                let mut params = json!({"threadId":request.thread,"input":[{"type":"text","text":input,"text_elements":[]}],
+                    "outputSchema":{"type":"object","properties":{"title":{"type":"string"}},
+                        "required":["title"],"additionalProperties":false}});
+                if let Some(effort) = &request.effort {
+                    params["effort"] = json!(effort);
+                }
+                params
             }
             Step::Interrupt => json!({"threadId":request.thread,"turnId":request.turn}),
             Step::Unsubscribe => json!({"threadId":request.thread}),
@@ -191,13 +213,13 @@ impl CodexRuntime {
                         .and_then(serde_json::Value::as_i64),
                     "Codex auxiliary title declined"
                 );
-                request.cancelled = true;
+                request.cancel();
                 request.result = Some(None);
                 if step == Step::Unsubscribe {
                     request.cleanup_deadline = Some(Instant::now());
                 } else if step == Step::Config || (step == Step::Start && request.thread.is_none())
                 {
-                    request.finished = true;
+                    request.finish();
                 }
                 return true;
             }
@@ -215,11 +237,8 @@ impl CodexRuntime {
                     }
                 }
                 Step::Start => {
-                    request.thread = value
-                        .pointer("/result/thread/id")
-                        .and_then(serde_json::Value::as_str)
-                        .filter(|id| !id.is_empty() && id.len() <= 512)
-                        .map(str::to_owned);
+                    request.thread =
+                        bounded_text(value, "/result/thread/id", 512).filter(|id| !id.is_empty());
                     tracing::info!(
                         title_thread_id = request.thread.as_deref(),
                         sandbox = value
@@ -239,11 +258,8 @@ impl CodexRuntime {
                     }
                 }
                 Step::Turn => {
-                    request.turn = value
-                        .pointer("/result/turn/id")
-                        .and_then(serde_json::Value::as_str)
-                        .filter(|id| !id.is_empty() && id.len() <= 512)
-                        .map(str::to_owned);
+                    request.turn =
+                        bounded_text(value, "/result/turn/id", 512).filter(|id| !id.is_empty());
                     if request.turn.is_none() {
                         request.cancelled = true;
                     }
@@ -258,9 +274,7 @@ impl CodexRuntime {
                     );
                     // Keep global admission through Codex's unload grace period.
                     // thread/closed releases it earlier when the supervisor confirms unload.
-                    request
-                        .cleanup_deadline
-                        .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
+                    request.cancel();
                 }
             }
             return true;
@@ -271,11 +285,7 @@ impl CodexRuntime {
         // thread cannot be a child conversation, even before its ID is known.
         if method == "thread/started" && params.pointer("/thread/ephemeral") == Some(&json!(true)) {
             if request.thread.is_none() {
-                request.thread = params
-                    .pointer("/thread/id")
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|id| id.len() <= 512)
-                    .map(str::to_owned);
+                request.thread = bounded_text(params, "/thread/id", 512);
             }
             return true;
         }
@@ -297,11 +307,7 @@ impl CodexRuntime {
                     .and_then(serde_json::Value::as_str)
                     == Some("agentMessage") =>
             {
-                request.response = params
-                    .pointer("/item/text")
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|text| text.len() <= 1024)
-                    .map(str::to_owned);
+                request.response = bounded_text(params, "/item/text", 1024);
                 if request.response.is_none() {
                     request.cancelled = true;
                 }
@@ -332,7 +338,7 @@ impl CodexRuntime {
                 request.interrupted = true;
             }
             "thread/closed" => {
-                request.finished = true;
+                request.finish();
             }
             _ => {}
         }
@@ -352,11 +358,25 @@ impl CodexRuntime {
         }
         use crate::acp::bindings::adapter::EgressResolution::*;
         if matches!(resolution, QueueRejected | WriteZeroBytes | DeliveryUnknown) {
-            request.cancelled = true;
-            request
-                .cleanup_deadline
-                .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
+            request.result = Some(None);
+            if resolution == DeliveryUnknown {
+                // The JSON frame may be incomplete: no later writes are safe.
+                request.cancelled = true;
+                self.poisoned = true;
+                request.cleanup_deadline = Some(Instant::now());
+            } else {
+                request.pending.retain(|(pending, _)| *pending != id);
+                request.cancel();
+            }
         }
         true
     }
+}
+
+fn bounded_text(value: &Value, path: &str, max_bytes: usize) -> Option<String> {
+    value
+        .pointer(path)?
+        .as_str()
+        .filter(|text| text.len() <= max_bytes)
+        .map(str::to_owned)
 }

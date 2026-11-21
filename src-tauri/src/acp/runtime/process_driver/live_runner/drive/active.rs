@@ -32,6 +32,12 @@ where
     C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
     let started = std::time::Instant::now();
+    if active.turn.driver.title_poll_deadline_millis().is_some()
+        && active.turn.driver.poll_title().is_err()
+    {
+        fail_pending_config(pending_config, HostError::RecoveryRequired);
+        return Err(failed(FirstTurnWorkerState::Active(active)));
+    }
     if active.stdout_allowed() {
         return match active
             .turn
@@ -137,12 +143,14 @@ where
             }
         };
     }
+    let title_tick = active.turn.driver.title_poll_deadline_millis();
     let deadline = wait_deadline(
         pending_config,
         [
             *eof_deadline_millis,
             active.turn.driver.pending_exit_deadline_millis(),
             active.pending_steer_deadline_millis(context.clock.as_ref()),
+            title_tick,
         ],
         context.clock.as_ref(),
     );
@@ -185,7 +193,8 @@ where
                 Some(Err(_)) | Some(Ok(())) => Err(failed(FirstTurnWorkerState::Active(active))),
                 None if pending_config.is_some()
                     || eof_deadline_millis.is_some()
-                    || active.steer_pending() =>
+                    || active.steer_pending()
+                    || title_tick.is_some() =>
                 {
                     Ok((
                         RunnerAction::Continue(FirstTurnWorkerState::Active(active)),

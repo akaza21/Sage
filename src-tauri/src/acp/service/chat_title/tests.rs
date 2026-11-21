@@ -50,10 +50,8 @@ fn runtime() -> CodexRuntime {
     }
     let start = runtime
         .command(AdapterCommand::NewSession {
-            native_root: std::env::current_dir()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned(),
+            // This runtime pins Windows protocol semantics on every test host.
+            native_root: MANAGED_CODEX_HOME.to_owned(),
             model: None,
         })
         .unwrap();

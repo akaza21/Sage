@@ -103,3 +103,34 @@ fn cancelled_and_failed_reads_absorb_late_results_and_release_capacity() {
     assert!(!fixture.runtime.title_pending());
     assert_eq!(fixture.runtime.take_title_result(), None);
 }
+
+#[test]
+fn partially_written_title_read_blocks_foreground_commands() {
+    use crate::acp::runtime::EgressTransport;
+    use crate::acp::transport::{FrameWriteOutcome, OutboundFrame};
+    struct PartialTransport;
+    impl EgressTransport for PartialTransport {
+        fn write(&mut self, _: &OutboundFrame) -> FrameWriteOutcome {
+            FrameWriteOutcome::DeliveryUnknown { bytes_written: 7 }
+        }
+    }
+    let mut fixture = running("partial-title");
+    fixture.runtime.start_title("").unwrap();
+    let egress = fixture.runtime.poll_title().unwrap();
+    let outcome = PartialTransport.write(egress.frame());
+    fixture
+        .runtime
+        .resolve_egress(egress.into_token(), EgressResolution::from(outcome))
+        .unwrap();
+    assert!(fixture.runtime.title_requires_teardown());
+    assert!(
+        fixture
+            .runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Continue").unwrap(),
+                client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                access_mode: SessionAccessMode::ReadOnly,
+            })
+            .is_err()
+    );
+}

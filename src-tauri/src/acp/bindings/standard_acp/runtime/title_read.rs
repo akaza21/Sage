@@ -98,6 +98,9 @@ impl StandardAcpRuntime {
         if matches!(resolution, QueueRejected | WriteZeroBytes | DeliveryUnknown) {
             read.finished = true;
         }
+        if resolution == DeliveryUnknown {
+            self.delivery_unknown = Some(id);
+        }
         true
     }
 }

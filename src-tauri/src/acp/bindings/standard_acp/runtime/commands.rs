@@ -40,6 +40,9 @@ pub(crate) fn scoped_permission_id(
 }
 
 impl HarnessAdapter for StandardAcpRuntime {
+    fn title_requires_teardown(&self) -> bool {
+        self.delivery_unknown.is_some()
+    }
     fn start_title(&mut self, _input: &str) -> Result<(), AdapterRuntimeError> {
         self.begin_title_read()
     }
@@ -93,6 +96,9 @@ impl HarnessAdapter for StandardAcpRuntime {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.delivery_unknown.is_some() {
+            return Err(AdapterRuntimeError::Operation);
+        }
         match command {
             AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::Initialize => self.initialize(),

@@ -85,10 +85,13 @@ where
     let mut eof_deadline_millis = None;
     loop {
         let title_tick = if let FirstTurnWorkerState::Reusable(parts) = &mut state {
-            parts
-                .completed
-                .poll_title(false, &mut parts.transport)
-                .then(|| context.clock.now_millis().saturating_add(100))
+            match parts.completed.poll_title(false, &mut parts.transport) {
+                Ok(pending) => pending.then(|| context.clock.now_millis().saturating_add(100)),
+                Err(_) => {
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                    return failed(state);
+                }
+            }
         } else {
             None
         };
@@ -102,15 +105,7 @@ where
             }
             _ => {}
         }
-        if matches!(&state, FirstTurnWorkerState::Reusable(parts) if parts.completed.title_requires_teardown())
-        {
-            // Cleanup could not prove the auxiliary thread unloaded. Reuse the
-            // ordinary process supervisor rather than admit another hidden thread.
-            fail_pending_config(&mut pending_config, HostError::Closed);
-            return failed(state);
-        }
         if let FirstTurnWorkerState::Active(active) = &mut state {
-            active.turn.driver.poll_title();
             active.settle_steer();
         }
         state = match super::harness_turn::open_started(

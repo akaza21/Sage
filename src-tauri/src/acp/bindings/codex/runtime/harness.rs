@@ -22,21 +22,19 @@ impl HarnessAdapter for CodexRuntime {
     }
     fn cancel_title(&mut self) {
         if let Some(request) = &mut self.title {
-            request.cancelled = true;
-            request.cleanup_deadline.get_or_insert_with(|| {
-                std::time::Instant::now() + std::time::Duration::from_secs(15)
-            });
+            request.cancel();
         }
     }
     fn title_pending(&self) -> bool {
         self.title.as_ref().is_some_and(|t| !t.finished)
     }
     fn title_requires_teardown(&self) -> bool {
-        self.title.as_ref().is_some_and(|t| {
-            !t.finished
-                && t.cleanup_deadline
-                    .is_some_and(|d| std::time::Instant::now() >= d)
-        })
+        self.poisoned
+            || self.title.as_ref().is_some_and(|t| {
+                !t.finished
+                    && t.cleanup_deadline
+                        .is_some_and(|d| std::time::Instant::now() >= d)
+            })
     }
     fn take_title_result(&mut self) -> Option<Option<String>> {
         self.title.as_mut()?.result.take()

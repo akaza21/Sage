@@ -25,11 +25,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         &mut self,
         cancel: bool,
         transport: &mut impl super::EgressTransport,
-    ) -> bool {
+    ) -> Result<bool, crate::acp::runtime::HostError> {
         super::session_config::poll_title(&mut self.adapter, cancel, transport)
-    }
-    pub(crate) fn title_requires_teardown(&self) -> bool {
-        self.adapter.title_requires_teardown()
     }
     pub(crate) fn validate_command_prompt(
         &self,

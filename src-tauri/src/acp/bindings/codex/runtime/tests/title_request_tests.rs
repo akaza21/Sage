@@ -116,3 +116,144 @@ fn failed_configuration_and_oversized_response_keep_the_main_session_usable() {
     assert!(runtime.inner == main);
     assert!(runtime.start_title(&"x".repeat(4097)).is_err());
 }
+
+#[test]
+fn definitely_unsent_title_requests_settle_without_tearing_down_the_main_worker() {
+    for resolution in [
+        EgressResolution::QueueRejected,
+        EgressResolution::WriteZeroBytes,
+    ] {
+        for fail_start in [false, true] {
+            let mut runtime = titled_runtime();
+            runtime.start_title("bounded input").unwrap();
+            if fail_start {
+                let config = request(&mut runtime);
+                absorb(
+                    &mut runtime,
+                    json!({"id":config["id"],"result":{"config":{}}}),
+                );
+            }
+            let unsent = runtime.poll_title().unwrap();
+            runtime
+                .resolve_egress(unsent.into_token(), resolution)
+                .unwrap();
+            runtime.title.as_mut().unwrap().cleanup_deadline = Some(std::time::Instant::now());
+            assert!(runtime.poll_title().is_none());
+            assert!(!runtime.title_pending());
+            assert!(!runtime.title_requires_teardown());
+            assert_eq!(runtime.take_title_result(), Some(None));
+            assert!(
+                runtime
+                    .command(AdapterCommand::Prompt {
+                        prompt: Prompt::new("prompt", "Continue the main conversation").unwrap(),
+                        client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    })
+                    .is_ok()
+            );
+        }
+    }
+}
+
+#[test]
+fn uncertain_title_delivery_immediately_blocks_the_main_connection() {
+    let mut runtime = titled_runtime();
+    runtime.start_title("bounded input").unwrap();
+    let partial = runtime.poll_title().unwrap();
+    runtime
+        .resolve_egress(partial.into_token(), EgressResolution::DeliveryUnknown)
+        .unwrap();
+    assert!(runtime.title_requires_teardown());
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Continue").unwrap(),
+                client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn cancelling_a_sent_config_read_needs_no_remote_cleanup_or_reply() {
+    let mut runtime = titled_runtime();
+    runtime.start_title("bounded input").unwrap();
+    let config = request(&mut runtime);
+    runtime.cancel_title();
+    runtime.title.as_mut().unwrap().cleanup_deadline = Some(std::time::Instant::now());
+    assert!(!runtime.title_pending());
+    assert!(!runtime.title_requires_teardown());
+    absorb(
+        &mut runtime,
+        json!({"id":config["id"],"result":{"config":{}}}),
+    );
+    assert!(
+        runtime.poll_title().is_none(),
+        "a late read must not create a thread"
+    );
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Continue").unwrap(),
+                client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            })
+            .is_ok()
+    );
+}
+
+#[test]
+fn title_effort_uses_the_actual_models_capabilities_and_rejection_stays_local() {
+    for (model, efforts, expected) in [
+        ("fixture-model", vec!["medium", "high"], Some("medium")),
+        ("fixture-model", vec![], None),
+        ("gpt-5.6-luna", vec!["high"], Some("high")),
+        ("gpt-5.6-luna", vec!["high", "low"], Some("low")),
+    ] {
+        let mut runtime = titled_runtime();
+        let list = runtime.model_config_hydration().unwrap().unwrap();
+        let id = request_id(&list);
+        runtime.ingest(&frame(json!({"id":id,"result":{"data":[{
+            "id":model,"model":model,"displayName":"Title model","isDefault":true,"hidden":false,
+            "supportedReasoningEfforts":efforts.iter().map(|e| json!({"reasoningEffort":e,"description":"Supported"})).collect::<Vec<_>>()
+        }],"nextCursor":null}})), &Mapper).unwrap();
+        runtime.start_title("bounded input").unwrap();
+        let config = request(&mut runtime);
+        absorb(
+            &mut runtime,
+            json!({"id":config["id"],"result":{"config":{}}}),
+        );
+        let start = request(&mut runtime);
+        assert_eq!(start["params"]["model"], model);
+        absorb(
+            &mut runtime,
+            json!({"id":start["id"],"result":{"thread":{"id":"temporary"},"sandbox":{"type":"readOnly"}}}),
+        );
+        let turn = request(&mut runtime);
+        assert_eq!(
+            turn["params"].get("effort").and_then(Value::as_str),
+            expected
+        );
+        absorb(
+            &mut runtime,
+            json!({"id":turn["id"],"error":{"code":-32602,"message":"Unsupported effort"}}),
+        );
+        assert_eq!(runtime.take_title_result(), Some(None));
+        assert_eq!(request(&mut runtime)["method"], "thread/unsubscribe");
+        absorb(
+            &mut runtime,
+            json!({"method":"thread/closed","params":{"threadId":"temporary"}}),
+        );
+        assert!(!runtime.title_requires_teardown());
+        assert!(
+            runtime
+                .command(AdapterCommand::Prompt {
+                    prompt: Prompt::new("prompt", "Continue").unwrap(),
+                    client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                })
+                .is_ok()
+        );
+    }
+}
