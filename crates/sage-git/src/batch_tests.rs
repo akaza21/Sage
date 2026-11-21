@@ -15,6 +15,109 @@ fn git(root: &Path, args: &[&str]) {
     );
 }
 
+fn git_stdout(root: &Path, args: &[&str]) -> Vec<u8> {
+    let output = crate::process::fixture_git()
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{:?}", output);
+    output.stdout
+}
+
+#[test]
+fn batch_unstage_preserves_clean_index_stat_cache() {
+    use std::io::Write;
+
+    let root = std::env::temp_dir().join(format!("sage-git-batch-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "-q"]);
+    // Isolate reset's refresh from the preflight numstat diff's own refresh.
+    git(&root, &["config", "diff.autoRefreshIndex", "false"]);
+    let clean_paths: Vec<_> = (0..64)
+        .map(|index| format!("clean-{index:03}.txt"))
+        .collect();
+    for path in clean_paths
+        .iter()
+        .map(String::as_str)
+        .chain(["literal[ab].txt", "literala.txt"])
+    {
+        fs::write(root.join(path), "base\n").unwrap();
+    }
+    git(&root, &["add", "."]);
+    git(
+        &root,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture",
+            "commit",
+            "-qm",
+            "base",
+        ],
+    );
+    for path in ["literal[ab].txt", "literala.txt"] {
+        fs::write(root.join(path), "changed\n").unwrap();
+    }
+    git(&root, &["add", "."]);
+
+    // Seed clean entries with empty stat caches, without relying on clock ticks
+    // or filesystem timestamp precision. A refreshing reset repopulates them.
+    let oid = String::from_utf8(git_stdout(&root, &["rev-parse", "HEAD:clean-000.txt"])).unwrap();
+    let mut child = crate::process::fixture_git()
+        .arg("-C")
+        .arg(&root)
+        .args(["update-index", "--index-info"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let mut input = child.stdin.take().unwrap();
+        for path in &clean_paths {
+            writeln!(input, "100644 {}\t{path}", oid.trim()).unwrap();
+        }
+    }
+    assert!(child.wait().unwrap().success());
+    let before = git_stdout(&root, &["ls-files", "--debug", "--", "clean-*.txt"]);
+    assert_eq!(
+        String::from_utf8_lossy(&before)
+            .matches("mtime: 0:0")
+            .count(),
+        clean_paths.len()
+    );
+
+    let workspace = Workspace::open("project", "root", &root).unwrap();
+    let counts = GitCommandCounts::observe(&root);
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        mutate_paths(
+            &workspace,
+            &[workspace.resource("literal[ab].txt").unwrap()],
+            GitFileMutationAction::Unstage,
+        )
+        .await
+        .unwrap();
+    });
+    assert_eq!(counts.count("status"), 1);
+    assert_eq!(counts.count("reset"), 1);
+    assert_eq!(
+        git_stdout(&root, &["ls-files", "--debug", "--", "clean-*.txt"]),
+        before,
+        "batch unstage must not refresh unrelated clean index entries"
+    );
+    assert_eq!(
+        git_stdout(&root, &["diff", "--cached", "--name-only"]),
+        b"literala.txt\n"
+    );
+    assert_eq!(git_stdout(&root, &["show", ":literal[ab].txt"]), b"base\n");
+    assert_eq!(
+        fs::read_to_string(root.join("literal[ab].txt")).unwrap(),
+        "changed\n"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn batch_handles_300_long_literal_paths_beyond_windows_command_line_limit() {
     let root = std::env::temp_dir().join(format!("sage-git-batch-{}", uuid::Uuid::new_v4()));
