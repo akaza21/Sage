@@ -19,6 +19,7 @@ pub struct ChatStatus {
     project_id: SageProjectId,
     chat_id: SageChatId,
     title: SafeText<8192>,
+    chat_listed: bool,
     latest_turn: Option<TurnStatus>,
 }
 
@@ -69,8 +70,8 @@ fn load(
     excluded_turn: Option<&str>,
 ) -> Result<ChatStatus, StoreError> {
     let row = connection.query_row(
-        concat!(
-            "SELECT c.title,t.state,t.updated_at,t.created_at,t.terminal_at FROM chats c LEFT JOIN turns t ON t.id=(
+        &format!(concat!(
+            "SELECT c.title,t.state,t.updated_at,t.created_at,t.terminal_at,{} FROM chats c LEFT JOIN turns t ON t.id=(
              SELECT latest.id FROM turns latest
              WHERE latest.session_id=(SELECT s.id FROM agent_sessions s
                WHERE s.project_id=c.project_id AND s.chat_id=c.id
@@ -82,9 +83,9 @@ fn load(
             crate::acp::store::turn_undo::visible_turn!("latest.session_id", "latest.id"),
             " ORDER BY latest.ordinal DESC,latest.id DESC LIMIT 1)
              WHERE c.project_id=?1 AND c.id=?2"
-        ),
+        ), crate::chat_lifecycle::visibility::listed_chat()),
         params![project_id.as_str(),chat_id.as_str(),excluded_turn.unwrap_or("")],
-        |row| Ok((row.get::<_,String>(0)?,row.get::<_,Option<String>>(1)?,row.get::<_,Option<i64>>(2)?,row.get::<_,Option<i64>>(3)?,row.get::<_,Option<i64>>(4)?)),
+        |row| Ok((row.get::<_,String>(0)?,row.get::<_,Option<String>>(1)?,row.get::<_,Option<i64>>(2)?,row.get::<_,Option<i64>>(3)?,row.get::<_,Option<i64>>(4)?,row.get::<_,bool>(5)?)),
     ).optional()?.ok_or(StoreError::Conflict { resource: "chat" })?;
     let latest_turn = row
         .1
@@ -102,6 +103,7 @@ fn load(
         chat_id,
         title: SafeText::new("chatTitle", row.0).map_err(|_| StoreError::Corrupt("chat title"))?,
         latest_turn,
+        chat_listed: row.5,
     })
 }
 
@@ -112,15 +114,25 @@ mod tests {
     #[test]
     fn status_reads_latest_session_and_turn_without_any_transcript_tables() {
         let db = Connection::open_in_memory().unwrap();
-        db.execute_batch("CREATE TABLE chats(project_id TEXT,id TEXT,title TEXT);
-          CREATE TABLE agent_sessions(id TEXT,ordinal INTEGER,project_id TEXT,chat_id TEXT);
-          CREATE TABLE turns(id TEXT,project_id TEXT,chat_id TEXT,session_id TEXT,ordinal INTEGER,state TEXT,updated_at INTEGER,created_at INTEGER,terminal_at INTEGER);
-          CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);
-          INSERT INTO chats VALUES('p','c','Chat');
+        db.execute_batch("CREATE TABLE chats(project_id TEXT,id TEXT,title TEXT,title_source TEXT,created_at INTEGER);
+          CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);
+          CREATE TABLE workbench_tabs(id TEXT,pinned INTEGER);
+          CREATE TABLE chat_queued_prompts(project_id TEXT,chat_id TEXT,prompts_json TEXT);
+          CREATE TABLE agent_sessions(id TEXT,ordinal INTEGER,project_id TEXT,chat_id TEXT,
+            binding_id TEXT,binding_digest TEXT,external_session_id TEXT,model_id TEXT,state TEXT,
+            residency TEXT,legacy INTEGER,revision INTEGER,projection_revision INTEGER,
+            created_at INTEGER,updated_at INTEGER,terminal_at INTEGER);
+          CREATE TABLE acp_session_usage(session_id TEXT,turn_count INTEGER,item_count INTEGER,fact_count INTEGER,revision INTEGER);
+          CREATE TABLE chat_session_heads(session_id TEXT);
+          CREATE TABLE session_runtime_epochs(session_id TEXT,runtime_epoch INTEGER,state TEXT,exit_kind TEXT,started_at INTEGER,terminal_at INTEGER);
+          CREATE TABLE items(turn_id TEXT,ordinal INTEGER,origin TEXT,kind TEXT,lifecycle TEXT,revision INTEGER,payload_json TEXT,created_at INTEGER,updated_at INTEGER,terminal_at INTEGER);
+          CREATE TABLE turns(id TEXT,project_id TEXT,chat_id TEXT,session_id TEXT,ordinal INTEGER,state TEXT,updated_at INTEGER,created_at INTEGER,terminal_at INTEGER,runtime_epoch INTEGER,delivery_state TEXT,client_intent_id TEXT,revision INTEGER);
+          CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT,sequence INTEGER,payload_json TEXT,projection_revision INTEGER,created_at INTEGER);
+          INSERT INTO chats(project_id,id,title,title_source) VALUES('p','c','Chat','default');
           CREATE INDEX idx_agent_sessions_owner ON agent_sessions(project_id,chat_id,ordinal,id);
           CREATE INDEX idx_turns_history ON turns(session_id,ordinal DESC,id DESC);
-          INSERT INTO agent_sessions VALUES('old',0,'p','c'),('new',1,'p','c'),('empty',2,'p','c');
-          INSERT INTO turns VALUES('old-turn','p','c','old',99,'completed',1,1,1),('first','p','c','new',0,'completed',2,2,2),('latest','p','c','new',1,'waitingApproval',3,3,NULL);").unwrap();
+          INSERT INTO agent_sessions(id,ordinal,project_id,chat_id) VALUES('old',0,'p','c'),('new',1,'p','c'),('empty',2,'p','c');
+          INSERT INTO turns(id,project_id,chat_id,session_id,ordinal,state,updated_at,created_at,terminal_at) VALUES('old-turn','p','c','old',99,'completed',1,1,1),('first','p','c','new',0,'completed',2,2,2),('latest','p','c','new',1,'waitingApproval',3,3,NULL);").unwrap();
         let status = load(
             &db,
             SageProjectId::parse("p").unwrap(),
@@ -130,7 +142,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             serde_json::to_value(status).unwrap(),
-            serde_json::json!({"projectId":"p","chatId":"c","title":"Chat","latestTurn":{"state":"waitingApproval","updatedAt":3,"createdAt":3,"terminalAt":null}})
+            serde_json::json!({"projectId":"p","chatId":"c","title":"Chat","chatListed":true,"latestTurn":{"state":"waitingApproval","updatedAt":3,"createdAt":3,"terminalAt":null}})
         );
         assert!(
             load(
@@ -142,7 +154,7 @@ mod tests {
             .is_err()
         );
         db.execute(
-            "INSERT INTO session_facts VALUES('new','latest','turnUndone')",
+            "INSERT INTO session_facts(session_id,turn_id,kind) VALUES('new','latest','turnUndone')",
             [],
         )
         .unwrap();

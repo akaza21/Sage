@@ -16,7 +16,7 @@ fn two_chat_state(label: &str) -> (AppState, ChatLifecycleRequest, std::path::Pa
     let root = std::env::temp_dir().join(format!("sage-chat-command-{label}-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     database

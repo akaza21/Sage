@@ -164,3 +164,40 @@ it("new-chat entry points distinguish a project chat from a top-level chat", asy
     state.project!.id,
   );
 });
+
+it("creates a project with no durable chat rows", async () => {
+  const state = useWorkbenchStore.getState();
+  expect(
+    await state.createProject({ name: "Fresh project", sourceTokens: [] }),
+  ).toBe(true);
+  const fresh = useWorkbenchStore.getState();
+  expect(fresh.tabs.filter((tab) => tab.kind === "chat")).toEqual([]);
+  expect(fresh.activeTabId).toBeNull();
+  expect(
+    (await getWorkbenchPorts().project.getBootstrapSnapshot()).tabs,
+  ).toEqual([]);
+});
+
+it("leaves a fresh profile without a project or a durable private placeholder", async () => {
+  const snapshot = await getWorkbenchPorts().project.getBootstrapSnapshot();
+  vi.spyOn(
+    getWorkbenchPorts().project,
+    "getBootstrapSnapshot",
+  ).mockResolvedValueOnce({
+    ...snapshot,
+    project: null,
+    projects: [],
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+  });
+  await useWorkbenchStore.getState().initialize();
+  expect(useWorkbenchStore.getState()).toMatchObject({
+    project: null,
+    tabs: [],
+    activeTabId: null,
+    newChatDraft: null,
+  });
+});

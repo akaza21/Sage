@@ -26,11 +26,11 @@ fn pins_a_chat_on_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let cross_chat = database
         .create_chat(&layout(&database.bootstrap_snapshot().unwrap()))
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
     database
         .pin_chat(&PinChatRequest {
             project_id: cross.id.clone(),
@@ -58,7 +58,7 @@ fn refuses_an_unknown_chat_pin() {
     let root = std::env::temp_dir().join(format!("sage-chat-pin-deny-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let error = database
         .pin_chat(&PinChatRequest {
             project_id: project.id,

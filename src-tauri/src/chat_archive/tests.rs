@@ -36,8 +36,8 @@ fn insert_detached_chat(database: &Database, project_id: &str, id: &str, ordinal
         .connection()
         .execute(
             "INSERT INTO chats(
-               id,project_id,ordinal,title,projection_revision,created_at,updated_at
-             ) VALUES (?1,?2,?3,?4,0,2,2)",
+               id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source
+             ) VALUES (?1,?2,?3,?4,0,2,2,'user')",
             rusqlite::params![id, project_id, ordinal, format!("Chat: {id}")],
         )
         .unwrap();
@@ -95,7 +95,7 @@ fn archive_and_restore_preserve_history_across_restart() {
     fs::create_dir_all(&root).unwrap();
     let database_path = base.join("sage.db");
     let database = crate::database::open_database(&database_path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     let second_chat_id = database
@@ -142,6 +142,7 @@ fn archive_and_restore_preserve_history_across_restart() {
         vec![sage_domain::chat::ArchivedChatSummary {
             id: first_chat_id.clone(),
             title: "Chat: remember me".into(),
+            chat_listed: Some(true),
         }]
     );
     drop(database);
@@ -183,11 +184,11 @@ fn archive_and_restore_preserve_history_across_restart() {
 }
 
 #[test]
-fn active_archive_selects_the_next_chat_then_previous_and_rejects_the_last() {
+fn active_archive_selects_next_then_previous_and_allows_the_last() {
     let root = std::env::temp_dir().join(format!("sage-chat-archive-order-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     let second_chat_id = database
@@ -196,6 +197,11 @@ fn active_archive_selects_the_next_chat_then_previous_and_rejects_the_last() {
     let second = database.bootstrap_snapshot().unwrap();
     let third_chat_id = database
         .create_chat(&request(&project.id, &second_chat_id, &second).current_layout)
+        .unwrap();
+    // User-named empty chats are still discoverable when archived.
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let third = database.bootstrap_snapshot().unwrap();
     let mut select_second = request(&project.id, &second_chat_id, &third).current_layout;
@@ -222,28 +228,21 @@ fn active_archive_selects_the_next_chat_then_previous_and_rejects_the_last() {
     );
     assert_eq!(active_first.archived_chats.len(), 2);
 
-    let before_rejection = database.bootstrap_snapshot().unwrap();
-    let error = database
-        .archive_chat(&request(&project.id, &first_chat_id, &before_rejection))
-        .unwrap_err();
-    assert!(error.to_string().contains("last attached chat"));
-    let after_rejection = database.bootstrap_snapshot().unwrap();
-    assert_eq!(
-        after_rejection
-            .tabs
-            .iter()
-            .map(|tab| &tab.id)
-            .collect::<Vec<_>>(),
-        before_rejection
-            .tabs
-            .iter()
-            .map(|tab| &tab.id)
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(
-        after_rejection.archived_chats,
-        before_rejection.archived_chats
-    );
+    database
+        .archive_chat(&request(&project.id, &first_chat_id, &active_first))
+        .unwrap();
+    let empty = database.bootstrap_snapshot().unwrap();
+    assert!(empty.tabs.is_empty());
+    assert!(empty.active_tab_id.is_none());
+    let retained: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM chats WHERE project_id=?1",
+            [&project.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(retained, 3);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -252,7 +251,7 @@ fn archived_projection_accepts_exact_limit_and_rejects_plus_one() {
     let root = std::env::temp_dir().join(format!("sage-chat-archive-limit-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     for ordinal in 1..=MAX_ARCHIVED_CHATS {
         insert_detached_chat(
             &database,
@@ -287,7 +286,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
     let root = std::env::temp_dir().join(format!("sage-chat-restore-limit-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     let archived_chat_id = database
@@ -315,6 +314,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
             status: Some("idle".into()),
             updated_at: None,
             finished_at: None,
+            chat_listed: None,
             resource: None,
             repository: None,
             diff_ref: None,
@@ -339,13 +339,17 @@ fn foreign_restore_and_storage_failures_leave_authoritative_state_unchanged() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let first_project = database.create_project_from_root(&first_root).unwrap();
+    let first_project = database.create_project_with_chat(&first_root).unwrap();
     let first_initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = first_initial.active_tab_id.clone().unwrap();
     let second_chat_id = database
         .create_chat(&request(&first_project.id, &first_chat_id, &first_initial).current_layout)
         .unwrap();
-    let second_project = database.create_project_from_root(&second_root).unwrap();
+    let second_project = database.create_project_with_chat(&second_root).unwrap();
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
+        .unwrap();
     let second_snapshot = database.bootstrap_snapshot().unwrap();
     let foreign_chat_id = second_snapshot.active_tab_id.clone().unwrap();
     database
@@ -420,7 +424,7 @@ fn archives_a_chat_on_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let seeded = database
         .bootstrap_snapshot()
         .unwrap()
@@ -431,7 +435,11 @@ fn archives_a_chat_on_a_non_active_project_without_switching() {
             &request(&cross.id, &seeded, &database.bootstrap_snapshot().unwrap()).current_layout,
         )
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
+        .unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     database
         .archive_chat(&ChatLifecycleRequest {
@@ -466,7 +474,7 @@ fn restores_a_chat_on_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let seeded = database
         .bootstrap_snapshot()
         .unwrap()
@@ -477,7 +485,11 @@ fn restores_a_chat_on_a_non_active_project_without_switching() {
             &request(&cross.id, &seeded, &database.bootstrap_snapshot().unwrap()).current_layout,
         )
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
+        .unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     let sage_layout = request(
         &sage.id,
@@ -512,25 +524,25 @@ fn restores_a_chat_on_a_non_active_project_without_switching() {
 }
 
 #[test]
-fn refuses_to_archive_the_last_chat_on_a_non_active_project() {
+fn archives_the_last_chat_on_a_non_active_project_without_deleting_it() {
     let base = std::env::temp_dir().join(format!("sage-chat-archive-last-{}", Uuid::new_v4()));
     let first_root = base.join("cross");
     let second_root = base.join("sage");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let seeded = database
         .bootstrap_snapshot()
         .unwrap()
         .active_tab_id
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
     let before = database.bootstrap_snapshot().unwrap();
-    let error = database
+    database
         .archive_chat(&ChatLifecycleRequest {
-            project_id: cross.id,
-            chat_id: seeded,
+            project_id: cross.id.clone(),
+            chat_id: seeded.clone(),
             current_layout: request(
                 &sage.id,
                 before.active_tab_id.as_deref().unwrap_or(""),
@@ -538,8 +550,32 @@ fn refuses_to_archive_the_last_chat_on_a_non_active_project() {
             )
             .current_layout,
         })
-        .unwrap_err();
-    assert!(matches!(error, AppError::InvalidRequest(_)));
+        .unwrap();
+    assert_eq!(
+        database.bootstrap_snapshot().unwrap().project.unwrap().id,
+        sage.id
+    );
+    assert_eq!(
+        database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1",
+                [&cross.id],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM chats WHERE id=?1", [&seeded], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+        1
+    );
     fs::remove_dir_all(base).unwrap();
 }
 
@@ -549,7 +585,7 @@ fn untouched_chat_keeps_first_prompt_title_after_archive_restore_and_reopen() {
     fs::create_dir_all(&root).unwrap();
     let path = root.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat = database
         .create_chat(

@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 
+import { unsentChatIdsJson } from "../../app/unsentChatIds";
 import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
@@ -219,7 +220,17 @@ export function ChatSearchControl({
         projectGeneration: scope.projectGeneration,
         expectedTransitionEpoch: scope.transitionEpoch,
         query: normalized,
-        search: (request) => projectChatSearchDesktop.search(request),
+        search: (request) => {
+          const state = useWorkbenchStore.getState();
+          const draftChatIds =
+            state.project?.id === request.projectId
+              ? (JSON.parse(unsentChatIdsJson(state)) as string[])
+              : [];
+          return projectChatSearchDesktop.search({
+            ...request,
+            ...(draftChatIds.length ? { draftChatIds } : {}),
+          });
+        },
       });
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
       setResponse(result);

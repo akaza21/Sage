@@ -134,8 +134,6 @@ impl ChatCreateStore for Database {
             }
         }
         let switch_to_created = chat_id.is_some() && !source_is_active;
-        let chat_id =
-            insert_chat_with_identity(&transaction, project_id, source_is_active, parent, chat_id)?;
         if switch_to_created {
             crate::workbench_persistence::store::switch_project_in(
                 &transaction,
@@ -145,6 +143,13 @@ impl ChatCreateStore for Database {
                 },
             )?;
         }
+        let chat_id = insert_chat_with_identity(
+            &transaction,
+            project_id,
+            source_is_active || switch_to_created,
+            parent,
+            chat_id,
+        )?;
         transaction.commit().db()?;
         Ok(chat_id)
     }

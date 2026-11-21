@@ -66,7 +66,7 @@ fn ordinary_and_legacy_verbatim_roots_share_one_identity_and_cannot_be_added_twi
     let root = folders.root("root");
     let canonical = root.canonicalize().unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     database
         .connection()
         .execute(
@@ -96,10 +96,10 @@ fn process_root_authority_rejects_unknown_and_foreign_roots() {
         let folders = Folders::new();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let foreign = database
-            .create_project_from_root(&folders.root("foreign"))
+            .create_project_with_chat(&folders.root("foreign"))
             .unwrap();
         let active = database
-            .create_project_from_root(&folders.root("active"))
+            .create_project_with_chat(&folders.root("active"))
             .unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(active.id).unwrap();
@@ -130,7 +130,7 @@ fn process_root_authority_rejects_noncanonical_alias_and_missing_root() {
         let folders = Folders::new();
         let root = folders.root("root");
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();
@@ -167,7 +167,7 @@ fn retained_process_root_detects_or_blocks_directory_substitution() {
         let root = folders.root("root");
         let moved = folders.base.join("moved");
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();
         let context = state
@@ -202,7 +202,7 @@ fn process_root_authority_rejects_registered_symlink_alias() {
         let alias = folders.base.join("alias");
         symlink(&root, &alias).unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         database
             .connection()
@@ -233,7 +233,7 @@ fn process_root_authority_rejects_registered_windows_directory_alias() {
             return;
         }
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         database
             .connection()
@@ -294,7 +294,7 @@ fn duplicate_canonical_root_is_rejected_and_nested_root_is_allowed() {
     let nested = outer.join("nested");
     fs::create_dir_all(&nested).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&outer).unwrap();
+    let project = database.create_project_with_chat(&outer).unwrap();
 
     assert!(database.add_project_root(&project.id, &outer).is_err());
     let project = database.add_project_root(&project.id, &nested).unwrap();
@@ -307,7 +307,7 @@ fn root_limit_is_rejected_without_losing_existing_roots() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
-        .create_project_from_root(&folders.root("root-0"))
+        .create_project_with_chat(&folders.root("root-0"))
         .unwrap();
     for index in 1..MAX_ROOTS_PER_PROJECT {
         database
@@ -331,12 +331,12 @@ fn project_limit_is_rejected_without_losing_the_registry() {
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     for index in 0..MAX_PROJECTS {
         database
-            .create_project_from_root(&folders.root(&format!("project-{index}")))
+            .create_project_with_chat(&folders.root(&format!("project-{index}")))
             .unwrap();
     }
     assert!(
         database
-            .create_project_from_root(&folders.root("project-overflow"))
+            .create_project_with_chat(&folders.root("project-overflow"))
             .is_err()
     );
     assert_eq!(database.project_count().unwrap(), MAX_PROJECTS);
@@ -371,7 +371,7 @@ fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
 
     assert!(matches!(
-        database.create_project_from_root(&root),
+        database.create_project_with_chat(&root),
         Err(AppError::InvalidRequest(_))
     ));
     assert_eq!(database.project_count().unwrap(), 0);
@@ -397,7 +397,7 @@ fn missing_root_remains_typed_and_does_not_hide_available_roots() {
     let first = folders.root("available");
     let missing = folders.root("missing");
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&first).unwrap();
+    let project = database.create_project_with_chat(&first).unwrap();
     database.add_project_root(&project.id, &missing).unwrap();
     fs::remove_dir_all(&missing).unwrap();
 
@@ -414,7 +414,7 @@ fn same_relative_path_in_two_roots_has_independent_durable_buffers() {
     fs::write(left.join("src.rs"), "left\n").unwrap();
     fs::write(right.join("src.rs"), "right\n").unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&left).unwrap();
+    let project = database.create_project_with_chat(&left).unwrap();
     let project = database.add_project_root(&project.id, &right).unwrap();
     let records = database.root_records(&project.id).unwrap();
 
@@ -453,7 +453,7 @@ fn switching_projects_restores_layout_and_dirty_buffer_metadata() {
     let root_b = folders.root("b");
     fs::write(root_a.join("dirty.txt"), "base\n").unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project_a = database.create_project_from_root(&root_a).unwrap();
+    let project_a = database.create_project_with_chat(&root_a).unwrap();
     let record_a = database
         .root_records(&project_a.id)
         .unwrap()
@@ -477,7 +477,7 @@ fn switching_projects_restores_layout_and_dirty_buffer_metadata() {
     )
     .unwrap();
 
-    let project_b = database.create_project_from_root(&root_b).unwrap();
+    let project_b = database.create_project_with_chat(&root_b).unwrap();
     let current = database.bootstrap_snapshot().unwrap();
     database
         .switch_project(&ProjectSwitchRequest {
@@ -498,10 +498,10 @@ fn missing_active_project_reference_falls_back_deterministically() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
-        .create_project_from_root(&folders.root("fallback-a"))
+        .create_project_with_chat(&folders.root("fallback-a"))
         .unwrap();
     let project_b = database
-        .create_project_from_root(&folders.root("fallback-b"))
+        .create_project_with_chat(&folders.root("fallback-b"))
         .unwrap();
     database
         .connection()
@@ -525,11 +525,11 @@ fn create_add_and_switch_reject_stale_project_intents_without_mutation() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
-        .create_project_from_root(&folders.root("intent-a"))
+        .create_project_with_chat(&folders.root("intent-a"))
         .unwrap();
     let snapshot_a = database.bootstrap_snapshot().unwrap();
     let project_b = database
-        .create_project_from_root(&folders.root("intent-b"))
+        .create_project_with_chat(&folders.root("intent-b"))
         .unwrap();
     let before_projects = database.project_count().unwrap();
 
@@ -572,10 +572,10 @@ fn benchmarks_twenty_project_switches_with_authoritative_projection() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
-        .create_project_from_root(&folders.root("switch-a"))
+        .create_project_with_chat(&folders.root("switch-a"))
         .unwrap();
     let project_b = database
-        .create_project_from_root(&folders.root("switch-b"))
+        .create_project_with_chat(&folders.root("switch-b"))
         .unwrap();
     let mut current = database.bootstrap_snapshot().unwrap();
     let mut samples_micros = Vec::with_capacity(20);
@@ -613,7 +613,7 @@ fn ensure_local_project_creates_a_zero_root_chat_home() {
     assert!(first.roots.is_empty());
     let snapshot = database.bootstrap_snapshot().unwrap();
     assert_eq!(snapshot.project.as_ref().unwrap().id, first.id);
-    assert!(snapshot.tabs.iter().any(|tab| tab.kind == "chat"));
+    assert!(snapshot.tabs.is_empty());
     let again = database.ensure_local_project().unwrap();
     assert_eq!(again.id, first.id);
 }
@@ -636,13 +636,13 @@ fn project_list_includes_bounded_chats_for_every_project() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let cross_chat = database
         .bootstrap_snapshot()
         .unwrap()
         .active_tab_id
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
     for _ in 0..8 {
         database
             .create_chat(&snapshot_layout(&database.bootstrap_snapshot().unwrap()))
@@ -658,6 +658,11 @@ fn project_list_includes_bounded_chats_for_every_project() {
             "UPDATE chats SET updated_at=?3 WHERE project_id=?1 AND id=?2",
             rusqlite::params![sage.id, latest, sage_core::time::now_millis() + 10_000],
         )
+        .unwrap();
+    // These rows model user-named saved chats for ordering and cap checks.
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let cross_item = projects.iter().find(|item| item.id == cross.id).unwrap();
@@ -681,7 +686,7 @@ fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
-        .create_project_from_root(&folders.root("many"))
+        .create_project_with_chat(&folders.root("many"))
         .unwrap();
     for _ in 0..19 {
         database
@@ -701,7 +706,12 @@ fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
         .execute("UPDATE chats SET updated_at=1 WHERE id=?1", [&first])
         .unwrap();
     database
-        .create_project_from_root(&folders.root("active"))
+        .create_project_with_chat(&folders.root("active"))
+        .unwrap();
+    // These rows model user-named saved chats for ordering and cap checks.
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let item = projects.iter().find(|item| item.id == project.id).unwrap();
@@ -727,7 +737,7 @@ fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
-        .create_project_from_root(&folders.root("pinned"))
+        .create_project_with_chat(&folders.root("pinned"))
         .unwrap();
     let pinned = database
         .bootstrap_snapshot()
@@ -748,7 +758,12 @@ fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
         .execute("UPDATE chats SET updated_at=1 WHERE id=?1", [&pinned])
         .unwrap();
     database
-        .create_project_from_root(&folders.root("active"))
+        .create_project_with_chat(&folders.root("active"))
+        .unwrap();
+    // These rows model user-named saved chats for ordering and cap checks.
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let item = projects.iter().find(|item| item.id == project.id).unwrap();
@@ -763,7 +778,7 @@ fn named_project_keeps_its_name_and_source_folders_in_order() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let active = database
-        .create_project_from_root(&folders.root("active"))
+        .create_project_with_chat(&folders.root("active"))
         .unwrap();
     let project = database
         .create_named_project_if_active(
@@ -826,7 +841,7 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
     let folders = Folders::new();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
-        .create_project_from_root(&folders.root("finished"))
+        .create_project_with_chat(&folders.root("finished"))
         .unwrap();
     let chat = database
         .bootstrap_snapshot()
@@ -873,7 +888,12 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
     let tab = restored.tabs.iter().find(|tab| tab.id == chat).unwrap();
     assert_eq!((tab.updated_at, tab.finished_at), (Some(9000), Some(5_000)));
     database
-        .create_project_from_root(&folders.root("other"))
+        .create_project_with_chat(&folders.root("other"))
+        .unwrap();
+    // These rows model user-named saved chats for ordering and cap checks.
+    database
+        .connection()
+        .execute("UPDATE chats SET title_source='user'", [])
         .unwrap();
     let projects = database.project_list().unwrap();
     let rail = projects.iter().find(|item| item.id == project.id).unwrap();
@@ -891,7 +911,7 @@ fn project_list_keeps_its_order_when_another_project_opens() {
     let names = ["first", "second", "third"];
     for (created_at, name) in (1_i64..).zip(names) {
         let project = database
-            .create_project_from_root(&folders.root(name))
+            .create_project_with_chat(&folders.root(name))
             .unwrap();
         database
             .connection()

@@ -253,11 +253,7 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
-    const next = archiveChatLayout(
-      request.currentLayout,
-      request.chatId,
-      snapshot.project?.isInternal,
-    );
+    const next = archiveChatLayout(request.currentLayout, request.chatId);
     await this.persistProjectLayout(next, expectedTransitionEpoch);
     return committedTransition();
   },
@@ -323,9 +319,6 @@ export const browserDesktop = {
     return ensureBrowserLocalProject({
       snapshot,
       expectedTransitionEpoch,
-      durableChatIds,
-      chatTitles,
-      messagesByChat,
       activeMessages,
     });
   },

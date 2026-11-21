@@ -48,7 +48,7 @@ fn private_chat_session_uses_its_registered_folder_and_freezes_scope_before_a_tu
             })),
         );
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        let real = database.create_project_from_root(&root).unwrap();
+        let real = database.create_project_with_chat(&root).unwrap();
         let chat = uuid::Uuid::new_v4().to_string();
         crate::private_chat::create(&database, None, &chat).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();

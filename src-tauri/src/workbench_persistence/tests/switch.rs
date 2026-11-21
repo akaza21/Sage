@@ -1,6 +1,4 @@
 use super::*;
-use crate::chat_archive::delete::ArchivedChatDeleteStore;
-use sage_domain::chat::ChatDeleteRequest;
 
 fn layout(snapshot: &BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
@@ -19,23 +17,8 @@ fn switching_back_to_a_project_without_roots_or_chats_restores_its_empty_layout(
         .create_named_project_if_active("Empty", &[], Some(&other_id))
         .unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
-    let chat_id = initial.active_tab_id.unwrap();
-    // Remove the creation placeholder through the normal layout/delete APIs.
-    database
-        .persist_project_layout(&ProjectLayoutRequest {
-            project_id: empty.id.clone(),
-            tabs: Vec::new(),
-            active_tab_id: None,
-            selected_root_id: None,
-            selected_resource: None,
-        })
-        .unwrap();
-    database
-        .delete_archived_chat(&ChatDeleteRequest {
-            project_id: empty.id.clone(),
-            chat_id,
-        })
-        .unwrap();
+    assert!(initial.tabs.is_empty());
+    assert!(initial.active_tab_id.is_none());
     let before = database.bootstrap_snapshot().unwrap();
     assert!(before.tabs.is_empty());
     assert!(before.archived_chats.is_empty());

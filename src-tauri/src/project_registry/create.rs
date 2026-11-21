@@ -9,7 +9,7 @@ use sage_core::{
 use sage_db::error::SqliteResultExt;
 use uuid::Uuid;
 
-use super::seed::{active_project_in, insert_root, seed_project};
+use super::seed::{active_project_in, insert_root, seed_empty_project};
 use super::{
     MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_folder, conservative_overlap_key, folder_name,
     project_summary_in,
@@ -59,6 +59,9 @@ fn canonical_sources(roots: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
 }
 
 pub(crate) trait ProjectCreateStore {
+    #[cfg(test)]
+    fn create_project_with_chat(&self, root: &Path) -> AppResult<ProjectSummary>;
+
     fn create_project_from_root(&self, root: &Path) -> AppResult<ProjectSummary>;
 
     fn create_named_project_if_active(
@@ -70,6 +73,16 @@ pub(crate) trait ProjectCreateStore {
 }
 
 impl ProjectCreateStore for Database {
+    #[cfg(test)]
+    fn create_project_with_chat(&self, root: &Path) -> AppResult<ProjectSummary> {
+        let project = self.create_project_from_root(root)?;
+        let mut connection = self.write_connection()?;
+        let transaction = connection.transaction().db()?;
+        crate::chat_lifecycle::insert_new_chat(&transaction, &project.id, true, None)?;
+        transaction.commit().db()?;
+        Ok(project)
+    }
+
     fn create_project_from_root(&self, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
         create_project_with_intent(self, &folder_name(&canonical), &[canonical], None)
@@ -98,7 +111,6 @@ fn create_project_with_intent(
         crate::private_chat::require_user_root(database, root)?;
     }
     let project_id = Uuid::new_v4().to_string();
-    let tab_id = Uuid::new_v4().to_string();
     let now = now_millis();
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction().db()?;
@@ -134,13 +146,7 @@ fn create_project_with_intent(
         insert_root(&transaction, &project_id, &root_id, root, ordinal)?;
         first_root_id.get_or_insert(root_id);
     }
-    seed_project(
-        &transaction,
-        &project_id,
-        &tab_id,
-        first_root_id.as_deref(),
-        now,
-    )?;
+    seed_empty_project(&transaction, &project_id, first_root_id.as_deref(), now)?;
     let summary = project_summary_in(&transaction, &project_id)?;
     transaction.commit().db()?;
     Ok(summary)

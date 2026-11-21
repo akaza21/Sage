@@ -871,7 +871,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
     let root = TempRoot::new("sage-first-turn");
     fs::create_dir_all(root.path()).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(root.path()).unwrap();
+    let project = database.create_project_with_chat(root.path()).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse("chat-first-turn").unwrap();
     let now_millis = sage_core::time::now_millis();
@@ -1680,7 +1680,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         let root = std::env::temp_dir().join(format!("sage-two-turns-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-two-turns").unwrap();
         let now = sage_core::time::now_millis();
@@ -2218,7 +2218,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
         let root = TempRoot::new("sage-idle-close");
         fs::create_dir_all(root.path()).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(root.path()).unwrap();
+        let project = database.create_project_with_chat(root.path()).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-idle-close").unwrap();
         let now = sage_core::time::now_millis();

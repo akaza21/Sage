@@ -18,7 +18,7 @@ fn database_with_project() -> (Database, String, String) {
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let root = std::env::temp_dir().join(format!("sage-bootstrap-chat-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     fs::remove_dir_all(root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -36,7 +36,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let history = seed_closed_simulator_history(
         &database,
@@ -55,6 +55,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
         status: None,
         updated_at: None,
         finished_at: None,
+        chat_listed: None,
         resource: None,
         repository: None,
         diff_ref: None,
@@ -302,7 +303,7 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&path).unwrap();
-    let project_id = database.create_project_from_root(&root).unwrap().id;
+    let project_id = database.create_project_with_chat(&root).unwrap().id;
     let chat_id = database
         .bootstrap_snapshot()
         .unwrap()
@@ -434,7 +435,7 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.unwrap();
     let chat_tab = initial
@@ -535,7 +536,7 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     let first_history = database
