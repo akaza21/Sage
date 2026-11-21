@@ -448,6 +448,18 @@ describe("ChatSurface approval slot", () => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("keeps failed-history recovery available when no harness can run", () => {
+    useWorkbenchStore.setState({ harnesses: [], selectedHarnessId: null });
+    acpProjectionStoreFor().getState().failRefresh("History read failed.");
+    render(<ChatSurface />);
+    expect(screen.getByText(/No harness is available here/)).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This chat failed to load.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/No harness is available here/)).toBeVisible();
+  });
   it("keeps a restored unavailable binding selected and blocks sending after discovery", async () => {
     const current = useWorkbenchStore.getState().harnesses;
     hooks.page = {
@@ -492,8 +504,11 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface chatId="chat-a" />);
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toBeDisabled();
+      screen.getByText("This chat used a harness that isn't available here."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
     expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
       "unavailable-binding:absent-binding",
     );
@@ -506,15 +521,19 @@ describe("ChatSurface ACP resource integration", () => {
     });
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toBeDisabled();
+      screen.getAllByText(
+        "This chat used a harness that isn't available here.",
+      ),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
     expect(useWorkbenchStore.getState().selectedHarnessId).toBe(
       "unavailable-binding:absent-binding",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
-      screen.getByRole("option", { name: /Unavailable harness/ }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: "Continue in a new chat" }),
+    ).toBeEnabled();
   });
 
   it.each([
@@ -3022,7 +3041,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", async () => {
+  it("keeps not-installed harnesses disabled in an available harness's picker", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -3078,13 +3097,13 @@ describe("ChatSurface ACP resource integration", () => {
           bindingId: null,
         },
       ],
-      selectedHarnessId: "codex",
+      selectedHarnessId: "sage-simulator",
     });
 
     render(<ChatSurface />);
     await openComposerOptions();
 
-    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Test simulator")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach context" })).toBeNull();
     const harness = screen.getByRole("button", { name: "Harness" });
@@ -4227,7 +4246,7 @@ describe("ChatSurface ACP resource integration", () => {
           accessModes: nativeReadOnly,
         },
       ],
-      selectedHarnessId: "old-harness",
+      selectedHarnessId: "codex",
       harnessDiscoveryPhase: "checking",
       models: [],
       selectedModelId: null,
@@ -5589,14 +5608,13 @@ describe("ChatSurface composer focus hotkey", () => {
     });
     hooks.page = null;
     render(<ChatSurface />);
-    const composer = screen.getByRole("combobox", { name: "Message agent" });
-    expect(composer).toBeDisabled();
-    expect(composer).toHaveAttribute(
-      "placeholder",
-      "Choose an available harness before starting a session",
-    );
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
+    expect(screen.getByText(/No harness is available here/)).toBeVisible();
+    const focused = document.activeElement;
     fireEvent.keyDown(window, { key: "l", ctrlKey: true });
-    expect(composer).not.toHaveFocus();
+    expect(document.activeElement).toBe(focused);
   });
 });
 

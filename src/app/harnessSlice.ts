@@ -262,6 +262,17 @@ export const createHarnessSlice: StateCreator<
       await load(harnessId, previous, generation, projectId, refresh);
     },
     applyHarnessDiscovery: async (harnesses) => {
+      const usage = get().harnesses;
+      harnesses = harnesses.map((harness) => ({
+        ...harness,
+        lastUsedAt:
+          harness.lastUsedAt ??
+          usage.find(
+            (previous) =>
+              previous.bindingId === harness.bindingId &&
+              previous.id === harness.id,
+          )?.lastUsedAt,
+      }));
       const previous = get().harnesses.find(
         (candidate) => candidate.id === get().selectedHarnessId,
       );

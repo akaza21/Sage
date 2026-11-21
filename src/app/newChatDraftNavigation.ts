@@ -1,6 +1,7 @@
 import type { StoreApi } from "zustand";
 import { agentChatFocus } from "./agentChatOwner";
 import { sessionAccessModeCandidates } from "../domain/sessionAccessMode";
+import { preferredAvailableHarness } from "../domain/harness";
 import { preferredModelId } from "./harnessSlice";
 import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
@@ -44,7 +45,26 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
-  if (state.agentCenter === "draft" && retainedDraft) {
+  const preferred = preferredAvailableHarness(
+    state.harnesses,
+    retainedDraft ? retainedDraft.harnessId : state.selectedHarnessId,
+  );
+  const resolvedDraft =
+    retainedDraft?.submission.status === "released" &&
+    retainedDraft.harnessId !== (preferred?.id ?? null)
+      ? {
+          ...retainedDraft,
+          harnessId: preferred?.id ?? null,
+          modelId: null,
+          access: null,
+          effort: null,
+        }
+      : retainedDraft;
+  if (
+    state.agentCenter === "draft" &&
+    retainedDraft &&
+    resolvedDraft === retainedDraft
+  ) {
     set({ draftFocusRequest });
     return;
   }
@@ -61,19 +81,25 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft: retainedDraft ?? {
+    newChatDraft: resolvedDraft ?? {
       id: {},
       projectId: state.project?.id ?? null,
       targetProjectId: projectId ?? null,
       text: "",
-      harnessId: state.selectedHarnessId,
-      modelId: state.selectedModelId,
+      harnessId: preferred?.id ?? null,
+      modelId:
+        preferred?.id === state.selectedHarnessId
+          ? state.selectedModelId
+          : null,
       access: null,
       effort: null,
       submission: { status: "released" },
       error: null,
     },
   });
+  const opened = get().newChatDraft;
+  if (opened?.harnessId && opened.harnessId !== get().selectedHarnessId)
+    return selectDraftHarness(set, get, opened.harnessId);
 }
 /**
  * The choices a draft sends with under the current catalog, or null while

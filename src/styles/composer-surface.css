@@ -362,3 +362,9 @@
     box-shadow: none;
   }
 }
+
+.chat-harness-unavailable {
+  padding: var(--space-4) var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

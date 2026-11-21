@@ -386,23 +386,21 @@ impl HarnessCatalog {
         Err(AppError::HarnessUnavailable(harness_id.into()))
     }
 
-    pub fn default_selected_harness_id(&self) -> Option<String> {
-        self.default_selected_harness_id_for(SIMULATOR_IN_CATALOG)
-    }
-
-    fn default_selected_harness_id_for(&self, simulator_in_catalog: bool) -> Option<String> {
-        let definitions = self.definitions_for(simulator_in_catalog);
-        definitions
+    pub(crate) fn preferred_available_harness_id(
+        definitions: &[HarnessDefinition],
+    ) -> Option<String> {
+        let mut best: Option<&HarnessDefinition> = None;
+        for harness in definitions
             .iter()
-            .find(|definition| {
-                definition.install_state == "available" && definition.source != "development"
-            })
-            .or_else(|| {
-                definitions
-                    .iter()
-                    .find(|definition| definition.install_state == "available")
-            })
-            .map(|definition| definition.id.clone())
+            .filter(|harness| harness.install_state == "available")
+        {
+            if best.is_none_or(|best| {
+                harness.last_used_at.unwrap_or(0) > best.last_used_at.unwrap_or(0)
+            }) {
+                best = Some(harness);
+            }
+        }
+        best.map(|harness| harness.id.clone())
     }
 
     pub fn harness_id_for_binding(&self, binding_id: &str) -> Option<String> {
@@ -1065,7 +1063,8 @@ mod tests {
             Err(AppError::UnknownHarness(_))
         ));
         assert_ne!(
-            catalog.default_selected_harness_id_for(false).as_deref(),
+            HarnessCatalog::preferred_available_harness_id(&catalog.definitions_for(false))
+                .as_deref(),
             Some(SIMULATOR_ID)
         );
     }
@@ -1093,7 +1092,8 @@ mod tests {
         .settled_for_test();
 
         assert_eq!(
-            catalog.default_selected_harness_id_for(true).as_deref(),
+            HarnessCatalog::preferred_available_harness_id(&catalog.definitions_for(true))
+                .as_deref(),
             Some("codex")
         );
     }
@@ -1101,7 +1101,7 @@ mod tests {
     #[test]
     fn configured_catalog_matches_the_current_build_policy() {
         let definitions = HarnessCatalog::default().definitions();
-        let default_id = HarnessCatalog::default().default_selected_harness_id();
+        let default_id = HarnessCatalog::preferred_available_harness_id(&definitions);
         if SIMULATOR_IN_CATALOG {
             let simulator = by_id(&definitions, SIMULATOR_ID);
             assert_eq!(

@@ -65,6 +65,8 @@ interface HarnessDefinitionBase {
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
   accountModelDiscovery: boolean;
+  /** Derived from durable session usage; never a WebView preference. */
+  lastUsedAt?: number | null;
   accessModes?: readonly SessionAccessModeCapability[];
   version?: string | null;
   versionChecking?: boolean;
@@ -105,6 +107,24 @@ export function harnessHasSignInCheck(
     harness?.installState === "available" &&
     Boolean(harness.accountModelDiscovery || harness.signIn?.statusCheck)
   );
+}
+
+export function preferredAvailableHarness(
+  harnesses: readonly HarnessDefinition[],
+  rememberedId?: string | null,
+): HarnessDefinition | null {
+  let best: HarnessDefinition | null = null;
+  for (const harness of harnesses) {
+    if (
+      harness.installState !== "available" ||
+      (harness.transport === "acp" && !harness.bindingId)
+    )
+      continue;
+    if (harness.id === rememberedId) return harness;
+    if (!best || (harness.lastUsedAt ?? 0) > (best.lastUsedAt ?? 0))
+      best = harness;
+  }
+  return best;
 }
 
 export interface ModelOption {

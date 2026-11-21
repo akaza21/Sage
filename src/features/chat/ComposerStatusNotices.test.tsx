@@ -40,6 +40,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("shows a shared failure once while retaining a different image failure", () => {
+  render(
+    <ComposerStatusNotices
+      {...props}
+      missingBindingNotice={false}
+      workbenchError="Harness launch failed."
+      chatError="Harness launch failed."
+      imageStatus="Image upload failed."
+    />,
+  );
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toEqual(["Harness launch failed.", "Image upload failed."]);
+});
+
 it.each([
   ["idle", true],
   ["ready", true],

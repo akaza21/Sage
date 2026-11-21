@@ -52,6 +52,19 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     createChat,
+    harnesses: [
+      {
+        id: "available",
+        name: "Available",
+        description: "",
+        source: "builtIn",
+        transport: "acp",
+        bindingId: "available-binding",
+        accountModelDiscovery: false,
+        installState: "available",
+      },
+    ],
+    selectedHarnessId: "available",
   });
   render(<LeftSidebar />);
   expect(

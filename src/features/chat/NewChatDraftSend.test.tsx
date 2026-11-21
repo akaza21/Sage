@@ -145,6 +145,147 @@ function mount(strict = false, compact = false) {
 }
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
+it.each([
+  { recent: true, expected: "other-draft-harness" },
+  { recent: false, expected: "draft-harness" },
+])(
+  "silently replaces an inherited unavailable harness (recent: $recent)",
+  async ({ recent, expected }) => {
+    const unavailable = {
+      ...harness,
+      id: "removed-harness",
+      installState: "unavailable" as const,
+    };
+    useWorkbenchStore.setState({
+      agentCenter: "chat",
+      newChatDraft: null,
+      harnesses: [
+        harness,
+        { ...otherHarness, lastUsedAt: recent ? 200 : null },
+        unavailable,
+      ],
+      selectedHarnessId: unavailable.id,
+      selectedModelId: "old-model",
+      models: [],
+    });
+    await useWorkbenchStore.getState().openNewChatDraft();
+    mount();
+    await settleLazyModules();
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().selectedHarnessId).toBe(expected),
+    );
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      harnessId: expected,
+      error: null,
+    });
+    expect(composer()).toHaveAttribute("placeholder", "Do anything");
+    expect(
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        /can't start this harness|reviewed local binding|selected harness is unavailable/,
+      ),
+    ).toBeNull();
+  },
+);
+
+it("shows exactly one message when no draft harness is available", async () => {
+  useWorkbenchStore.setState({
+    agentCenter: "chat",
+    newChatDraft: null,
+    harnesses: [{ ...harness, installState: "unavailable" }],
+    selectedHarnessId: harness.id,
+    models: [],
+  });
+  await useWorkbenchStore.getState().openNewChatDraft();
+  mount();
+  await settleLazyModules();
+  expect(screen.getAllByRole("status")).toHaveLength(1);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "No harness is available here.",
+  );
+  expect(
+    screen.queryByPlaceholderText(
+      "Choose an available harness before starting a session",
+    ),
+  ).toBeNull();
+  expect(
+    screen.queryByText(
+      /can't start this harness|reviewed local binding|selected harness is unavailable/,
+    ),
+  ).toBeNull();
+});
+
+it.each(["bindingUnavailable", "capabilityUnavailable"] as const)(
+  "keeps unavailable chat history and independent errors (%s) with one recovery action",
+  async (reason) => {
+    const chatId = await existingSessionlessChat();
+    const state = useWorkbenchStore.getState();
+    const unavailable = { ...harness, installState: "unavailable" as const };
+    const session = agentSessionFixture({
+      bindingId:
+        harness.bindingId as AcpChatPage["sessions"][number]["bindingId"],
+      state: "closed",
+      runtimeEpoch: null,
+      residency: "cold",
+    });
+    pages.set(chatId, {
+      ...emptyPage(state.project!.id, chatId),
+      sessions: [session],
+    });
+    useWorkbenchStore.setState({
+      harnesses: [unavailable, otherHarness],
+      selectedHarnessId: harness.id,
+      agentCenter: "chat",
+      newChatDraft: null,
+      error: "Project refresh failed.",
+    });
+    state.setChatActionState(state.captureChatOwnership(chatId)!, {
+      sending: false,
+      error: "Native availability failure.",
+      errorKind: "unavailable",
+      errorUnavailableReason: reason,
+    });
+    mount();
+    await settleLazyModules();
+    await waitFor(() =>
+      expect(
+        screen.getByText("This chat used a harness that isn't available here."),
+      ).toBeVisible(),
+    );
+    expect(
+      screen.getAllByText(
+        /This chat used a harness|can't start this harness|reviewed local binding|selected harness is unavailable/,
+      ),
+    ).toHaveLength(1);
+    expect(screen.getByText("Project refresh failed.")).toBeVisible();
+    expect(Boolean(screen.queryByText("Native availability failure."))).toBe(
+      reason !== "bindingUnavailable",
+    );
+    expect(
+      screen.queryByText(
+        /can't start this harness|reviewed local binding|selected harness is unavailable/,
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByPlaceholderText(
+        "Choose an available harness before starting a session",
+      ),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue in a new chat" }),
+    );
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+        harnessId: otherHarness.id,
+        error: null,
+      }),
+    );
+    expect(pages.get(chatId)?.sessions[0].bindingId).toBe(harness.bindingId);
+  },
+);
+
 async function existingSessionlessChat() {
   const chatId = useWorkbenchStore
     .getState()
@@ -1041,6 +1182,21 @@ it("lets an unconfirmed draft be edited and reloads its creation with the edited
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Discard prompt" })).toBeEnabled();
+  const catalog = useWorkbenchStore.getState().harnesses;
+  act(() =>
+    useWorkbenchStore.setState({
+      harnesses: catalog.map((item) => ({
+        ...item,
+        installState: "unavailable",
+      })),
+    }),
+  );
+  expect(screen.getByText(/No harness is available here/)).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent(/unconfirmed/);
+  expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
+  expect(screen.queryByRole("combobox", { name: "Message agent" })).toBeNull();
+  act(() => useWorkbenchStore.setState({ harnesses: catalog }));
+  expect(composer()).toHaveValue("Edited while unconfirmed");
   projection.mockImplementation(async () =>
     withHarnessSnapshot(await bootstrap()),
   );

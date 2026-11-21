@@ -68,6 +68,7 @@ pub(super) fn definition(
         transport: protocol.transport,
         binding_id: protocol.binding_id.map(str::to_owned),
         account_model_discovery: protocol.account_model_discovery,
+        last_used_at: None,
         access_modes: Vec::new(),
         version: None,
         version_checking: false,

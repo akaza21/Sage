@@ -49,6 +49,19 @@ beforeEach(() => {
     ],
     tabs: [seeded],
     activeTabId: seeded.id,
+    harnesses: [
+      {
+        id: "codex",
+        name: "Codex",
+        description: "Probe binding",
+        source: "builtIn",
+        transport: "acp",
+        bindingId: "codex-app-server",
+        accountModelDiscovery: false,
+        installState: "available",
+      },
+    ],
+    selectedHarnessId: "codex",
     sidebarOpen: true,
     createChat: vi.fn(async () => {
       useWorkbenchStore.setState({

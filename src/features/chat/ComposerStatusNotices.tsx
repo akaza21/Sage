@@ -1,7 +1,11 @@
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { ComposerOptionsPart } from "./lazyParts";
 import type { ReactNode } from "react";
-import type { HarnessDefinition } from "../../domain/harness";
+import {
+  preferredAvailableHarness,
+  type HarnessDefinition,
+} from "../../domain/harness";
+import { useWorkbenchStore } from "../../app/store";
 
 export type ComposerStatusNoticeProps = Pick<
   ChatComposerRegionProps,
@@ -27,7 +31,9 @@ export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
   const { workbenchError, chatError, imageStatus, children } = props;
-  const errors = [workbenchError, chatError, imageStatus].filter(Boolean);
+  const errors = [
+    ...new Set([workbenchError, chatError, imageStatus].filter(Boolean)),
+  ];
   const missingBinding =
     props.missingBindingNotice &&
     (props.discoveryPhase === "idle" || props.discoveryPhase === "ready");
@@ -64,5 +70,68 @@ export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
     />
   ) : (
     <ComposerNoticeFrame {...props} />
+  );
+}
+
+/** Owns unavailable-harness guidance while the composer is unmounted. */
+export function HarnessUnavailableNotice({
+  existingChat = false,
+  workbenchError = null,
+  chatError = null,
+  onRetryLoad,
+}: {
+  existingChat?: boolean;
+  workbenchError?: string | null;
+  chatError?: ReactNode;
+  onRetryLoad?: (() => void) | null;
+}) {
+  const harnesses = useWorkbenchStore((state) => state.harnesses);
+  const transitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const openDraft = useWorkbenchStore((state) => state.openNewChatDraft);
+  const available = preferredAvailableHarness(harnesses);
+  return (
+    <div className="chat-dock-frame">
+      <ComposerStatusNotices
+        workbenchError={workbenchError}
+        chatError={chatError}
+        imageStatus={null}
+        selectedHarnessId={null}
+        missingBindingNotice={false}
+        discoveryPhase="ready"
+      />
+      {onRetryLoad ? (
+        <div className="composer__error" role="alert">
+          This chat failed to load.{" "}
+          <button
+            type="button"
+            className="button button--compact"
+            onClick={onRetryLoad}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <div className="chat-harness-unavailable" role="status">
+        <p>
+          {existingChat
+            ? "This chat used a harness that isn't available here."
+            : available
+              ? "The selected harness isn't available here."
+              : "No harness is available here. Install or enable a harness in Settings to start a chat."}
+        </p>
+        {available ? (
+          <button
+            type="button"
+            className="button button--compact"
+            disabled={transitioning}
+            onClick={() => void openDraft()}
+          >
+            Continue in a new chat
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
