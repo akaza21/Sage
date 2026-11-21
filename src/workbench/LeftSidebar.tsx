@@ -17,6 +17,7 @@ import {
   lazyParts,
 } from "../features/chat/lazyParts";
 import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
   subscribeChatSearchFolderRequest,
@@ -179,7 +180,8 @@ export function LeftSidebar({
             title="Search chats"
             disabled={!project || projectTransitioning}
             onClick={() => {
-              if (project) requestChatSearchInFolder(project.id);
+              if (project)
+                requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
             }}
           >
             <Search size={15} aria-hidden="true" />

@@ -17,7 +17,6 @@ import {
 import { ModalDialog } from "../../ui/ModalDialog";
 import { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
 import { lazyParts } from "../chat/lazyParts";
-import type * as CreateProjectChunk from "../../workbench/CreateProjectDialog";
 import type * as ResultsChunk from "./ChatSearchResults";
 import {
   chatSearchResultKey,
@@ -31,9 +30,6 @@ import {
 
 const ResultsPart = lazyParts<typeof ResultsChunk>(
   () => import("./ChatSearchResults"),
-);
-const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
-  () => import("../../workbench/CreateProjectDialog"),
 );
 const ACTIONS = [
   {
@@ -59,11 +55,14 @@ export function ChatSearchPalette({
   status,
   error,
   folders,
+  searchProjectId,
+  onScope,
   onQuery,
   onSearchEnabled,
   onSearch,
   onSelect,
   onClose,
+  onCreateProject,
 }: {
   queryRef: RefObject<HTMLInputElement | null>;
   query: string;
@@ -72,14 +71,16 @@ export function ChatSearchPalette({
   status: string;
   error: string | null;
   folders: readonly ChatSearchFolderOption[];
+  searchProjectId: string;
+  onScope: (projectId: string) => void;
   onQuery: (query: string) => void;
   onSearchEnabled: (enabled: boolean) => void;
   onSearch: () => Promise<void>;
   onSelect: (result: ChatSearchFanoutPick) => Promise<void>;
   onClose: (restoreFocus?: boolean) => void;
+  onCreateProject: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
-  const [creating, setCreating] = useState(false);
   const listboxId = useId();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -147,7 +148,7 @@ export function ChatSearchPalette({
     };
   }, []);
   const selectAction = (id: string) => {
-    if (id === NEW_PROJECT_ACTION.id) setCreating(true);
+    if (id === NEW_PROJECT_ACTION.id) onCreateProject();
     else {
       onClose(false);
       void useWorkbenchStore.getState().openNewChatDraft();
@@ -290,63 +291,64 @@ export function ChatSearchPalette({
                 ) : null}
               </div>
             </div>
-            <div
-              className="chat-search-dialog__filters"
-              role="tablist"
-              aria-label="Search scope"
-            >
-              {FILTERS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  id={`${listboxId}-${item}`}
-                  aria-controls={`${listboxId}-panel`}
-                  aria-selected={filter === item}
-                  tabIndex={filter === item ? 0 : -1}
-                  onClick={() => changeFilter(item)}
-                  onKeyDown={(event) => {
-                    if (
-                      !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                        event.key,
+            <div className="chat-search-dialog__filters">
+              <div role="tablist" aria-label="Search scope">
+                {FILTERS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    role="tab"
+                    id={`${listboxId}-${item}`}
+                    aria-controls={`${listboxId}-panel`}
+                    aria-selected={filter === item}
+                    tabIndex={filter === item ? 0 : -1}
+                    onClick={() => changeFilter(item)}
+                    onKeyDown={(event) => {
+                      if (
+                        !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                          event.key,
+                        )
                       )
-                    )
-                      return;
-                    event.preventDefault();
-                    const index =
-                      event.key === "Home"
-                        ? 0
-                        : event.key === "End"
-                          ? FILTERS.length - 1
-                          : (FILTERS.indexOf(item) +
-                              (event.key === "ArrowRight"
-                                ? 1
-                                : FILTERS.length - 1)) %
-                            FILTERS.length;
-                    changeFilter(FILTERS[index]);
-                    (
-                      event.currentTarget.parentElement?.children[
-                        index
-                      ] as HTMLElement
-                    )?.focus();
-                  }}
-                >
-                  {item}
-                </button>
-              ))}
+                        return;
+                      event.preventDefault();
+                      const index =
+                        event.key === "Home"
+                          ? 0
+                          : event.key === "End"
+                            ? FILTERS.length - 1
+                            : (FILTERS.indexOf(item) +
+                                (event.key === "ArrowRight"
+                                  ? 1
+                                  : FILTERS.length - 1)) %
+                              FILTERS.length;
+                      changeFilter(FILTERS[index]);
+                      (
+                        event.currentTarget.parentElement?.children[
+                          index
+                        ] as HTMLElement
+                      )?.focus();
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <select
+                aria-label="Search in"
+                disabled={disabled || filter === "Actions"}
+                value={searchProjectId}
+                onChange={(event) => onScope(event.target.value)}
+              >
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </form>
         </div>
       </ModalDialog>
-      {creating ? (
-        <CreateProjectPart
-          part="CreateProjectDialog"
-          onClose={() => {
-            setCreating(false);
-            queryRef.current?.focus();
-          }}
-        />
-      ) : null}
     </>
   );
 }

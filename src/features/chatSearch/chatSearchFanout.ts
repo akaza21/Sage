@@ -70,6 +70,7 @@ export interface ChatSearchFanoutView {
   query: string;
   results: ChatSearchFanoutPick[];
   hasMore: boolean;
+  errors: { projectId: string; message: string }[];
 }
 
 export function isChatSearchFanout(id: string) {

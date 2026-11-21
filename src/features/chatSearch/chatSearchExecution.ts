@@ -6,6 +6,7 @@ import {
   type ProjectChatSearchResponse,
 } from "./chatSearchDomain";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
+import { boundedError } from "../../domain/errors";
 import {
   MAX_CHAT_SEARCH_FANOUT_FOLDERS,
   chatSearchFanoutFolderIds,
@@ -54,8 +55,9 @@ export async function searchChatFolders(args: {
   query: string;
   isCurrent?: () => boolean;
   search: ProjectChatSearchGateway["search"];
-}): Promise<{ results: ChatSearchFanoutPick[]; hasMore: boolean }> {
+}): Promise<Omit<ChatSearchFanoutView, "query">> {
   let results: ChatSearchFanoutPick[] = [];
+  const errors: ChatSearchFanoutView["errors"] = [];
   let hasMore = false;
   let visited = 0;
   // Ownership comes from native unscopedChats, independently of public previews.
@@ -73,16 +75,21 @@ export async function searchChatFolders(args: {
       query: args.query,
     };
     validateProjectChatSearchRequest(request);
-    const page = await args.search(request);
     visited += 1;
-    const merged = mergePage(results, page);
-    results = merged.results;
-    hasMore ||= merged.hasMore;
+    try {
+      const page = await args.search(request);
+      const merged = mergePage(results, page);
+      results = merged.results;
+      hasMore ||= merged.hasMore;
+    } catch (error) {
+      errors.push({ projectId, message: boundedError(error, 256, "utf8") });
+    }
+    if (args.isCurrent?.() === false) throw new Error("Chat search cancelled");
   }
   if (visited === 0) {
     throw new Error("Project chat search requires a valid project ID");
   }
-  return { results, hasMore: hasMore || visited < args.listedCount };
+  return { results, errors, hasMore: hasMore || visited < args.listedCount };
 }
 
 export async function runScopedChatSearch(args: {
@@ -115,24 +122,15 @@ export async function runScopedChatSearch(args: {
     });
     return {
       query: args.query,
-      results: merged.results,
-      hasMore: merged.hasMore,
+      ...merged,
     };
   }
-  const request: ProjectChatSearchRequest = {
-    projectId: args.searchProjectId,
-    projectGeneration: args.projectGeneration,
-    expectedTransitionEpoch: args.expectedTransitionEpoch,
-    query: args.query,
-  };
-  validateProjectChatSearchRequest(request);
-  const page = await args.search(request);
   return {
-    query: page.query,
-    results: page.results.map((result) => ({
-      ...result,
-      projectId: page.projectId,
+    query: args.query,
+    ...(await searchChatFolders({
+      ...args,
+      folderIds: [args.searchProjectId],
+      listedCount: 1,
     })),
-    hasMore: page.hasMore,
   };
 }

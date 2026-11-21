@@ -328,6 +328,18 @@
   font-size: var(--font-size-xs);
 }
 
+.chat-search-dialog__filters select {
+  margin-left: auto;
+  max-width: 45%;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
 .chat-search-dialog__filters button[aria-selected="true"],
 .chat-search-dialog__filters button:hover {
   color: var(--search-dialog-text-primary);

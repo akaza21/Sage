@@ -8,8 +8,16 @@ import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 import { traceCloseStage } from "./workbenchClose";
 import { errorMessage } from "../domain/errors";
+import {
+  closeProjectCreation,
+  useProjectCreationState,
+} from "./projectCreationState";
 
 const loadWorkbench = () => import("../workbench/Workbench");
+const loadProjectCreation = () =>
+  import("../workbench/CreateProjectDialog").then((module) => ({
+    default: module.CreateProjectDialog,
+  }));
 
 const markStartup = (name: string) => {
   if (performance.getEntriesByName(name).length === 0) {
@@ -23,6 +31,7 @@ const markHarnessPresence = (harnesses: HarnessDefinition[]) => {
 };
 
 export function App() {
+  const creating = useProjectCreationState((state) => state.open);
   const [closeFailure, setCloseFailure] = useState<string | null>(null);
   const phase = useWorkbenchStore((state) => state.phase);
   const error = useWorkbenchStore((state) => state.error);
@@ -157,6 +166,15 @@ export function App() {
         </div>
       )}
       {content}
+      {creating ? (
+        <LazyModuleBoundary
+          label="Create project"
+          load={loadProjectCreation}
+          render={(CreateProjectDialog) => (
+            <CreateProjectDialog onClose={closeProjectCreation} />
+          )}
+        />
+      ) : null}
     </>
   );
 }

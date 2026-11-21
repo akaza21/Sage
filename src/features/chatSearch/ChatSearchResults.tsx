@@ -40,7 +40,17 @@ export function ChatSearchResults({
       ) : null}
       {response ? (
         <>
-          {response.results.length === 0 ? (
+          {response.errors.map(({ projectId, message }) => (
+            <p key={projectId} className="chat-search-dialog__more">
+              Couldn't search{" "}
+              {chatSearchResultFolderName(folders, projectId) ?? "No project"}:{" "}
+              {message}
+            </p>
+          ))}
+          {response.errors.length > 0 ? (
+            <p className="chat-search-dialog__more">Partial results</p>
+          ) : null}
+          {response.results.length === 0 && response.errors.length === 0 ? (
             <p className="chat-search-dialog__empty">
               No chats matched “{response.query}”.
             </p>
@@ -86,7 +96,7 @@ export function ChatSearchResults({
           )}
           {response.hasMore ? (
             <p className="chat-search-dialog__more">
-              More matches exist. Refine the query to narrow the results.
+              More chats may exist. Search in a project or refine the query.
             </p>
           ) : null}
         </>

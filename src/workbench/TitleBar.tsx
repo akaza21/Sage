@@ -5,7 +5,10 @@ import {
   keymapBinding,
   matchesPlatformChord,
 } from "../domain/keymapRegistry";
-import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
+import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
+  requestChatSearchInFolder,
+} from "../features/chatSearch/chatSearchScope";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
@@ -65,7 +68,9 @@ export function TitleBar({
   const openChatSearch = useCallback(() => {
     if (!project) return;
     useAgentSettingsState.getState().close();
-    requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
+    requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID, () =>
+      chatSearchRef.current?.focus(),
+    );
   }, [project]);
   useEffect(() => {
     if (inert || !isAgent || chatSearchDisabled) return;

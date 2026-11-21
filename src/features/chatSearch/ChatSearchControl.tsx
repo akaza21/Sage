@@ -10,10 +10,15 @@ import {
 
 import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
+import {
+  openProjectCreation,
+  useProjectCreationState,
+} from "../../app/projectCreationState";
 import { boundedError } from "../../domain/errors";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
+  admitChatSearchFolder,
   chatSearchFolderOptions,
   matchesChatSearchScope,
   type ChatSearchFanoutPick,
@@ -44,7 +49,7 @@ function searchStatus(
   if (phase !== "results" || !response) return "";
   const count = response.results.length;
   const more = response.hasMore;
-  return `${count}${more ? "+" : ""} ${count === 1 && !more ? "chat" : "chats"}`;
+  return `${response.errors.length ? "Partial results: " : ""}${count}${more ? "+" : ""} ${count === 1 && !more ? "chat" : "chats"}`;
 }
 
 function matchesScope(scope: ChatSearchScope) {
@@ -71,7 +76,9 @@ export function ChatSearchTrigger({
       onClick={(event) => {
         if (!project || transitioning) return;
         const trigger = event.currentTarget;
-        requestChatSearchInFolder(project.id, () => trigger.focus());
+        requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID, () =>
+          trigger.focus(),
+        );
       }}
     >
       <Search size={16} aria-hidden="true" />
@@ -132,13 +139,13 @@ export function ChatSearchControl({
     if (!open || !scope) return;
     return useWorkbenchStore.subscribe((state) => {
       if (!matchesChatSearchScope(state, scope)) {
-        close();
+        close(!useProjectCreationState.getState().open);
       }
     });
   }, [close, open, scope]);
 
   const openSearch = (
-    _searchProjectId?: string,
+    searchProjectId?: string,
     focusReturn?: (() => void) | null,
   ) => {
     const state = useWorkbenchStore.getState();
@@ -147,7 +154,13 @@ export function ChatSearchControl({
     focusReturnRef.current = focusReturn ?? null;
     setScope({
       activeProjectId: state.project.id,
-      searchProjectId: CHAT_SEARCH_ALL_FOLDERS_ID,
+      searchProjectId: admitChatSearchFolder(
+        chatSearchFolderOptions(state.projects),
+        searchProjectId,
+        state.project.id === searchProjectId
+          ? state.project.id
+          : CHAT_SEARCH_ALL_FOLDERS_ID,
+      ),
       projectGeneration: state.projectGeneration,
       transitionEpoch: state.nativeTransitionEpoch,
     });
@@ -271,6 +284,14 @@ export function ChatSearchControl({
           status={searchStatus(phase, response)}
           error={error}
           folders={folders}
+          searchProjectId={scope.searchProjectId}
+          onScope={(searchProjectId) => {
+            requestGeneration.current += 1;
+            setScope({ ...scope, searchProjectId });
+            setPhase("idle");
+            setResponse(null);
+            setError(null);
+          }}
           onQuery={editQuery}
           onSearchEnabled={(enabled) => {
             if (enabled === searchEnabled) return;
@@ -281,6 +302,7 @@ export function ChatSearchControl({
           onSearch={searchQuery}
           onSelect={selectResult}
           onClose={close}
+          onCreateProject={openProjectCreation}
         />
       ) : null}
     </>

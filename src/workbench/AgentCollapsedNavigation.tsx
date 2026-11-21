@@ -1,6 +1,9 @@
 import { useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
-import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
+import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
+  requestChatSearchInFolder,
+} from "../features/chatSearch/chatSearchScope";
 import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
 import { ChatSearchGate } from "./LeftSidebar";
 import { agentRailSectionSelectors } from "./agentRailNavigation";
@@ -33,7 +36,7 @@ export function AgentCollapsedNavigation({
       <ChatSearchGate triggerRef={triggerRef} />
       <AgentPrimaryNavigation
         onSearch={() => {
-          if (project) requestChatSearchInFolder(project.id);
+          if (project) requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
         }}
         onSettings={onOpenSettings}
         searchDisabled={!project || transitioning}

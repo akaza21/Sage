@@ -270,9 +270,10 @@ test("Search chats can be dismissed with Escape when a pending search fails", as
   await page.clock.runFor(250);
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
   await pending.evaluate((request) => request.fail());
-  await expect(dialog.getByRole("alert")).toHaveText(
-    "Search became unavailable.",
-  );
+  await expect(
+    dialog.getByText(/^Couldn't search .+: Search became unavailable\.$/),
+  ).toBeVisible();
+  await expect(dialog.getByRole("status")).toContainText("Partial results");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();

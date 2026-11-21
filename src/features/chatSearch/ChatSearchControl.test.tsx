@@ -18,6 +18,12 @@ import {
 } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
+import { App } from "../../app/App";
+import { closeProjectCreation } from "../../app/projectCreationState";
+import { settleLazyModules } from "../../test/settleLazyModules";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
+import type { ProjectTransitionResult } from "../../domain/workbench";
 import type { ProjectChatSearchResponse } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import { ChatSearchControl } from "./ChatSearchControl";
@@ -39,10 +45,12 @@ async function chatResults() {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const response: ProjectChatSearchResponse = {
@@ -74,6 +82,20 @@ describe("ChatSearchControl", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    closeProjectCreation();
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     clearChatSearchFolderRequest();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     useWorkbenchStore.setState({
@@ -120,11 +142,154 @@ describe("ChatSearchControl", () => {
     vi.restoreAllMocks();
   });
 
-  afterEach(() => clearChatSearchFolderRequest());
+  afterEach(() => {
+    clearChatSearchFolderRequest();
+    vi.unstubAllGlobals();
+  });
 
-  it("opens project creation from a quick action and restores query focus on cancel", async () => {
+  it("keeps project creation and its folders through a real transition and native failure for retry", async () => {
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+    const project = getWorkbenchPorts().project;
+    const pending = deferred<ProjectTransitionResult>();
+    vi.spyOn(project, "createProject")
+      .mockImplementation(async (request, _projectId, transitionEpoch) => ({
+        committed: false,
+        transitionEpoch,
+        snapshot: null,
+        recoveryError: `${request.name}: ${request.sourceTokens.join(",")} retry failed`,
+      }))
+      .mockReturnValueOnce(pending.promise);
+    vi.spyOn(project, "pickProjectSourceFolder").mockResolvedValue({
+      token: "source-token",
+      name: "Source",
+      path: "/selected/source",
+    });
+    render(<App />);
+    await settleLazyModules();
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Search chats" }))[0],
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "New project" }));
+    const creation = await screen.findByRole("dialog", {
+      name: "Create project",
+    });
+    fireEvent.change(
+      within(creation).getByRole("textbox", { name: "Project name" }),
+      { target: { value: "Retry project" } },
+    );
+    fireEvent.click(within(creation).getByRole("button", { name: "Add" }));
+    await within(creation).findByText("Source");
+    fireEvent.click(
+      within(creation).getByRole("button", {
+        name: "Create project",
+      }),
+    );
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(true),
+    );
+    expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
+    expect(creation).toBeInTheDocument();
+    await screen.findByText("Opening Sage...");
+    expect(creation).toBeInTheDocument();
+    await act(async () => pending.reject(new Error("Native creation failed")));
+    expect(await within(creation).findByRole("alert")).toHaveTextContent(
+      "Native creation failed",
+    );
+    expect(within(creation).getByRole("textbox")).toHaveValue("Retry project");
+    expect(
+      within(creation).getByRole("button", { name: "Remove Source" }),
+    ).toBeEnabled();
+    fireEvent.click(
+      within(creation).getByRole("button", {
+        name: "Create project",
+      }),
+    );
+    await waitFor(() =>
+      expect(within(creation).getByRole("alert")).toHaveTextContent(
+        "Retry project: source-token retry failed",
+      ),
+    );
+    expect(within(creation).getByRole("textbox")).toHaveValue("Retry project");
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    fireEvent.click(within(creation).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("reaches a ninth project from global scope and explicit project requests", async () => {
+    useWorkbenchStore.setState({
+      projects: Array.from({ length: 9 }, (_, index) => ({
+        id: index === 0 ? "project-a" : `project-${index + 1}`,
+        name: `Project ${index + 1}`,
+        rootCount: 1,
+        lastOpenedAt: 1,
+      })),
+    });
+    vi.spyOn(projectChatSearchDesktop, "search").mockImplementation(
+      async (request) => ({
+        ...response,
+        projectId: request.projectId,
+        results:
+          request.projectId === "project-9"
+            ? [{ ...response.results[0], title: "Ninth project chat" }]
+            : [],
+      }),
+    );
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    await screen.findByText(/No chats matched/);
+    fireEvent.change(screen.getByRole("combobox", { name: "Search in" }), {
+      target: { value: "project-9" },
+    });
+    expect(
+      await screen.findByRole("option", {
+        name: "Ninth project chat — Project 9",
+      }),
+    ).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Search chats" }), {
+      key: "Escape",
+    });
+    act(() => requestChatSearchInFolder("project-9"));
+    expect(
+      await screen.findByRole("option", {
+        name: "Ninth project chat — Project 9",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Search in" })).toHaveValue(
+      "project-9",
+    );
+  });
+
+  it("shows healthy results with one muted failure row for an over-limit project", async () => {
+    useWorkbenchStore.setState({
+      projects: [
+        { id: "large", name: "Large", rootCount: 1, lastOpenedAt: 1 },
+        ...useWorkbenchStore.getState().projects,
+      ],
+    });
+    vi.spyOn(projectChatSearchDesktop, "search").mockImplementation(
+      async (request) => {
+        if (request.projectId === "large") throw new Error("too large");
+        return response;
+      },
+    );
+    render(<ChatSearchControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    expect(await screen.findByRole("option", { name: "B — A" })).toBeVisible();
+    expect(
+      screen.getAllByText("Couldn't search Large: too large"),
+    ).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Partial results");
+  });
+
+  it("opens project creation from a quick action and restores query focus on cancel", async () => {
+    resetBrowserDesktopForTests();
+    render(<App />);
+    await settleLazyModules();
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Search chats" }))[0],
+    );
     const query = await screen.findByRole("combobox", { name: "Search chats" });
     fireEvent.click(screen.getByRole("option", { name: "New project" }));
     const creation = await screen.findByRole("dialog", {
@@ -848,9 +1013,13 @@ describe("ChatSearchControl", () => {
     const input = await screen.findByRole("combobox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "browser unavailable",
+    expect(
+      await screen.findByText("Couldn't search A: browser unavailable"),
+    ).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Partial results: 0 chats",
     );
+    expect(screen.queryByText(/No chats matched/)).toBeNull();
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(trigger).toHaveFocus());
   });
@@ -869,11 +1038,13 @@ describe("ChatSearchControl", () => {
     const dialog = screen.getByRole("dialog", { name: "Search chats" });
     const input = await screen.findByRole("combobox", { name: "Search chats" });
     const all = screen.getByRole("tab", { name: /^All$/ });
-    all.focus();
+    const scope = screen.getByRole("combobox", { name: "Search in" });
+    scope.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(input).toHaveFocus();
     fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
-    expect(all).toHaveFocus();
+    expect(scope).toHaveFocus();
+    all.focus();
     fireEvent.keyDown(all, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Actions" })).toHaveFocus();
     expect(screen.getByRole("tab", { name: "Actions" })).toHaveAttribute(
