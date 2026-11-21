@@ -164,10 +164,6 @@ where
             .wait_next_until(deadline, context.clock.as_ref())
     };
     match next {
-        Ok(Some(ControlMessage::TitleWake)) => Ok((
-            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-            None,
-        )),
         Ok(Some(ControlMessage::Worker(envelope))) => Ok(handle_worker(
             FirstTurnWorkerState::Active(active),
             context,

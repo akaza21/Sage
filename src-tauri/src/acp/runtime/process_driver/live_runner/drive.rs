@@ -168,10 +168,6 @@ where
                 ),
                 context.clock.as_ref(),
             ) {
-                Ok(Some(ControlMessage::TitleWake)) => (
-                    RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
-                    None,
-                ),
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
                     match idle.accept_idle_stdout_chunk(&chunk) {
                         Ok(()) => (
@@ -243,10 +239,6 @@ where
                 ),
                 context.clock.as_ref(),
             ) {
-                Ok(Some(ControlMessage::TitleWake)) => (
-                    RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
-                    None,
-                ),
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
                     match parts
                         .completed
@@ -321,7 +313,6 @@ where
                 pending_deadline_millis(&pending_config, context.clock.as_ref()),
                 context.clock.as_ref(),
             ) {
-                Ok(Some(ControlMessage::TitleWake)) => (RunnerAction::Continue(retained), None),
                 Ok(Some(ControlMessage::StdoutChunk(chunk)))
                     if matches!(&retained, FirstTurnWorkerState::Prepared { .. }) =>
                 {

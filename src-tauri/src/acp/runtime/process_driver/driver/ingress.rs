@@ -105,7 +105,6 @@ where
         now_millis: i64,
     ) -> Result<DriverStep, DriverError> {
         match message {
-            ControlMessage::TitleWake => Ok(DriverStep::Progress(DriverProgress::default())),
             ControlMessage::StdoutChunk(chunk) => {
                 self.accept_chunk(&chunk, mailbox, now_millis).await
             }
@@ -307,7 +306,6 @@ where
     ) -> Result<Option<WorkerEnvelope>, DriverError> {
         while let Some(control) = mailbox.try_pop_control() {
             match control {
-                ControlMessage::TitleWake => {}
                 ControlMessage::Cancel(intent) => {
                     if self.pending_exit.is_some() {
                         return Err(self.settle_exit(self.clock.now_millis()).await);

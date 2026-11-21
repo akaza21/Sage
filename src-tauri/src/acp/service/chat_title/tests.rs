@@ -13,8 +13,6 @@ use crate::acp::{
 use sage_acp_protocol::intent::{SafeResourceRef, UnavailableResourceReason};
 use serde_json::{Value, json};
 
-mod wake_tests;
-
 struct Mapper;
 impl ResourceMapper for Mapper {
     fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
@@ -206,6 +204,48 @@ fn three_foreground_preemptions_stop_durably_with_the_local_title() {
         "the fourth try is refused after reopening"
     );
     assert_eq!(shown(&db), "Chat: Prompt fallback");
+}
+
+#[test]
+fn failed_title_claim_stops_even_when_fact_capacity_becomes_available() {
+    for global in [false, true] {
+        let admission = Arc::new(TitleAdmission::default());
+        let (db, intent) = crate::acp::store::title_fixture();
+        let mut titles = scheduler(&db, &admission);
+        let mut live = runtime();
+        let foreground = titles.foreground_turn();
+        titles.completed(&intent, &mut live);
+        drop(foreground);
+        let (table, limit) = if global {
+            (
+                "acp_store_usage",
+                sage_core::limits::LIMITS.durable.facts_global,
+            )
+        } else {
+            (
+                "acp_session_usage",
+                sage_core::limits::LIMITS.durable.facts_per_session,
+            )
+        };
+        let count: i64 = db
+            .connection()
+            .query_row(&format!("SELECT fact_count FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        db.connection()
+            .execute(&format!("UPDATE {table} SET fact_count=?1"), [limit as i64])
+            .unwrap();
+        let next = next_completed(&db, &intent);
+        titles.completed(&next, &mut live);
+        assert!(!titles.pending(), "a failed claim must not launch");
+        db.connection()
+            .execute(&format!("UPDATE {table} SET fact_count=?1"), [count])
+            .unwrap();
+        titles.completed(&next_completed(&db, &next), &mut live);
+        finish(&mut titles, &mut live);
+        assert_eq!(shown(&db), "Chat: Prompt fallback", "global={global}");
+    }
 }
 
 #[test]

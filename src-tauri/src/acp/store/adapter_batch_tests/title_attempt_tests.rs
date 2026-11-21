@@ -240,6 +240,17 @@ fn pending_title_survives_a_real_park_and_reactivation_with_a_new_epoch() {
         title_attempt::TitleClaim::Stopped
     ));
     fixture.owner.runtime_epoch = epoch;
+    fixture
+        .connection
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,
+         client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at)
+         SELECT 'turn-reactivated',project_id,chat_id,session_id,?1,ordinal+1,
+         'turn-reactivated','completed','correlated',0,100,100,100 FROM turns WHERE id=?2",
+            rusqlite::params![epoch.get() as i64, fixture.owner.turn_id.as_str()],
+        )
+        .unwrap();
+    fixture.owner.turn_id = SageTurnId::parse("turn-reactivated").unwrap();
     let attempt = claim(&mut fixture).expect("historical first exchange is eligible");
     assert_eq!(attempt.input, "User:\nprompt\nAssistant:\nadapter text");
     assert!(

@@ -106,6 +106,101 @@ fn pi_busy_completion_stays_pending_until_the_next_completed_turn() {
 }
 
 #[test]
+fn pi_title_retry_waits_for_a_completion_without_pending_foreground_operations() {
+    use sage_acp_protocol::session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue};
+    let _process = crate::acp::bindings::pi::title_request::tests::PROCESS_LOCK
+        .lock()
+        .unwrap();
+    for (operation, preempted) in [
+        ("model", false),
+        ("thinking", false),
+        ("native", false),
+        ("model", true),
+        ("thinking", true),
+        ("native", true),
+    ] {
+        let directory = Directory::new();
+        let (db, intent) = crate::acp::store::title_fixture();
+        let admission = Arc::new(TitleAdmission::default());
+        let mut titles = scheduler(&db, &admission);
+        let mut runtime =
+            directory.runtime(if preempted { "hang-once" } else { "success" }, &intent);
+        let models = runtime.available_models.clone();
+        let model = runtime.current_model.clone();
+        ready(&mut runtime);
+        runtime.available_models = models;
+        runtime.current_model = model;
+        if preempted {
+            titles.completed(&intent, &mut runtime);
+            wait_until(|| directory.0.join("child.pid").exists());
+        }
+        let foreground = titles.foreground_turn();
+        if preempted {
+            titles.cancel(&mut runtime);
+        } else {
+            titles.completed(&intent, &mut runtime);
+        }
+        drop(foreground);
+        let (egress, reply) = match operation {
+            "native" => (
+                runtime.read_usage().unwrap(),
+                json!({
+                    "sessionFile":"/sessions/1_pi.jsonl", "sessionId":"pi-session-1",
+                    "userMessages":2, "assistantMessages":2, "toolCalls":1, "toolResults":1, "totalMessages":6,
+                    "tokens":{"input":1200,"output":340,"cacheRead":800,"cacheWrite":60,"total":2400},
+                    "cost":0.0125, "contextUsage":{"tokens":2000,"contextWindow":200000,"percent":1}
+                }),
+            ),
+            _ => {
+                let (id, value, reply) = if operation == "model" {
+                    (
+                        "pi.model",
+                        "fixture:same-model",
+                        json!({"provider":"fixture","id":"same-model","name":"Fixture"}),
+                    )
+                } else {
+                    ("pi.thinking", "off", Value::Null)
+                };
+                let config = ConfigIntent {
+                    owner: sage_acp_protocol::scheduler::RuntimeOwner {
+                        project_id: intent.project_id.clone(),
+                        chat_id: intent.chat_id.clone(),
+                        session_id: intent.session_id.clone(),
+                        runtime_epoch: intent.runtime_epoch,
+                    },
+                    expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+                    mutation: ConfigMutation::Option {
+                        config_id: ConfigId::new("config", id).unwrap(),
+                        value: ConfigValue::Select {
+                            value: ConfigId::new("value", value).unwrap(),
+                        },
+                    },
+                };
+                (runtime.configure(&config).unwrap().unwrap(), reply)
+            }
+        };
+        let command = deliver(&mut runtime, egress);
+        let next = next_completed(&db, &intent);
+        titles.completed(&next, &mut runtime);
+        finish(&mut titles, &mut runtime);
+        assert_eq!(shown(&db), "Chat: Prompt fallback", "{operation}");
+        let input =
+            std::fs::read_to_string(directory.0.join("isolated-input.jsonl")).unwrap_or_default();
+        assert_eq!(input.lines().count(), usize::from(preempted), "{operation}");
+        runtime.ingest(&response(&command, reply), &Mapper).unwrap();
+        finish(&mut titles, &mut runtime);
+        assert_eq!(
+            shown(&db),
+            "Chat: Prompt fallback",
+            "settling is not a completion"
+        );
+        titles.completed(&next_completed(&db, &next), &mut runtime);
+        finish(&mut titles, &mut runtime);
+        assert_eq!(shown(&db), "Chat: Check Sage chat titles", "{operation}");
+    }
+}
+
+#[test]
 fn pi_fast_following_turn_retries_after_preemption_cleanup_and_reuses_the_first_exchange() {
     let _process = crate::acp::bindings::pi::title_request::tests::PROCESS_LOCK
         .lock()

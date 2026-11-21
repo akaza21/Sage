@@ -17,9 +17,6 @@ pub(super) const LATEST_SQL: &str =
          COALESCE(json_extract(payload_json,'$.tries'),3) FROM session_facts
          WHERE session_id=?1 AND turn_id=?2 AND kind=?3 ORDER BY sequence DESC LIMIT 1";
 
-mod pending;
-pub(crate) use pending::pending_owner;
-
 pub(crate) struct TitleAttempt {
     pub(crate) owner: RuntimeOwner,
     pub(crate) anchor: SageTurnId,
@@ -41,22 +38,6 @@ pub(crate) fn claim(
     connection: &mut Connection,
     owner: RuntimeOwner,
     completed_turn: SageTurnId,
-    admitted: bool,
-) -> Result<TitleClaim, StoreError> {
-    claim_inner(connection, owner, Some(completed_turn), admitted)
-}
-
-pub(crate) fn retry(
-    connection: &mut Connection,
-    owner: RuntimeOwner,
-) -> Result<TitleClaim, StoreError> {
-    claim_inner(connection, owner, None, true)
-}
-
-fn claim_inner(
-    connection: &mut Connection,
-    owner: RuntimeOwner,
-    completed_turn: Option<SageTurnId>,
     admitted: bool,
 ) -> Result<TitleClaim, StoreError> {
     let transaction =
@@ -105,14 +86,13 @@ fn claim_inner(
         }
         None => 0,
     };
-    if previous.is_none() && completed_turn.as_ref().map(SageTurnId::as_str) != Some(first.as_str())
-    {
+    if previous.is_none() && completed_turn.as_str() != first {
         return Ok(TitleClaim::Stopped);
     }
     let anchor = SageTurnId::parse(first).map_err(|_| StoreError::Corrupt("title anchor"))?;
     let attempt = TitleAttempt {
         owner,
-        completed_turn: completed_turn.unwrap_or_else(|| anchor.clone()),
+        completed_turn,
         anchor,
         token: uuid::Uuid::new_v4().to_string(),
         input: String::new(),

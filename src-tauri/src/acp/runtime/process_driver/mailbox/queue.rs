@@ -19,11 +19,6 @@ impl super::DriverMailbox {
         state.terminal_queued = false;
         self.ready.notify_all();
         self.space.notify_all();
-        let admission = state.title_admission.upgrade();
-        drop(state);
-        if let Some(admission) = admission {
-            admission.wake_pending();
-        }
     }
 
     pub(in crate::acp::runtime::process_driver) fn diagnostic_state(&self) -> String {

@@ -818,45 +818,6 @@ fn operation_deadline_wakes_driver_without_an_incoming_message() {
 }
 
 #[test]
-fn title_wake_releases_a_sleeping_mailbox_and_coalesces_behind_protocol_traffic() {
-    let mailbox = Arc::new(DriverMailbox::new().unwrap());
-    let sleeping = Arc::clone(&mailbox);
-    let (ready, waiting) = std::sync::mpsc::sync_channel(1);
-    let worker = std::thread::spawn(move || {
-        let clock = SystemDriverClock;
-        ready.send(()).unwrap();
-        matches!(
-            sleeping
-                .wait_next_until(Some(clock.now_millis() + 2000), &clock)
-                .unwrap(),
-            Some(ControlMessage::TitleWake)
-        )
-    });
-    waiting.recv().unwrap();
-    mailbox.wake_title();
-    assert!(worker.join().unwrap());
-    mailbox.wake_title();
-    mailbox.wake_title();
-    mailbox.try_push_chunk(b"protocol".to_vec()).unwrap();
-    let clock = SystemDriverClock;
-    assert!(
-        matches!(mailbox.wait_next_until(Some(clock.now_millis()), &clock).unwrap(), Some(ControlMessage::StdoutChunk(chunk)) if chunk == b"protocol")
-    );
-    assert!(matches!(
-        mailbox
-            .wait_next_until(Some(clock.now_millis()), &clock)
-            .unwrap(),
-        Some(ControlMessage::TitleWake)
-    ));
-    assert!(
-        mailbox
-            .wait_next_until(Some(clock.now_millis()), &clock)
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[test]
 fn driver_data_message_limit_plus_one_preserves_the_additional_cancel_reserve() {
     let mailbox = DriverMailbox::new().expect("mailbox");
     let data_limit = LIMITS.queues.driver_data_messages;

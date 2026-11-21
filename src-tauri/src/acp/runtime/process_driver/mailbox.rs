@@ -16,7 +16,6 @@ use sage_core::limits::LIMITS;
 use super::{DriverClock, DriverError, DriverProgress};
 
 mod queue;
-mod title;
 use queue::{ReceiveMode, map_queue, pop_driver_message, reader_chunk_limit};
 
 pub(crate) struct PromptIntent {
@@ -77,7 +76,6 @@ pub(crate) enum ReaderTerminal {
 }
 
 pub(crate) enum ControlMessage {
-    TitleWake,
     StdoutChunk(Vec<u8>),
     #[allow(dead_code, reason = "only tests construct this variant so far")]
     Prompt(PromptIntent),
@@ -98,7 +96,6 @@ impl ControlMessage {
                 envelope.reject(crate::acp::runtime::HostError::Closed);
             }
             Self::StdoutChunk(_)
-            | Self::TitleWake
             | Self::Cancel(_)
             | Self::ReaderTerminal(_)
             | Self::ProcessExit(_) => {}
@@ -114,8 +111,6 @@ pub(crate) enum MailboxError {
 }
 
 struct State {
-    title_admission: std::sync::Weak<crate::acp::service::chat_title::TitleAdmission>,
-    title_wake: bool,
     queue: ReservedQueue<ControlMessage>,
     closed: bool,
     terminal_queued: bool,
@@ -141,8 +136,6 @@ impl DriverMailbox {
         .with_prompt_reserve(sage_core::limits::PROMPT_INTENT_BYTES);
         Ok(Self {
             state: Mutex::new(State {
-                title_admission: std::sync::Weak::new(),
-                title_wake: false,
                 queue,
                 closed: false,
                 terminal_queued: false,
@@ -288,9 +281,6 @@ impl DriverMailbox {
             }
             if state.closed {
                 return Err(MailboxError::Closed);
-            }
-            if matches!(mode, ReceiveMode::All) && std::mem::take(&mut state.title_wake) {
-                return Ok(Some(ControlMessage::TitleWake));
             }
             let Some(deadline) = deadline_millis else {
                 state = self
