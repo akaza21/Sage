@@ -45,8 +45,9 @@ it.each([true, false])(
         </>
       );
     }
+    render(<FailedChat />);
     await act(async () => {
-      render(<FailedChat />);
+      fireEvent.click(screen.getByRole("button", { name: "Details" }));
       await expect(HarnessSignInPart.preload()).rejects.toMatchObject({
         cause: { message: "Harness view could not load" },
       });

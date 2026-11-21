@@ -33,5 +33,5 @@
 }
 
 .acp-session-notices__clear {
-  justify-self: end;
+  justify-self: start;
 }

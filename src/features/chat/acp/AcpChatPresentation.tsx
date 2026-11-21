@@ -28,11 +28,10 @@ import { isEditingFiles } from "./editingFiles";
 import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { terminalTurnStates } from "./statusSemantics";
+import { terminalTurnStates, turnReasonErrorItem } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
-import { turnFailureItem, turnFailureTarget } from "./noticeOwnership";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { TurnPrompts } from "./TurnPrompts";
@@ -120,8 +119,11 @@ const Turn = memo(
     const liveThought = newestItems.find(
       (item) => item.kind === "thoughtSummary",
     );
+    const failureItem =
+      turn.state === "failed" ? turnReasonErrorItem(turn) : undefined;
     const workingItems = chronologicalItems.filter(
       (item) =>
+        item.id !== failureItem?.id &&
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" ||
           (!terminal && item.id === liveThought?.id)),
@@ -142,13 +144,10 @@ const Turn = memo(
         ) : null}
       </AnswerActions>
     ) : null;
-    const failureItem = turnFailureItem(turn);
-    const failureTarget = failureItem && turnFailureTarget(turn);
     const renderWorkingItem = (item: AcpItem) => (
       <ItemView
         key={item.id}
         item={item}
-        failureTarget={item.id === failureItem?.id ? failureTarget : undefined}
         workingItems={turn.items}
         interactive={interactive}
         fileReferenceOwner={fileReferenceOwner}
@@ -230,18 +229,17 @@ const Turn = memo(
             ) : null}
             <RootHarnessActivities
               turn={turn}
-              renderItem={(item) => (
-                <ItemView
-                  item={item}
-                  failureTarget={
-                    item.id === failureItem?.id ? failureTarget : undefined
-                  }
-                  turnState={turn.state}
-                  interactive={interactive}
-                  fileReferenceOwner={fileReferenceOwner}
-                  onOpenResource={openForTurn}
-                />
-              )}
+              renderItem={(item) =>
+                item.id === failureItem?.id ? null : (
+                  <ItemView
+                    item={item}
+                    turnState={turn.state}
+                    interactive={interactive}
+                    fileReferenceOwner={fileReferenceOwner}
+                    onOpenResource={openForTurn}
+                  />
+                )
+              }
             />
             {isEditingFiles(page, turn) &&
             !turn.items.some(

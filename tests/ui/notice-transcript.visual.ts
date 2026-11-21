@@ -17,18 +17,26 @@ for (const [scenario, offender] of [
     const notices = page.locator(".notice-fixture");
     await expect(notices.locator(".notice").first()).toBeVisible();
     if (scenario === "failure") {
-      await page.locator(".chat-transcript-work__toggle").click();
+      await expect(page.locator(".chat-transcript-work__toggle")).toHaveCount(
+        0,
+      );
       await expect(
         page.getByText("The harness exited unexpectedly.", { exact: true }),
       ).toHaveCount(1);
       await expect(
         page.getByText("harnessExited", { exact: true }),
-      ).toBeVisible();
-      const link = page.getByRole("link", { name: "Turn failure" });
-      await link.click();
+      ).toHaveCount(0);
+      await expect(page.getByText("Turn failure", { exact: true })).toHaveCount(
+        0,
+      );
+      await expect(page.getByText("Turn failed", { exact: true })).toHaveCount(
+        0,
+      );
       await expect(
-        page.getByRole("group", { name: "Turn failed" }),
-      ).toBeFocused();
+        page
+          .getByRole("group", { name: "Turn failed" })
+          .getByRole("button", { name: "Retry" }),
+      ).toBeVisible();
     }
     if (scenario === "boundary") {
       await expect(

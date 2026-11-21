@@ -449,7 +449,11 @@ it.each([
   async (state, label) => {
     const props = transcriptProps();
     const { container, rerender } = render(<ChatTranscript {...props} />);
-    const region = container.querySelector('[data-acp-announcement="polite"]')!;
+    const region = container.querySelector(
+      state === "failed"
+        ? '[data-acp-announcement="assertive"]'
+        : '[data-acp-announcement="polite"]',
+    )!;
     const announcements: string[] = [];
     const observer = new MutationObserver(() => {
       const name = region.getAttribute("aria-label");

@@ -1,9 +1,11 @@
-import { useId, useState } from "react";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import { HarnessSignInPart } from "../lazyParts";
-import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
+import {
+  turnReasonErrorItem,
+  turnReasonMessage,
+  turnTerminalReasonLabels,
+} from "./statusSemantics";
 import { Notice } from "../../../ui/Notice";
-import { turnFailureIdentity, turnFailureTarget } from "./noticeOwnership";
 
 export interface TurnFailureProps {
   turn: TurnProjection;
@@ -20,8 +22,6 @@ export function RetryTurnButton({ onRetry }: { onRetry: () => void }) {
 }
 
 export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
-  const headingId = useId();
-  const [initialTurn] = useState({ id: turn.id, state: turn.state });
   if (turn.state !== "failed") return null;
   const reason = turn.terminalReason;
   const message =
@@ -29,31 +29,57 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
     (reason && reason.kind !== "other"
       ? turnTerminalReasonLabels[reason.kind]
       : "The harness gave no error details.");
+  const error = turnReasonErrorItem(turn);
   return (
-    <div
-      id={turnFailureTarget(turn)}
-      tabIndex={-1}
-      role="group"
-      aria-labelledby={headingId}
-    >
-      <strong id={headingId}>Turn failed</strong>
+    <div role="group" aria-label="Turn failed">
       <Notice
-        identity={turnFailureIdentity(turn)}
+        identity={JSON.stringify(["turn-failure", turn.sessionId, turn.id])}
         severity="blocking"
-        message={<span data-turn-reason-message="">{message}</span>}
-        announce={initialTurn.id === turn.id && initialTurn.state !== "failed"}
+        message={
+          <>
+            <span data-turn-reason-message="">{message}</span>
+            {reason?.remediation ? (
+              <>
+                {" "}
+                <span data-turn-reason-remediation="">
+                  {reason.remediation}
+                </span>
+              </>
+            ) : null}
+          </>
+        }
+        announce={false}
+        details={
+          reason || error ? (
+            <FailureDetails turn={turn} page={page} />
+          ) : undefined
+        }
         action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
       />
-      {reason?.remediation ? (
-        <p data-turn-reason-remediation="">{reason.remediation}</p>
-      ) : null}
-      {reason?.kind === "authRequired" && page ? (
+    </div>
+  );
+}
+
+function FailureDetails({ turn, page }: TurnFailureProps) {
+  return (
+    <>
+      <pre>
+        {JSON.stringify(
+          {
+            reason: turn.terminalReason,
+            error: turnReasonErrorItem(turn)?.payload,
+          },
+          null,
+          2,
+        )}
+      </pre>
+      {turn.terminalReason?.kind === "authRequired" && page ? (
         <HarnessSignInPart
           part="HarnessTurnSignInRecovery"
           page={page}
           turn={turn}
         />
       ) : null}
-    </div>
+    </>
   );
 }

@@ -13,6 +13,7 @@ import {
   getTurnStatusLabel,
   terminalToolStates,
   terminalTurnStates,
+  turnReasonMessage,
   toolStateLabels,
 } from "./statusSemantics";
 
@@ -102,10 +103,14 @@ function deriveAnnouncements(
         terminalTurnStates.has(turn.state) &&
         previousTurn?.state !== turn.state
       ) {
-        polite.push({
+        const announcement = {
           id: `turn:${turn.id}:${turn.state}`,
-          text: getTurnStatusLabel(turn),
-        });
+          text:
+            turn.state === "failed"
+              ? turnReasonMessage(turn) || getTurnStatusLabel(turn)
+              : getTurnStatusLabel(turn),
+        };
+        (turn.state === "failed" ? assertive : polite).push(announcement);
       }
       for (const item of turn.items) {
         const prior = previousTurn?.items.find(

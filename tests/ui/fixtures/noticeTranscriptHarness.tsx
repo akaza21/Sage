@@ -6,7 +6,7 @@ import {
   page,
   textItem,
 } from "../../../src/features/chat/acp/acpProjection.fixture";
-import { turnFailureIdentity } from "../../../src/features/chat/acp/noticeOwnership";
+import { safeSessionNotices } from "../../../src/services/acpSessionNotices";
 import type { AcpItem } from "../../../src/domain/acp";
 import "../../../src/styles/global.css";
 import "../../../src/styles/chat-surface.css";
@@ -35,14 +35,6 @@ turn.items = [
     },
   },
 ] as AcpItem[];
-projection.sessionNotices = [
-  {
-    identity: turnFailureIdentity(turn),
-    level: "error",
-    source: "ACP",
-    text: "The harness exited unexpectedly.",
-  },
-];
 if (scenario === "boundary") projection.nextCursor = "earlier-page" as never;
 
 function Fixture() {
@@ -52,7 +44,7 @@ function Fixture() {
       {scenario === "session" ? (
         <SessionNoticeStrip
           session="fixture-session"
-          notices={[
+          notices={safeSessionNotices([
             {
               identity: "mcp-start:calendar",
               level: "info",
@@ -71,7 +63,7 @@ function Fixture() {
               text: "Mail tools are unavailable.",
               source: "runtime",
             },
-          ]}
+          ])}
         />
       ) : (
         <ChatTranscript
@@ -97,6 +89,7 @@ function Fixture() {
           historyError={null}
           onLoadEarlier={() => setReloading(true)}
           messages={[]}
+          onRetry={() => setReloading(true)}
           developmentSimulator={false}
           showJumpToLatest={false}
           onJumpToLatest={() => {}}

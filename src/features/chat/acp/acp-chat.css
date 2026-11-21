@@ -27,20 +27,6 @@
   line-height: var(--line-height-normal);
 }
 
-.acp-failure-reference {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.acp-failure-reference a {
-  color: var(--color-text-secondary);
-  text-underline-offset: var(--space-1);
-}
-
 .acp-system-notice {
   display: flex;
   align-items: center;

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { CircleAlert, Info, TriangleAlert } from "./leanIcons";
 import "./notice.css";
 
@@ -30,24 +30,16 @@ function NoticeContent({
   announce = true,
 }: NoticeProps) {
   const [expanded, setExpanded] = useState(false);
-  const region = useRef<HTMLDivElement>(null);
-  const firstBlocking = useRef<{ message: ReactNode } | null>(null);
-  // Silence later revisions of this problem before the accessibility tree
-  // observes their DOM updates. Changing identity remounts this bounded state.
-  useLayoutEffect(() => {
-    let live = progress ? "polite" : "off";
-    if (severity === "blocking" && announce) {
-      // An unchanged StrictMode effect replay preserves the first announcement.
-      if (
-        !firstBlocking.current ||
-        (firstBlocking.current.message === message &&
-          region.current?.getAttribute("aria-live") === "assertive")
-      )
-        live = "assertive";
-      firstBlocking.current ??= { message };
-    }
-    region.current?.setAttribute("aria-live", live);
-  }, [announce, severity, message, progress]);
+  const blocking = severity === "blocking" && announce;
+  const [announcement, setAnnouncement] = useState<{
+    message: ReactNode;
+    live: boolean;
+  } | null>(null);
+  // Settle announcement state before committing changed copy to the tree.
+  // Identity changes remount this bounded state; StrictMode replays preserve it.
+  if (blocking && !announcement) setAnnouncement({ message, live: true });
+  else if (announcement?.live && announcement.message !== message)
+    setAnnouncement({ ...announcement, live: false });
   const Icon =
     severity === "blocking"
       ? CircleAlert
@@ -56,8 +48,14 @@ function NoticeContent({
         : Info;
   return (
     <div
-      ref={region}
       className={`notice notice--${severity}`}
+      aria-live={
+        progress
+          ? "polite"
+          : blocking && announcement?.live
+            ? "assertive"
+            : "off"
+      }
       data-notice-identity={identity}
       role={
         announce && severity === "blocking"
@@ -87,17 +85,21 @@ function NoticeContent({
           </button>
         ) : null}
         {details ? (
-          <div className="notice__details" aria-live="off">
+          <>
             <button
               type="button"
-              className="notice__disclose"
+              className="notice__text-link notice__disclose"
               aria-expanded={expanded}
               onClick={() => setExpanded(!expanded)}
             >
               Details
             </button>
-            {expanded ? <div>{details}</div> : null}
-          </div>
+            {expanded ? (
+              <div className="notice__details" aria-live="off">
+                {details}
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>

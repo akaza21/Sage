@@ -59,7 +59,6 @@ export const ItemView = memo(
     onOpenResource,
     selectableTurnId,
     command,
-    failureTarget,
   }: {
     item: AcpItem;
     workingItems?: readonly AcpItem[];
@@ -69,7 +68,6 @@ export const ItemView = memo(
     onOpenResource?: AgentArtifactOpenHandler;
     selectableTurnId?: string;
     command?: AcpTurnCommand;
-    failureTarget?: string;
   }) {
     switch (item.kind) {
       case "userPrompt":
@@ -132,7 +130,7 @@ export const ItemView = memo(
       }
       case "thoughtSummary":
       case "error":
-        return <TurnActivityItem item={item} failureTarget={failureTarget} />;
+        return <TurnActivityItem item={item} />;
       case "plan":
       case "compactionNotice":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
@@ -178,7 +176,6 @@ export const ItemView = memo(
     left.interactive === right.interactive &&
     left.turnState === right.turnState &&
     left.command === right.command &&
-    left.failureTarget === right.failureTarget &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
     left.onOpenResource === right.onOpenResource,
 );
@@ -294,22 +291,9 @@ function PlanActivity({
 
 function ErrorActivity({
   item,
-  failureTarget,
 }: {
   item: Extract<AcpItem, { kind: "error" }>;
-  failureTarget?: string;
 }) {
-  if (failureTarget)
-    return (
-      <div
-        className="acp-failure-reference"
-        data-activity-kind="error"
-        data-activity-state="failed"
-      >
-        <a href={`#${failureTarget}`}>Turn failure</a>
-        <code>{item.payload.code}</code>
-      </div>
-    );
   return (
     <article
       className="acp-activity acp-activity-card acp-error"
@@ -344,11 +328,9 @@ function ErrorActivity({
 export function TurnActivityItem({
   item,
   workingItems = [],
-  failureTarget,
 }: {
   item: TurnActivityProjectionItem;
   workingItems?: readonly AcpItem[];
-  failureTarget?: string;
 }) {
   switch (item.kind) {
     case "thoughtSummary":
@@ -385,6 +367,6 @@ export function TurnActivityItem({
         </p>
       );
     case "error":
-      return <ErrorActivity item={item} failureTarget={failureTarget} />;
+      return <ErrorActivity item={item} />;
   }
 }

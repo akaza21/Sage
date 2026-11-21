@@ -407,7 +407,7 @@ describe("AcpAnnouncementRegions", () => {
     ["completed", undefined, "Completed"],
     ["failed", "timeout", "Failed"],
   ] as const)(
-    "announces the rendered header label once for %s with reason %s",
+    "announces each terminal transition once for %s with reason %s",
     async (state, kind, label) => {
       const initial = page("1", "running");
       const settled = page("2", state);
@@ -418,7 +418,11 @@ describe("AcpAnnouncementRegions", () => {
           <AcpAnnouncementRegions page={initial} />
         </>,
       );
-      const observation = observeNames(regions(container).polite);
+      const region =
+        state === "failed"
+          ? regions(container).assertive
+          : regions(container).polite;
+      const observation = observeNames(region);
       const content = (
         <>
           <TurnHeader turn={settled.turns[0]} />
@@ -432,10 +436,8 @@ describe("AcpAnnouncementRegions", () => {
       expect(
         container.querySelector("[data-turn-status]"),
       ).toHaveAccessibleName(label);
-      await waitFor(() =>
-        expect(regions(container).polite).toHaveAccessibleName(label),
-      );
-      expect(regions(container).polite).toHaveTextContent(label);
+      await waitFor(() => expect(region).toHaveAccessibleName(label));
+      expect(region).toHaveTextContent(label);
       rerender(
         <>
           <TurnHeader turn={settled.turns[0]} />

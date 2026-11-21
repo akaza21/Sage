@@ -29,11 +29,19 @@ function safeNotice(value: unknown, index: number): SessionNotice | null {
   };
 }
 
-/** Notices are display-only, so a malformed one is dropped, not the page. */
+/** Bound and group display-only records; malformed notices never reject a page. */
 export function safeSessionNotices(value: unknown): SessionNotice[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .slice(-SESSION_NOTICES_MAX)
-    .map(safeNotice)
-    .filter((notice): notice is SessionNotice => notice !== null);
+  const notices = new Map<string, SessionNotice>();
+  for (const [index, record] of value.slice(-SESSION_NOTICES_MAX).entries()) {
+    const notice = safeNotice(record, index);
+    if (!notice) continue;
+    const previous = notices.get(notice.identity!);
+    if (
+      !previous ||
+      LEVELS.indexOf(notice.level) >= LEVELS.indexOf(previous.level)
+    )
+      notices.set(notice.identity!, notice);
+  }
+  return [...notices.values()];
 }
