@@ -15,6 +15,7 @@ const PROMPTED_AND_VISIBLE: &str = concat!(
 /// Explicit user choices and queued input preserve empty chats as well.
 /// A detached durable Chat is archived; that state itself is retention intent,
 /// independent of the pin on the tab that was removed when archiving it.
+/// Restore pins a chat that would otherwise lose this retention intent.
 pub(crate) fn listed_chat() -> String {
     let welcome = crate::session_events::legacy_welcome::turn_query("c.id");
     format!(
@@ -39,7 +40,7 @@ pub(crate) fn listed_chat() -> String {
     )
 }
 
-/// Only attached, default Chats with no user prompt or retention intent can
+/// Only attached, default Chats with no session or retention intent can
 /// receive a project draft. The renderer supplies bounded unsent-input owners.
 pub(crate) fn reusable_chat(
     connection: &Connection,
@@ -60,21 +61,16 @@ pub(crate) fn reusable_chat(
     connection
         .query_row(
             &format!(
-                concat!(
-                    "SELECT c.id FROM chats c WHERE c.project_id=?1
+                "SELECT c.id FROM chats c WHERE c.project_id=?1
             AND c.title_source='default' AND NOT ({}) AND (?3 IS NULL OR c.id=?3)
              AND c.id NOT IN (SELECT value FROM json_each(?2))
-             AND NOT EXISTS(SELECT 1 FROM agent_sessions s JOIN turns t ON t.session_id=s.id
-               WHERE s.project_id=c.project_id AND s.chat_id=c.id AND ",
-                    crate::acp::store::prompted_turn!("t.session_id", "t.id"),
-                    " AND t.id<>COALESCE(({}),''))
+             AND NOT EXISTS(SELECT 1 FROM agent_sessions s
+               WHERE s.project_id=c.project_id AND s.chat_id=c.id)
              AND EXISTS(SELECT 1 FROM chat_tabs a JOIN workbench_tabs w ON w.id=a.tab_id
                WHERE a.project_id=c.project_id AND a.chat_id=c.id
                  AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0)
-             ORDER BY c.ordinal,c.id LIMIT 1"
-                ),
+             ORDER BY c.ordinal,c.id LIMIT 1",
                 listed_chat(),
-                crate::session_events::legacy_welcome::turn_query("c.id")
             ),
             params![project, protected, candidate],
             |row| row.get(0),

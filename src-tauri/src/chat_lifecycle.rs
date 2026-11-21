@@ -1,4 +1,4 @@
-﻿use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, params};
 use sage_db::error::SqliteResultExt;
 mod auto_title;
 pub(crate) mod create;

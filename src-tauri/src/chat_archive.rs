@@ -123,6 +123,21 @@ impl ChatArchiveStore for Database {
         } else {
             restore_foreign_chat(&transaction, &request.project_id, &request.chat_id)?;
         }
+        // Restoring replaces the archived attachment with an unpinned tab.
+        // Keep empty chats discoverable using the existing durable pin; chats
+        // with other retention intent retain their ordinary unpinned restore.
+        transaction
+            .execute(
+                &format!(
+                    "UPDATE workbench_tabs SET pinned=1 WHERE project_id=?1 AND id IN (
+                 SELECT a.tab_id FROM chats c JOIN chat_tabs a
+                   ON a.project_id=c.project_id AND a.chat_id=c.id
+                 WHERE c.project_id=?1 AND c.id=?2 AND NOT ({}))",
+                    crate::chat_lifecycle::visibility::listed_chat(),
+                ),
+                params![request.project_id, request.chat_id],
+            )
+            .db()?;
         transaction.commit().db()?;
         Ok(())
     }

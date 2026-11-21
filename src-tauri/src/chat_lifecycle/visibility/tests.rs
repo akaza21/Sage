@@ -8,6 +8,26 @@ use rusqlite::params;
 use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
+// Declared before database handles so unwinding closes SQLite before cleanup.
+struct TestDirectory(std::path::PathBuf);
+
+impl TestDirectory {
+    fn new() -> Self {
+        let path = std::env::current_dir()
+            .unwrap()
+            .join("work")
+            .join(format!("chat-visibility-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.0).expect("remove visibility test directory");
+    }
+}
+
 fn layout(db: &Database) -> ProjectLayoutRequest {
     let s = db.bootstrap_snapshot().unwrap();
     ProjectLayoutRequest {
@@ -166,11 +186,8 @@ fn harness_only_and_undone_turns_do_not_count_as_sent_prompts() {
 
 #[test]
 fn open_empty_remains_usable_but_switch_and_restart_release_hidden_selection() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../local-evidence/emptychat/restore")
-        .join(uuid::Uuid::new_v4().to_string());
-    std::fs::create_dir_all(&root).unwrap();
-    let path = root.join("sage.db");
+    let directory = TestDirectory::new();
+    let path = directory.0.join("sage.db");
     let db = crate::database::open_database(&path).unwrap();
     let project = db
         .create_named_project_if_active("First", &[], None)
@@ -396,15 +413,12 @@ fn upgrade_at_capacity_reuses_the_oldest_eligible_chat_without_growing() {
 }
 
 #[test]
-fn pinned_empty_archive_survives_restart_and_can_be_restored() {
+fn pinned_empty_archive_restore_restart_and_switch_keeps_retention() {
     use crate::chat_archive::ChatArchiveStore;
     use crate::chat_pin::ChatPinStore;
     use sage_domain::chat::{ChatLifecycleRequest, PinChatRequest};
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../local-evidence/emptychat/archive")
-        .join(uuid::Uuid::new_v4().to_string());
-    std::fs::create_dir_all(&root).unwrap();
-    let path = root.join("sage.db");
+    let directory = TestDirectory::new();
+    let path = directory.0.join("sage.db");
     let db = crate::database::open_database(&path).unwrap();
     let project = db
         .create_named_project_if_active("Archive", &[], None)
@@ -437,7 +451,7 @@ fn pinned_empty_archive_survives_restart_and_can_be_restored() {
             .is_none()
     );
     db.restore_chat(&ChatLifecycleRequest {
-        project_id: project.id,
+        project_id: project.id.clone(),
         chat_id: chat.clone(),
         current_layout: layout(&db),
     })
@@ -446,15 +460,39 @@ fn pinned_empty_archive_survives_restart_and_can_be_restored() {
     assert_eq!(restored.active_tab_id, Some(chat.clone()));
     assert!(restored.tabs.iter().any(|tab| tab.id == chat));
     assert!(restored.archived_chats.is_empty());
+    assert!(restored.tabs.iter().any(|tab| tab.id == chat && tab.pinned));
+    drop(db);
+    let db = crate::database::open_database(&path).unwrap();
+    db.create_named_project_if_active("Other", &[], Some(&project.id))
+        .unwrap();
+    assert_eq!(listed(&db, &project.id), vec![chat.clone()]);
+    assert_eq!(search(&db, &project.id, ""), vec![chat.clone()]);
+    db.switch_project(&ProjectSwitchRequest {
+        target_project_id: project.id.clone(),
+        current_layout: layout(&db),
+    })
+    .unwrap();
+    assert_eq!(
+        db.bootstrap_snapshot().unwrap().active_tab_id,
+        Some(chat.clone())
+    );
+    assert_eq!(listed(&db, &project.id), vec![chat.clone()]);
+    assert_eq!(search(&db, &project.id, ""), vec![chat.clone()]);
+    assert!(
+        super::reusable_chat(&db.connection(), &project.id, &[], None)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.reuse_empty_chat(&project.id, &layout(&db), &chat)
+            .is_err()
+    );
 }
 
 #[test]
 fn fork_title_or_native_lineage_remains_discoverable_after_switch_and_restart() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../local-evidence/emptychat/fork")
-        .join(uuid::Uuid::new_v4().to_string());
-    std::fs::create_dir_all(&root).unwrap();
-    let path = root.join("sage.db");
+    let directory = TestDirectory::new();
+    let path = directory.0.join("sage.db");
     let db = crate::database::open_database(&path).unwrap();
     let project = db
         .create_named_project_if_active("Fork", &[], None)

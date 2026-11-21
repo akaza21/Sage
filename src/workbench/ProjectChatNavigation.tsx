@@ -124,7 +124,7 @@ export function ProjectChatNavigation({
   useEffect(() => {
     if (!projectTransitioning)
       activeRowRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [activeTabId, projectTransitioning, selected, suppressActive]);
+  }, [activeTabId, projectTransitioning, selected, recent]);
 
   const closeRename = (chatId: string) => {
     pendingFocusChatId.current = chatId;
