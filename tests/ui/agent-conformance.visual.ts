@@ -505,10 +505,21 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L13. Like the target, Recents rows carry no timestamp; a row shows a
     // trailing glyph only while it runs, waits or has unread updates.
     await openScenario(page, "agent-dual", "agent");
+    await page.evaluate(async () => {
+      const { installPrivateRecentFixture } =
+        await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+      installPrivateRecentFixture();
+    });
     const recent = rail(page).getByRole("region", { name: "Recents" });
 
     const entries = recent.locator(".project-chat-row");
     await expect(entries).toHaveCount(1);
+    await expect(
+      recent.getByRole("button", {
+        name: "Open chat Private work in progress",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(
       recent.getByRole("button", {
         name: "Open chat Agent navigation polish",
@@ -1091,7 +1102,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       exact: true,
     });
     await expect(project).toBeVisible();
-    await expect(project).toBeEnabled();
+    // An established session owns its project; the native command rejects
+    // reparenting it. Unsent-chat picker interactions have separate coverage.
+    await expect(project).toBeDisabled();
     await expect(project).toHaveAttribute("title", "Project: Sage");
     await expect(project).toHaveAttribute("aria-haspopup", "listbox");
     await page.keyboard.press("Escape");

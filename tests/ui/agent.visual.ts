@@ -785,7 +785,7 @@ test.describe("V2-4 session mode picker", () => {
       name: "Work in a project",
       exact: true,
     });
-    await expect(projectTrigger).toBeEnabled();
+    await expect(projectTrigger).toBeDisabled();
     await expect(projectTrigger).toHaveAttribute("aria-haspopup", "listbox");
     await page
       .getByRole("button", { name: "Composer options", exact: true })
