@@ -52,6 +52,7 @@ export interface ChatOwnershipSlice {
       sending: boolean;
       error: string | null;
       errorKind?: AcpCommandFailure["kind"] | null;
+      errorUnavailableReason?: ChatOwnershipEntry["errorUnavailableReason"];
       errorBindingId?: string | null;
       errorReceivedAt?: number | null;
       modeError?: string | null;
@@ -213,6 +214,7 @@ export const createChatOwnershipSlice: StateCreator<
         ? {}
         : {
             errorKind: actionState.errorKind,
+            errorUnavailableReason: actionState.errorUnavailableReason ?? null,
             errorBindingId: actionState.errorBindingId ?? null,
             errorReceivedAt: actionState.errorReceivedAt ?? null,
           }),

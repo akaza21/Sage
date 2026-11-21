@@ -299,6 +299,15 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   expect(await backgroundColor(composer.locator(".composer__harness"))).toBe(
     "rgba(0, 0, 0, 0)",
   );
+
+  // With no selected candidate (discovery still running), the trigger shows
+  // the generic harness mark, not a settings gear.
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    useWorkbenchStore.setState({ harnesses: [] });
+  });
+  await expect(logo).toHaveAttribute("data-harness-icon", "generic");
+  await expect(trigger.locator(".lucide-settings")).toHaveCount(0);
 });
 
 test("a long harness name shows whole or not at all as the composer narrows", async ({

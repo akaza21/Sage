@@ -150,6 +150,34 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it("retains a typed binding refusal across remount and clears its reason with the error", async () => {
+    mockIPC((command) => {
+      if (command === "send_acp_turn")
+        return Promise.reject({
+          kind: "unavailable",
+          reason: "bindingUnavailable",
+          message: "No admitted binding.",
+        });
+      throw new Error(command);
+    });
+    const first = renderHook(() => useAcpChatActions());
+    await act(async () => {
+      await first.result.current.submit(
+        "Try this binding",
+        [],
+        bindingId,
+        null,
+      );
+    });
+    first.unmount();
+    const reopened = renderHook(() => useAcpChatActions());
+    expect(reopened.result.current.error).toBe("No admitted binding.");
+    expect(reopened.result.current.errorUnavailableReason).toBe(
+      "bindingUnavailable",
+    );
+    act(() => useWorkbenchStore.getState().clearActiveChatError());
+    expect(reopened.result.current.errorUnavailableReason).toBeNull();
+  });
   it.each(["read before delivery", "read after delivery"])(
     "keeps an untimestamped native refusal local (%s) until a fresh read succeeds",
     async (ordering) => {

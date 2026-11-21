@@ -374,19 +374,26 @@ it.each(["approval", "disabled"] as const)(
       expect(
         screen.queryByRole("combobox", { name: "Message agent" }),
       ).toBeNull();
-    } else
+    } else {
       expect(
-        screen.getByRole("combobox", { name: "Message agent" }),
-      ).toBeDisabled();
+        screen.queryByRole("combobox", { name: "Message agent" }),
+      ).toBeNull();
+      expect(screen.getByText(/No harness is available here/)).toBeVisible();
+    }
     const pane = screen.getByRole("region", { name: /^Chat pane / });
     const home = screen.getByRole("button", { name: "Home" });
     home.focus();
     fireEvent.click(home);
     await settleLazyModules();
     expect(pane).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toHaveFocus();
+    if (unavailable === "disabled")
+      expect(
+        screen.getByRole("region", { name: "New chat draft" }),
+      ).toHaveFocus();
+    else
+      expect(
+        screen.getByRole("combobox", { name: "Message agent" }),
+      ).toHaveFocus();
     expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
     expect(useWorkbenchStore.getState().chatUiById[chatId]?.composerText).toBe(
       "Preserved draft",
@@ -445,8 +452,11 @@ it.each(["parent", "side"] as const)(
     const focused = panes.find((pane) => pane.dataset.chatId === focusedId)!;
     const other = panes.find((pane) => pane !== focused)!;
     expect(
-      within(focused).getByRole("combobox", { name: "Message agent" }),
-    ).toBeDisabled();
+      within(focused).queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
+    expect(
+      within(focused).getByRole("button", { name: "Continue in a new chat" }),
+    ).toBeEnabled();
     expect(
       within(other).getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();

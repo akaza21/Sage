@@ -84,7 +84,11 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     let fresh = reopened.bootstrap_snapshot_with_catalog(&catalog).unwrap();
     assert_eq!(
         fresh.selected_harness_id,
-        catalog.default_selected_harness_id()
+        if crate::harnesses::SIMULATOR_IN_CATALOG {
+            Some(crate::harnesses::SIMULATOR_ID.into())
+        } else {
+            HarnessCatalog::preferred_available_harness_id(&catalog.definitions())
+        }
     );
     assert!(fresh.harnesses.iter().any(|harness| {
         harness.binding_id.as_deref() == Some("absent-binding")
