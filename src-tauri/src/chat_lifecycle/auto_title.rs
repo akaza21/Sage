@@ -2,6 +2,9 @@ use rusqlite::{Transaction, params};
 
 use super::ChatTitleSource;
 
+mod prompt;
+pub(super) use prompt::prompt_title;
+
 /// Format characters that change how surrounding text displays without
 /// showing themselves: bidirectional controls and zero-width characters. A
 /// title from a prompt or a harness must not be able to reorder or hide text
@@ -75,7 +78,7 @@ pub(crate) fn auto_title_first_prompt_in(
     if !eligible {
         return Ok(());
     }
-    let Some(title) = first_line_title(prompt) else {
+    let Some(title) = prompt_title(prompt) else {
         return Ok(());
     };
     transaction.execute(

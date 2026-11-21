@@ -32,6 +32,8 @@ use super::super::{CustomAcpRegistration, StandardAcpBindingSource, StandardAcpR
 
 const SESSION: &str = "agent-session-1";
 
+mod session_info;
+
 struct Fixture {
     root: PathBuf,
     registration: Arc<CustomAcpRegistration>,
