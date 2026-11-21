@@ -1,7 +1,9 @@
 use sage_core::error::{AppError, AppResult};
 
 use crate::budget;
-use sage_domain::{file_operations::GitFileMutationAction, resource::ResourceRef};
+use sage_domain::{
+    file_operations::GitFileMutationAction, repository::FileChange, resource::ResourceRef,
+};
 use sage_workspace::Workspace;
 use std::time::Duration;
 
@@ -63,32 +65,40 @@ pub async fn mutate_file_with_process_policy(
         )
         .await;
     }
+    let paths = mutation_paths(workspace, change, action)?;
+    let arguments = path_mutation_arguments(workspace, &paths, action).await?;
+    let output = crate::cli::run_git_with_policy(
+        workspace.root(),
+        &arguments,
+        MAX_GIT_MUTATION_OUTPUT_BYTES,
+        process_policy,
+    )
+    .await?;
+    crate::ensure_success(&output)
+}
+
+pub(crate) fn mutation_paths(
+    workspace: &Workspace,
+    change: &FileChange,
+    action: GitFileMutationAction,
+) -> AppResult<Vec<String>> {
     if change.index_status == "conflicted" || change.worktree_status == "conflicted" {
         return Err(AppError::InvalidRequest(
             "conflicted files require the later conflict workflow".into(),
         ));
     }
-    let mut paths = vec![resource.relative_path.clone()];
+    let mut paths = vec![change.resource.relative_path.clone()];
     if let Some(original) = &change.original_resource {
         validate_resource_identity(workspace, original)?;
         paths.push(original.relative_path.clone());
     }
-    let output = match action {
+    match action {
         GitFileMutationAction::Stage => {
             if change.worktree_status == "unchanged" || change.worktree_status == "unknown" {
                 return Err(AppError::InvalidRequest(
                     "resource has no worktree change to stage".into(),
                 ));
             }
-            let mut arguments = vec!["add", "--"];
-            arguments.extend(paths.iter().map(String::as_str));
-            crate::cli::run_git_with_policy(
-                workspace.root(),
-                &arguments,
-                MAX_GIT_MUTATION_OUTPUT_BYTES,
-                process_policy,
-            )
-            .await?
         }
         GitFileMutationAction::Unstage => {
             if change.index_status == "unchanged" || change.index_status == "unknown" {
@@ -96,28 +106,6 @@ pub async fn mutate_file_with_process_policy(
                     "resource has no index change to unstage".into(),
                 ));
             }
-            let head = crate::run_git(
-                workspace.root(),
-                &["rev-parse", "--verify", "--quiet", "HEAD"],
-                256,
-            )
-            .await?;
-            if !head.succeeded() && head.exit_code() != Some(1) {
-                return crate::ensure_success(&head);
-            }
-            let mut arguments = if head.succeeded() {
-                vec!["restore", "--staged", "--"]
-            } else {
-                vec!["rm", "--cached", "-f", "--"]
-            };
-            arguments.extend(paths.iter().map(String::as_str));
-            crate::cli::run_git_with_policy(
-                workspace.root(),
-                &arguments,
-                MAX_GIT_MUTATION_OUTPUT_BYTES,
-                process_policy,
-            )
-            .await?
         }
         GitFileMutationAction::Discard => {
             if !matches!(
@@ -131,29 +119,54 @@ pub async fn mutate_file_with_process_policy(
                     "resource worktree change cannot be safely discarded".into(),
                 ));
             }
-            crate::cli::run_git_with_policy(
-                workspace.root(),
-                &[
-                    "restore",
-                    "--worktree",
-                    "--",
-                    resource.relative_path.as_str(),
-                ],
-                MAX_GIT_MUTATION_OUTPUT_BYTES,
-                process_policy,
-            )
-            .await?
         }
         GitFileMutationAction::KeepOurs | GitFileMutationAction::KeepTheirs => {
             return Err(AppError::InvalidRequest(
                 "conflicted files require the later conflict workflow".into(),
             ));
         }
-    };
-    crate::ensure_success(&output)
+    }
+    Ok(paths)
 }
 
-fn validate_resource_identity(workspace: &Workspace, resource: &ResourceRef) -> AppResult<()> {
+pub(crate) async fn path_mutation_arguments<'a>(
+    workspace: &Workspace,
+    paths: &'a [String],
+    action: GitFileMutationAction,
+) -> AppResult<Vec<&'a str>> {
+    let mut arguments = match action {
+        GitFileMutationAction::Stage => vec!["add", "--"],
+        GitFileMutationAction::Unstage => {
+            let head = crate::run_git(
+                workspace.root(),
+                &["rev-parse", "--verify", "--quiet", "HEAD"],
+                256,
+            )
+            .await?;
+            if head.succeeded() {
+                vec!["restore", "--staged", "--"]
+            } else if head.exit_code() == Some(1) {
+                vec!["rm", "--cached", "-f", "--"]
+            } else {
+                crate::ensure_success(&head)?;
+                unreachable!("nonzero Git exit was rejected")
+            }
+        }
+        GitFileMutationAction::Discard => vec!["restore", "--worktree", "--"],
+        _ => {
+            return Err(AppError::InvalidRequest(
+                "conflicted files require the later conflict workflow".into(),
+            ));
+        }
+    };
+    arguments.extend(paths.iter().map(String::as_str));
+    Ok(arguments)
+}
+
+pub(crate) fn validate_resource_identity(
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<()> {
     let root_id_bytes = resource.root_id.len();
     let path_bytes = resource.relative_path.len();
     if root_id_bytes == 0

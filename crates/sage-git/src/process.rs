@@ -16,6 +16,10 @@ use tokio::{
 use crate::budget;
 
 mod cancellation;
+#[cfg(any(test, feature = "test-support"))]
+mod command_counts;
+#[cfg(any(test, feature = "test-support"))]
+pub use command_counts::GitCommandCounts;
 mod containment;
 mod parallel_limits;
 #[cfg(all(test, windows))]
@@ -82,6 +86,11 @@ pub struct GitProcessPolicy {
 }
 
 impl GitProcessPolicy {
+    pub(crate) fn with_stdin(mut self, input: Vec<u8>) -> Self {
+        self.stdin = Some(input);
+        self
+    }
+
     pub fn mutation(command_timeout: Duration) -> Self {
         Self {
             stdin: None,
@@ -329,6 +338,8 @@ async fn run_admitted(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    #[cfg(any(test, feature = "test-support"))]
+    command_counts::record(root, args);
     // Created suspended on Windows: it runs only once its whole tree is held.
     let tree = match ProcessTree::contain(&child) {
         Ok(tree) => tree,

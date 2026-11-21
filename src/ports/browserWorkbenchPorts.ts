@@ -124,6 +124,12 @@ const repository: RepositoryPort = {
     browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
+  stageGitPaths: (request, epoch) =>
+    browserDesktop.stageGitPaths(request, epoch),
+  unstageGitPaths: (request, epoch) =>
+    browserDesktop.unstageGitPaths(request, epoch),
+  discardGitPaths: (request, epoch) =>
+    browserDesktop.discardGitPaths(request, epoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>
     browserDesktop.abortGitInProgress(request, expectedTransitionEpoch),
   commitGitRepository: (request, expectedTransitionEpoch) =>

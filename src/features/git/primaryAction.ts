@@ -4,7 +4,7 @@ import {
 } from "../../domain/gitCommit";
 import { isConflictedChange } from "../../domain/gitMutation";
 import type { RootRepositoryStatus } from "../../domain/workbench";
-import { canPushRemote } from "./remotes";
+import { canPushRemote, visibleRemotes } from "./remotes";
 
 export type RepositoryPrimaryAction =
   | { kind: "commit"; label: "Commit"; reason: null }
@@ -36,6 +36,13 @@ export function repositoryPrimaryAction(
   if (canCommitRepository(repository)) {
     return { kind: "commit", label: "Commit", reason: null };
   }
+  return repositoryTransportAction(repository);
+}
+
+export function repositoryTransportAction(
+  repository: RootRepositoryStatus,
+): RepositoryPrimaryAction {
+  if (repository.state !== "repository") return null;
   if (
     exclusiveGitSequence(repository) !== null ||
     repository.changes.some(isConflictedChange)
@@ -93,9 +100,12 @@ export function repositoryPrimaryAction(
     repository.branch &&
     !repository.branch.endsWith("(detached)")
   ) {
-    const remote = (repository.remotes ?? []).includes("origin")
+    const remotes = visibleRemotes(repository.remotes);
+    const remote = remotes.includes("origin")
       ? "origin"
-      : null;
+      : remotes.length === 1
+        ? remotes[0]
+        : null;
     return remote && canPushRemote(repository, remote)
       ? { kind: "publish", label: "Publish Branch", remote, reason: null }
       : null;

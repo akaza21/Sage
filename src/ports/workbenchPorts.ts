@@ -27,6 +27,7 @@ import type {
   FileDiff,
   FileGitBase,
   GitFileMutationRequest,
+  GitPathsMutationRequest,
   GitFileMutationResult,
   GitRepositoryCommitRequest,
   GitRepositoryCommitResult,
@@ -177,6 +178,18 @@ export interface RepositoryPort {
   ): Promise<FileGitBase>;
   mutateGitFile(
     request: GitFileMutationRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitFileMutationResult>;
+  stageGitPaths(
+    request: GitPathsMutationRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitFileMutationResult>;
+  unstageGitPaths(
+    request: GitPathsMutationRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitFileMutationResult>;
+  discardGitPaths(
+    request: GitPathsMutationRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitFileMutationResult>;
   abortGitInProgress(
@@ -367,6 +380,9 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "getRepositoryChangeStamp",
     "getRepositoryStatus",
     "mutateGitFile",
+    "stageGitPaths",
+    "unstageGitPaths",
+    "discardGitPaths",
     "pullGitRepository",
     "pushGitRemote",
     "renameGitLocalBranch",

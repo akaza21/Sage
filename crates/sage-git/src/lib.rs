@@ -9,6 +9,7 @@
 //! app read the active Project and call the functions here with explicit
 //! arguments. Every Git process starts in `process`, inside its containment.
 
+pub mod batch;
 pub mod branch_create;
 pub mod branch_delete;
 pub mod branch_rename;

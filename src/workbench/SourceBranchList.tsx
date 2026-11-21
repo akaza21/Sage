@@ -1,206 +1,216 @@
-import { useMemo, useState, type FormEvent } from "react";
-
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useWorkbenchStore } from "../app/store";
+import type { RootRepositoryStatus } from "../domain/workbench";
 import {
   canCheckoutLocalBranch,
   canCreateLocalBranch,
   canDeleteLocalBranch,
   canRenameLocalBranch,
   isCurrentLocalBranch,
+  MAX_LOCAL_BRANCHES,
 } from "../features/git/localBranches";
+import { MenuPopover } from "../ui/MenuPopover";
 import { SearchablePicker } from "../ui/SearchablePicker";
 
-interface Props {
-  rootLabel: string;
-  branch: string | null;
-  branches?: string[];
-  truncated?: boolean;
-  checkoutDisabled?: boolean;
-  createDisabled?: boolean;
-  deleteDisabled?: boolean;
-  renameDisabled?: boolean;
-  onCheckout?: (name: string) => void;
-  onCreate?: (name: string) => void;
-  onDelete?: (name: string) => void;
-  onRename?: (from: string, to: string) => void;
-}
-
-const EMPTY_BRANCHES: readonly string[] = [];
-
 export function SourceBranchList({
+  repository,
   rootLabel,
-  branch,
-  branches,
-  truncated = false,
-  checkoutDisabled = false,
-  createDisabled = false,
-  deleteDisabled = false,
-  renameDisabled = false,
-  onCheckout,
-  onCreate,
-  onDelete,
-  onRename,
-}: Props) {
+  disabled,
+  triggerLabel,
+  triggerRole,
+  open,
+  onOpenChange,
+}: {
+  repository: RootRepositoryStatus;
+  rootLabel: string;
+  disabled: boolean;
+  triggerLabel: ReactNode;
+  triggerRole?: "menuitem";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [mode, setMode] = useState<"create" | "rename" | "delete" | null>(null);
   const [draft, setDraft] = useState("");
-  const [renameFrom, setRenameFrom] = useState("");
-  const [renameTo, setRenameTo] = useState("");
-  const names = branches ?? EMPTY_BRANCHES;
+  const [from, setFrom] = useState("");
+  const [checkoutFailed, setCheckoutFailed] = useState(false);
+  const checkout = useWorkbenchStore((state) => state.checkoutLocalBranch);
+  const create = useWorkbenchStore((state) => state.createLocalBranch);
+  const rename = useWorkbenchStore((state) => state.renameLocalBranch);
+  const remove = useWorkbenchStore((state) => state.deleteLocalBranch);
+  const error = useWorkbenchStore((state) => state.repositoryCheckoutError);
+  const names = useMemo(
+    () => (repository.branches ?? []).slice(0, MAX_LOCAL_BRANCHES),
+    [repository.branches],
+  );
   const branchCandidates = useMemo(
     () => names.map((name) => ({ id: name, label: name })),
     [names],
   );
-  const selectedFrom = names.includes(renameFrom)
-    ? renameFrom
-    : (names[0] ?? "");
-  const canSubmit =
-    onCreate !== undefined && canCreateLocalBranch(draft, names, truncated);
-  const canRename =
-    onRename !== undefined &&
-    canRenameLocalBranch(selectedFrom, renameTo, names, truncated);
-  if (
-    names.length === 0 &&
-    !truncated &&
-    onCreate === undefined &&
-    onRename === undefined
-  ) {
-    return null;
-  }
-  const submitCreate = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit || createDisabled || onCreate === undefined) {
-      return;
-    }
-    onCreate(draft);
-    setDraft("");
-  };
-  const submitRename = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canRename || renameDisabled || onRename === undefined) {
-      return;
-    }
-    onRename(selectedFrom, renameTo);
-    setRenameTo("");
-  };
+  const candidates = useMemo(
+    () => [
+      {
+        id: "create",
+        label: "Create new branch…",
+        disabledReason:
+          repository.branchesTruncated || names.length >= MAX_LOCAL_BRANCHES
+            ? "Branch list must be complete and below 64 names."
+            : undefined,
+      },
+      ...names.map((name) => ({
+        id: `branch:${name}`,
+        label: name,
+        accessibleLabel: isCurrentLocalBranch(name, repository.branch)
+          ? `${name} (current)`
+          : `Switch to ${name}`,
+        subtitle: isCurrentLocalBranch(name, repository.branch)
+          ? "current"
+          : undefined,
+      })),
+      { id: "rename", label: "Rename branch…" },
+      { id: "delete", label: "Delete branch…" },
+    ],
+    [names, repository.branch, repository.branchesTruncated],
+  );
+  const valid =
+    mode === "create"
+      ? canCreateLocalBranch(draft, names, repository.branchesTruncated)
+      : mode === "rename"
+        ? canRenameLocalBranch(from, draft, names, repository.branchesTruncated)
+        : canDeleteLocalBranch(
+            from,
+            repository.branch,
+            names,
+            repository.branchesTruncated,
+          );
   return (
-    <>
-      {names.length > 0 || onCreate !== undefined || onRename !== undefined ? (
-        <>
-          <p className="source-group-label">Branches</p>
-          {names.length > 0 ? (
-            <ul
-              className="source-branches"
-              aria-label={`Local branches in ${rootLabel}`}
-            >
-              {names.map((name) => {
-                const current = isCurrentLocalBranch(name, branch);
-                const canCheckout =
-                  onCheckout !== undefined &&
-                  canCheckoutLocalBranch(name, branch, names);
-                const canDelete =
-                  onDelete !== undefined &&
-                  canDeleteLocalBranch(name, branch, names, truncated);
-                return (
-                  <li
-                    key={name}
-                    className={
-                      current
-                        ? "source-branch source-branch--current"
-                        : "source-branch"
-                    }
-                  >
-                    {current ? (
-                      `${name} (current)`
-                    ) : (
-                      <span className="source-branch__row">
-                        {canCheckout ? (
-                          <button
-                            type="button"
-                            className="source-branch__switch"
-                            disabled={checkoutDisabled}
-                            onClick={() => onCheckout(name)}
-                          >
-                            Switch to {name}
-                          </button>
-                        ) : (
-                          name
-                        )}
-                        {canDelete ? (
-                          <button
-                            type="button"
-                            className="source-branch__delete"
-                            disabled={deleteDisabled}
-                            onClick={() => onDelete(name)}
-                          >
-                            Delete {name}
-                          </button>
-                        ) : null}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-          {onCreate !== undefined ? (
-            <form
-              className="source-branch-create"
-              aria-label={`New branch in ${rootLabel}`}
-              onSubmit={submitCreate}
-            >
-              <label className="source-branch-create__label">
-                <span className="sr-only">New branch name</span>
-                <input
-                  type="text"
-                  value={draft}
-                  maxLength={255}
-                  placeholder="New branch"
-                  aria-label="New branch name"
-                  disabled={createDisabled}
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={createDisabled || !canSubmit}>
-                Create branch
-              </button>
-            </form>
-          ) : null}
-          {onRename !== undefined && names.length > 0 ? (
-            <form
-              className="source-branch-create"
-              aria-label={`Rename branch in ${rootLabel}`}
-              onSubmit={submitRename}
-            >
-              <label className="source-branch-create__label">
-                <span className="sr-only">Branch to rename</span>
-                <SearchablePicker
-                  ariaLabel="Branch to rename"
-                  disabled={renameDisabled}
-                  candidates={branchCandidates}
-                  onSelect={setRenameFrom}
-                  selectedId={selectedFrom}
-                />
-              </label>
-              <label className="source-branch-create__label">
-                <span className="sr-only">Renamed branch name</span>
-                <input
-                  type="text"
-                  value={renameTo}
-                  maxLength={255}
-                  placeholder="Renamed branch"
-                  aria-label="Renamed branch name"
-                  disabled={renameDisabled}
-                  onChange={(event) => setRenameTo(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={renameDisabled || !canRename}>
-                Rename branch
-              </button>
-            </form>
-          ) : null}
-        </>
+    <div className="source-branch-picker">
+      <SearchablePicker
+        ariaLabel={`Switch branch in ${rootLabel}`}
+        triggerRef={trigger}
+        appearance="plain"
+        chevron={false}
+        triggerRole={triggerRole}
+        triggerClassName={triggerRole ? "menu-item" : "status-bar__button"}
+        triggerLabel={triggerLabel}
+        selectedId={`branch:${repository.branch}`}
+        candidates={candidates}
+        disabled={disabled}
+        open={open}
+        onOpenChange={onOpenChange}
+        popoverPlacement="above-start"
+        menuAppearance
+        searchPlaceholder="Select a branch"
+        footer={
+          repository.branchesTruncated
+            ? "Branch list capped at 64 names."
+            : undefined
+        }
+        onSelect={async (choice) => {
+          if (
+            choice === "create" ||
+            choice === "rename" ||
+            choice === "delete"
+          ) {
+            setMode(choice);
+            setDraft("");
+            setFrom(names[0] ?? "");
+          } else {
+            const name = choice.slice("branch:".length);
+            if (canCheckoutLocalBranch(name, repository.branch, names))
+              setCheckoutFailed(!(await checkout(repository.rootId, name)));
+          }
+        }}
+      />
+      {checkoutFailed && error?.rootId === repository.rootId ? (
+        <MenuPopover
+          className="menu-popover--editor"
+          id={`${id}-error`}
+          role="dialog"
+          ariaLabel="Cannot switch branch"
+          open
+          triggerRef={trigger}
+          onDismiss={() => setCheckoutFailed(false)}
+        >
+          <p role="alert">{error.message}</p>
+          <button
+            className="menu-item"
+            type="button"
+            onClick={() => setCheckoutFailed(false)}
+          >
+            Close
+          </button>
+        </MenuPopover>
       ) : null}
-      {truncated ? (
-        <p className="tree__limit">Branch list capped at 64 names.</p>
+      {mode ? (
+        <MenuPopover
+          className="menu-popover--editor"
+          ariaLabel={`${mode === "create" ? "New" : mode === "rename" ? "Rename" : "Delete"} branch in ${rootLabel}`}
+          id={id}
+          role="dialog"
+          open
+          triggerRef={trigger}
+          onDismiss={() => setMode(null)}
+          placement="above-start"
+          trapFocus
+        >
+          <form
+            className="source-branch-create"
+            aria-label={`${mode === "create" ? "New" : mode === "rename" ? "Rename" : "Delete"} branch in ${rootLabel}`}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!valid || disabled) return;
+              const success =
+                mode === "create"
+                  ? await create(repository.rootId, draft)
+                  : mode === "rename"
+                    ? await rename(repository.rootId, from, draft)
+                    : await remove(repository.rootId, from);
+              if (success) setMode(null);
+            }}
+          >
+            {mode !== "create" ? (
+              <SearchablePicker
+                ariaLabel={
+                  mode === "rename" ? "Branch to rename" : "Branch to delete"
+                }
+                disabled={disabled}
+                candidates={branchCandidates}
+                selectedId={from}
+                onSelect={setFrom}
+              />
+            ) : null}
+            {mode !== "delete" ? (
+              <input
+                disabled={disabled}
+                autoFocus
+                aria-label={
+                  mode === "create" ? "New branch name" : "Renamed branch name"
+                }
+                placeholder={
+                  mode === "create" ? "New branch name" : "Renamed branch name"
+                }
+                maxLength={255}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+            ) : null}
+            <button type="submit" disabled={disabled || !valid}>
+              {mode === "create"
+                ? "Create branch"
+                : mode === "rename"
+                  ? "Rename branch"
+                  : "Delete branch"}
+            </button>
+          </form>
+          {error?.rootId === repository.rootId ? (
+            <p className="sidebar__error" role="alert">
+              {error.message}
+            </p>
+          ) : null}
+        </MenuPopover>
       ) : null}
-    </>
+    </div>
   );
 }

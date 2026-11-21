@@ -323,8 +323,12 @@ export function MenuPopover({
   if (!open && !keepMounted) return null;
 
   const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (focusStrategy === "none") return;
     const popover = event.currentTarget;
+    if (
+      focusStrategy === "none" ||
+      (event.target as HTMLElement).closest(".menu-popover") !== popover
+    )
+      return;
     const items = enabledMenuItems(popover);
     if (event.key === "Escape") {
       layerKeyDown(event);

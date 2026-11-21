@@ -49,7 +49,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       sourceTools.getByRole("form", {
         name: "Commit staged changes in Sage",
       }),
-    ).toHaveCount(0);
+    ).toBeVisible();
 
     const discard = sourceTools.getByRole("button", {
       name: /Discard unstaged changes to src\/workbench\/AgentChatPanes\.tsx/,

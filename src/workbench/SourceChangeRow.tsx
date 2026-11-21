@@ -8,10 +8,13 @@ import {
   type ResourceRef,
 } from "../domain/workbench";
 import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
-import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
+import { FileText, Minus, Plus, RotateCcw } from "../ui/leanIcons";
+import { FileKindIcon } from "../features/files/FileKindIcon";
+import { useWorkbenchStore } from "../app/store";
 
 interface SourceChangeRowProps {
   change: FileChange;
+  stagedGroup?: boolean;
   repository: RepositoryRef | undefined;
   rootName: string;
   isSelected: boolean;
@@ -29,6 +32,7 @@ interface SourceChangeRowProps {
 
 export const SourceChangeRow = memo(function SourceChangeRow({
   change,
+  stagedGroup = false,
   repository,
   rootName,
   isSelected,
@@ -40,9 +44,14 @@ export const SourceChangeRow = memo(function SourceChangeRow({
   const discardTriggerRef = useRef<HTMLButtonElement>(null);
   const discardWarningId = useId();
   const conflicted = isConflictedChange(change);
+  const openFile = useWorkbenchStore((state) => state.openFile);
+  const displayChange = stagedGroup
+    ? { ...change, worktreeStatus: "unchanged" as const }
+    : change;
   const readOnly = repository !== undefined && !isRootRepository(repository);
   const canStage =
     !readOnly &&
+    !stagedGroup &&
     !conflicted &&
     change.worktreeStatus !== "unchanged" &&
     change.worktreeStatus !== "unknown";
@@ -51,9 +60,12 @@ export const SourceChangeRow = memo(function SourceChangeRow({
     !conflicted &&
     change.indexStatus !== "unchanged" &&
     change.indexStatus !== "unknown";
-  const canDiscard = !readOnly && isSafeDiscardChange(change);
+  const canDiscard = !stagedGroup && !readOnly && isSafeDiscardChange(change);
   const canResolve = !readOnly && conflicted;
   const path = change.resource.relativePath;
+  const slash = path.lastIndexOf("/");
+  const name = path.slice(slash + 1);
+  const folder = slash < 0 ? "" : path.slice(0, slash);
   const cancelDiscard = () => {
     setConfirmingDiscard(false);
     queueMicrotask(() => discardTriggerRef.current?.focus());
@@ -64,6 +76,7 @@ export const SourceChangeRow = memo(function SourceChangeRow({
       className={`source-change-row ${
         confirmingDiscard ? "source-change-row--confirming" : ""
       }`}
+      data-selected={isSelected || undefined}
     >
       <button
         className={`source-change ${
@@ -74,17 +87,12 @@ export const SourceChangeRow = memo(function SourceChangeRow({
         aria-current={isSelected ? "true" : undefined}
         onClick={() => void openDiff(change.resource, repository)}
       >
-        <span
-          className={`source-change__status${
-            conflicted ? " source-change__status--conflict" : ""
-          }`}
-        >
-          {sourceChangeStatusChip(change)}
+        <FileKindIcon path={path} />
+        <span className="source-change__name" title={path}>
+          {name}
         </span>
-        <span className="source-change__path">{path}</span>
-        <span className="source-change__counts">
-          {change.additions === null ? "" : `+${change.additions}`}
-          {change.deletions === null ? "" : ` -${change.deletions}`}
+        <span className="source-change__folder" title={folder}>
+          {folder}
         </span>
       </button>
       {confirmingDiscard && canDiscard ? (
@@ -161,6 +169,15 @@ export const SourceChangeRow = memo(function SourceChangeRow({
             </>
           ) : null}
           <span className="source-change__row-actions">
+            <button
+              className="source-change__action"
+              type="button"
+              aria-label={`Open file ${path}`}
+              title="Open File"
+              onClick={() => void openFile(change.resource)}
+            >
+              <FileText size={14} aria-hidden="true" />
+            </button>
             {canDiscard ? (
               <button
                 className="source-change__action"
@@ -188,7 +205,7 @@ export const SourceChangeRow = memo(function SourceChangeRow({
                 <Plus size={14} aria-hidden="true" />
               </button>
             ) : null}
-            {canUnstage ? (
+            {canUnstage && stagedGroup ? (
               <button
                 className="source-change__action"
                 type="button"
@@ -205,6 +222,11 @@ export const SourceChangeRow = memo(function SourceChangeRow({
           </span>
         </span>
       )}
+      <span
+        className={`source-change__status source-change__status--${stagedGroup ? change.indexStatus : change.worktreeStatus}${conflicted ? " source-change__status--conflict" : ""}`}
+      >
+        {sourceChangeStatusChip(displayChange)}
+      </span>
     </div>
   );
 });
