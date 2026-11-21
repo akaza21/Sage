@@ -22,6 +22,8 @@ import {
   reportHarnessSignInRequired,
 } from "./harnessSignIn";
 
+let nativeTime = 100;
+
 let signedIn = false;
 let statusFailure = false;
 let loginFailure = false;
@@ -30,7 +32,7 @@ vi.mock("../../services/acpDesktop", () => ({
   acpDesktop: {
     getClaudeAuthStatus: async () => {
       if (statusFailure) throw new Error("offline");
-      return { loggedIn: signedIn };
+      return { loggedIn: signedIn, accountReadStartedAt: ++nativeTime };
     },
     startClaudeAuthLogin: async () => {
       if (loginFailure) throw new Error("failed");
@@ -45,6 +47,7 @@ vi.mock("../../services/acpHarnessDesktop", async (importOriginal) => ({
       ...scope,
       rootId: "root",
       account: signedIn ? "managedChatgpt" : "signedOut",
+      accountReadStartedAt: ++nativeTime,
       models: [],
     }),
     startCodexAuth: async () => {
@@ -106,6 +109,7 @@ function install(id: string) {
     },
     harnessDiscoveryPhase: id === "account-fixture" ? "signInRequired" : "idle",
     harnessAccount: id === "account-fixture" ? "signedOut" : null,
+    harnessAccountReadStartedAt: ++nativeTime,
   });
 }
 function notice(id: string) {
@@ -126,7 +130,10 @@ it("rechecks signed-out Claude on return within the cache TTL", async () => {
   expect(await screen.findByText("Claude Code isn't signed in")).toBeVisible();
   vi.useFakeTimers();
   signedIn = true;
-  let complete!: (value: { loggedIn: boolean }) => void;
+  let complete!: (value: {
+    loggedIn: boolean;
+    accountReadStartedAt: number;
+  }) => void;
   vi.spyOn(acpDesktop, "getClaudeAuthStatus")
     .mockImplementationOnce(
       () =>
@@ -134,11 +141,14 @@ it("rechecks signed-out Claude on return within the cache TTL", async () => {
           complete = resolve;
         }),
     )
-    .mockResolvedValue({ loggedIn: false });
+    .mockImplementation(async () => ({
+      loggedIn: false,
+      accountReadStartedAt: ++nativeTime,
+    }));
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1_000);
     fireEvent.focus(window);
-    complete({ loggedIn: true });
+    complete({ loggedIn: true, accountReadStartedAt: ++nativeTime });
     fireEvent.focus(window);
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -244,6 +254,7 @@ it("updates the account badge from Settings account state without changing harne
   signedIn = true;
   useWorkbenchStore.setState({
     harnessAccount: "managedChatgpt",
+    harnessAccountReadStartedAt: ++nativeTime,
     harnessDiscoveryPhase: "ready",
   });
   await refreshHarnessSignIn("cli-fixture");
@@ -257,6 +268,7 @@ it("updates the account badge from Settings account state without changing harne
   act(() =>
     useWorkbenchStore.setState({
       harnessAccount: "signedOut",
+      harnessAccountReadStartedAt: ++nativeTime,
       harnessDiscoveryPhase: "signInRequired",
     }),
   );
@@ -267,7 +279,13 @@ it("updates the account badge from Settings account state without changing harne
   await act(async () => {
     vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementationOnce(
       async (scope) =>
-        ({ ...scope, rootId: "root", account: "apiKey", models: [] }) as never,
+        ({
+          ...scope,
+          rootId: "root",
+          account: "apiKey",
+          accountReadStartedAt: ++nativeTime,
+          models: [],
+        }) as never,
     );
     await useWorkbenchStore.getState().retryHarnessDiscovery();
   });
@@ -299,7 +317,7 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
     harnessAccount: null,
   });
   await refreshHarnessSignIn("cli-fixture");
-  reportHarnessSignInRequired("cli-fixture");
+  reportHarnessSignInRequired("cli-fixture", ++nativeTime);
   const view = render(
     <ComposerStatusNotices
       selectedHarnessId="cli-fixture"
@@ -349,6 +367,7 @@ it("requires selecting Codex before checking its retained recovery after externa
   vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([]);
   vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
     loggedIn: true,
+    accountReadStartedAt: ++nativeTime,
   });
   signedIn = true;
   // Native selection keeps returning the snapshot cached before the refusal.
@@ -361,7 +380,7 @@ it("requires selecting Codex before checking its retained recovery after externa
   } as Parameters<typeof acpHarnessDesktop.discoverCodex>[0]);
   vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue(cached);
   await refreshHarnessSignIn("account-fixture");
-  reportHarnessSignInRequired("account-fixture");
+  reportHarnessSignInRequired("account-fixture", ++nativeTime);
   signedIn = false;
   function RecoveryComposer() {
     const selected = useWorkbenchStore((state) => state.selectedHarnessId);
@@ -412,6 +431,9 @@ it("requires selecting Codex before checking its retained recovery after externa
   });
   expect(screen.getByText("Codex isn't signed in")).toBeVisible();
   expect(screen.queryByText("Ready to retry")).toBeNull();
+  vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementationOnce(
+    async () => ({ ...cached, accountReadStartedAt: ++nativeTime }),
+  );
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
   });
@@ -424,12 +446,14 @@ it("keeps a newer expired-account fact across inventory refresh and view remount
   signedIn = true;
   useWorkbenchStore.setState({
     harnessAccount: "managedChatgpt",
+    harnessAccountReadStartedAt: ++nativeTime,
     harnessDiscoveryPhase: "ready",
   });
   const view = render(notice("account-fixture"));
   act(() =>
     useWorkbenchStore.setState({
       harnessAccount: "signedOut",
+      harnessAccountReadStartedAt: ++nativeTime,
       harnessDiscoveryPhase: "signInRequired",
     }),
   );
@@ -447,7 +471,7 @@ it.each(harnesses)(
     install(harness.id);
     signedIn = true;
     for (const entry of harnesses) await refreshHarnessSignIn(entry.id);
-    reportHarnessSignInRequired(harness.id);
+    reportHarnessSignInRequired(harness.id, ++nativeTime);
     function RecoveryComposer() {
       const [recovered, setRecovered] = useState(false);
       return (

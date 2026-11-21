@@ -18,7 +18,7 @@ export interface HarnessSignInCommand {
 }
 export const harnessSignInFailures: {
   command?: (state: HarnessSignInCommand) => void;
-  page?: (previous: AcpChatPage, page: AcpChatPage) => void;
+  page?: (page: AcpChatPage) => void;
 } = {};
 
 // Harness discovery runs before Chat; it must not retain transcript adapters.

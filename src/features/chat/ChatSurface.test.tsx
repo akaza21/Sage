@@ -53,6 +53,7 @@ import type * as ChatSignInRecovery from "./chatSignInRecovery";
 
 beforeAll(() => preloadSearchablePicker());
 
+let nativeTime = 100;
 const hooks = vi.hoisted(() => ({
   page: null as AcpChatPage | null,
   actions: {
@@ -2513,7 +2514,10 @@ describe("ChatSurface ACP resource integration", () => {
       .mockResolvedValue();
     const status = vi
       .spyOn(acpDesktop, "getClaudeAuthStatus")
-      .mockResolvedValue({ loggedIn: true });
+      .mockImplementation(async () => ({
+        loggedIn: true,
+        accountReadStartedAt: ++nativeTime,
+      }));
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -2561,7 +2565,13 @@ describe("ChatSurface ACP resource integration", () => {
     harnessSignInFailures.command?.({
       bindingId: "claude-agent-acp",
       busy: true,
-      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+      error: {
+        failure: {
+          kind: "signInRequired",
+          terminalAt: ++nativeTime,
+          message: "Sign in.",
+        },
+      },
     });
     const { rerender } = render(<ChatSurface />);
 
@@ -2573,7 +2583,10 @@ describe("ChatSurface ACP resource integration", () => {
       await screen.findByRole("button", { name: "Sign in to Claude Code" }),
     );
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
+    let finishCheck: (value: {
+      loggedIn: boolean;
+      accountReadStartedAt: number;
+    }) => void = () => {};
     status.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -2587,9 +2600,14 @@ describe("ChatSurface ACP resource integration", () => {
           useWorkbenchStore.getState().nativeTransitionEpoch + 1,
       });
     });
-    await act(async () => finishCheck({ loggedIn: true }));
+    await act(async () =>
+      finishCheck({ loggedIn: true, accountReadStartedAt: ++nativeTime }),
+    );
     expect(hooks.actions.clearError).not.toHaveBeenCalled();
-    status.mockResolvedValueOnce({ loggedIn: false });
+    status.mockResolvedValueOnce({
+      loggedIn: false,
+      accountReadStartedAt: ++nativeTime,
+    });
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     expect(
       await screen.findByText("Claude Code is still signed out."),
@@ -2624,9 +2642,10 @@ describe("ChatSurface ACP resource integration", () => {
   it("keeps sign-in dismissal across chat remounts and preserves unrelated foreground errors", async () => {
     const status = vi
       .spyOn(acpDesktop, "getClaudeAuthStatus")
-      .mockResolvedValue({
+      .mockImplementation(async () => ({
         loggedIn: true,
-      });
+        accountReadStartedAt: ++nativeTime,
+      }));
     const harness = useWorkbenchStore.getState().harnesses[0];
     useWorkbenchStore.setState({
       harnesses: [
@@ -2680,7 +2699,13 @@ describe("ChatSurface ACP resource integration", () => {
     harnessSignInFailures.command?.({
       bindingId: "claude-agent-acp",
       busy: true,
-      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+      error: {
+        failure: {
+          kind: "signInRequired",
+          terminalAt: ++nativeTime,
+          message: "Sign in.",
+        },
+      },
     });
     const { rerender } = render(<ChatSurface key="chat-a" chatId="chat-a" />);
 
@@ -2698,7 +2723,13 @@ describe("ChatSurface ACP resource integration", () => {
     harnessSignInFailures.command?.({
       bindingId: "codex-app-server",
       busy: true,
-      error: { failure: { kind: "signInRequired", message: "Sign in." } },
+      error: {
+        failure: {
+          kind: "signInRequired",
+          terminalAt: ++nativeTime,
+          message: "Sign in.",
+        },
+      },
     });
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.getByText("Codex isn't signed in")).toBeVisible();
@@ -2723,7 +2754,6 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("button", { name: "Sign in to Claude Code" }),
     ).toBeVisible();
 
-    const runningPage = hooks.page;
     hooks.page = {
       ...hooks.page,
       turns: [
@@ -2736,7 +2766,7 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
     };
-    harnessSignInFailures.page?.(runningPage!, hooks.page);
+    harnessSignInFailures.page?.(hooks.page);
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Check sign-in" }),
@@ -2778,10 +2808,15 @@ describe("ChatSurface ACP resource integration", () => {
       ...dismissedPage,
       turns: [
         ...dismissedPage.turns,
-        { ...dismissedPage.turns[1], id: "turn-c" as never, ordinal: 2 },
+        {
+          ...dismissedPage.turns[1],
+          id: "turn-c" as never,
+          ordinal: 2,
+          terminalAt: ++nativeTime,
+        },
       ],
     };
-    act(() => harnessSignInFailures.page?.(dismissedPage, hooks.page!));
+    act(() => harnessSignInFailures.page?.(hooks.page!));
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(
       await screen.findByRole("button", { name: "Check sign-in" }),
@@ -2810,7 +2845,10 @@ describe("ChatSurface ACP resource integration", () => {
         },
       );
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
-    let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
+    let finishCheck: (value: {
+      loggedIn: boolean;
+      accountReadStartedAt: number;
+    }) => void = () => {};
     status.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -2824,7 +2862,9 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Send failed before a turn could be created.",
     );
-    await act(async () => finishCheck({ loggedIn: true }));
+    await act(async () =>
+      finishCheck({ loggedIn: true, accountReadStartedAt: ++nativeTime }),
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Check sign-in" }),
@@ -4353,6 +4393,7 @@ describe("ChatSurface ACP resource integration", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Project A", roots: [] },
       harnessDiscoveryPhase: "signInRequired",
+      harnessAccountReadStartedAt: ++nativeTime,
       models: [],
       selectedModelId: null,
     });

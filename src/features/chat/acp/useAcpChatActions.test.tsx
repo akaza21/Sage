@@ -38,6 +38,8 @@ import {
   subscribeHarnessSignIn,
 } from "../../harness/harnessSignIn";
 
+let nativeTime = 100;
+
 const projectPort = getWorkbenchPorts().project;
 
 const bindingId = "binding-a" as CuratedBindingId;
@@ -215,6 +217,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       vi.spyOn(acpDesktop, "startSession").mockRejectedValue(
         new AcpDesktopError({
           kind: "signInRequired",
+          terminalAt: ++nativeTime,
           message: "Claude refused start.",
         }),
       );
@@ -243,6 +246,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
         useWorkbenchStore.setState({
           selectedHarnessId: "account",
           harnessAccount: account,
+          harnessAccountReadStartedAt: ++nativeTime,
           harnessDiscoveryPhase:
             account === "signedOut" ? "signInRequired" : "ready",
         }),
@@ -261,6 +265,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       ).toBeNull();
       vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
         loggedIn: true,
+        accountReadStartedAt: ++nativeTime,
       });
       fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
       await waitFor(() => expect(result.current.errorKind).toBeNull());
@@ -286,13 +291,20 @@ describe("useAcpChatActions per-Chat ownership", () => {
       ],
       selectedHarnessId: "auth-fixture",
       harnessAccount: "managedChatgpt",
+      harnessAccountReadStartedAt: ++nativeTime,
       harnessDiscoveryPhase: "ready",
     });
     let signedInElsewhere = false;
     let recovery: Promise<unknown> | undefined;
     vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
       async (scope) =>
-        ({ ...scope, rootId: null, account: "apiKey", models: [] }) as never,
+        ({
+          ...scope,
+          rootId: null,
+          account: "apiKey",
+          accountReadStartedAt: ++nativeTime,
+          models: [],
+        }) as never,
     );
     const unsubscribe = subscribeHarnessSignIn(() => {
       if (
@@ -306,6 +318,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
       new AcpDesktopError({
         kind: "signInRequired",
+        terminalAt: ++nativeTime,
         message: "Sign in before sending.",
       }),
     );
@@ -350,6 +363,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       vi.spyOn(acpDesktop, "startSession").mockRejectedValue(
         new AcpDesktopError({
           kind: "signInRequired",
+          terminalAt: ++nativeTime,
           message: "Sign in before starting.",
         }),
       );
@@ -792,6 +806,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
       new AcpDesktopError({
         kind: "signInRequired",
+        terminalAt: ++nativeTime,
         message: "Sign in before sending a prompt.",
       }),
     );
@@ -840,6 +855,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
       new AcpDesktopError({
         kind: "signInRequired",
+        terminalAt: ++nativeTime,
         message: "Sign in before sending a prompt.",
       }),
     );

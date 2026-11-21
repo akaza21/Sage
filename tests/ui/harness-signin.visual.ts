@@ -28,7 +28,11 @@ for (const adapter of ["cli", "account"] as const) {
         true,
       );
       let signedIn = false;
-      acpDesktop.getClaudeAuthStatus = async () => ({ loggedIn: signedIn });
+      let nativeTime = 100;
+      acpDesktop.getClaudeAuthStatus = async () => ({
+        loggedIn: signedIn,
+        accountReadStartedAt: ++nativeTime,
+      });
       acpDesktop.startClaudeAuthLogin = async () => {
         signedIn = true;
       };
@@ -40,9 +44,11 @@ for (const adapter of ["cli", "account"] as const) {
         ...scope,
         rootId: useWorkbenchStore.getState().project!.roots[0]?.id ?? null,
         account: signedIn ? "managedChatgpt" : "signedOut",
+        accountReadStartedAt: ++nativeTime,
         models: [],
       });
       useWorkbenchStore.setState((state) => ({
+        harnessAccountReadStartedAt: ++nativeTime,
         harnessAccount: adapter === "account" ? "signedOut" : null,
         harnessDiscoveryPhase:
           adapter === "account" ? "signInRequired" : "ready",

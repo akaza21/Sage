@@ -22,6 +22,7 @@ impl CodexDiscoveryManager {
                 .ok_or(CodexDiscoveryRunError::Cleanup)?,
         );
         let runtime_epoch = self.gate.allocate_runtime_epoch()?;
+        let account_read_started_at = sage_core::time::now_millis();
         let discovery = probe(
             binding,
             prepared
@@ -45,6 +46,7 @@ impl CodexDiscoveryManager {
             scope.clone(),
             discovery.runtime_epoch(),
             &discovery.content,
+            account_read_started_at,
         );
         prepared.deadline.ensure_total()?;
         self.publish(

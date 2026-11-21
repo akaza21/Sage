@@ -19,10 +19,13 @@ import {
   harnessSignInStatus,
   harnessSupportsSignIn,
   refreshHarnessSignIn,
+  reportHarnessSignInRequired,
   resetHarnessSignInForTest,
   startHarnessSignIn,
   subscribeHarnessSignIn,
 } from "./harnessSignIn";
+
+let nativeTime = 100;
 
 const initial = useWorkbenchStore.getState();
 beforeEach(() => {
@@ -59,12 +62,18 @@ it("only curated harnesses have a sign-in status", async () => {
 });
 
 it("reports signed out, signed in and an unavailable check", async () => {
-  desktop.getClaudeAuthStatus.mockResolvedValueOnce({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockResolvedValueOnce({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  });
   expect(await refreshHarnessSignIn("claude-code")).toBe("signedOut");
   expect(harnessesNeedingSignIn().map((entry) => entry.id)).toEqual([
     "claude-code",
   ]);
-  desktop.getClaudeAuthStatus.mockResolvedValueOnce({ loggedIn: true });
+  desktop.getClaudeAuthStatus.mockResolvedValueOnce({
+    loggedIn: true,
+    accountReadStartedAt: ++nativeTime,
+  });
   expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
   desktop.getClaudeAuthStatus.mockRejectedValueOnce(new Error("timeout"));
   expect(await refreshHarnessSignIn("claude-code")).toBe("unavailable");
@@ -72,7 +81,10 @@ it("reports signed out, signed in and an unavailable check", async () => {
 });
 
 it("checks visible harnesses once while their cached status is fresh", async () => {
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  }));
   ensureHarnessSignInChecked(["claude-code", "codex"]);
   await Promise.resolve();
   await Promise.resolve();
@@ -85,8 +97,14 @@ it("signs in through the harness's own flow and polls until signed in", async ()
   const unsubscribe = subscribeHarnessSignIn(() => undefined);
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
   desktop.getClaudeAuthStatus
-    .mockResolvedValueOnce({ loggedIn: false })
-    .mockResolvedValueOnce({ loggedIn: true });
+    .mockResolvedValueOnce({
+      loggedIn: false,
+      accountReadStartedAt: ++nativeTime,
+    })
+    .mockResolvedValueOnce({
+      loggedIn: true,
+      accountReadStartedAt: ++nativeTime,
+    });
   await startHarnessSignIn("claude-code");
   expect(desktop.startClaudeAuthLogin).toHaveBeenCalledTimes(1);
   await vi.advanceTimersByTimeAsync(3_000);
@@ -99,19 +117,28 @@ it("signs in through the harness's own flow and polls until signed in", async ()
 });
 
 it("lists only installed harnesses known to need sign-in", async () => {
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await refreshHarnessSignIn("claude-code");
   expect(harnessesNeedingSignIn().map((entry) => entry.name)).toEqual([
     "Claude Code",
   ]);
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: true,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await refreshHarnessSignIn("claude-code");
   expect(harnessesNeedingSignIn()).toEqual([]);
 });
 it("keeps Sign in stable while polling, coalesces double clicks, and stops on picker cleanup", async () => {
   vi.useFakeTimers();
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await refreshHarnessSignIn("claude-code");
   const observed: string[] = [];
   const unsubscribe = subscribeHarnessSignIn(() =>
@@ -129,7 +156,11 @@ it("keeps Sign in stable while polling, coalesces double clicks, and stops on pi
   expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
 });
 it("does not let a stale refresh replace a later check", async () => {
-  let complete!: (value: { loggedIn: boolean }) => void;
+  const startedAt = ++nativeTime;
+  let complete!: (value: {
+    loggedIn: boolean;
+    accountReadStartedAt: number;
+  }) => void;
   desktop.getClaudeAuthStatus
     .mockImplementationOnce(
       () =>
@@ -137,10 +168,13 @@ it("does not let a stale refresh replace a later check", async () => {
           complete = resolve;
         }),
     )
-    .mockResolvedValue({ loggedIn: true });
+    .mockImplementation(async () => ({
+      loggedIn: true,
+      accountReadStartedAt: ++nativeTime,
+    }));
   const older = refreshHarnessSignIn("claude-code");
   await refreshHarnessSignIn("claude-code");
-  complete({ loggedIn: false });
+  complete({ loggedIn: false, accountReadStartedAt: startedAt });
   await older;
   expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
 });
@@ -148,7 +182,10 @@ it("does not let a stale refresh replace a later check", async () => {
 it("preserves the bounded login check budget across repeated suspension and wake", async () => {
   vi.useFakeTimers();
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await refreshHarnessSignIn("claude-code");
   const observed: string[] = [];
   const observe = () => observed.push(harnessSignInStatus("claude-code").state);
@@ -172,8 +209,14 @@ it("preserves the bounded login check budget across repeated suspension and wake
 
 it("keeps a newer sign-in check started by a status notification", async () => {
   desktop.getClaudeAuthStatus
-    .mockResolvedValueOnce({ loggedIn: false })
-    .mockResolvedValue({ loggedIn: true });
+    .mockResolvedValueOnce({
+      loggedIn: false,
+      accountReadStartedAt: ++nativeTime,
+    })
+    .mockImplementation(async () => ({
+      loggedIn: true,
+      accountReadStartedAt: ++nativeTime,
+    }));
   let newer: Promise<unknown> | undefined;
   const unsubscribe = subscribeHarnessSignIn(() => {
     if (harnessSignInStatus("claude-code").state === "signedOut" && !newer)
@@ -188,7 +231,10 @@ it("keeps a newer sign-in check started by a status notification", async () => {
 it("waits for a visible picker before checking a login started without subscribers", async () => {
   vi.useFakeTimers();
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: true,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await startHarnessSignIn("claude-code");
   await vi.advanceTimersByTimeAsync(120_000);
   expect(harnessSignInStatus("claude-code").state).toBe("unknown");
@@ -200,10 +246,16 @@ it("waits for a visible picker before checking a login started without subscribe
 
 it("refreshes an expired cached fact without showing a checking prompt", async () => {
   vi.useFakeTimers();
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: false,
+    accountReadStartedAt: ++nativeTime,
+  }));
   await refreshHarnessSignIn("claude-code");
   await vi.advanceTimersByTimeAsync(60_001);
-  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({
+    loggedIn: true,
+    accountReadStartedAt: ++nativeTime,
+  }));
   ensureHarnessSignInChecked(["claude-code"]);
   expect(harnessSignInStatus("claude-code").state).toBe("signedOut");
   await vi.advanceTimersByTimeAsync(0);
@@ -238,6 +290,7 @@ it("discards account checks from a previous workspace and allows a fresh check",
               ...scope,
               rootId: null,
               account: "signedOut",
+              accountReadStartedAt: ++nativeTime,
               models: [],
             });
         }),
@@ -246,6 +299,7 @@ it("discards account checks from a previous workspace and allows a fresh check",
       ...scope,
       rootId: null,
       account: "managedChatgpt",
+      accountReadStartedAt: ++nativeTime,
       models: [],
     }));
   const old = refreshHarnessSignIn("account");
@@ -254,10 +308,61 @@ it("discards account checks from a previous workspace and allows a fresh check",
     nativeTransitionEpoch: 2,
     harnessDiscoveryPhase: "signInRequired",
     harnessAccount: "signedOut",
+    harnessAccountReadStartedAt: ++nativeTime,
   });
   complete();
   await old;
   expect(harnessSignInStatus("account").state).toBe("unknown");
   await refreshHarnessSignIn("account");
   expect(harnessSignInStatus("account").state).toBe("signedIn");
+});
+
+it.each([150, 250])(
+  "orders a delayed native read at %i against refusal at 200",
+  async (startedAt) => {
+    let complete!: (value: {
+      loggedIn: boolean;
+      accountReadStartedAt: number;
+    }) => void;
+    desktop.getClaudeAuthStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const read = refreshHarnessSignIn("claude-code");
+    reportHarnessSignInRequired("claude-code", 200);
+    complete({ loggedIn: true, accountReadStartedAt: startedAt });
+    expect(await read).toBe(startedAt < 200 ? "signedOut" : "signedIn");
+    expect(harnessSignInStatus("claude-code").evidenceAt).toBe(
+      startedAt < 200 ? 200 : 250,
+    );
+    // Replays cannot change which evidence wins.
+    reportHarnessSignInRequired("claude-code", 200);
+    expect(harnessSignInStatus("claude-code").state).toBe(
+      startedAt < 200 ? "signedOut" : "signedIn",
+    );
+  },
+);
+
+it("orders failed native reads without hiding recovery or accepting an older successful read", async () => {
+  reportHarnessSignInRequired("claude-code", 200);
+  desktop.getClaudeAuthStatus.mockRejectedValueOnce({
+    kind: "internal",
+    message: "Offline",
+    accountReadStartedAt: 250,
+  });
+  expect(await refreshHarnessSignIn("claude-code")).toBe("unavailable");
+  expect(harnessSignInStatus("claude-code").state).toBe("signedOut");
+  expect(harnessSignInStatus("claude-code").evidenceAt).toBe(250);
+  desktop.getClaudeAuthStatus.mockResolvedValueOnce({
+    loggedIn: true,
+    accountReadStartedAt: 225,
+  });
+  expect(await refreshHarnessSignIn("claude-code")).toBe("signedOut");
+  desktop.getClaudeAuthStatus.mockResolvedValueOnce({
+    loggedIn: true,
+    accountReadStartedAt: 300,
+  });
+  expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
 });

@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe("useAcpChatProjection", () => {
-  it("publishes a new protocol auth refusal but never replays it from restored history", async () => {
+  it("orders live and restored protocol refusals against the native account read", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -73,6 +73,7 @@ describe("useAcpChatProjection", () => {
       ],
       selectedHarnessId: "account",
       harnessAccount: "managedChatgpt",
+      harnessAccountReadStartedAt: 100,
       harnessDiscoveryPhase: "ready",
     });
     const unsubscribe = subscribeHarnessSignIn(() => undefined);
@@ -84,6 +85,10 @@ describe("useAcpChatProjection", () => {
     const failed = {
       ...page("failed", { kind: "authRequired" }),
       sessions: running.sessions,
+      turns: page("failed", { kind: "authRequired" }).turns.map((turn) => ({
+        ...turn,
+        terminalAt: 200,
+      })),
       projectionRevision: "13" as never,
     };
     let changed!: (event: AcpProjectionChangedEvent) => void;
@@ -114,7 +119,13 @@ describe("useAcpChatProjection", () => {
     hook.unmount();
     vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
       async (scope) =>
-        ({ ...scope, rootId: null, account: "apiKey", models: [] }) as never,
+        ({
+          ...scope,
+          rootId: null,
+          account: "apiKey",
+          accountReadStartedAt: 300,
+          models: [],
+        }) as never,
     );
     await act(async () => {
       await refreshHarnessSignIn("account");
@@ -128,82 +139,118 @@ describe("useAcpChatProjection", () => {
     restored.unmount();
     unsubscribe();
   });
-  it("ignores a suspended chat's delayed failure and its retained running page on restore", async () => {
-    useWorkbenchStore.setState({
-      harnesses: [
-        {
-          id: "account",
-          name: "Account",
-          description: "",
-          source: "builtIn",
-          installState: "available",
-          transport: "acp",
-          bindingId: "account-binding",
-          accountModelDiscovery: true,
-        },
-      ],
-      selectedHarnessId: "account",
-      harnessAccount: "signedOut",
-      harnessDiscoveryPhase: "signInRequired",
-    });
-    const unsubscribe = subscribeHarnessSignIn(() => undefined);
-    const running = page("running");
-    running.sessions = running.sessions.map((session) => ({
-      ...session,
-      bindingId: "account-binding" as never,
-    }));
-    const failed = {
-      ...page("failed", { kind: "authRequired" }),
-      sessions: running.sessions,
-      projectionRevision: "13" as never,
-    };
-    let changed!: (event: AcpProjectionChangedEvent) => void;
-    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
-      async (listener) => {
-        changed = listener;
-        return () => undefined;
-      },
-    );
-    const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(running);
-    pinAcpProjectionIds(["chat-1"]);
-    const hook = renderHook(() => useAcpChatProjection(true, "chat-1"));
-    await waitFor(() =>
-      expect(hook.result.current?.turns[0].state).toBe("running"),
-    );
-    let complete!: (value: AcpChatPage) => void;
-    load.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          complete = resolve;
-        }),
-    );
-    act(() =>
-      changed({
-        projectId: "project-1",
-        chatId: "chat-1",
-        sessionId: "session-1",
-        projectionRevision: "13",
-      } as AcpProjectionChangedEvent),
-    );
-    await waitFor(() => expect(complete).toBeDefined());
-    hook.unmount();
-    act(() =>
+  it.each([
+    [100, false],
+    [300, false],
+    [100, true],
+    [300, true],
+  ] as const)(
+    "orders a suspended refusal at 200 against a cached account read at %i (later turn: %s)",
+    async (readStartedAt, laterTurn) => {
       useWorkbenchStore.setState({
+        harnesses: [
+          {
+            id: "account",
+            name: "Account",
+            description: "",
+            source: "builtIn",
+            installState: "available",
+            transport: "acp",
+            bindingId: "account-binding",
+            accountModelDiscovery: true,
+          },
+        ],
+        selectedHarnessId: "account",
         harnessAccount: "managedChatgpt",
+        harnessAccountReadStartedAt: readStartedAt,
         harnessDiscoveryPhase: "ready",
-      }),
-    );
-    await act(async () => complete(failed));
-    expect(harnessSignInStatus("account").state).toBe("signedIn");
-    load.mockResolvedValue(failed);
-    const restored = renderHook(() => useAcpChatProjection(true, "chat-1"));
-    await waitFor(() =>
-      expect(restored.result.current?.turns[0].state).toBe("failed"),
-    );
-    expect(harnessSignInStatus("account").state).toBe("signedIn");
-    restored.unmount();
-    unsubscribe();
-  });
+      });
+      const unsubscribe = subscribeHarnessSignIn(() => undefined);
+      const running = page("running");
+      running.sessions = running.sessions.map((session) => ({
+        ...session,
+        bindingId: "account-binding" as never,
+      }));
+      const failed = {
+        ...page("failed", { kind: "authRequired" }),
+        sessions: [
+          ...running.sessions,
+          {
+            ...running.sessions[0],
+            id: "other-session" as never,
+            bindingId: "other-binding" as never,
+          },
+        ],
+        turns: [
+          ...page("failed", { kind: "authRequired" }).turns.map((turn) => ({
+            ...turn,
+            terminalAt: 200,
+          })),
+          ...(laterTurn
+            ? [
+                {
+                  ...running.turns[0],
+                  id: "new-turn" as never,
+                  sessionId: "other-session" as never,
+                  ordinal: 2,
+                },
+              ]
+            : []),
+        ],
+        currentSessionId: laterTurn
+          ? ("other-session" as never)
+          : running.currentSessionId,
+        projectionRevision: "13" as never,
+      };
+      let changed!: (event: AcpProjectionChangedEvent) => void;
+      vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
+        async (listener) => {
+          changed = listener;
+          return () => undefined;
+        },
+      );
+      const load = vi
+        .spyOn(acpDesktop, "getChatPage")
+        .mockResolvedValue(running);
+      pinAcpProjectionIds(["chat-1"]);
+      const hook = renderHook(() => useAcpChatProjection(true, "chat-1"));
+      await waitFor(() =>
+        expect(hook.result.current?.turns[0].state).toBe("running"),
+      );
+      let complete!: (value: AcpChatPage) => void;
+      load.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve;
+          }),
+      );
+      act(() =>
+        changed({
+          projectId: "project-1",
+          chatId: "chat-1",
+          sessionId: "session-1",
+          projectionRevision: "13",
+        } as AcpProjectionChangedEvent),
+      );
+      await waitFor(() => expect(complete).toBeDefined());
+      hook.unmount();
+      await act(async () => complete(failed));
+      expect(harnessSignInStatus("account").state).toBe("signedIn");
+      load.mockResolvedValue(failed);
+      const restored = renderHook(() => useAcpChatProjection(true, "chat-1"));
+      await waitFor(() =>
+        expect(
+          restored.result.current?.turns.find((turn) => turn.id === "turn-1")
+            ?.state,
+        ).toBe("failed"),
+      );
+      expect(harnessSignInStatus("account").state).toBe(
+        readStartedAt < 200 ? "signedOut" : "signedIn",
+      );
+      restored.unmount();
+      unsubscribe();
+    },
+  );
   it("subscribes config before bootstrap, coalesces reloads and recovers on renderer remount", async () => {
     let onConfig: ((event: AcpSessionConfigChangedV1) => void) | undefined;
     const dispose = vi.fn();

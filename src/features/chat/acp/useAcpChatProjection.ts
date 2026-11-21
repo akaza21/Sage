@@ -100,7 +100,6 @@ export function useAcpChatProjection(
     };
     activateScope(scope);
     let disposed = false;
-    let bootstrapped = false;
     let unlisten: (() => void) | null = null;
 
     const refresh = coalescedRefresh(
@@ -114,11 +113,8 @@ export function useAcpChatProjection(
         })
           .then((projection) => {
             if (disposed) return;
-            const previous = store.getState().page;
             if (completePageLoad(intent, projection) === "accepted") {
-              if (bootstrapped && previous)
-                harnessSignInFailures.page?.(previous, projection);
-              bootstrapped = true;
+              harnessSignInFailures.page?.(projection);
             }
           })
           .catch((error: unknown) => {

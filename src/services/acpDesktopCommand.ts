@@ -4,6 +4,20 @@ import { invokeNative } from "../ports/nativeInvoke";
 import { isOneOf, isRecord, safeMessage } from "./acpDesktopGuards";
 
 export function safeFailure(value: unknown): AcpCommandFailure {
+  if (value instanceof AcpDesktopError) return value.failure;
+  if (isRecord(value)) {
+    const { terminalAt, accountReadStartedAt, ...detail } = value;
+    if (terminalAt !== undefined || accountReadStartedAt !== undefined)
+      return {
+        ...safeFailure(detail),
+        ...(Number.isSafeInteger(terminalAt)
+          ? { terminalAt: terminalAt as number }
+          : {}),
+        ...(Number.isSafeInteger(accountReadStartedAt)
+          ? { accountReadStartedAt: accountReadStartedAt as number }
+          : {}),
+      };
+  }
   if (
     isRecord(value) &&
     isOneOf(value.promptDispatch, ["notStarted", "unknown"] as const)

@@ -114,12 +114,22 @@ export const acpDesktop = {
     await invokeNative("start_claude_auth_login");
   },
 
-  async getClaudeAuthStatus(): Promise<{ loggedIn: boolean }> {
+  async getClaudeAuthStatus(): Promise<{
+    loggedIn: boolean;
+    accountReadStartedAt: number;
+  }> {
     const value: unknown = await invokeNative("get_claude_auth_status");
-    if (!isRecord(value) || typeof value.loggedIn !== "boolean") {
+    if (
+      !isRecord(value) ||
+      typeof value.loggedIn !== "boolean" ||
+      !Number.isSafeInteger(value.accountReadStartedAt)
+    ) {
       throw new Error("Claude Code sign-in status was invalid.");
     }
-    return { loggedIn: value.loggedIn };
+    return {
+      loggedIn: value.loggedIn,
+      accountReadStartedAt: value.accountReadStartedAt as number,
+    };
   },
 
   async getChatPage(

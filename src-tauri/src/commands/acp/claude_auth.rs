@@ -32,19 +32,42 @@ fn parse_status(bytes: &[u8]) -> Option<ClaudeAuthStatus> {
     Some(ClaudeAuthStatus { logged_in })
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeAccountRead {
+    #[serde(flatten)]
+    status: ClaudeAuthStatus,
+    account_read_started_at: i64,
+}
+
 #[tauri::command]
 pub async fn get_claude_auth_status(
     state: State<'_, AppState>,
-) -> Result<ClaudeAuthStatus, &'static str> {
-    let path = state
-        .harnesses
-        .claude_cli_path()
-        .ok_or("Claude Code CLI is unavailable.")?;
-    let environment = state
-        .harnesses
-        .claude_auth_environment()
-        .ok_or("Claude Code binding is unavailable.")?;
-    run_status(&path, &environment).await
+) -> Result<ClaudeAccountRead, crate::acp::ipc::AccountReadFailure> {
+    let account_read_started_at = sage_core::time::now_millis();
+    let result = async {
+        let path = state
+            .harnesses
+            .claude_cli_path()
+            .ok_or("Claude Code CLI is unavailable.")?;
+        let environment = state
+            .harnesses
+            .claude_auth_environment()
+            .ok_or("Claude Code binding is unavailable.")?;
+        run_status(&path, &environment).await
+    }
+    .await;
+    result
+        .map(|status| ClaudeAccountRead {
+            status,
+            account_read_started_at,
+        })
+        .map_err(|message| crate::acp::ipc::AccountReadFailure {
+            failure: crate::acp::ipc::AcpIpcError::Internal {
+                message: super::errors::safe_message(message),
+            },
+            account_read_started_at,
+        })
 }
 
 #[tauri::command]

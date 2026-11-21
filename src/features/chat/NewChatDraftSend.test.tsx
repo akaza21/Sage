@@ -1784,6 +1784,7 @@ it.each(["sign-in", "discovery retry"] as const)(
         rootId: before.project!.roots[0].id,
         runtimeEpoch: "1" as never,
         account: "managedChatgpt",
+        accountReadStartedAt: 100,
         models: models.map((model) => ({ ...model, id: model.id as never })),
         defaultModelId: "model-a" as never,
       }));
@@ -1792,6 +1793,7 @@ it.each(["sign-in", "discovery retry"] as const)(
       discover.mockImplementationOnce(async (request) => ({
         ...(await signedIn(request)),
         account: "signedOut",
+        accountReadStartedAt: 100,
         models: [],
         defaultModelId: null,
       }));

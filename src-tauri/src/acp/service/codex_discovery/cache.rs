@@ -183,6 +183,7 @@ impl DiscoveryCache {
                 binding_id: BindingId::new("bindingId", binding_id).unwrap(),
                 runtime_epoch,
                 account: CodexDiscoveryAccount::ManagedChatgpt,
+                account_read_started_at: 1,
                 models,
                 default_model_id: None,
             },
@@ -254,6 +255,7 @@ pub(super) fn response_from(
     scope: CacheScope,
     runtime_epoch: RuntimeEpoch,
     content: &CodexDiscoveryContent,
+    account_read_started_at: i64,
 ) -> CodexDiscoveryResponse {
     CodexDiscoveryResponse {
         project_id: scope.project_id,
@@ -261,6 +263,7 @@ pub(super) fn response_from(
         root_id: scope.root_id,
         binding_id,
         runtime_epoch,
+        account_read_started_at,
         account: match content.account {
             CodexAccountSnapshot::ManagedChatgpt => CodexDiscoveryAccount::ManagedChatgpt,
             CodexAccountSnapshot::ApiKey => CodexDiscoveryAccount::ApiKey,

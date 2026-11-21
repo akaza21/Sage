@@ -231,11 +231,13 @@ describe("safeFailure", () => {
     expect(
       safeFailure({
         kind: "signInRequired",
+        terminalAt: 200,
         message: "The harness requires sign-in before it can continue.",
         promptDispatch: "unknown",
       }),
     ).toEqual({
       kind: "signInRequired",
+      terminalAt: 200,
       message: "The harness requires sign-in before it can continue.",
       promptDispatch: "unknown",
     });
@@ -394,8 +396,15 @@ describe("ACP desktop bridge", () => {
   });
 
   it("projects only Claude's boolean sign-in fact", async () => {
-    invokeMock.mockResolvedValue({ loggedIn: true, token: "never-forward" });
-    expect(await acpDesktop.getClaudeAuthStatus()).toEqual({ loggedIn: true });
+    invokeMock.mockResolvedValue({
+      loggedIn: true,
+      accountReadStartedAt: 100,
+      token: "never-forward",
+    });
+    expect(await acpDesktop.getClaudeAuthStatus()).toEqual({
+      loggedIn: true,
+      accountReadStartedAt: 100,
+    });
     expect(invokeMock).toHaveBeenCalledWith(
       "get_claude_auth_status",
       undefined,
@@ -463,6 +472,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "managedChatgpt",
+      accountReadStartedAt: 100,
       models: [
         { id: "gpt-a", name: "GPT A", isDefault: false },
         { id: "gpt-b", name: "GPT B", isDefault: true },
@@ -490,6 +500,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "managedChatgpt",
+      accountReadStartedAt: 100,
       models: [
         { id: "gpt-a", name: "A", isDefault: true, effortLevels },
         { id: "gpt-b", name: "B", isDefault: false },
@@ -518,6 +529,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "managedChatgpt",
+      accountReadStartedAt: 100,
       models: [
         { id: "same", name: "One", isDefault: true },
         { id: "same", name: "Two", isDefault: false },
@@ -541,6 +553,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "signedOut",
+      accountReadStartedAt: 100,
       models: [],
       defaultModelId: null,
       email: "never-retain@example.test",
@@ -554,6 +567,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "signedOut",
+      accountReadStartedAt: 100,
       models: [],
       defaultModelId: null,
     });
@@ -568,6 +582,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "providerManaged",
+      accountReadStartedAt: 100,
       models: [
         { id: "provider-model", name: "Provider model", isDefault: true },
       ],
@@ -578,6 +593,7 @@ describe("ACP desktop bridge", () => {
       acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).resolves.toMatchObject({
       account: "providerManaged",
+      accountReadStartedAt: 100,
       defaultModelId: "provider-model",
     });
   });
@@ -591,6 +607,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "managedChatgpt",
+      accountReadStartedAt: 100,
       models: [{ id: "gpt-a", name: "GPT A", isDefault: true }],
       defaultModelId: "gpt-a",
     });
@@ -611,6 +628,7 @@ describe("ACP desktop bridge", () => {
       bindingId: "codex-app-server",
       runtimeEpoch: "2",
       account: "managedChatgpt",
+      accountReadStartedAt: 100,
       models: [{ id: "gpt\0a", name: "GPT A", isDefault: true }],
       defaultModelId: "gpt\0a",
     });

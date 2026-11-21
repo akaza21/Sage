@@ -9,8 +9,14 @@ use crate::acp::{
 pub async fn get_codex_discovery(
     state: State<'_, AppState>,
     request: GetCodexDiscoveryRequest,
-) -> Result<CodexDiscoveryResponse, AcpIpcError> {
-    get_codex_discovery_inner(&state, request).await
+) -> Result<CodexDiscoveryResponse, crate::acp::ipc::AccountReadFailure> {
+    let account_read_started_at = sage_core::time::now_millis();
+    get_codex_discovery_inner(&state, request)
+        .await
+        .map_err(|failure| crate::acp::ipc::AccountReadFailure {
+            failure,
+            account_read_started_at,
+        })
 }
 
 pub(crate) async fn get_codex_discovery_inner(

@@ -15,6 +15,26 @@ pub(super) fn dispatch_error(error: crate::acp::service::SessionDispatchError) -
     }
 }
 
+/// Only persisted native terminal times may enter the shared sign-in cache.
+pub(super) fn persisted_sign_in_error(
+    state: &crate::state::AppState,
+    command: crate::acp::store::commands::sign_in_evidence::RefusalCommand<'_>,
+    mut failure: AcpIpcError,
+) -> AcpIpcError {
+    if let AcpIpcError::SignInRequired { terminal_at, .. } = &mut failure {
+        let refused_at = sage_core::time::now_millis();
+        match crate::acp::store::commands::sign_in_evidence::command_terminal_at(
+            &mut state.database.connection(),
+            command,
+            refused_at,
+        ) {
+            Ok(stored) => *terminal_at = Some(stored),
+            Err(error) => return store_error(error),
+        }
+    }
+    failure
+}
+
 /// The launch step that failed, as the chat names it.
 fn launch_step(error: LaunchError) -> &'static str {
     match error {
@@ -72,6 +92,7 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             ),
         },
         crate::acp::service::CodexSessionError::SignInRequired => AcpIpcError::SignInRequired {
+            terminal_at: None,
             message: safe_message("The harness requires sign-in before it can continue."),
         },
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
@@ -331,10 +352,9 @@ mod tests {
     fn sign_in_refusal_has_a_stable_distinct_ipc_kind() {
         let error = session_error(crate::acp::service::CodexSessionError::SignInRequired);
         assert_eq!(
-            serde_json::to_value(error).expect("serializes"),
+            serde_json::to_value(error).unwrap(),
             serde_json::json!({
-                "kind": "signInRequired",
-                "message": "The harness requires sign-in before it can continue."
+                "kind": "signInRequired", "message": "The harness requires sign-in before it can continue."
             })
         );
     }

@@ -21,6 +21,8 @@ pub(crate) mod session_config;
 pub(crate) mod session_control;
 mod session_operations;
 mod session_routes;
+mod sign_in_evidence;
+pub(crate) use sign_in_evidence::send_acp_turn_inner;
 pub(crate) mod slash_commands;
 pub(crate) mod turn_workspace;
 pub(crate) mod usage;
@@ -114,8 +116,7 @@ pub async fn send_acp_turn(
 }
 
 pub(crate) use session_operations::{
-    cancel_acp_turn_inner, close_acp_session_inner, end_acp_session_inner, send_acp_turn_inner,
-    steer_acp_turn_inner,
+    cancel_acp_turn_inner, close_acp_session_inner, end_acp_session_inner, steer_acp_turn_inner,
 };
 
 #[tauri::command]

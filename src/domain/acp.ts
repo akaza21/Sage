@@ -208,6 +208,7 @@ export interface CodexDiscoveryResponse {
   bindingId: CuratedBindingId;
   runtimeEpoch: RuntimeEpoch;
   account: CodexAccount;
+  accountReadStartedAt: number;
   models: readonly CodexDiscoveryModel[];
   defaultModelId: CuratedModelId | null;
 }
@@ -343,6 +344,8 @@ type AcpCommandFailureDetail =
 
 export type AcpCommandFailure = AcpCommandFailureDetail & {
   promptDispatch?: "notStarted" | "unknown";
+  terminalAt?: number;
+  accountReadStartedAt?: number;
 };
 
 export interface AcpChatStatus {

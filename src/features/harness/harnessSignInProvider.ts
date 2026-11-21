@@ -1,5 +1,6 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { CodexAuthScope } from "../../domain/acp";
+import { safeFailure } from "../../services/acpDesktopCommand";
 import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 
@@ -37,7 +38,7 @@ export function signInProvider(harnessId: string) {
       status: async () => {
         const before = useWorkbenchStore.getState();
         if (!scope || signInProvider(harnessId)?.refreshRequirement !== null)
-          return "unknown" as const;
+          return { state: "unknown" as const, accountReadStartedAt: null };
         const reading = before.retryHarnessDiscovery();
         const requestGeneration =
           useWorkbenchStore.getState().harnessRequestGeneration;
@@ -48,17 +49,16 @@ export function signInProvider(harnessId: string) {
           current.selectedHarnessId !== harnessId ||
           current.harnessRequestGeneration !== requestGeneration
         )
-          return "unavailable" as const;
-        return current.harnessDiscoveryPhase === "ready"
-          ? current.harnessAccountReadGeneration === requestGeneration &&
-            accountEvidenceAfterRefusal(harnessId)
-            ? ("signedIn" as const)
-            : ("unavailable" as const)
-          : current.harnessDiscoveryPhase === "signInRequired"
-            ? ("signedOut" as const)
-            : current.harnessDiscoveryPhase === "error"
-              ? ("unavailable" as const)
-              : ("unknown" as const);
+          return { state: "unavailable" as const, accountReadStartedAt: null };
+        return {
+          state:
+            current.harnessDiscoveryPhase === "ready"
+              ? ("signedIn" as const)
+              : current.harnessDiscoveryPhase === "signInRequired"
+                ? ("signedOut" as const)
+                : ("unavailable" as const),
+          accountReadStartedAt: current.harnessAccountReadStartedAt,
+        };
       },
       start: async () => {
         if (!scope) throw new Error("Open a workspace to sign in.");
@@ -81,59 +81,34 @@ export function signInProvider(harnessId: string) {
       key: JSON.stringify([harness.bindingId, harness.version]),
       backgroundCheck: true,
       refreshRequirement: null,
-      status: async () =>
-        (await acpDesktop.getClaudeAuthStatus()).loggedIn
-          ? ("signedIn" as const)
-          : ("signedOut" as const),
+      status: async () => {
+        try {
+          const read = await acpDesktop.getClaudeAuthStatus();
+          return {
+            state: read.loggedIn
+              ? ("signedIn" as const)
+              : ("signedOut" as const),
+            accountReadStartedAt: read.accountReadStartedAt,
+          };
+        } catch (error) {
+          return {
+            state: "unavailable" as const,
+            accountReadStartedAt:
+              safeFailure(error).accountReadStartedAt ?? null,
+          };
+        }
+      },
       start: () => acpDesktop.startClaudeAuthLogin(),
     };
 }
 
-// Keep the last discovery observation across suspension. Replaying it on wake
-// must not overwrite a newer protocol refusal with stale discovery state.
-let accountObservation: readonly unknown[] = [];
-// At most the 32 installed sign-in providers retain one refusal cutoff each.
-const accountRefusals = new Map<string, { key: string; generation: number }>();
-
-function accountEvidenceAfterRefusal(harnessId: string): boolean {
-  const generation = useWorkbenchStore.getState().harnessAccountReadGeneration;
-  const refusal = accountRefusals.get(harnessId);
-  return (
-    !refusal ||
-    refusal.key !== signInProvider(harnessId)?.key ||
-    (generation != null && generation > refusal.generation)
-  );
-}
-function currentAccountObservation() {
-  const state = useWorkbenchStore.getState();
-  return [
-    state.selectedHarnessId,
-    signInProvider(state.selectedHarnessId ?? "")?.key,
-    state.harnessAccount,
-    state.harnessDiscoveryPhase,
-    state.harnessRequestGeneration,
-  ];
-}
-
-export function retainAccountSignInObservation(harnessId: string) {
-  accountObservation = currentAccountObservation();
-  for (const [id, refusal] of accountRefusals)
-    if (signInProvider(id)?.key !== refusal.key) accountRefusals.delete(id);
-  const provider = signInProvider(harnessId);
-  if (provider)
-    accountRefusals.set(harnessId, {
-      key: provider.key,
-      generation: useWorkbenchStore.getState().harnessRequestGeneration,
-    });
-}
-export function resetAccountSignInForTest() {
-  accountObservation = [];
-  accountRefusals.clear();
-}
-
 /** Discovery and Settings feed the shared cache without another account read. */
 export function subscribeAccountSignIn(
-  publish: (id: string, state: "signedIn" | "signedOut") => void,
+  publish: (
+    id: string,
+    state: "signedIn" | "signedOut" | "unavailable",
+    accountReadStartedAt: number,
+  ) => void,
   changed: () => void,
 ) {
   let previous: readonly unknown[] = [];
@@ -147,37 +122,29 @@ export function subscribeAccountSignIn(
       state.projectTransitioning,
       state.harnessAccount,
       state.harnessDiscoveryPhase,
-      state.harnessRequestGeneration,
+      state.harnessAccountReadStartedAt,
     ];
     if (next.every((value, index) => value === previous[index])) return;
     previous = next;
     const harness = signInHarnesses().find(
       (entry) => entry.id === state.selectedHarnessId,
     );
-    const observation = currentAccountObservation();
-    const newObservation = observation.some(
-      (value, index) => value !== accountObservation[index],
-    );
-    accountObservation = observation;
     if (
-      newObservation &&
       state.project &&
       harness?.accountModelDiscovery &&
       harness.installState === "available" &&
-      !state.projectTransitioning
+      !state.projectTransitioning &&
+      state.harnessAccountReadStartedAt != null
     ) {
-      if (
+      if (state.harnessDiscoveryPhase === "error")
+        publish(harness.id, "unavailable", state.harnessAccountReadStartedAt);
+      else if (
         state.harnessDiscoveryPhase === "signInRequired" ||
         state.harnessAccount === "signedOut"
       )
-        publish(harness.id, "signedOut");
-      // Ordinary discovery can replay native account state from before a refusal.
-      else if (
-        state.harnessDiscoveryPhase === "ready" &&
-        state.harnessAccount &&
-        accountEvidenceAfterRefusal(harness.id)
-      )
-        publish(harness.id, "signedIn");
+        publish(harness.id, "signedOut", state.harnessAccountReadStartedAt);
+      else if (state.harnessDiscoveryPhase === "ready" && state.harnessAccount)
+        publish(harness.id, "signedIn", state.harnessAccountReadStartedAt);
     }
     changed();
   };

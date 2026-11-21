@@ -54,6 +54,7 @@ pub(crate) async fn start_acp_session_inner(
     };
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
+    let client_intent_id = request.client_intent_id.clone();
     let started = state
         .acp
         .start_session(
@@ -72,7 +73,18 @@ pub(crate) async fn start_acp_session_inner(
             },
         )
         .await
-        .map_err(session_error)?;
+        .map_err(|error| {
+            errors::persisted_sign_in_error(
+                state,
+                crate::acp::store::commands::sign_in_evidence::RefusalCommand {
+                    project_id: project_id.as_str(),
+                    chat_id: chat_id.as_str(),
+                    client_intent_id: client_intent_id.as_str(),
+                    session_id: None,
+                },
+                session_error(error),
+            )
+        })?;
     session_access::carry_chat_access(state, &started.session_id)?;
     if let Some(effort) = effort_choice
         && !state
@@ -127,6 +139,7 @@ pub(crate) async fn activate_acp_session_inner(
     session_access::carry_chat_access(state, &request.session_id)?;
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
+    let client_intent_id = request.client_intent_id.clone();
     let owner = state
         .acp
         .activate_session(
@@ -144,7 +157,18 @@ pub(crate) async fn activate_acp_session_inner(
             project_root,
         )
         .await
-        .map_err(session_error)?;
+        .map_err(|error| {
+            errors::persisted_sign_in_error(
+                state,
+                crate::acp::store::commands::sign_in_evidence::RefusalCommand {
+                    project_id: project_id.as_str(),
+                    chat_id: chat_id.as_str(),
+                    client_intent_id: client_intent_id.as_str(),
+                    session_id: None,
+                },
+                session_error(error),
+            )
+        })?;
     session_access::carry_chat_access(state, &owner.session_id)?;
     mutation_response(state, project_id, chat_id)
 }

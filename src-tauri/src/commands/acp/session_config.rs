@@ -44,7 +44,7 @@ pub(crate) async fn set_acp_session_mode(
         chat_id: request.chat_id,
         expected_projection_revision: request.expected_projection_revision,
         client_intent_id: request.client_intent_id,
-        session_id: request.session_id,
+        session_id: request.session_id.clone(),
         runtime_epoch: request.runtime_epoch,
     };
     configure(
@@ -66,7 +66,7 @@ pub(crate) async fn set_acp_session_config_option(
         chat_id: request.chat_id,
         expected_projection_revision: request.expected_projection_revision,
         client_intent_id: request.client_intent_id,
-        session_id: request.session_id,
+        session_id: request.session_id.clone(),
         runtime_epoch: request.runtime_epoch,
     };
     configure(
@@ -111,7 +111,7 @@ pub(crate) async fn configure(
     let owner = RuntimeOwner {
         project_id: request.project_id.clone(),
         chat_id: request.chat_id.clone(),
-        session_id: request.session_id,
+        session_id: request.session_id.clone(),
         runtime_epoch: request.runtime_epoch,
     };
     let binding_id =
@@ -126,7 +126,18 @@ pub(crate) async fn configure(
             expected_config_revision,
             mutation,
         })
-        .map_err(map_config_error)?;
+        .map_err(|error| {
+            errors::persisted_sign_in_error(
+                state,
+                crate::acp::store::commands::sign_in_evidence::RefusalCommand {
+                    project_id: request.project_id.as_str(),
+                    chat_id: request.chat_id.as_str(),
+                    client_intent_id: request.client_intent_id.as_str(),
+                    session_id: Some(request.session_id.as_str()),
+                },
+                map_config_error(error),
+            )
+        })?;
     mutation_response(state, request.project_id, request.chat_id)
 }
 
@@ -262,6 +273,7 @@ pub(super) fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcE
             message: safe_message("The harness rejected this session configuration change."),
         },
         crate::acp::runtime::HostError::SignInRequired => AcpIpcError::SignInRequired {
+            terminal_at: None,
             message: safe_message("The harness requires sign-in before it can continue."),
         },
         _ => AcpIpcError::RecoveryRequired {
@@ -298,7 +310,7 @@ mod tests {
     fn sign_in_refusal_maps_to_the_stable_sign_in_ipc_failure() {
         assert!(matches!(
             map_config_error(crate::acp::runtime::HostError::SignInRequired),
-            AcpIpcError::SignInRequired { message }
+            AcpIpcError::SignInRequired { message, .. }
                 if message.as_str() == "The harness requires sign-in before it can continue."
         ));
     }

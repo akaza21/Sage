@@ -2,8 +2,6 @@ import {
   signInHarnesses,
   signInProvider,
   subscribeAccountSignIn,
-  resetAccountSignInForTest,
-  retainAccountSignInObservation,
 } from "./harnessSignInProvider";
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -24,6 +22,7 @@ export type HarnessSignInState =
 export interface HarnessSignInStatus {
   state: HarnessSignInState;
   checkedAt: number | null;
+  evidenceAt: number | null;
 }
 
 const STATUS_TTL_MS = 60_000;
@@ -32,8 +31,13 @@ const POLL_ATTEMPTS = 40;
 const UNSUPPORTED: HarnessSignInStatus = {
   state: "unsupported",
   checkedAt: null,
+  evidenceAt: null,
 };
-const UNKNOWN: HarnessSignInStatus = { state: "unknown", checkedAt: null };
+const UNKNOWN: HarnessSignInStatus = {
+  state: "unknown",
+  checkedAt: null,
+  evidenceAt: null,
+};
 
 const statuses = new Map<string, HarnessSignInStatus>();
 const identities = new Map<string, string>();
@@ -55,9 +59,35 @@ type SignInPoll = {
 const polls = new Map<string, SignInPoll>();
 const refreshes = new Map<string, symbol>();
 
+function prune() {
+  let changed = false;
+  for (const [id, key] of identities) {
+    if (key !== signInProvider(id)?.key) {
+      stopPolling(id);
+      statuses.delete(id);
+      identities.delete(id);
+      refreshes.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) notify();
+}
+
 function publish(harnessId: string, status: HarnessSignInStatus) {
   const provider = signInProvider(harnessId);
   if (!provider) return;
+  prune();
+  const previous = harnessSignInStatus(harnessId);
+  if (
+    previous.evidenceAt != null &&
+    (status.evidenceAt == null ||
+      status.evidenceAt < previous.evidenceAt ||
+      (status.evidenceAt === previous.evidenceAt &&
+        (status.state !== "signedOut" || previous.state === "signedOut")))
+  )
+    return;
+  if (status.state === "unavailable" && previous.state === "signedOut")
+    status = { ...status, state: "signedOut" };
   identities.set(harnessId, provider.key);
   statuses.set(harnessId, status);
   notify();
@@ -82,33 +112,37 @@ export async function refreshHarnessSignIn(
   if (provider.refreshRequirement) return "unavailable";
   const nativeTransitionEpoch =
     useWorkbenchStore.getState().nativeTransitionEpoch;
+  prune();
+  identities.set(harnessId, provider.key);
   const request = Symbol();
   refreshes.set(harnessId, request);
   if (harnessSignInStatus(harnessId).state === "unknown")
-    publish(harnessId, { state: "checking", checkedAt: null });
-  let state: HarnessSignInState;
+    publish(harnessId, {
+      state: "checking",
+      checkedAt: null,
+      evidenceAt: null,
+    });
+  let read: { state: HarnessSignInState; accountReadStartedAt: number | null };
   try {
-    state = await provider.status();
+    read = await provider.status();
   } catch {
-    state = "unavailable";
+    read = { state: "unavailable", accountReadStartedAt: null };
   }
-  if (refreshes.get(harnessId) === request) {
-    refreshes.delete(harnessId);
-    const current = useWorkbenchStore.getState();
-    if (
-      signInProvider(harnessId)?.key === provider.key &&
-      current.nativeTransitionEpoch === nativeTransitionEpoch
-    )
-      publish(harnessId, {
-        state:
-          state === "unavailable" &&
-          harnessSignInStatus(harnessId).state === "signedOut"
-            ? "signedOut"
-            : state,
-        checkedAt: Date.now(),
-      });
+  if (refreshes.get(harnessId) === request) refreshes.delete(harnessId);
+  if (
+    signInProvider(harnessId)?.key === provider.key &&
+    useWorkbenchStore.getState().nativeTransitionEpoch === nativeTransitionEpoch
+  ) {
+    publish(harnessId, {
+      state: read.state,
+      checkedAt: Date.now(),
+      evidenceAt: read.accountReadStartedAt,
+    });
+    return read.state === "unavailable" || read.state === "unknown"
+      ? read.state
+      : harnessSignInStatus(harnessId).state;
   }
-  return state;
+  return "unavailable";
 }
 
 function stopPolling(harnessId: string) {
@@ -117,10 +151,12 @@ function stopPolling(harnessId: string) {
 }
 
 export function startHarnessSignIn(harnessId: string): Promise<void> {
+  prune();
   const pending = polls.get(harnessId)?.starting;
   if (pending) return pending;
   const provider = signInProvider(harnessId);
   if (!provider) return Promise.reject(new Error("Sign-in is unavailable."));
+  identities.set(harnessId, provider.key);
   stopPolling(harnessId);
   const owner: SignInPoll = {};
   polls.set(harnessId, owner);
@@ -167,28 +203,9 @@ export function subscribeHarnessSignIn(listener: () => void) {
   const wake = !listeners.size;
   listeners.add(listener);
   if (wake) {
-    unsubscribeAccount = subscribeAccountSignIn(
-      (id, state) => {
-        refreshes.delete(id);
-        publish(id, { state, checkedAt: Date.now() });
-      },
-      () => {
-        let pruned = false;
-        for (const id of statuses.keys()) {
-          if (
-            !harnessSupportsSignIn(id) ||
-            identities.get(id) !== signInProvider(id)?.key
-          ) {
-            stopPolling(id);
-            statuses.delete(id);
-            identities.delete(id);
-            refreshes.delete(id);
-            pruned = true;
-          }
-        }
-        if (pruned) notify();
-      },
-    );
+    unsubscribeAccount = subscribeAccountSignIn((id, state, evidenceAt) => {
+      publish(id, { state, checkedAt: Date.now(), evidenceAt });
+    }, prune);
     for (const owner of polls.values()) owner.resume?.();
   }
   return () => {
@@ -209,14 +226,18 @@ export function resetHarnessSignInForTest() {
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
   listeners.clear();
-  resetAccountSignInForTest();
 }
 
-/** A protocol auth refusal is newer evidence than an earlier account check. */
-export function reportHarnessSignInRequired(harnessId: string) {
-  retainAccountSignInObservation(harnessId);
-  refreshes.delete(harnessId);
-  publish(harnessId, { state: "signedOut", checkedAt: Date.now() });
+/** All evidence compares native epoch ms, independent of delivery or replay order. */
+export function reportHarnessSignInRequired(
+  harnessId: string,
+  terminalAt: number,
+) {
+  publish(harnessId, {
+    state: "signedOut",
+    checkedAt: Date.now(),
+    evidenceAt: terminalAt,
+  });
 }
 
 export function ensureHarnessSignInChecked(
@@ -243,32 +264,32 @@ export function harnessesNeedingSignIn() {
   );
 }
 
-function reportBindingSignInRequired(bindingId: string | undefined) {
+function reportBindingSignInRequired(
+  bindingId: string | undefined,
+  terminalAt: number | null | undefined,
+) {
+  if (terminalAt == null) return;
   const harness = signInHarnesses().find(
     (entry) => entry.bindingId === bindingId,
   );
-  if (harness) reportHarnessSignInRequired(harness.id);
+  if (harness) reportHarnessSignInRequired(harness.id, terminalAt);
 }
 Object.assign(harnessSignInFailures, {
   command({ bindingId, busy, error }: HarnessSignInCommand) {
     if (busy && error?.failure.kind === "signInRequired")
-      reportBindingSignInRequired(bindingId);
+      reportBindingSignInRequired(bindingId, error.failure.terminalAt);
   },
-  page(previous: AcpChatPage, page: AcpChatPage) {
-    const turn = page.turns.at(-1);
-    if (
-      turn?.state !== "failed" ||
-      turn.terminalReason?.kind !== "authRequired"
-    )
-      return;
-    if (
-      previous.turns.some(
-        (entry) => entry.id === turn.id && entry.state === "failed",
+  page(page: AcpChatPage) {
+    for (const turn of page.turns) {
+      if (
+        turn.state === "failed" &&
+        turn.terminalReason?.kind === "authRequired"
       )
-    )
-      return;
-    reportBindingSignInRequired(
-      page.sessions.find((session) => session.id === turn.sessionId)?.bindingId,
-    );
+        reportBindingSignInRequired(
+          page.sessions.find((session) => session.id === turn.sessionId)
+            ?.bindingId,
+          turn.terminalAt,
+        );
+    }
   },
 });

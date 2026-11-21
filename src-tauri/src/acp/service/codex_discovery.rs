@@ -539,6 +539,7 @@ mod tests {
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
             runtime_epoch,
             account: CodexDiscoveryAccount::ManagedChatgpt,
+            account_read_started_at: 123,
             models: vec![CodexDiscoveryModel {
                 id: model_id.clone(),
                 name: RequiredText::new("modelName", "GPT Cache").unwrap(),
@@ -567,6 +568,7 @@ mod tests {
         let reused = entry.response_for(&changed).unwrap();
         assert_eq!(reused.project_generation, changed.project_generation);
         assert_eq!(reused.runtime_epoch, runtime_epoch);
+        assert_eq!(reused.account_read_started_at, 123);
         changed = scope.clone();
         changed.project_id = SageProjectId::parse("project-other").unwrap();
         assert!(entry.response_for(&changed).is_none());

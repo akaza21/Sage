@@ -13,6 +13,7 @@ import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
+import { AcpDesktopError } from "../../services/acpDesktopCommand";
 import {
   ComposerHarnessSignInNotice,
   HarnessAccountMenu,
@@ -25,6 +26,8 @@ import {
   reportHarnessSignInRequired,
   resetHarnessSignInForTest,
 } from "./harnessSignIn";
+
+let nativeTime = 100;
 
 vi.mock("../../ports/desktopRuntime", () => ({ isTauriRuntime: () => true }));
 const initial = useWorkbenchStore.getState();
@@ -67,6 +70,7 @@ function install() {
     selectedHarnessId: "account",
     harnessDiscoveryPhase: "signInRequired",
     harnessAccount: "signedOut",
+    harnessAccountReadStartedAt: ++nativeTime,
   });
   vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
     async (scope) =>
@@ -75,6 +79,7 @@ function install() {
         rootId: "root",
         runtimeEpoch: "1",
         account: "managedChatgpt",
+        accountReadStartedAt: ++nativeTime,
         models: [{ id: "model", name: "Model", isDefault: true }],
         defaultModelId: "model",
       }) as never,
@@ -111,6 +116,7 @@ it.each(["focus", "check"])(
         rootId: "root",
         runtimeEpoch: "1",
         account: request.refresh ? "managedChatgpt" : "signedOut",
+        accountReadStartedAt: ++nativeTime,
         models: request.refresh
           ? [{ id: "model", name: "Model", isDefault: true }]
           : [],
@@ -156,8 +162,13 @@ it("keeps the listed model while an account refresh is pending or fails", async 
 
 it("keeps a signed-out warning after a failed focus check and recovers on the next focus", async () => {
   install();
+  const failedReadAt = ++nativeTime;
   vi.mocked(acpHarnessDesktop.discoverCodex).mockRejectedValueOnce(
-    new Error("Account read failed."),
+    new AcpDesktopError({
+      kind: "internal",
+      message: "Account read failed.",
+      accountReadStartedAt: failedReadAt,
+    }),
   );
   render(<ComposerHarnessSignInNotice harnessId="account" />);
   expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
@@ -166,6 +177,7 @@ it("keeps a signed-out warning after a failed focus check and recovers on the ne
   });
   expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("error");
   expect(harnessSignInStatus("account").state).toBe("signedOut");
+  expect(harnessSignInStatus("account").evidenceAt).toBe(failedReadAt);
   expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
   await act(async () => {
     fireEvent.focus(window);
@@ -211,11 +223,12 @@ it.each(["refusal", "selection"])(
           }),
       );
     render(<ComposerHarnessSignInNotice harnessId="account" />);
-    act(() => reportHarnessSignInRequired("account"));
+    act(() => reportHarnessSignInRequired("account", ++nativeTime));
     let pending!: Promise<unknown>;
     await act(async () => {
       pending = refreshHarnessSignIn("account");
-      if (superseded === "refusal") reportHarnessSignInRequired("account");
+      if (superseded === "refusal")
+        reportHarnessSignInRequired("account", ++nativeTime);
       else {
         await useWorkbenchStore.getState().selectHarness("other");
         await useWorkbenchStore.getState().selectHarness("account");
@@ -225,6 +238,12 @@ it.each(["refusal", "selection"])(
     });
     expect(harnessSignInStatus("account").state).toBe("signedOut");
     expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
+    vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementationOnce(
+      async () => ({
+        ...cached,
+        accountReadStartedAt: ++nativeTime,
+      }),
+    );
     await act(async () => {
       await refreshHarnessSignIn("account");
     });
@@ -266,6 +285,7 @@ it("starts a session with the discovered model after refocusing beyond the TTL",
         rootId: "root",
         runtimeEpoch: "1",
         account: "managedChatgpt",
+        accountReadStartedAt: ++nativeTime,
         models: [{ id: "model", name: "Model", isDefault: true }],
         defaultModelId: "model",
       };
@@ -418,6 +438,7 @@ it.each(["project", "harness", "request"])(
               ...scope,
               rootId: "root",
               account: "managedChatgpt",
+              accountReadStartedAt: ++nativeTime,
               models: [
                 { id: "stale-model", name: "Stale model", isDefault: true },
               ],
@@ -465,7 +486,13 @@ it("can cancel the original sidebar login after selecting another harness and re
   let abandon!: () => void;
   vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
     async (scope) =>
-      ({ ...scope, rootId: "root", account: "signedOut", models: [] }) as never,
+      ({
+        ...scope,
+        rootId: "root",
+        account: "signedOut",
+        accountReadStartedAt: ++nativeTime,
+        models: [],
+      }) as never,
   );
   vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockImplementation(
     (scope) =>
@@ -521,6 +548,7 @@ it("can cancel the original sidebar login after selecting another harness and re
         ...scope,
         rootId: "root",
         account: "managedChatgpt",
+        accountReadStartedAt: ++nativeTime,
         models: [{ id: "model", name: "Model", isDefault: true }],
       }) as never,
   );

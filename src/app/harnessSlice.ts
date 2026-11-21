@@ -20,6 +20,7 @@ import {
 import { accountChange } from "./harnessAuth";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
+import { safeFailure } from "../services/acpDesktopCommand";
 import { errorMessage } from "../domain/errors";
 
 export type HarnessDiscoveryPhase =
@@ -51,8 +52,8 @@ export interface HarnessSlice {
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
   harnessAccount: CodexAccount | null;
-  // Only a forced native read can establish evidence newer than an auth refusal.
-  harnessAccountReadGeneration: number | null;
+  // Native epoch ms is comparable with persisted turn terminal times.
+  harnessAccountReadStartedAt: number | null;
   pendingHarnessSignIn: CodexAuthScope | null;
   selectHarness: (harnessId: string, refresh?: boolean) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
@@ -151,7 +152,7 @@ export const createHarnessSlice: StateCreator<
     const cached = cachedHarnessModels(identity);
     set({
       selectedHarnessId: harnessId,
-      harnessAccountReadGeneration: null,
+      harnessAccountReadStartedAt: null,
       ...(!refresh && {
         models: cached ?? [],
         selectedModelId: preferredModelId(cached, previousModelId),
@@ -206,7 +207,7 @@ export const createHarnessSlice: StateCreator<
         // Signed out, the catalog is still listed; sign-in gates a send.
         set({
           harnessAccount: response.account,
-          harnessAccountReadGeneration: refresh ? requestGeneration : null,
+          harnessAccountReadStartedAt: response.accountReadStartedAt,
           models,
           selectedModelId: preferredModelId(models, previousModelId),
           harnessDiscoveryPhase:
@@ -231,7 +232,12 @@ export const createHarnessSlice: StateCreator<
     } catch (error) {
       if (!current(generation, projectId, requestGeneration, harnessId)) return;
       const message = errorMessage(error);
-      set({ harnessDiscoveryPhase: "error", harnessDiscoveryError: message });
+      set({
+        harnessDiscoveryPhase: "error",
+        harnessDiscoveryError: message,
+        harnessAccountReadStartedAt:
+          safeFailure(error).accountReadStartedAt ?? null,
+      });
     }
   };
 
@@ -246,7 +252,7 @@ export const createHarnessSlice: StateCreator<
     harnessDiscoveryPhase: "idle",
     harnessDiscoveryError: null,
     harnessAccount: null,
-    harnessAccountReadGeneration: null,
+    harnessAccountReadStartedAt: null,
     pendingHarnessSignIn: null,
     selectHarness: async (harnessId, refresh) => {
       if (get().projectTransitioning) return;
