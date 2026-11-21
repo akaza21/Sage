@@ -36,7 +36,7 @@ export function isCommandPlacement(
 ): value is AcpCommandPlacement {
   return (
     isRecord(value) &&
-    Object.keys(value).every((key) => key === "section" || key === "control") &&
+    Object.keys(value).length === (value.control === undefined ? 1 : 2) &&
     commandSections.includes(value.section as AcpCommandSection) &&
     (value.control === undefined ||
       nativeCommandControls.includes(value.control as AcpNativeCommandControl))

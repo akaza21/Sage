@@ -5,12 +5,17 @@
   { "name": "effort", "section": "modelAndAccess", "control": "effortPicker" },
   { "name": "fast", "section": "modelAndAccess" },
   { "name": "mcp", "section": "connections", "control": "mcpPanel" },
-  { "name": "reload-plugins", "section": "addOns", "control": "reloadAddOns" },
+  {
+    "name": "reload-plugins",
+    "section": "addOns",
+    "control": "reloadAddOns",
+    "since": "2.1.260"
+  },
   {
     "name": "reload-skills",
     "section": "skillsAndCommands",
     "control": "reloadAddOns",
-    "since": "2.1.260"
+    "since": "2.1.152"
   },
   { "name": "usage", "section": "usage", "control": "usagePanel" },
   { "name": "context", "section": "usage", "control": "usagePanel" },

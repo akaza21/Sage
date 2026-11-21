@@ -62,6 +62,10 @@ describe("native command list contract", () => {
       { revision: 1, commands: [{ ...command, panel: null }] },
       {
         revision: 1,
+        commands: [{ ...command, extra: { retained: "unexpected" } }],
+      },
+      {
+        revision: 1,
         commands: [{ ...command, placement: { section: "invented" } }],
       },
       {
@@ -81,6 +85,7 @@ describe("native command list contract", () => {
       },
       { revision: 1, commands: [{ ...command, aliases: ["bad name"] }] },
       { revision: 1, commands: [{ ...command, aliases: "cost" }] },
+      { revision: 1, commands: [{ ...command, aliases: null }] },
       {
         revision: 1,
         commands: [{ ...command, aliases: Array(9).fill("cost") }],
@@ -107,10 +112,26 @@ describe("native command list contract", () => {
     for (const value of [
       { ...notice, schemaVersion: 2 },
       { ...notice, sageChatId: "" },
+      { ...notice, sageChatId: "invalid\0chat" },
       { ...notice, runtimeEpoch: 1 },
       { ...notice, runtimeEpoch: "0" },
       { ...notice, revision: 0 },
     ])
       expect(decodeCommandsNotice(value)).toBeNull();
+  });
+  it("counts every advertised string once at the exact catalog byte boundary", () => {
+    const commands = Array.from({ length: 256 }, (_, index) => ({
+      name: `c${String(index).padStart(3, "0")}`,
+      description: "d".repeat(1000),
+      inputHint: "h".repeat(8),
+      source: "builtin",
+      sourceLabel: "core",
+      aliases: [`alias${String(index).padStart(3, "0")}`],
+    }));
+    expect(decodeCommandList({ revision: 1, commands })?.commands).toHaveLength(
+      256,
+    );
+    commands[255]!.inputHint += "h";
+    expect(decodeCommandList({ revision: 2, commands })).toBeNull();
   });
 });

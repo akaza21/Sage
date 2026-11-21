@@ -4,7 +4,7 @@ import type {
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { utf8ByteLength } from "../domain/text";
-import { isRecord, safeOrdinal } from "./acpDesktopGuards";
+import { isRecord, safeIdentifier, safeOrdinal } from "./acpDesktopGuards";
 import {
   isCommandPanel,
   isCommandSource,
@@ -65,15 +65,26 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     return null;
   const names = new Set<string>();
   let bytes = 0;
-  const text = (s: unknown, cap: number): s is string =>
-    typeof s === "string" && !s.includes("\0") && utf8ByteLength(s) <= cap;
+  const text = (s: unknown, cap: number): s is string => {
+    if (typeof s !== "string" || s.includes("\0")) return false;
+    const size = utf8ByteLength(s);
+    bytes += size;
+    return size <= cap;
+  };
   const commandName = (s: unknown): s is string =>
     text(s, 128) && s !== "" && !/[\s/]/u.test(s);
-  const commands: AvailableAcpCommand[] = [];
   for (const c of value.commands) {
-    const aliases: unknown = isRecord(c) ? (c.aliases ?? []) : [];
+    const aliases: unknown =
+      isRecord(c) && c.aliases !== undefined ? c.aliases : [];
     if (
       !isRecord(c) ||
+      // Four required fields plus the optional fields validated below exhaust the row.
+      Object.keys(c).length !==
+        4 +
+          +(c.sourceLabel !== undefined) +
+          +(c.panel !== undefined) +
+          +(c.aliases !== undefined) +
+          +(c.placement !== undefined) ||
       !commandName(c.name) ||
       !Array.isArray(aliases) ||
       aliases.length > MAX_ALIASES ||
@@ -88,29 +99,12 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     )
       return null;
     names.add(c.name);
-    bytes += utf8ByteLength(
-      c.name +
-        c.description +
-        (c.inputHint ?? "") +
-        (c.sourceLabel ?? "") +
-        aliases.join(""),
-    );
     if (bytes > MAX_COMMAND_BYTES) return null;
-    const command: AvailableAcpCommand = {
-      name: c.name,
-      description: c.description,
-      inputHint: c.inputHint,
-      source: c.source,
-    };
-    if (c.sourceLabel) command.sourceLabel = c.sourceLabel;
-    if (c.panel) command.panel = c.panel;
-    if (aliases.length) command.aliases = aliases;
-    if (c.placement) command.placement = c.placement;
-    commands.push(command);
   }
   return {
     revision: value.revision as number,
-    commands,
+    // Every row and key is bounded above; reuse the native array without DTO copies.
+    commands: value.commands as AvailableAcpCommand[],
     omitted: (value.omitted as number | undefined) ?? 0,
   };
 }
@@ -125,10 +119,14 @@ export interface AcpCommandsChangedV1 {
 export function decodeCommandsNotice(
   value: unknown,
 ): AcpCommandsChangedV1 | null {
-  if (!isRecord(value) || value.schemaVersion !== 1) return null;
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    Object.keys(value).length !== 6
+  )
+    return null;
   for (const key of ["sageProjectId", "sageChatId", "sageAgentSessionId"]) {
-    const id = value[key];
-    if (typeof id !== "string" || !id || utf8ByteLength(id) > 512) return null;
+    if (!safeIdentifier(value[key])) return null;
   }
   if (
     typeof value.runtimeEpoch !== "string" ||
@@ -136,13 +134,8 @@ export function decodeCommandsNotice(
     (safeOrdinal(value.revision) ?? 0) < 1
   )
     return null;
-  return {
-    sageProjectId: value.sageProjectId as string,
-    sageChatId: value.sageChatId as string,
-    sageAgentSessionId: value.sageAgentSessionId as string,
-    runtimeEpoch: value.runtimeEpoch,
-    revision: value.revision as number,
-  };
+  const { schemaVersion: _version, ...notice } = value;
+  return notice as unknown as AcpCommandsChangedV1;
 }
 // Separate native port, loaded only with the composer's command menu.
 export const acpCommandsDesktop = {
