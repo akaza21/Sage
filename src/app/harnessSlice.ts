@@ -51,6 +51,8 @@ export interface HarnessSlice {
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
   harnessAccount: CodexAccount | null;
+  // Only a forced native read can establish evidence newer than an auth refusal.
+  harnessAccountReadGeneration: number | null;
   pendingHarnessSignIn: CodexAuthScope | null;
   selectHarness: (harnessId: string, refresh?: boolean) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
@@ -149,6 +151,7 @@ export const createHarnessSlice: StateCreator<
     const cached = cachedHarnessModels(identity);
     set({
       selectedHarnessId: harnessId,
+      harnessAccountReadGeneration: null,
       ...(!refresh && {
         models: cached ?? [],
         selectedModelId: preferredModelId(cached, previousModelId),
@@ -203,6 +206,7 @@ export const createHarnessSlice: StateCreator<
         // Signed out, the catalog is still listed; sign-in gates a send.
         set({
           harnessAccount: response.account,
+          harnessAccountReadGeneration: refresh ? requestGeneration : null,
           models,
           selectedModelId: preferredModelId(models, previousModelId),
           harnessDiscoveryPhase:
@@ -242,6 +246,7 @@ export const createHarnessSlice: StateCreator<
     harnessDiscoveryPhase: "idle",
     harnessDiscoveryError: null,
     harnessAccount: null,
+    harnessAccountReadGeneration: null,
     pendingHarnessSignIn: null,
     selectHarness: async (harnessId, refresh) => {
       if (get().projectTransitioning) return;

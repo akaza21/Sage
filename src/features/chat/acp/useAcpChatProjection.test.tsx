@@ -14,10 +14,12 @@ import type {
 } from "../../../domain/acp";
 import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { acpHarnessDesktop } from "../../../services/acpHarnessDesktop";
 import { useAcpChatProjection } from "./useAcpChatProjection";
 import { page } from "./acpProjection.fixture";
 import {
   harnessSignInStatus,
+  refreshHarnessSignIn,
   resetHarnessSignInForTest,
   subscribeHarnessSignIn,
 } from "../../harness/harnessSignIn";
@@ -110,7 +112,13 @@ describe("useAcpChatProjection", () => {
       expect(harnessSignInStatus("account").state).toBe("signedOut"),
     );
     hook.unmount();
-    act(() => useWorkbenchStore.setState({ harnessAccount: "apiKey" }));
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
+      async (scope) =>
+        ({ ...scope, rootId: null, account: "apiKey", models: [] }) as never,
+    );
+    await act(async () => {
+      await refreshHarnessSignIn("account");
+    });
     expect(harnessSignInStatus("account").state).toBe("signedIn");
     const restored = renderHook(() => useAcpChatProjection());
     await waitFor(() =>

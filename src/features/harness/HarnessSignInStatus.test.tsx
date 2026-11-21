@@ -9,6 +9,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { acpDesktop } from "../../services/acpDesktop";
+import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
+import { desktop } from "../../services/desktop";
 import type { HarnessDefinition } from "../../domain/harness";
 import type * as AcpHarnessDesktopModule from "../../services/acpHarnessDesktop";
 import { ComposerStatusNotices } from "../chat/ComposerStatusNotices";
@@ -262,12 +264,13 @@ it("updates the account badge from Settings account state without changing harne
   expect(
     screen.getByLabelText("Harness sign-in needs attention"),
   ).toBeVisible();
-  act(() =>
-    useWorkbenchStore.setState({
-      harnessAccount: "apiKey",
-      harnessDiscoveryPhase: "ready",
-    }),
-  );
+  await act(async () => {
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementationOnce(
+      async (scope) =>
+        ({ ...scope, rootId: "root", account: "apiKey", models: [] }) as never,
+    );
+    await useWorkbenchStore.getState().retryHarnessDiscovery();
+  });
   expect(screen.queryByText(/isn't signed in/)).toBeNull();
   expect(screen.queryByLabelText("Harness sign-in needs attention")).toBeNull();
 });
@@ -343,10 +346,20 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
 
 it("requires selecting Codex before checking its retained recovery after external login", async () => {
   install("account-fixture");
+  vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([]);
   vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
     loggedIn: true,
   });
   signedIn = true;
+  // Native selection keeps returning the snapshot cached before the refusal.
+  const cached = await acpHarnessDesktop.discoverCodex({
+    projectId: "workspace",
+    projectGeneration: String(
+      useWorkbenchStore.getState().nativeTransitionEpoch,
+    ),
+    bindingId: "account",
+  } as Parameters<typeof acpHarnessDesktop.discoverCodex>[0]);
+  vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue(cached);
   await refreshHarnessSignIn("account-fixture");
   reportHarnessSignInRequired("account-fixture");
   signedIn = false;
@@ -379,12 +392,9 @@ it("requires selecting Codex before checking its retained recovery after externa
   }
   render(<RecoveryComposer />);
   expect(await screen.findByText("Codex isn't signed in")).toBeVisible();
-  act(() =>
-    useWorkbenchStore.setState({
-      selectedHarnessId: "cli-fixture",
-      harnessAccount: null,
-    }),
-  );
+  await act(async () => {
+    await useWorkbenchStore.getState().selectHarness("cli-fixture");
+  });
   expect(screen.getByRole("button", { name: "Check sign-in" })).toBeDisabled();
   expect(screen.getByText("Select Codex to check sign-in.")).toBeVisible();
   signedIn = true;
@@ -399,6 +409,11 @@ it("requires selecting Codex before checking its retained recovery after externa
   expect(screen.queryByRole("alert")).toBeNull();
   await act(async () => {
     await useWorkbenchStore.getState().selectHarness("account-fixture");
+  });
+  expect(screen.getByText("Codex isn't signed in")).toBeVisible();
+  expect(screen.queryByText("Ready to retry")).toBeNull();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
   });
   expect(await screen.findByText("Ready to retry")).toBeVisible();
   expect(screen.queryByLabelText("Harness sign-in needs attention")).toBeNull();

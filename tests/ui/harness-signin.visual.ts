@@ -36,6 +36,12 @@ for (const adapter of ["cli", "account"] as const) {
         signedIn = true;
         return { ...scope, phase: "signedIn", revision: "2" };
       };
+      acpHarnessDesktop.discoverCodex = async (scope) => ({
+        ...scope,
+        rootId: useWorkbenchStore.getState().project!.roots[0]?.id ?? null,
+        account: signedIn ? "managedChatgpt" : "signedOut",
+        models: [],
+      });
       useWorkbenchStore.setState((state) => ({
         harnessAccount: adapter === "account" ? "signedOut" : null,
         harnessDiscoveryPhase:
@@ -48,12 +54,6 @@ for (const adapter of ["cli", "account"] as const) {
               ? { command: "", hint: "", statusCheck: "claudeCli" as const }
               : null,
         })),
-        retryHarnessDiscovery: async () => {
-          useWorkbenchStore.setState({
-            harnessAccount: "managedChatgpt",
-            harnessDiscoveryPhase: "ready",
-          });
-        },
       }));
       if (adapter === "cli")
         await refreshHarnessSignIn(

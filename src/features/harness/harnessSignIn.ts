@@ -214,7 +214,7 @@ export function resetHarnessSignInForTest() {
 
 /** A protocol auth refusal is newer evidence than an earlier account check. */
 export function reportHarnessSignInRequired(harnessId: string) {
-  retainAccountSignInObservation();
+  retainAccountSignInObservation(harnessId);
   refreshes.delete(harnessId);
   publish(harnessId, { state: "signedOut", checkedAt: Date.now() });
 }

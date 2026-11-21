@@ -26,12 +26,14 @@ import type {
 import { DEFAULT_SESSION_ACCESS_MODE } from "../../../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
+import { acpHarnessDesktop } from "../../../services/acpHarnessDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
 import { clearChatSignInError } from "../chatSignInRecovery";
 import { ChatHarnessControls } from "../ChatHarnessControls";
 import { ComposerNoticeSurface } from "../ChatSignInNotices";
 import {
   harnessSignInStatus,
+  refreshHarnessSignIn,
   resetHarnessSignInForTest,
   subscribeHarnessSignIn,
 } from "../../harness/harnessSignIn";
@@ -287,13 +289,18 @@ describe("useAcpChatActions per-Chat ownership", () => {
       harnessDiscoveryPhase: "ready",
     });
     let signedInElsewhere = false;
+    let recovery: Promise<unknown> | undefined;
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
+      async (scope) =>
+        ({ ...scope, rootId: null, account: "apiKey", models: [] }) as never,
+    );
     const unsubscribe = subscribeHarnessSignIn(() => {
       if (
         !signedInElsewhere &&
         harnessSignInStatus("auth-fixture").state === "signedOut"
       ) {
         signedInElsewhere = true;
-        useWorkbenchStore.setState({ harnessAccount: "apiKey" });
+        recovery = refreshHarnessSignIn("auth-fixture");
       }
     });
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
@@ -305,6 +312,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     const { result } = renderHook(() => useAcpChatActions());
     await act(async () => {
       await result.current.submit("Hello", [], bindingId, null);
+      await recovery;
     });
     expect(signedInElsewhere).toBe(true);
     expect(harnessSignInStatus("auth-fixture").state).toBe("signedIn");

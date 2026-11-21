@@ -21,6 +21,8 @@ import { HarnessDiscoveryNotice } from "../chat/HarnessDiscoveryNotice";
 import { composerDisabledReason } from "../chat/composerDisabledReason";
 import {
   refreshHarnessSignIn,
+  harnessSignInStatus,
+  reportHarnessSignInRequired,
   resetHarnessSignInForTest,
 } from "./harnessSignIn";
 
@@ -151,6 +153,85 @@ it("keeps the listed model while an account refresh is pending or fails", async 
     "model",
   ]);
 });
+
+it("keeps a signed-out warning after a failed focus check and recovers on the next focus", async () => {
+  install();
+  vi.mocked(acpHarnessDesktop.discoverCodex).mockRejectedValueOnce(
+    new Error("Account read failed."),
+  );
+  render(<ComposerHarnessSignInNotice harnessId="account" />);
+  expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
+  await act(async () => {
+    fireEvent.focus(window);
+  });
+  expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("error");
+  expect(harnessSignInStatus("account").state).toBe("signedOut");
+  expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
+  await act(async () => {
+    fireEvent.focus(window);
+  });
+  expect(harnessSignInStatus("account").state).toBe("signedIn");
+  expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  expect(sendDisabledReason()).toBeNull();
+  expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
+});
+
+it.each(["refusal", "selection"])(
+  "rejects a refresh superseded by a newer %s and waits for a fresh check",
+  async (superseded) => {
+    install();
+    useWorkbenchStore.setState((state) => ({
+      harnesses: [
+        ...state.harnesses,
+        {
+          ...state.harnesses[0],
+          id: "other",
+          transport: "acp",
+          installState: "available",
+          bindingId: "other-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    }));
+    vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([]);
+    const cached = await acpHarnessDesktop.discoverCodex({
+      projectId: "project",
+      projectGeneration: String(
+        useWorkbenchStore.getState().nativeTransitionEpoch,
+      ),
+      bindingId: "account-binding",
+    } as Parameters<typeof acpHarnessDesktop.discoverCodex>[0]);
+    let complete!: () => void;
+    vi.mocked(acpHarnessDesktop.discoverCodex)
+      .mockResolvedValue(cached)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = () => resolve(cached);
+          }),
+      );
+    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    act(() => reportHarnessSignInRequired("account"));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = refreshHarnessSignIn("account");
+      if (superseded === "refusal") reportHarnessSignInRequired("account");
+      else {
+        await useWorkbenchStore.getState().selectHarness("other");
+        await useWorkbenchStore.getState().selectHarness("account");
+      }
+      complete();
+      await pending;
+    });
+    expect(harnessSignInStatus("account").state).toBe("signedOut");
+    expect(screen.getByText("Account harness isn't signed in")).toBeVisible();
+    await act(async () => {
+      await refreshHarnessSignIn("account");
+    });
+    expect(harnessSignInStatus("account").state).toBe("signedIn");
+    expect(screen.queryByText("Account harness isn't signed in")).toBeNull();
+  },
+);
 
 it.each([1_000, 60_001])(
   "refocusing after %i ms refreshes signed-out discovery and makes sending available",
