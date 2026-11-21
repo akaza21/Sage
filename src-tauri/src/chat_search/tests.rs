@@ -15,7 +15,7 @@ fn database_with_project() -> (Database, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-search-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     (database, project.id, root)
 }
 
@@ -77,7 +77,7 @@ fn disk_search_does_not_wait_for_the_acp_writer_mutex() {
     let root = std::env::temp_dir().join(format!("sage-search-lock-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let search_database = database.clone();
     let search_request = request(&project.id, "Chat");
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -336,7 +336,7 @@ fn archived_primary_text_remains_searchable_after_restart() {
     let database_path = directory.join("sage.db");
     let (project_id, chat_id) = {
         let database = crate::database::open_database(&database_path).unwrap();
-        let project = database.create_project_from_root(&project_root).unwrap();
+        let project = database.create_project_with_chat(&project_root).unwrap();
         let chat = database
             .bootstrap_snapshot()
             .unwrap()

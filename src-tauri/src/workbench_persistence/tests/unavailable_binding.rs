@@ -15,7 +15,7 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.unwrap();
     seed_closed_simulator_history(&database, &chat_id, "preserved prompt", "preserved answer");
@@ -84,7 +84,11 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     let fresh = reopened.bootstrap_snapshot_with_catalog(&catalog).unwrap();
     assert_eq!(
         fresh.selected_harness_id,
-        catalog.default_selected_harness_id()
+        if crate::harnesses::SIMULATOR_IN_CATALOG {
+            Some(crate::harnesses::SIMULATOR_ID.into())
+        } else {
+            HarnessCatalog::preferred_available_harness_id(&catalog.definitions())
+        }
     );
     assert!(fresh.harnesses.iter().any(|harness| {
         harness.binding_id.as_deref() == Some("absent-binding")

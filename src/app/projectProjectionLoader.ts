@@ -56,11 +56,12 @@ export async function loadProjectProjection(
   const projectionLoads: Promise<void>[] = availableRoots.map((root) =>
     get().loadDirectory(childResource(root.id)),
   );
-  if (projectId && snapshot.selectedHarnessId) {
+  const selectedHarnessId = get().selectedHarnessId;
+  if (projectId && selectedHarnessId) {
     projectionLoads.push(
       get().loadHarnessModelsForProjection(
-        snapshot.selectedHarnessId,
-        snapshot.selectedModelId,
+        selectedHarnessId,
+        get().selectedModelId,
         generation,
         projectId,
       ),

@@ -387,7 +387,7 @@ mod tests {
         git(&nested, &["commit", "-q", "-m", "fixture"]);
         fs::write(nested.join("app.ts"), "export const n = 2;\n").unwrap();
         let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let root_id = snapshot.project.unwrap().roots[0].id.clone();
         (AppState::new(database), project.id, root_id, base)

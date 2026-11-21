@@ -27,6 +27,8 @@ mod process_tree_tests;
 mod readers;
 mod repository_config;
 mod root_authority;
+#[cfg(test)]
+mod stdin_tests;
 mod submodule_isolation;
 use readers::{ReaderTask, ReaderTasks};
 use sage_process::process_tree::{GitChild, ProcessTree};
@@ -415,13 +417,19 @@ async fn run_admitted(
     }
     let completed = tokio::select! {
         result = timeout(policy.command_timeout, async {
+            let mut stdin_error = None;
             if let Some(input) = &policy.stdin {
                 let mut stdin = child.stdin.take().ok_or_else(|| PostSpawnFailure {
                     message: "Git stdin was not captured".into(), reaped: false,
                 })?;
-                stdin.write_all(input).await.map_err(|error| PostSpawnFailure {
-                    message: format!("Git stdin write failed: {error}"), reaped: false,
-                })?;
+                // Git can reject a request before reading stdin (for example,
+                // an index lock). Preserve its exit diagnostic instead of
+                // replacing it with a scheduling-dependent broken pipe.
+                stdin_error = async {
+                    stdin.write_all(input).await?;
+                    // Windows pipe writes are buffered by Tokio's blocking IO.
+                    stdin.flush().await
+                }.await.err();
             }
             #[cfg(any(test, feature = "test-support"))]
             if let Some(gate) = &policy.deadline_wait_gate {
@@ -450,6 +458,13 @@ async fn run_admitted(
             .await?;
             let stderr =
                 await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
+            if status.success()
+                && let Some(error) = stdin_error
+            {
+                return Err(PostSpawnFailure {
+                    message: format!("Git stdin write failed: {error}"), reaped: true,
+                });
+            }
             Ok::<GitOutput, PostSpawnFailure>(GitOutput {
                 status,
                 stdout: stdout.bytes,

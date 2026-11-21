@@ -215,12 +215,24 @@ fn rejected_requests_never_mutate_and_a_failed_git_process_refreshes_status() {
         let result = mutate_git_paths_inner(&state, request, GitFileMutationAction::Stage, 0)
             .await
             .unwrap();
-        assert!(result.error.unwrap().message.contains("index.lock"));
+        let error = result
+            .error
+            .expect("the failed Git process must reach the caller");
+        assert_eq!(error.kind, GitFileMutationErrorKind::EffectUnknown);
+        assert!(error.message.contains("index.lock"), "{}", error.message);
         assert_eq!(counts.count("status"), 2);
         assert_eq!(counts.count("add"), 1);
         assert_eq!(
             result.repositories.roots[0].changes[0].worktree_status,
             "untracked"
+        );
+        assert_eq!(
+            result.repositories.roots[0].changes[0].index_status,
+            "unchanged"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(".git/index.lock")).unwrap(),
+            "locked"
         );
         assert_eq!(fs::read_to_string(root.join("safe.txt")).unwrap(), "safe\n");
         drop(state);

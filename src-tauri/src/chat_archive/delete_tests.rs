@@ -30,7 +30,7 @@ fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("sage-chat-delete-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap().id;
+    let project = database.create_project_with_chat(&root).unwrap().id;
     Fixture {
         root,
         database,

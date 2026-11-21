@@ -8,6 +8,8 @@ import { resetHarnessModelCache } from "./harnessModelCache";
 import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
+import { durableChatIds } from "../services/browserChatState";
+import { browserSnapshot as snapshot } from "../services/browserWorkspaceFixture";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -21,6 +23,77 @@ afterEach(() => {
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initial, true);
   resetBrowserDesktopForTests();
+});
+
+async function readyProjectDraft(
+  text: string,
+  projectId: string | null = useWorkbenchStore.getState().project!.id,
+) {
+  const state = useWorkbenchStore.getState();
+  await state.openNewChatDraft(projectId ?? undefined);
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        id: "sage-simulator",
+        name: "Fixture ACP",
+        description: "Draft handoff fixture",
+        source: "builtIn",
+        transport: "acp",
+        installState: "available",
+        bindingId: "fixture-binding",
+        accountModelDiscovery: false,
+      },
+    ],
+  });
+  await state.selectDraftHarness("sage-simulator");
+  state.updateNewChatDraft({ text });
+}
+
+it("opens and abandons a fresh-profile draft without allocating a chat, then creates one on send", async () => {
+  Object.assign(snapshot, {
+    project: null,
+    projects: [],
+    unscopedChats: [],
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+    messages: [],
+    sessionId: null,
+  });
+  durableChatIds.clear();
+  const state = useWorkbenchStore.getState();
+  await state.initialize();
+  await state.openNewChatDraft();
+  expect(durableChatIds.size).toBe(0);
+  expect(useWorkbenchStore.getState().newChatDraft?.submission.status).toBe(
+    "released",
+  );
+  state.discardNewChatDraft();
+  expect(durableChatIds.size).toBe(0);
+  await readyProjectDraft("First private prompt", null);
+  await state.sendNewChatDraft();
+  expect(durableChatIds.size).toBe(1);
+  expect(useWorkbenchStore.getState().composerText).toBe(
+    "First private prompt",
+  );
+  expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
+});
+
+it("creates a new chat for a project draft even when an empty chat exists", async () => {
+  const state = useWorkbenchStore.getState();
+  await state.createChat(state.project!.id);
+  const empty = useWorkbenchStore.getState().activeTabId;
+  const before = durableChatIds.size;
+  await readyProjectDraft("First prompt");
+  await state.sendNewChatDraft();
+  const sent = useWorkbenchStore.getState();
+  expect(sent.error).toBeNull();
+  expect(sent.newChatDraft).toBeNull();
+  expect(sent.activeTabId).not.toBe(empty);
+  expect(sent.composerText).toBe("First prompt");
+  expect(durableChatIds.size).toBe(before + 1);
 });
 
 it.each(["current", "foreign"])(
@@ -332,3 +405,21 @@ it.each<{
     expect(useChatEffortDraft.getState().draft?.effort ?? null).toBe(effort);
   },
 );
+
+it("opens a foreign project's unsent draft without creating a chat or switching projects", async () => {
+  const state = useWorkbenchStore.getState();
+  const sourceId = state.project!.id;
+  expect(await state.createProject({ name: "Target", sourceTokens: [] })).toBe(
+    true,
+  );
+  const targetId = useWorkbenchStore.getState().project!.id;
+  await state.switchProject(sourceId);
+  const before = await ports.project.getBootstrapSnapshot();
+  await state.openNewChatDraft(targetId);
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    projectId: sourceId,
+    targetProjectId: targetId,
+    text: "",
+  });
+  expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
+});

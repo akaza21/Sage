@@ -9,7 +9,7 @@ use uuid::Uuid;
 use sage_db::database::Database;
 use sage_domain::project::ProjectSummary;
 
-use super::seed::seed_project;
+use super::seed::seed_empty_project;
 use super::{MAX_PROJECTS, project_summary_in};
 
 pub(super) fn ensure_local_project(database: &Database) -> AppResult<ProjectSummary> {
@@ -50,7 +50,6 @@ pub(super) fn ensure_local_project(database: &Database) -> AppResult<ProjectSumm
         )));
     }
     let project_id = Uuid::new_v4().to_string();
-    let tab_id = Uuid::new_v4().to_string();
     let now = now_millis();
     transaction
         .execute(
@@ -59,7 +58,7 @@ pub(super) fn ensure_local_project(database: &Database) -> AppResult<ProjectSumm
             params![project_id, now],
         )
         .db()?;
-    seed_project(&transaction, &project_id, &tab_id, None, now)?;
+    seed_empty_project(&transaction, &project_id, None, now)?;
     let summary = project_summary_in(&transaction, &project_id)?;
     transaction.commit().db()?;
     Ok(summary)

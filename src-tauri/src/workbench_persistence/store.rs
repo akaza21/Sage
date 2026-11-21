@@ -74,7 +74,7 @@ impl WorkbenchStore for Database {
             Some((_, binding_id, _)) => {
                 Some(harnesses.restore_binding(binding_id, &mut definitions))
             }
-            None => harnesses.default_selected_harness_id(),
+            None => HarnessCatalog::preferred_available_harness_id(&definitions),
         };
         Ok(BootstrapSnapshot {
             transition_epoch: 0,

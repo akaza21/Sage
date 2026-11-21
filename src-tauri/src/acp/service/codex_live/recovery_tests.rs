@@ -116,7 +116,7 @@ async fn activating_session_fixture(
 ) {
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
@@ -312,7 +312,7 @@ async fn ready_runtime_fixture_with(
 ) -> (AcpService, RuntimeOwner) {
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let parent = bootstrap.active_tab_id.unwrap();
@@ -1140,7 +1140,7 @@ async fn projection_start_fixture(
 ) {
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
@@ -1399,7 +1399,7 @@ fn app_with_engine(
     let root = std::env::temp_dir().join(format!("sage-archive-runtime-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let chat = bootstrap.active_tab_id.clone().unwrap();
     database

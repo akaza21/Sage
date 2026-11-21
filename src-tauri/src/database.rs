@@ -98,7 +98,7 @@ mod tests {
         };
         let reader = database.pinned_reader().unwrap().unwrap();
 
-        database.create_project_from_root(&directory).unwrap();
+        database.create_project_with_chat(&directory).unwrap();
 
         assert_eq!(projects(&database.connection()), 1);
         assert_eq!(projects(&reader), 0);
@@ -303,7 +303,7 @@ mod tests {
             std::env::temp_dir().join(format!("sage-search-reader-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = open_database(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let held = database.chat_search_reader().unwrap().unwrap();
         let shared = database.clone();
         let (send, receive) = std::sync::mpsc::sync_channel(1);

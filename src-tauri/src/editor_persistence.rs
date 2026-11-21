@@ -216,7 +216,7 @@ mod recovery_bound_tests {
         let root = std::env::temp_dir().join(format!("sage-buffer-limit-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let root_id = project.roots[0].id.clone();
         (root, database, project.id, root_id)
     }

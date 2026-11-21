@@ -42,7 +42,7 @@ impl Fixture {
     fn project(&self, name: &str) -> (String, String) {
         let root = self.base.join(name);
         fs::create_dir_all(&root).unwrap();
-        let project = self.database.create_project_from_root(&root).unwrap();
+        let project = self.database.create_project_with_chat(&root).unwrap();
         let chat = self
             .database
             .bootstrap_snapshot()
