@@ -112,7 +112,14 @@ const forkable = (projection: AcpChatPage): AcpChatPage => ({
       id: "session-1",
       runtimeEpoch: "2",
       residency: "hot",
-      capabilities: { nativeSessionFork: true },
+      capabilities: {
+        rewind: {
+          effects: { conversation: false, files: false },
+          targets: "latestTurn",
+          forkAt: true,
+          onResume: false,
+        },
+      },
     },
   ] as never,
 });

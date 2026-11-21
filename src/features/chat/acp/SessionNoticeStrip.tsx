@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { AcpChatPage, SessionNotice } from "../../../domain/acpProjection";
 import "./session-notice-strip.css";
-import { SessionSurfacePanel } from "./SessionSurfacePanel";
+import { ConversationPart } from "../lazyParts";
 
 const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
   info: "Notice",
@@ -24,7 +24,8 @@ export function SessionStrip({ page }: { page: AcpChatPage }) {
         />
       ) : null}
       {page.sessionSurface ? (
-        <SessionSurfacePanel
+        <ConversationPart
+          part="SessionSurfacePanel"
           surface={page.sessionSurface}
           chatId={page.chatId}
         />

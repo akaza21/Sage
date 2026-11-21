@@ -10,6 +10,7 @@ use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
 mod background_terminals;
+mod fork;
 mod goal;
 mod mcp;
 mod native_read;
@@ -251,18 +252,6 @@ impl OutgoingRequest {
             id,
             RequestKind::Read,
             json!({"threadId": thread_id.as_str(), "includeTurns": false}),
-        )
-    }
-
-    /// The pinned schema requires only `threadId`; omitted overrides inherit
-    /// the source thread, and `lastTurnId` is left out because Sage forks only
-    /// between Turns. Sage imports no native history, so the forked Turns are
-    /// excluded; asking for them draws a `deprecationNotice` from the pinned server.
-    pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::Fork,
-            json!({"threadId": thread_id.as_str(), "excludeTurns": true}),
         )
     }
 

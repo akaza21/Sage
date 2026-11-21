@@ -47,6 +47,7 @@ impl PiRuntime {
         control: &SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         match control {
+            SessionControl::ForkAt { target } => self.begin_fork_at(target.clone()),
             SessionControl::SetTitle { title } => self.begin_native(NativeRequest::SessionName {
                 name: title.as_str().to_owned(),
             }),
@@ -54,6 +55,7 @@ impl PiRuntime {
                 self.begin_native(NativeRequest::AbortRetry)
             }
             SessionControl::UndoTurn { .. }
+            | SessionControl::RewindConversation { .. }
             | SessionControl::StopActivity { .. }
             | SessionControl::ReadMcpServers
             | SessionControl::ReloadMcpServers
@@ -95,7 +97,11 @@ impl PiRuntime {
             (NativeCommand::AbortRetry, Some(_)) => NativeRpcReply::Controlled(None),
             // Only a fork asks for these, and a fork is answered above.
             (
-                NativeCommand::Clone | NativeCommand::ForkState | NativeCommand::ReturnToSession,
+                NativeCommand::Clone
+                | NativeCommand::Fork
+                | NativeCommand::ForkMessages
+                | NativeCommand::ForkState
+                | NativeCommand::ReturnToSession,
                 _,
             )
             | (_, None) => NativeRpcReply::Rejected,

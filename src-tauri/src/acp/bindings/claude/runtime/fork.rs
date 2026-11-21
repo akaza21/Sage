@@ -4,7 +4,7 @@ use crate::acp::goal::NativeRpcReply;
 impl ClaudeRuntime {
     /// No `_meta` fork point is sent, so the adapter forks through the latest message.
     pub(super) fn fork_command(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.require_capability(|value| value.native_session_fork)?;
+        self.require_capability(|value| value.rewind.fork_at)?;
         if self.fork_pending() {
             return Err(AdapterRuntimeError::Operation);
         }

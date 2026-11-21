@@ -29,6 +29,7 @@ pub(super) fn resolve(
     project: &SageProjectId,
     chat: &SageChatId,
     cursor: PageCursor,
+    fork: Option<&super::chat_fork::ForkHistory>,
 ) -> Result<Boundary, StoreError> {
     let parts: Vec<_> = cursor.as_str().split(':').collect();
     let (kind, session_ordinal, turn_ordinal, item_before, digest) = match parts.as_slice() {
@@ -59,19 +60,20 @@ pub(super) fn resolve(
     }
     let turn_id = connection
         .query_row(
-            concat!(
-                "SELECT t.id FROM turns t
+            "SELECT t.id FROM turns t
                  JOIN agent_sessions s ON s.id=t.session_id
                  WHERE t.project_id=?1 AND t.chat_id=?2
-                   AND s.ordinal=?3 AND t.ordinal=?4 AND ",
-                super::turn_undo::visible_turn!("t.session_id", "t.id"),
-                " ORDER BY t.id LIMIT 2"
-            ),
+                   AND s.ordinal=?3 AND t.ordinal=?4 AND
+                   NOT EXISTS(SELECT 1 FROM session_facts undone WHERE undone.session_id=t.session_id
+                     AND undone.turn_id=t.id AND undone.kind='turnUndone'
+                     AND (?5 IS NULL OR undone.session_id<>?6 OR undone.sequence<=?5))
+                 ORDER BY t.id LIMIT 2",
             params![
                 project.as_str(),
                 chat.as_str(),
                 session_ordinal,
-                turn_ordinal
+                turn_ordinal,
+                fork.map(|f|f.sequence),fork.map(|f|f.session.as_str())
             ],
             |row| row.get::<_, String>(0),
         )

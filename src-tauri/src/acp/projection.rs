@@ -425,6 +425,8 @@ pub struct AcpChatPage {
     /// The parent Turn the fork carries history through, inclusive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) forked_from_turn_id: Option<SageTurnId>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) forked_before_prompt: bool,
     /// The Chat continues a session imported from outside Sage, whose
     /// history is read separately (`read_imported_history`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]

@@ -147,3 +147,67 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
     parentTitle,
   );
 });
+
+test("T11a: an earlier prompt rewinds after confirmation and one retry restores the composer", async ({
+  page,
+}) => {
+  const workbench = await openForkableAnswer(page);
+  const prompt = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    return fixture.installConversationRewindFixture();
+  });
+  const actions = page.getByRole("group", { name: "Prompt actions" });
+  await expect(actions).toHaveCount(2);
+  await expect(
+    actions.first().getByRole("button", { name: "Rewind here", exact: true }),
+  ).toBeVisible();
+  await expect(
+    actions
+      .first()
+      .getByRole("button", { name: "Fork from here", exact: true }),
+  ).toBeVisible();
+  await waitForAnimations(actions.first());
+  await expect(workbench).toHaveScreenshot("rewind-prompt-actions.png");
+  await actions
+    .first()
+    .getByRole("button", { name: "Rewind here", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm rewind", exact: true })
+    .click();
+  await expect(
+    page.getByText("Harness declined rewind.", { exact: false }),
+  ).toHaveCount(1);
+  await page
+    .getByRole("dialog", { name: "Rewind conversation from here" })
+    .getByRole("button", { name: "Retry", exact: true })
+    .click();
+  await expect(actions).toHaveCount(0);
+  await expect(
+    page.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveValue(prompt);
+});
+
+test("T11a: a fork-only offer has no in-place rewind and explains the shared folder", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(false);
+  });
+  await expect(
+    page.getByRole("button", { name: "Rewind here", exact: true }),
+  ).toHaveCount(0);
+  const fork = page.getByRole("button", {
+    name: "Fork from here",
+    exact: true,
+  });
+  await expect(fork).toHaveCount(2);
+  await fork.first().click();
+  await expect(
+    page.getByRole("dialog", { name: "Fork chat from here" }),
+  ).toContainText("This chat shares the project folder.");
+});

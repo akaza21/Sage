@@ -74,6 +74,9 @@ pub(crate) struct TurnUndoneCommand {
     /// rewind it leaves pending is not yet applied.
     pub runtime_epoch: RuntimeEpoch,
     pub turn_id: SageTurnId,
+    /// Exact visible suffix, newest first, capped at the renderer's 100 retained turns.
+    /// Empty for the legacy last-turn file undo.
+    pub rewind_turns: Vec<SageTurnId>,
     /// The harness dropped the Turn from its thread itself.
     pub harness_reverted: bool,
     /// Validated Claude reply UUID; absent only for a proven empty thread.
@@ -106,8 +109,12 @@ pub(crate) fn record_turn_undone(
     Ok(recorded)
 }
 
-pub(super) fn undo_payload(command: &TurnUndoneCommand, thread: UndoneThread) -> String {
-    serde_json::json!({"kind":TURN_UNDONE,"entityId":command.turn_id.as_str(),
+pub(super) fn undo_payload_for(
+    command: &TurnUndoneCommand,
+    thread: UndoneThread,
+    turn: &SageTurnId,
+) -> String {
+    serde_json::json!({"kind":TURN_UNDONE,"entityId":turn.as_str(),
         "state":"committed","thread":thread.as_str(),
         "runtimeEpoch":command.runtime_epoch.get(),"cutAt":command.cut_at})
     .to_string()
@@ -137,7 +144,12 @@ pub(super) fn record_turn_undone_in(
             published: None,
         });
     }
-    if !super::session_surface::is_undoable_turn(transaction, project, chat, session, turn)? {
+    let valid = if command.rewind_turns.is_empty() {
+        super::session_surface::is_undoable_turn(transaction, project, chat, session, turn)?
+    } else {
+        super::rewind::suffix(transaction, project, chat, session, turn)? == command.rewind_turns
+    };
+    if !valid {
         return Err(StoreError::Conflict {
             resource: "undoneTurn",
         });
@@ -159,19 +171,27 @@ pub(super) fn record_turn_undone_in(
     } else {
         UndoneThread::Restart
     };
-    let payload = undo_payload(command, thread);
     let projection = next_projection_revision(transaction, project, chat)?;
-    append_fact_payload(
-        transaction,
-        project,
-        chat,
-        session,
-        Some(turn),
-        TURN_UNDONE,
-        &payload,
-        projection,
-        command.now_millis,
-    )?;
+    let single = [command.turn_id.clone()];
+    let turns = if command.rewind_turns.is_empty() {
+        &single[..]
+    } else {
+        &command.rewind_turns
+    };
+    for turn in turns {
+        let payload = undo_payload_for(command, thread, turn);
+        append_fact_payload(
+            transaction,
+            project,
+            chat,
+            session,
+            Some(turn.as_str()),
+            TURN_UNDONE,
+            &payload,
+            projection,
+            command.now_millis,
+        )?;
+    }
     publish_send_neutral_projection(
         transaction,
         project,
@@ -195,34 +215,16 @@ pub(super) fn record_turn_undone_in(
     })
 }
 
-/// Whether Undo is withheld from `turn`, the session's latest visible
-/// finished Turn: a fork Chat was taken through it and shows the parent's
-/// history up to it, or, for a harness that reverts its own thread
-/// (`single_step`), a Turn its runtime ran later was undone already: such a
-/// harness only reverts the last Turn its process ran. A Turn the harness
-/// started on its own has no prompt to rewind to, so it is never undone.
+/// A harness-initiated turn has no user prompt to restore to the composer.
 pub(crate) fn undo_withheld(
     connection: &Connection,
-    project: &str,
-    chat: &str,
     session: &str,
     turn: &str,
-    single_step: bool,
 ) -> Result<bool, StoreError> {
     connection
         .query_row(
-            concat!(
-                "SELECT EXISTS(SELECT 1 FROM chat_lineage l
-                   JOIN chats c ON c.project_id=l.child_project_id AND c.id=l.child_chat_id
-                   WHERE l.parent_project_id=?1 AND l.parent_chat_id=?2 AND l.source_turn_id=?4)
-                 OR (?5 AND EXISTS(SELECT 1 FROM turns u JOIN turns later
-                   ON later.session_id=u.session_id AND later.runtime_epoch=u.runtime_epoch
-                     AND later.ordinal>u.ordinal
-                   WHERE u.session_id=?3 AND u.id=?4))
-                 OR NOT ",
-                super::prompted_turn!("?3", "?4")
-            ),
-            params![project, chat, session, turn, single_step],
+            concat!("SELECT NOT ", super::prompted_turn!("?1", "?2")),
+            params![session, turn],
             |row| row.get(0),
         )
         .map_err(Into::into)

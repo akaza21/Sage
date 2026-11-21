@@ -342,6 +342,7 @@ export interface AcpChatPage {
   forkedFrom?: SageChatId;
   /** The parent Turn the fork carries history through, inclusive. */
   forkedFromTurnId?: SageTurnId;
+  forkedBeforePrompt?: boolean;
   importedHistory?: true;
   /**
    * Child-transcript invalidation epoch (opaque). It moves without the

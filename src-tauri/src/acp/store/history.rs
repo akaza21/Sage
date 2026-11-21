@@ -38,6 +38,28 @@ pub(crate) fn load_chat_page_reserving(
     cursor: Option<PageCursor>,
     reserve: usize,
 ) -> Result<AcpChatPage, StoreError> {
+    load_page(connection, project_id, chat_id, cursor, reserve, None)
+}
+
+pub(crate) fn load_fork_history(
+    connection: &rusqlite::Connection,
+    project_id: SageProjectId,
+    parent: SageChatId,
+    child: SageChatId,
+    cursor: Option<PageCursor>,
+) -> Result<AcpChatPage, StoreError> {
+    let boundary = super::chat_fork::history_boundary(connection, &project_id, &parent, &child)?;
+    load_page(connection, project_id, parent, cursor, 0, Some(&boundary))
+}
+
+fn load_page(
+    connection: &rusqlite::Connection,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    cursor: Option<PageCursor>,
+    reserve: usize,
+    fork: Option<&super::chat_fork::ForkHistory>,
+) -> Result<AcpChatPage, StoreError> {
     let (title, projection): (String, i64) = connection
         .query_row(
             "SELECT title,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
@@ -59,10 +81,12 @@ pub(crate) fn load_chat_page_reserving(
         .transpose()
         .map_err(|_| StoreError::Corrupt("head session id"))?;
     let cursor = cursor
-        .map(|cursor| super::history_cursor::resolve(connection, &project_id, &chat_id, cursor))
+        .map(|cursor| {
+            super::history_cursor::resolve(connection, &project_id, &chat_id, cursor, fork)
+        })
         .transpose()?;
     let (mut turn_rows, mut has_more) =
-        load_turn_rows(connection, &project_id, &chat_id, cursor.as_ref())?;
+        load_turn_rows(connection, &project_id, &chat_id, cursor.as_ref(), fork)?;
     super::history_activities::retain_bounded_turn_prefix(
         connection,
         &mut turn_rows,
@@ -78,6 +102,8 @@ pub(crate) fn load_chat_page_reserving(
         .map_err(|_| StoreError::Corrupt("session page bound"))?;
     let (forked_from, forked_from_turn_id) =
         super::chat_fork::forked_from(connection, &project_id, &chat_id)?.unzip();
+    let forked_before_prompt =
+        super::chat_fork::forked_before_prompt(connection, &project_id, &chat_id)?;
     let imported_history =
         super::native_import::imported_session(connection, &project_id, &chat_id, false)?.is_some();
     let child_projection_epoch = super::child_transcript::child_projection_epoch(
@@ -110,6 +136,7 @@ pub(crate) fn load_chat_page_reserving(
         next_cursor: None,
         forked_from: forked_from.clone(),
         forked_from_turn_id: forked_from_turn_id.clone(),
+        forked_before_prompt,
         imported_history,
         child_projection_epoch,
         session_notices: session_notices.clone(),
@@ -145,6 +172,7 @@ pub(crate) fn load_chat_page_reserving(
         next_cursor: slice.next_cursor,
         forked_from,
         forked_from_turn_id,
+        forked_before_prompt,
         imported_history,
         child_projection_epoch,
         session_notices,
@@ -185,17 +213,19 @@ fn load_turn_rows(
     project: &SageProjectId,
     chat: &SageChatId,
     cursor: Option<&super::history_cursor::Boundary>,
+    fork: Option<&super::chat_fork::ForkHistory>,
 ) -> Result<(Vec<TurnRow>, bool), StoreError> {
     let welcome = crate::session_events::legacy_welcome::turn_id(connection, chat.as_str())?
         .unwrap_or_default();
-    let base = concat!(
-        "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
+    let base = "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
                 t.runtime_epoch,t.ordinal,t.state,t.revision,
                 t.created_at,t.updated_at,t.terminal_at
          FROM turns t JOIN agent_sessions s ON s.id=t.session_id
-         WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3 AND ",
-        super::turn_undo::visible_turn!("t.session_id", "t.id")
-    );
+         WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3 AND
+           NOT EXISTS(SELECT 1 FROM session_facts undone WHERE undone.session_id=t.session_id
+             AND undone.turn_id=t.id AND undone.kind='turnUndone'
+             AND (?7 IS NULL OR undone.session_id<>?8 OR undone.sequence<=?7))
+           AND (?7 IS NULL OR s.ordinal<?9 OR (s.ordinal=?9 AND t.ordinal<=?10))";
     let sql = match cursor {
         Some(boundary) if boundary.includes_boundary_turn() => format!(
             "{base} AND (s.ordinal<?4 OR (s.ordinal=?4 AND
@@ -236,14 +266,32 @@ fn load_turn_rows(
                 welcome,
                 boundary.session_ordinal,
                 boundary.turn_ordinal,
-                boundary.turn_id
+                boundary.turn_id,
+                fork.map(|f| f.sequence),
+                fork.map(|f| f.session.as_str()),
+                fork.map(|f| f.session_ordinal),
+                fork.map(|f| f.through_ordinal)
             ],
             mapper,
         )? {
             result.push(row?);
         }
     } else {
-        for row in statement.query_map(params![project.as_str(), chat.as_str(), welcome], mapper)? {
+        for row in statement.query_map(
+            params![
+                project.as_str(),
+                chat.as_str(),
+                welcome,
+                Option::<i64>::None,
+                Option::<i64>::None,
+                Option::<String>::None,
+                fork.map(|f| f.sequence),
+                fork.map(|f| f.session.as_str()),
+                fork.map(|f| f.session_ordinal),
+                fork.map(|f| f.through_ordinal)
+            ],
+            mapper,
+        )? {
             result.push(row?);
         }
     }

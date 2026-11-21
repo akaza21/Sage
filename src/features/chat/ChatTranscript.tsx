@@ -29,7 +29,11 @@ import {
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import { composerWorkspaceName } from "./composerChrome";
-import { ForkPart, LegacyTranscriptPart, NoticePart } from "./lazyParts";
+import {
+  ConversationPart,
+  LegacyTranscriptPart,
+  NoticePart,
+} from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -192,10 +196,12 @@ export function ChatTranscript({
             ) : useNativeAcp && page ? (
               <>
                 {forkedFrom && !hasEarlier ? (
-                  <ForkPart
+                  <ConversationPart
                     part="ForkDivider"
                     parentChatId={forkedFrom}
                     forkTurnId={page.forkedFromTurnId}
+                    beforePrompt={page.forkedBeforePrompt}
+                    forkChatId={page.chatId}
                   />
                 ) : null}
                 {page.sessionNotices?.length || page.sessionSurface ? (

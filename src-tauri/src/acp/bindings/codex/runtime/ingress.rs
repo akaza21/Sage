@@ -14,6 +14,9 @@ impl CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
             .ok_or(AdapterRuntimeError::Frame)?;
+        if self.discard_target_read(id) {
+            return one(AdapterEvent::Absorbed);
+        }
         if self.reject_title_response(id) {
             return super::support::one(AdapterEvent::Absorbed);
         }
@@ -39,6 +42,12 @@ impl CodexRuntime {
             serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
         if self.title_ingress(&value) {
             return one(AdapterEvent::Absorbed);
+        }
+        if let Some(batch) = self.target_ingress(&value) {
+            return batch;
+        }
+        if let Some(batch) = self.rewind_ingress(&value) {
+            return batch;
         }
         if let Some(result) = value.get("result")
             && result.pointer("/thread/id").is_some()
@@ -231,6 +240,8 @@ impl CodexRuntime {
         use sage_acp_protocol::session_control::SessionControl;
         self.native_rpc_reply = None;
         match control {
+            SessionControl::RewindConversation { before } => self.targeted_control(before, false),
+            SessionControl::ForkAt { target } => self.targeted_control(target, true),
             SessionControl::UndoTurn { turn_id } => {
                 self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
             }
@@ -253,6 +264,15 @@ impl CodexRuntime {
         &mut self,
         control: &sage_acp_protocol::session_control::SessionControl,
     ) -> bool {
+        if let sage_acp_protocol::session_control::SessionControl::RewindConversation { before } =
+            control
+        {
+            if !self.inner.reverted_target(before) {
+                return false;
+            }
+            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::Controlled(None));
+            return true;
+        }
         let sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id } = control
         else {
             return false;

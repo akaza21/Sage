@@ -45,9 +45,10 @@ pub(super) fn intersect(
             && policy.prompt_resources,
         prompt_images: curated.prompt_images && advertised.prompt_images && policy.prompt_images,
         cancel: curated.cancel && advertised.cancel && policy.cancel,
-        native_session_fork: curated.native_session_fork
-            && advertised.native_session_fork
-            && policy.native_session_fork,
+        rewind: curated
+            .rewind
+            .intersect(advertised.rewind)
+            .intersect(policy.rewind),
         native_session_compact: curated.native_session_compact
             && advertised.native_session_compact
             && policy.native_session_compact,
@@ -107,7 +108,7 @@ mod tests {
             close_session: true,
             prompt: true,
             cancel: true,
-            native_session_fork: false,
+            rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
             native_session_compact: false,
             native_session_import: false,
             native_review: false,

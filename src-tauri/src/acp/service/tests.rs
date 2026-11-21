@@ -1673,12 +1673,12 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         let receipt = adapter_journal
             .commit(
                 vec![
-                    DurableAdapterEvent::Turn {
+                    DurableAdapterEvent::Turn { native_turn_id: None,
                         scope: scope.clone(),
                         state: TurnState::Running,
                         now_millis: now + 7,
                     },
-                    DurableAdapterEvent::Turn {
+                    DurableAdapterEvent::Turn { native_turn_id: None,
                         scope,
                         state: TurnState::Completed,
                         now_millis: now + 8,
@@ -1754,7 +1754,7 @@ fn capabilities() -> CapabilitySnapshotV1 {
         close_session: true,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
+        rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
         native_session_compact: false,
         native_session_import: false,
         native_review: false,

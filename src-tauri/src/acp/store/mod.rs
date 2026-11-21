@@ -32,6 +32,9 @@ mod request_identity;
 mod request_terminal;
 mod requests;
 mod residency;
+pub(crate) mod rewind;
+#[cfg(test)]
+mod rewind_tests;
 mod send;
 mod session_close;
 mod session_duplicates;
@@ -94,6 +97,7 @@ pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
 pub(crate) use facts::hex_digest;
 pub(crate) use facts::next_projection_revision;
 pub(crate) use history::load_chat_page_reserving;
+pub(crate) use history::load_fork_history;
 
 pub(crate) fn load_chat_page(
     connection: &rusqlite::Connection,

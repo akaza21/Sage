@@ -20,6 +20,56 @@ fn forkable() -> String {
     )
 }
 
+#[test]
+fn inherited_history_keeps_the_parent_ledger_position_when_the_parent_is_rewound() {
+    use crate::acp::store::{TurnUndoneCommand, load_fork_history, record_turn_undone};
+    use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
+    let fixture = Fixture::new(&forkable());
+    let child = fixture.fork("thread-frozen-fork").unwrap();
+    let (project, parent) = fixture.ids();
+    let command = TurnUndoneCommand {
+        project_id: project.clone(),
+        chat_id: parent.clone(),
+        session_id: SageAgentSessionId::parse("session-parent").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        turn_id: SageTurnId::parse("turn-1").unwrap(),
+        rewind_turns: Vec::new(),
+        harness_reverted: true,
+        cut_at: None,
+        now_millis: 50,
+    };
+    record_turn_undone(&mut fixture.database.connection(), &command).unwrap();
+    assert!(
+        load_chat_page(
+            &fixture.database.connection(),
+            project.clone(),
+            parent.clone(),
+            None
+        )
+        .unwrap()
+        .turns
+        .as_slice()
+        .is_empty()
+    );
+    let inherited = load_fork_history(
+        &fixture.database.connection(),
+        project,
+        parent,
+        SageChatId::parse(child).unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        inherited
+            .turns
+            .as_slice()
+            .iter()
+            .map(|turn| turn.id.as_str())
+            .collect::<Vec<_>>(),
+        ["turn-1"]
+    );
+}
+
 struct Fixture {
     root: std::path::PathBuf,
     database: Database,

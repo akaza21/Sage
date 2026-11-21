@@ -137,7 +137,7 @@ pub(crate) fn negotiate_capabilities(
         close_session: offer.close_session,
         prompt: offer.prompt,
         cancel: offer.cancel,
-        native_session_fork: offer.fork_session,
+        rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(offer.fork_session),
         native_session_compact: false,
         native_session_import: false,
         native_review: false,

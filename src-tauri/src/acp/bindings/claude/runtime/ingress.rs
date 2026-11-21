@@ -94,7 +94,7 @@ impl ClaudeRuntime {
         capabilities.model_count = u16::from(!models.is_empty());
         if !self.binding_is_characterised() {
             capabilities.resume_session = false;
-            capabilities.native_session_fork = false;
+            capabilities.rewind.fork_at = false;
             capabilities.child_conversation_projection = false;
             capabilities.collaboration_event_projection = false;
         }

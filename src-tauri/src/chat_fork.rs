@@ -250,7 +250,7 @@ pub(crate) async fn committed_transition(
     }
 }
 
-/// Forks `chat_id` through its latest completed Turn `turn_id`. The native
+/// Forks `chat_id` at the admitted conversation target `turn_id`. The native
 /// fork runs on a blocking thread outside the Project transition lock (it can
 /// wait on the harness); the lock is retaken and the epoch and source
 /// re-validated before the fork Chat is committed.

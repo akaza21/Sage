@@ -36,9 +36,20 @@ pub(in crate::acp::bindings::pi::runtime) struct Fork {
 /// Pi is moved back onto and which a copy must never be mistaken for.
 #[derive(Debug, Clone)]
 enum ForkStep {
-    Cloning { home: String },
-    Reading { home: String },
-    Returning { home: String, fork: Option<String> },
+    Selecting {
+        home: String,
+        target: sage_acp_protocol::session_control::ConversationTarget,
+    },
+    Cloning {
+        home: String,
+    },
+    Reading {
+        home: String,
+    },
+    Returning {
+        home: String,
+        fork: Option<String>,
+    },
 }
 
 impl Drop for PiRuntime {
@@ -57,6 +68,26 @@ impl Drop for PiRuntime {
 }
 
 impl PiRuntime {
+    pub(in crate::acp::bindings::pi::runtime) fn begin_fork_at(
+        &mut self,
+        target: sage_acp_protocol::session_control::ConversationTarget,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.fork.is_some() || self.active_turn.is_some() {
+            return Err(AdapterRuntimeError::Operation);
+        }
+        self.retry_fork_cleanup();
+        if self.forks.len() >= MAX_TRACKED_FORKS {
+            return Err(AdapterRuntimeError::BatchCount);
+        }
+        let home = self.home_path().ok_or(AdapterRuntimeError::Operation)?;
+        let egress = self.begin_native(NativeRequest::ForkMessages)?;
+        let command_id = self.command_id(&egress)?;
+        self.fork = Some(Fork {
+            step: ForkStep::Selecting { home, target },
+            command_id,
+        });
+        Ok(egress)
+    }
     pub(in crate::acp::bindings::pi::runtime) fn begin_fork(
         &mut self,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -108,15 +139,25 @@ impl PiRuntime {
             .clone();
         let cancelled = data.as_ref().map(|data| data["cancelled"].as_bool());
         let (step, request) = match (step, command) {
-            (ForkStep::Cloning { home }, NativeCommand::Clone) => match cancelled {
-                // Pi refused or cancelled the clone and stayed where it was.
-                None | Some(Some(true)) => {
+            (ForkStep::Selecting { home, target }, NativeCommand::ForkMessages) => {
+                let entry = data.as_ref().and_then(|data| fork_entry(data, &target));
+                let Some(entry_id) = entry else {
                     self.fork = None;
                     return Ok(self.answer_fork(awaited, NativeRpcReply::Rejected));
+                };
+                (ForkStep::Cloning { home }, NativeRequest::Fork { entry_id })
+            }
+            (ForkStep::Cloning { home }, NativeCommand::Clone | NativeCommand::Fork) => {
+                match cancelled {
+                    // Pi refused or cancelled the clone and stayed where it was.
+                    None | Some(Some(true)) => {
+                        self.fork = None;
+                        return Ok(self.answer_fork(awaited, NativeRpcReply::Rejected));
+                    }
+                    Some(Some(false)) => (ForkStep::Reading { home }, NativeRequest::ForkState),
+                    Some(None) => return Err(self.lost_fork()),
                 }
-                Some(Some(false)) => (ForkStep::Reading { home }, NativeRequest::ForkState),
-                Some(None) => return Err(self.lost_fork()),
-            },
+            }
             (ForkStep::Reading { home }, NativeCommand::ForkState) => {
                 // A failed `get_state` leaves the copy's file unknown: Pi's
                 // `clone` answer does not name it, and the session folder is
@@ -212,7 +253,7 @@ impl PiRuntime {
         }
         if matches!(
             self.fork.as_ref().map(|fork| &fork.step),
-            Some(ForkStep::Cloning { .. })
+            Some(ForkStep::Cloning { .. } | ForkStep::Selecting { .. })
         ) {
             self.fork = None;
         } else {
@@ -293,4 +334,29 @@ impl PiRuntime {
 /// Only a saved copy can be reopened, so a bare session id does not count.
 fn fork_key(state: &Value) -> Option<String> {
     session_file_key(state.get("sessionFile")?.as_str()?).map(str::to_owned)
+}
+
+/// Resolve only the selected user entry from Pi's real fork menu. The suffix
+/// position disambiguates repeated prompts; the digest refuses drift.
+fn fork_entry(
+    data: &Value,
+    target: &sage_acp_protocol::session_control::ConversationTarget,
+) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let messages = data.get("messages")?.as_array()?;
+    if messages.len() > 4096 {
+        return None;
+    }
+    let row = messages
+        .iter()
+        .rev()
+        .nth(target.following_messages as usize)?;
+    let digest: [u8; 32] = Sha256::digest(row.get("text")?.as_str()?.as_bytes()).into();
+    if digest != target.prompt_digest {
+        return None;
+    }
+    let entry = row.get("entryId")?.as_str()?;
+    ExternalId::new("entryId", entry)
+        .ok()
+        .map(|id| id.as_str().to_owned())
 }

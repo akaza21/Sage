@@ -302,7 +302,15 @@ impl CodexAdapter {
     /// Only a characterised negotiation admits it, and only between Turns: the
     /// fork carries the thread through its latest completed Turn.
     pub(crate) fn fork(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.native_session_fork)?;
+        self.fork_at(id, None)
+    }
+
+    pub(crate) fn fork_at(
+        &mut self,
+        id: u64,
+        last_turn_id: Option<&str>,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.rewind.fork_at)?;
         if self.pending_fork.is_some()
             || self.pending_read.is_some()
             || self.turn_start_correlations.has_pending()
@@ -318,7 +326,10 @@ impl CodexAdapter {
             .external_thread_id
             .clone()
             .ok_or(AdapterError::SessionUnavailable)?;
-        let request = self.reserve(OutgoingRequest::fork(id, &thread)?)?;
+        let request = self.reserve(match last_turn_id {
+            Some(turn) => OutgoingRequest::fork_at(id, &thread, Some(turn))?,
+            None => OutgoingRequest::fork(id, &thread)?,
+        })?;
         self.pending_fork = Some(id);
         Ok(request)
     }

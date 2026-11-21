@@ -4,6 +4,48 @@ use crate::acp::goal::NativeRpcReply;
 const HOME: &str = "2026-11-11T10-00-00-000Z_019a2b3c-4d5e-7f00-8a9b-0c1d2e3f4a5b";
 const COPY: &str = "2026-11-11T10-05-00-000Z_019a2b3c-0000-7f00-8a9b-0c1d2e3f4a5c";
 
+#[test]
+fn fork_at_uses_the_selected_entry_from_the_recorded_fork_menu_and_returns_home() {
+    use sage_acp_protocol::{
+        contract::SageTurnId,
+        session_control::{ConversationTarget, SessionControl},
+    };
+    use sha2::{Digest, Sha256};
+    let mut chat = saved_chat();
+    let egress = chat
+        .runtime
+        .session_control(&SessionControl::ForkAt {
+            target: ConversationTarget {
+                turn_id: SageTurnId::parse("turn-chosen").unwrap(),
+                native_turn_id: None,
+                following_messages: 1,
+                prompt_digest: Sha256::digest(b"WRITE out").into(),
+            },
+        })
+        .unwrap();
+    let menu = deliver(&mut chat.runtime, egress);
+    assert_eq!(menu["type"], "get_fork_messages");
+    let captured: Value =
+        include_str!("../../../../../../testdata/acp/pi/captured_session_150.jsonl")
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .find(|row| row["command"] == "get_fork_messages")
+            .unwrap();
+    let fork = answer(&mut chat, &menu, captured["data"].clone()).unwrap();
+    assert_eq!(
+        fork,
+        json!({"id":fork["id"],"type":"fork","entryId":"f898de8b"})
+    );
+    let state = answer(&mut chat, &fork, json!({"cancelled":false})).unwrap();
+    let back = read_copy(&mut chat, &state);
+    answer(&mut chat, &back, json!({"cancelled":false}));
+    assert!(matches!(
+        chat.runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Forked(_))
+    ));
+    assert!(chat.file(HOME).is_file());
+}
+
 struct Chat<R: HarnessAdapter = PiRuntime> {
     runtime: R,
     dir: std::path::PathBuf,
@@ -86,7 +128,7 @@ fn read_copy_named(chat: &mut Chat<impl HarnessAdapter>, state: &Value, key: &st
 #[test]
 fn pi_advertises_forking() {
     let chat = saved_chat();
-    assert!(chat.runtime.capabilities().unwrap().native_session_fork);
+    assert!(chat.runtime.capabilities().unwrap().rewind.fork_at);
 }
 
 #[test]
@@ -159,7 +201,7 @@ fn the_shipped_pi_runtime_forks_and_releases_the_copy() {
     let install = std::env::temp_dir().join(format!("sage-pi-install-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&install).unwrap();
     let mut chat = saved_chat_on(shipped_runtime(&install));
-    assert!(chat.runtime.capabilities().unwrap().native_session_fork);
+    assert!(chat.runtime.capabilities().unwrap().rewind.fork_at);
     let state = cloned(&mut chat);
     let back = read_copy(&mut chat, &state);
     assert!(answer(&mut chat, &back, json!({"cancelled":false})).is_none());

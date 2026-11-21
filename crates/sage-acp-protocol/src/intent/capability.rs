@@ -20,7 +20,7 @@ pub struct CapabilitySnapshotV1 {
     #[serde(skip_serializing_if = "is_false")]
     pub prompt_images: bool,
     pub cancel: bool,
-    pub native_session_fork: bool,
+    pub rewind: super::RewindCapability,
     #[serde(skip_serializing_if = "is_false")]
     pub native_session_compact: bool,
     /// The harness lists sessions of the project started outside Sage and
@@ -56,7 +56,11 @@ struct CapabilitySnapshotWire {
     #[serde(default)]
     prompt_images: bool,
     cancel: bool,
-    native_session_fork: bool,
+    #[serde(default)]
+    rewind: Option<super::RewindCapability>,
+    /// Read old persisted snapshots without granting new capabilities.
+    #[serde(default, rename = "nativeSessionFork")]
+    _legacy_fork: bool,
     #[serde(default)]
     native_session_compact: bool,
     #[serde(default)]
@@ -96,7 +100,9 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             prompt_resources: wire.prompt_resources,
             prompt_images: wire.prompt_images,
             cancel: wire.cancel,
-            native_session_fork: wire.native_session_fork,
+            rewind: wire
+                .rewind
+                .unwrap_or_else(|| super::RewindCapability::latest_fork(wire._legacy_fork)),
             native_session_compact: wire.native_session_compact,
             native_session_import: wire.native_session_import,
             native_review: wire.native_review,

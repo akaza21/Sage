@@ -15,7 +15,8 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { AnswerActions } from "./AnswerActions";
-import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
+import { ForkChatDialog, forkChat } from "./ForkChat";
+import { ForkDivider } from "./ForkHistory";
 import { ForkChatDialogHost } from "./ForkChatDialogHost";
 
 const getGoalChatPage = vi.hoisted(() => vi.fn());
@@ -80,7 +81,14 @@ function forkablePage(
         id: "session-1",
         runtimeEpoch: "2",
         residency: overrides.residency ?? "hot",
-        capabilities: { nativeSessionFork: overrides.fork ?? true },
+        capabilities: {
+          rewind: {
+            effects: { conversation: false, files: false },
+            targets: "latestTurn",
+            forkAt: overrides.fork ?? true,
+            onResume: false,
+          },
+        },
       },
     ] as never,
   };

@@ -254,9 +254,9 @@ test("parity selectors stay anchored to the wave 6-8 product components", () => 
         'className="answer-more-menu"',
         'role="menuitem"',
         'className="fork-chat-dialog',
-        'className="chat-fork-divider"',
       ],
     ],
+    ["features/chat/ForkHistory.tsx", ['className="chat-fork-divider"']],
     ["features/chat/ChatTranscript.tsx", ['className="chat-follow-end"']],
     ["features/chat/acp/TurnActivityItem.tsx", ["data-selectable-answer="]],
   ];

@@ -80,7 +80,7 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         close_session: false,
         prompt: true,
         cancel: true,
-        native_session_fork: true,
+        rewind: crate::acp::bindings::claude::sdk::rewind_capability(),
         native_session_compact: true,
         native_session_import: false,
         native_review: false,

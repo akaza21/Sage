@@ -51,6 +51,7 @@ impl CodexRuntime {
         id: u64,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
         if self.inner.fork_pending() == Some(id) {
+            self.fork_cut = None;
             // A fork answer beyond the structural bound is also beyond what
             // `thread/resume` could later load, so no Chat is made for it.
             self.inner.complete_fork(id).map_err(super::map_adapter)?;

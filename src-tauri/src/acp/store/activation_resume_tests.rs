@@ -34,8 +34,8 @@ fn setup() -> Connection {
     connection
 }
 
-const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
-const NEW_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":true,"nativeSessionFork":true,"nativeSessionCompact":true,"nativeSessionImport":true,"nativeReview":true,"nativeBackgroundTerminals":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"rewind":{"effects":{"conversation":false,"files":false},"targets":"latestTurn","forkAt":false,"onResume":false},"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const NEW_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":true,"rewind":{"effects":{"conversation":true,"files":false},"targets":"anyTurn","forkAt":true,"onResume":false},"nativeSessionCompact":true,"nativeSessionImport":true,"nativeReview":true,"nativeBackgroundTerminals":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
 fn activate(connection: &mut Connection, session: &SageAgentSessionId, epoch: u64) {
     let expected: i64 = connection
@@ -249,7 +249,7 @@ fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
 
     park_and_reactivate(&mut connection, &session, 2);
     let mut negotiated: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
-    negotiated.native_session_fork = false;
+    negotiated.rewind.fork_at = false;
     complete(
         &mut connection,
         &session,

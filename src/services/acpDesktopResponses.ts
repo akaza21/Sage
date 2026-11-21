@@ -31,7 +31,6 @@ const REQUIRED_CAPABILITIES = [
   "closeSession",
   "prompt",
   "cancel",
-  "nativeSessionFork",
   "activeTurnSteer",
   "childConversationProjection",
   "childTranscriptRead",
@@ -67,9 +66,11 @@ function safeCapabilities(
     configCount > 128
   )
     return null;
+  const rewind = safeRewind(value.rewind);
   return {
     schemaVersion: 1,
     protocolVersion,
+    ...(rewind ? { rewind } : {}),
     ...Object.fromEntries([
       ...REQUIRED_CAPABILITIES.map((flag) => [flag, value[flag]]),
       ...OPTIONAL_CAPABILITIES.filter((flag) => value[flag] === true).map(
@@ -80,6 +81,30 @@ function safeCapabilities(
     modelCount,
     configCount,
   } as AgentSessionProjection["capabilities"];
+}
+
+function safeRewind(
+  value: unknown,
+): AgentSessionProjection["capabilities"]["rewind"] {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.effects) ||
+    typeof value.effects.conversation !== "boolean" ||
+    typeof value.effects.files !== "boolean" ||
+    !isOneOf(value.targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
+    typeof value.forkAt !== "boolean" ||
+    typeof value.onResume !== "boolean"
+  )
+    return undefined;
+  return {
+    effects: {
+      conversation: value.effects.conversation,
+      files: value.effects.files,
+    },
+    targets: value.targets,
+    forkAt: value.forkAt,
+    onResume: value.onResume,
+  };
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
@@ -297,6 +322,9 @@ export function safeAcpMutationResponse(
         : {}),
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
+      }),
+      ...(projection.forkedBeforePrompt === true && {
+        forkedBeforePrompt: true,
       }),
       ...(projection.importedHistory === true && { importedHistory: true }),
       ...(Number.isSafeInteger(epoch) &&

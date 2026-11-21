@@ -7,7 +7,7 @@ use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::ProjectionRevision;
 use sage_db::database::Database;
 
-pub(crate) const CAPABILITIES: &str = super::super::sessions::PENDING_CAPABILITIES_JSON;
+pub(crate) const CAPABILITIES: &str = r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"rewind":{"effects":{"conversation":false,"files":false},"targets":"latestTurn","forkAt":false,"onResume":false},"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
 const DIGEST: &str = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
@@ -106,6 +106,18 @@ impl Fixture {
             .unwrap();
     }
 
+    pub(crate) fn prompt(&self, turn: &str, text: &str) {
+        use sha2::{Digest, Sha256};
+        let payload =
+            serde_json::json!({"kind":"text","payload":{"role":"user","text":text}}).to_string();
+        let digest = format!("{:x}", Sha256::digest(payload.as_bytes()));
+        let epoch = self.epoch();
+        self.database.connection().execute("INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
+            origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at)
+            VALUES(?1,?2,?3,'session-a',?4,?5,0,'primary','text','completed',?1,?6,?7,?8,0,1,1,1)",
+            params![format!("prompt-{turn}"),self.project.as_str(),self.chat.as_str(),turn,epoch,payload,payload.len() as i64,digest]).unwrap();
+    }
+
     pub(crate) fn run(&self) {
         let epoch = self.epoch() + 1;
         self.database
@@ -133,6 +145,7 @@ impl Fixture {
         // itself lists turns newest first.
         let has_prior = self.page_turns().iter().any(|id| id != turn);
         let command = TurnUndoneCommand {
+            rewind_turns: Vec::new(),
             project_id: self.project.clone(),
             chat_id: self.chat.clone(),
             session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),

@@ -224,6 +224,7 @@ impl Fixture {
                     4096,
                     vec![
                         AdapterInboundEvent::Turn {
+                            native_turn_id: None,
                             state: TurnState::Running,
                             now_millis: 12,
                         },
@@ -231,6 +232,7 @@ impl Fixture {
                         AdapterInboundEvent::FilePair(pair),
                         AdapterInboundEvent::Item(answer_item),
                         AdapterInboundEvent::Turn {
+                            native_turn_id: None,
                             state: TurnState::Completed,
                             now_millis: 13,
                         },

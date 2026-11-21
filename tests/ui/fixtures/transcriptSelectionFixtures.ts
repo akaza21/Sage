@@ -47,7 +47,15 @@ export function installTranscriptSelectionFixture(
         ? {
             ...session,
             residency: "hot",
-            capabilities: { ...session.capabilities, nativeSessionFork: true },
+            capabilities: {
+              ...session.capabilities,
+              rewind: {
+                effects: { conversation: false, files: false },
+                targets: "latestTurn",
+                forkAt: true,
+                onResume: false,
+              },
+            },
           }
         : session,
     );

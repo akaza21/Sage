@@ -28,6 +28,8 @@ use snapshots::ItemSnapshots;
 mod harness;
 mod ingress;
 mod model_config;
+mod rewind;
+mod rewind_target;
 pub(crate) use model_config::launch_effort_option;
 mod title_request;
 mod usage;
@@ -48,6 +50,8 @@ pub(crate) struct CodexRuntime {
     pending_browser_failure_details: Vec<(String, String, usize)>,
     browser_failure_warning_logged: bool,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
+    fork_cut: Option<rewind::ForkCut>,
+    target_read: Option<rewind_target::TargetRead>,
     selected_model_id: Option<sage_acp_protocol::intent::ModelId>,
     reported_model_id: Option<sage_acp_protocol::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,

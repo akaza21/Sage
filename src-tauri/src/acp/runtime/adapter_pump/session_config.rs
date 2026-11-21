@@ -160,9 +160,13 @@ pub(crate) fn write_control<A: HarnessAdapter>(
     if adapter.answered_control(control) {
         return Ok(());
     }
-    let egress = adapter
-        .session_control(control)
-        .map_err(|_| HostError::Intent)?;
+    let egress = adapter.session_control(control).map_err(|error| {
+        if error == AdapterRuntimeError::BatchCount {
+            HostError::Capacity
+        } else {
+            HostError::Intent
+        }
+    })?;
     let outcome = transport.write(egress.frame());
     let resolution = EgressResolution::from(outcome);
     adapter
@@ -278,7 +282,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     ) -> Result<(), crate::acp::runtime::HostError> {
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
-        write_control(&mut self.adapter, transport, control)
+        if control.may_read_history() && !self.decoder.is_frame_aligned() {
+            return Err(crate::acp::runtime::HostError::State);
+        }
+        write_control(&mut self.adapter, transport, control)?;
+        if control.may_read_history() {
+            self.decoder.enable_recoverable_oversize();
+        }
+        Ok(())
     }
     pub(crate) fn write_child(
         &mut self,
@@ -359,7 +370,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         transport: &mut impl EgressTransport,
         control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<(), crate::acp::runtime::HostError> {
-        write_control(&mut self.adapter, transport, control)
+        if control.may_read_history() && !self.idle_decoder.is_frame_aligned() {
+            return Err(crate::acp::runtime::HostError::State);
+        }
+        write_control(&mut self.adapter, transport, control)?;
+        if control.may_read_history() {
+            self.idle_decoder.enable_recoverable_oversize();
+        }
+        Ok(())
     }
     pub(crate) fn write_fork(
         &mut self,

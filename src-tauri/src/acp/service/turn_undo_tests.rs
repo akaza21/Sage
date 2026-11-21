@@ -1,7 +1,5 @@
-use super::TurnUndo;
 use crate::acp::{
-    bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, codex::CODEX_BINDING_ID},
-    service::AcpService,
+    bindings::claude::sdk::CLAUDE_SDK_BINDING_ID, service::AcpService,
     store::turn_undo::fixture::Fixture,
 };
 use sage_acp_protocol::{
@@ -9,23 +7,13 @@ use sage_acp_protocol::{
     scheduler::RuntimeOwner,
 };
 
-#[test]
-fn claude_restores_files_and_codex_rewinds_only_its_own_runtimes_turn() {
-    let offered = |binding: &str, session: u64, turn: u64| {
-        TurnUndo::of(binding)
-            .filter(|undo| undo.offers(session, turn))
-            .map(|undo| undo.keeps_files)
-    };
-    assert_eq!(offered(CLAUDE_SDK_BINDING_ID, 2, 1), Some(false));
-    assert_eq!(offered(CODEX_BINDING_ID, 2, 2), Some(true));
-    assert_eq!(offered(CODEX_BINDING_ID, 2, 1), None);
-    assert_eq!(offered("pi-rpc", 1, 1), None);
-}
-
 /// The service starts first: its startup recovery would park a runtime it does
 /// not run.
 fn running(binding: &str) -> (Fixture, AcpService) {
-    let fixture = Fixture::on(binding);
+    let mut caps: sage_acp_protocol::intent::CapabilitySnapshotV1 =
+        serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
+    caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability();
+    let fixture = Fixture::with_thread(binding, "thread-a", &serde_json::to_string(&caps).unwrap());
     let service = AcpService::new(fixture.database.clone()).unwrap();
     fixture.run();
     (fixture, service)
@@ -60,24 +48,7 @@ fn offer((fixture, service): &(Fixture, AcpService), turn: &str) -> (Option<Stri
 }
 
 #[test]
-fn codex_offers_no_second_undo_in_the_runtime_that_reverted_a_turn() {
-    let codex = running(CODEX_BINDING_ID);
-    codex.0.turn("turn-1", 0);
-    codex.0.turn("turn-2", 1);
-    assert_eq!(offer(&codex, "turn-2"), (Some("turn-2".into()), true));
-    codex.0.undo("turn-2", true);
-    assert_eq!(offer(&codex, "turn-1"), (None, false));
-
-    // Claude Code cuts its thread on the next launch, so it goes on.
-    let claude = running(CLAUDE_SDK_BINDING_ID);
-    claude.0.turn("turn-1", 0);
-    claude.0.turn("turn-2", 1);
-    claude.0.undo("turn-2", false);
-    assert_eq!(offer(&claude, "turn-1"), (Some("turn-1".into()), true));
-}
-
-#[test]
-fn a_turn_a_fork_was_taken_through_is_not_offered() {
+fn fork_lineage_does_not_withhold_a_capable_conversation_rewind() {
     let claude = running(CLAUDE_SDK_BINDING_ID);
     let fixture = &claude.0;
     fixture.turn("turn-1", 0);
@@ -97,5 +68,5 @@ fn a_turn_a_fork_was_taken_through_is_not_offered() {
             chat = fixture.chat.as_str(),
         ))
         .unwrap();
-    assert_eq!(offer(&claude, "turn-1"), (None, false));
+    assert_eq!(offer(&claude, "turn-1"), (Some("turn-1".into()), true));
 }

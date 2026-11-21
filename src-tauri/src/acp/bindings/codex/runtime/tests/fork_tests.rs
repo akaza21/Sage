@@ -9,6 +9,79 @@ fn pinned_fork_schema() -> Value {
     .unwrap()
 }
 
+#[test]
+fn a_targeted_fork_carries_the_chosen_turn_and_cuts_only_the_new_thread() {
+    use sage_acp_protocol::{
+        contract::SageTurnId,
+        session_control::{ConversationTarget, SessionControl},
+    };
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let egress = runtime
+        .session_control(&SessionControl::ForkAt {
+            target: ConversationTarget {
+                turn_id: SageTurnId::parse("turn-6f9619ff-8b86-d011-b42d-00cf4fc964ff").unwrap(),
+                native_turn_id: Some(ExternalId::new("nativeTurnId", "chosen-turn").unwrap()),
+                following_messages: 2,
+                prompt_digest: [0; 32],
+            },
+        })
+        .unwrap();
+    let id = request_id(&egress);
+    let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    let schema = pinned_fork_schema();
+    for key in request["params"].as_object().unwrap().keys() {
+        assert!(
+            schema["params"]["properties"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(key))
+        );
+    }
+    assert_eq!(request["params"]["lastTurnId"], "chosen-turn");
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &forked_thread(
+                id,
+                json!({"id":"target-fork","forkedFromId":"thread-1","turns":[]}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        None,
+        "a fork chat waits for the cut"
+    );
+    let (_, mut egress) = batch.into_parts();
+    let cut = egress.pop().unwrap();
+    let id = request_id(&cut);
+    let request: Value = serde_json::from_slice(cut.frame().payload()).unwrap();
+    assert_eq!(request["method"], "thread/revert");
+    assert_eq!(
+        request["params"],
+        json!({"threadId":"target-fork","beforeTurnId":"chosen-turn"})
+    );
+    runtime
+        .resolve_egress(cut.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{"thread":{"id":"target-fork","turns":[]}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Forked(
+            ExternalId::new("externalSessionId", "target-fork").unwrap()
+        ))
+    );
+}
+
 fn fork_request(runtime: &mut CodexRuntime) -> (u64, Value) {
     let egress = runtime.fork_session().expect("fork request");
     let id = request_id(&egress);
@@ -51,7 +124,7 @@ fn the_fork_request_is_the_pinned_thread_fork_shape() {
 
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
-    assert!(runtime.capabilities().unwrap().native_session_fork);
+    assert!(runtime.capabilities().unwrap().rewind.fork_at);
     let (_, request) = fork_request(&mut runtime);
     assert_eq!(request["method"], schema["method"]);
     let params = request["params"].as_object().unwrap();

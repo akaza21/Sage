@@ -36,9 +36,8 @@ impl AcpService {
                         session_id: session.id.clone(),
                         runtime_epoch: epoch,
                     },
-                    session.binding_id.as_str(),
+                    &session.capabilities,
                     turn.id.as_str(),
-                    turn.runtime_epoch.get(),
                 )?
                 .map(|undo| (turn.id.clone(), undo.keeps_files)),
             _ => None,

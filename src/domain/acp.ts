@@ -149,6 +149,18 @@ export type ToolState =
 export type ActivityState =
   "observed" | "active" | "completed" | "failed" | "cancelled" | "unsupported";
 
+export interface AcpRewindEffects {
+  conversation: boolean;
+  files: boolean;
+}
+
+export interface AcpRewindCapability {
+  effects: AcpRewindEffects;
+  targets: "latestTurn" | "anyTurn" | "anyUserMessage";
+  forkAt: boolean;
+  onResume: boolean;
+}
+
 export interface AcpCapabilitySet {
   schemaVersion: 1;
   protocolVersion: string;
@@ -162,7 +174,7 @@ export interface AcpCapabilitySet {
   /** Standard ACP `promptCapabilities.image`; absent means unsupported. */
   promptImages?: boolean;
   cancel: boolean;
-  nativeSessionFork: boolean;
+  rewind?: AcpRewindCapability;
   nativeSessionImport?: boolean;
   nativeSessionCompact?: boolean;
   nativeReview?: boolean;
@@ -181,6 +193,7 @@ export interface GetAcpChatPageRequest {
   projectGeneration: ProjectGeneration;
   chatId: SageChatId;
   cursor: AcpPageCursor | null;
+  forkHistoryFor?: SageChatId;
 }
 
 export interface GetCodexDiscoveryRequest {

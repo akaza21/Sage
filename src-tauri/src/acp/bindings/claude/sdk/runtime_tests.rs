@@ -1032,7 +1032,7 @@ fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
 fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
     let mut runtime = ready();
     let capabilities = runtime.capabilities().unwrap();
-    assert!(capabilities.native_session_fork);
+    assert!(capabilities.rewind.fork_at);
     let egress = runtime.fork_session().unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
     runtime

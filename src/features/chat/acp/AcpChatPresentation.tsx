@@ -35,7 +35,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
-import { TurnPrompts } from "./TurnPrompts";
+import { ConversationActions, TurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -184,6 +184,7 @@ const Turn = memo(
               </div>
             ) : null}
             <TurnPrompts
+              page={page}
               items={promptItems}
               turn={turn}
               interactive={interactive}
@@ -357,7 +358,7 @@ export function AcpChatPresentation({
     </Fragment>
   );
   return (
-    <>
+    <ConversationActions page={page}>
       <NavigationPart
         part="ChatNavigation"
         // Use a distinct sibling key to avoid remounting and closing find.
@@ -391,7 +392,7 @@ export function AcpChatPresentation({
       {editSummaryContainer
         ? createPortal(editSummary, editSummaryContainer)
         : null}
-    </>
+    </ConversationActions>
   );
 }
 

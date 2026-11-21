@@ -14,7 +14,11 @@ fn notice(text: &str) -> SessionScopedEvent {
 }
 
 fn turn(state: TurnState, now_millis: i64) -> AdapterInboundEvent {
-    AdapterInboundEvent::Turn { state, now_millis }
+    AdapterInboundEvent::Turn {
+        native_turn_id: None,
+        state,
+        now_millis,
+    }
 }
 
 fn surface(fixture: &Fixture) -> SessionSurface {

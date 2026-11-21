@@ -8,6 +8,7 @@ pub(crate) fn stage_turn_undo<E: std::fmt::Display>(
     owner: &RuntimeOwner,
     turn_id: SageTurnId,
     harness_reverted: bool,
+    conversation_only: bool,
     resolve_cut: impl FnOnce() -> Result<Option<String>, E>,
 ) -> Result<crate::acp::store::TurnUndoneCommand, SessionControlError> {
     let cut_at = if harness_reverted {
@@ -25,6 +26,18 @@ pub(crate) fn stage_turn_undo<E: std::fmt::Display>(
         chat_id: owner.chat_id.clone(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
+        rewind_turns: if conversation_only {
+            crate::acp::store::rewind::suffix(
+                &database.connection(),
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                turn_id.as_str(),
+            )
+            .map_err(|_| SessionControlError::Unavailable)?
+        } else {
+            Vec::new()
+        },
         turn_id,
         harness_reverted,
         cut_at,

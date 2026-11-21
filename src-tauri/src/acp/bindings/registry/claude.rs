@@ -34,7 +34,7 @@ pub(super) fn capabilities(
         // Characterised from the claude-agent-acp 0.76.0 / SDK 1.4.0 pair
         // (testdata/acp/claude/observed-0760-fork.json); the live offer and
         // the characterised-binding gate still intersect it.
-        native_session_fork: true,
+        rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(true),
         native_session_compact: false,
         native_session_import: false,
         native_review: false,

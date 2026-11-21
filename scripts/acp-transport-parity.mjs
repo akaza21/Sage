@@ -22,7 +22,6 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "nativeBackgroundTerminals",
     "nativeReview",
     "nativeSessionCompact",
-    "nativeSessionFork",
     "nativeSessionImport",
     "newSession",
     "prompt",
@@ -30,8 +29,11 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "promptResources",
     "protocolVersion",
     "resumeSession",
+    "rewind",
     "schemaVersion",
   ],
+  AcpRewindCapability: ["effects", "forkAt", "onResume", "targets"],
+  AcpRewindEffects: ["conversation", "files"],
   AcpItemIdentity: [
     "activityId",
     "chatId",
@@ -59,6 +61,8 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
 });
 
 const RUST_TYPE_ALIASES = Object.freeze({
+  AcpRewindCapability: "RewindCapability",
+  AcpRewindEffects: "RewindEffects",
   AcpCapabilitySet: "CapabilitySnapshotV1",
   AcpItemIdentity: "ItemProjection",
   BetaEvidenceResult: "BetaEvidenceResult",
