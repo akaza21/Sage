@@ -4,7 +4,7 @@ use super::SdkBridge;
 use crate::acp::goal::{GoalProgress, GoalSnapshot, GoalState, GoalStatus, valid_objective};
 use sage_acp_protocol::intent::GoalCapabilities;
 
-/// This command is offered by the CLI only for accounts with native goals enabled.
+/// Only the CLI's built-in command proves native goal support; custom commands may share its name.
 const GOAL_COMMAND: &str = "goal";
 const MAX_REASON_CHARS: usize = 512;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -21,9 +21,9 @@ impl SdkBridge {
 
     pub(super) fn refresh_goal_capability(&mut self) {
         self.goals_enabled = self.commands.as_array().is_some_and(|commands| {
-            commands
-                .iter()
-                .any(|command| command["name"] == GOAL_COMMAND)
+            commands.iter().any(|command| {
+                command["name"] == GOAL_COMMAND && command["_meta"]["source"] == "builtin"
+            })
         });
         if self.goals_enabled && matches!(self.goal, GoalState::Unsupported) {
             self.goal = GoalState::NoGoal;

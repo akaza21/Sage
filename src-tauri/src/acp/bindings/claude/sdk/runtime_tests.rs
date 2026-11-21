@@ -1514,6 +1514,67 @@ fn a_background_subagents_approval_card_row_ends_with_the_answer_not_the_turn() 
 }
 
 #[test]
+fn a_custom_goal_command_does_not_enable_or_dispatch_native_goals() {
+    use crate::acp::goal::{GoalAction, GoalState};
+    for builtin in [Value::Null, json!(false), json!("true")] {
+        let mut sdk = runtime();
+        let initialize = send(&mut sdk, AdapterCommand::Initialize);
+        let events = reply(
+            &mut sdk,
+            &initialize,
+            json!({
+                "commands":[{"name":"goal","description":"Custom goal command","builtin":builtin}],
+                "current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]
+            }),
+        );
+        assert!(
+            matches!(&events[..], [AdapterEvent::Initialized { capabilities }] if !capabilities.goal.supported())
+        );
+        assert!(!sdk.capabilities().unwrap().goal.supported());
+        assert_eq!(sdk.goal_state(), Some(&GoalState::Unsupported));
+        for action in [
+            GoalAction::Set {
+                objective: "Ship the release".into(),
+            },
+            GoalAction::ClearExisting,
+        ] {
+            assert!(matches!(
+                sdk.prepare_goal_command(&action),
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            ));
+            assert!(sdk.take_native_rpc_reply().is_none());
+        }
+    }
+}
+
+#[test]
+fn a_native_goal_cannot_dispatch_through_a_custom_catalog_entry() {
+    use crate::acp::{goal::GoalAction, slash_commands::AvailableCommand};
+    let mut sdk = runtime();
+    let initialize = send(&mut sdk, AdapterCommand::Initialize);
+    reply(
+        &mut sdk,
+        &initialize,
+        json!({"commands":[{"name":"goal","description":"Native goal","builtin":true}],
+            "current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
+    );
+    assert!(sdk.capabilities().unwrap().goal.set);
+    sdk.available_commands()
+        .replace(Ok(vec![
+            AvailableCommand::from_acp(&json!({"name":"goal","description":"Custom goal"}))
+                .unwrap(),
+        ]))
+        .unwrap();
+    assert!(matches!(
+        sdk.prepare_goal_command(&GoalAction::Set {
+            objective: "Ship the release".into()
+        }),
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    ));
+    assert!(sdk.take_native_rpc_reply().is_none());
+}
+
+#[test]
 fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
     use crate::acp::goal::{GoalAction, GoalChannel, GoalState, NativeRpcReply};
     use sage_acp_protocol::{

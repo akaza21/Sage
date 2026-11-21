@@ -31,7 +31,10 @@ impl ClaudeSdkRuntime {
         };
         let commands = self.session.available_commands().snapshot();
         let name = bridge.goal_command_name();
-        if !commands.commands.iter().any(|command| command.name == name) {
+        if !commands.commands.iter().any(|command| {
+            command.name == name
+                && command.source == crate::acp::slash_commands::CommandSource::Builtin
+        }) {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
         self.native = Some(NativeRpcReply::GoalCommand(GoalCommand {

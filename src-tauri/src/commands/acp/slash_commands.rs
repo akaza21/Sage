@@ -114,7 +114,7 @@ pub(crate) async fn run_command_turn(
         .map_err(prompt_not_dispatched)?;
     let r = request.session;
     if let Some((turn_id, expected_turn_revision)) = current_turn {
-        return session_operations::steer_acp_turn_inner(
+        return session_operations::steer_command_turn(
             state,
             SteerAcpTurnRequest {
                 project_id: r.project_id,
@@ -130,11 +130,7 @@ pub(crate) async fn run_command_turn(
                 attached_context: AttachedContexts::default(),
             },
         )
-        .await
-        .map_err(|failure| SendAcpTurnFailure {
-            failure,
-            prompt_dispatch: crate::acp::ipc::PromptDispatch::Unknown,
-        });
+        .await;
     }
     session_operations::send_acp_turn_inner(
         state,
@@ -186,6 +182,10 @@ fn command_prompt(
     });
     Ok(prompt)
 }
+
+#[cfg(test)]
+#[path = "slash_commands_ipc_tests.rs"]
+mod ipc_tests;
 
 #[cfg(test)]
 mod tests {
