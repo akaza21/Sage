@@ -63,7 +63,8 @@ pub async fn mutate_paths(
     let mut arguments = match action {
         GitFileMutationAction::Stage => vec!["add"],
         // Path-limited reset also handles an unborn HEAD, without a separate probe.
-        GitFileMutationAction::Unstage => vec!["reset", "--quiet"],
+        // The caller's final status refresh owns the worktree walk.
+        GitFileMutationAction::Unstage => vec!["reset", "--quiet", "--no-refresh"],
         GitFileMutationAction::Discard => vec!["restore", "--worktree"],
         _ => unreachable!("batch action was validated"),
     };
