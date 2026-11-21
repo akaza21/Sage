@@ -2,7 +2,9 @@ use rusqlite::{Transaction, params};
 
 use super::ChatTitleSource;
 
+mod generated;
 mod prompt;
+pub(crate) use generated::generated_title;
 pub(super) use prompt::prompt_title;
 
 /// Format characters that change how surrounding text displays without

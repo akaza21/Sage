@@ -40,7 +40,7 @@ impl ModelCatalog {
         }
     }
 
-    fn find(&self, id: &str) -> Option<&ModelDescriptor> {
+    pub(super) fn find(&self, id: &str) -> Option<&ModelDescriptor> {
         self.models.iter().find(|model| model.id.as_str() == id)
     }
 }

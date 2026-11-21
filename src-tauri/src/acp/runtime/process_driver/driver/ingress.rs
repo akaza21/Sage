@@ -54,6 +54,9 @@ where
             self.pump.next_auto_resolution_deadline_millis(),
             operation_deadline_millis,
             self.pending_exit_deadline_millis(),
+            self.pump
+                .title_pending()
+                .then(|| self.clock.now_millis().saturating_add(100)),
         ]
         .into_iter()
         .flatten()

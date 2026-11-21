@@ -32,6 +32,32 @@ impl CodexRuntime {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
         }
+        let value: serde_json::Value =
+            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        if self.title_ingress(&value) {
+            return one(AdapterEvent::Absorbed);
+        }
+        if let Some(result) = value.get("result")
+            && result.pointer("/thread/id").is_some()
+        {
+            tracing::info!(
+                has_provider = result["modelProvider"].is_string(),
+                has_cwd = result["cwd"].is_string(),
+                "Codex thread authority received"
+            );
+        }
+        if let Some(result) = value.get("result")
+            && result
+                .pointer("/thread/id")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+            && result["modelProvider"].is_string()
+            && result["cwd"].is_string()
+        {
+            self.title_settings = Some(
+                serde_json::json!({"model":result["model"],"modelProvider":result["modelProvider"],"cwd":result["cwd"]}),
+            );
+        }
         if let Some(pending) = self.inner.fork_pending() {
             let value: serde_json::Value =
                 serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;

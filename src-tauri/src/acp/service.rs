@@ -66,6 +66,7 @@ pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;
 mod chat_fork;
+pub(crate) mod chat_title;
 mod child_transcript;
 mod goal;
 mod harness_access;
@@ -136,6 +137,7 @@ pub(crate) struct AcpService {
     #[cfg(windows)]
     browser_app: Mutex<Option<tauri::AppHandle>>,
     registry: Arc<BindingRegistry>,
+    title_admission: Arc<chat_title::TitleAdmission>,
     codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
     codex_auth: Arc<CodexAuthManager>,

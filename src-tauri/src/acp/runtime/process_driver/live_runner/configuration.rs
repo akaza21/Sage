@@ -126,7 +126,7 @@ pub(super) fn settle_pending_config(
 }
 
 pub(super) async fn handle_worker<A, R, T, Auth, C>(
-    state: WorkerState<A, R, T, C>,
+    mut state: WorkerState<A, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
     pending_config: &mut Option<PendingConfig>,
@@ -139,6 +139,20 @@ where
     C: crate::acp::runtime::ProcessTreeControl,
     C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
+    let preempts_title = match &envelope.command {
+        WorkerCommand::AcceptTerminal { .. }
+        | WorkerCommand::AcceptLatestCompleted
+        | WorkerCommand::ObserveSend { .. }
+        | WorkerCommand::AbandonConfiguration { .. } => false,
+        WorkerCommand::NativeRpc { intent, .. } => {
+            !intent.passive()
+                && !matches!(&intent.request, crate::acp::goal::NativeRpcRequest::Read(_))
+        }
+        _ => true,
+    };
+    if preempts_title && let FirstTurnWorkerState::Reusable(parts) = &mut state {
+        parts.completed.poll_title(true, &mut parts.transport);
+    }
     if matches!(&envelope.command, WorkerCommand::Shutdown) {
         if let Some(config) = pending_config.take() {
             config.complete(Err(HostError::Closed));

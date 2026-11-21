@@ -22,6 +22,24 @@ impl ChatTitleSource {
     }
 }
 
+pub(super) fn is_placeholder(display: &str) -> bool {
+    [
+        "new chat",
+        "untitled",
+        "new session",
+        "untitled chat",
+        "untitled session",
+        "chat",
+        "new conversation",
+    ]
+    .iter()
+    .any(|placeholder| {
+        display
+            .trim_end_matches(['.', '!', '?', '…'])
+            .eq_ignore_ascii_case(placeholder)
+    })
+}
+
 /// Leaves user and fork titles alone; empty and placeholder titles are ignored,
 /// so a harness can never replace a useful title with a generic label.
 pub(crate) fn apply_harness_title_in(
@@ -38,21 +56,7 @@ pub(crate) fn apply_harness_title_in(
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    if [
-        "new chat",
-        "untitled",
-        "new session",
-        "untitled chat",
-        "untitled session",
-        "chat",
-        "new conversation",
-    ]
-    .iter()
-    .any(|placeholder| {
-        display
-            .trim_end_matches(['.', '!', '?', '…'])
-            .eq_ignore_ascii_case(placeholder)
-    }) {
+    if is_placeholder(&display) {
         return Ok(());
     }
     let changed = transaction.execute(

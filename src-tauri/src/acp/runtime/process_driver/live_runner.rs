@@ -30,6 +30,8 @@ mod terminal;
 #[cfg(test)]
 pub(super) use drive::active_step_for_test;
 use drive::drive;
+#[cfg(all(test, feature = "acp-fixture"))]
+pub(super) use drive::idle_command_for_test;
 use handle::RunInput;
 pub(crate) use handle::{
     ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle, RunnerStartSubstep,

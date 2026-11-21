@@ -7,6 +7,9 @@ use super::*;
 
 #[path = "model_catalog_tests/lifecycle.rs"]
 mod lifecycle;
+#[cfg(feature = "acp-fixture")]
+#[path = "model_catalog_tests/title_lifecycle.rs"]
+mod title_lifecycle;
 
 struct CatalogTransport {
     writes: Arc<Mutex<Vec<Value>>>,
@@ -97,7 +100,8 @@ pub(super) fn ready_adapter<Adapter: HarnessAdapter>(
             model: Some(RequiredText::new("model", "selected").unwrap()),
         })
         .unwrap();
-    let mut result = json!({"thread":{"id":external_session.as_str()}});
+    let mut result =
+        json!({"thread":{"id":external_session.as_str()},"modelProvider":"openai","cwd":"."});
     if confirmed_config {
         result["model"] = json!("selected");
         result["reasoningEffort"] = json!("high");

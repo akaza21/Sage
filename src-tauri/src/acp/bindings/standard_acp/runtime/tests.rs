@@ -33,6 +33,7 @@ use super::super::{CustomAcpRegistration, StandardAcpBindingSource, StandardAcpR
 const SESSION: &str = "agent-session-1";
 
 mod session_info;
+mod title_read;
 
 struct Fixture {
     root: PathBuf,

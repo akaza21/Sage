@@ -66,6 +66,9 @@ fn await_request_inner(
             .get("method")
             .and_then(Value::as_str)
             .ok_or(FixtureError::InvalidArguments)?;
+        if super::title::answer(&request, output, state)? {
+            continue;
+        }
         if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }

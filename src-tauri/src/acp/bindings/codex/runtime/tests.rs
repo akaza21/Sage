@@ -55,6 +55,7 @@ mod skill_command_tests;
 mod skills_journey_tests;
 #[cfg(feature = "acp-fixture")]
 mod steer_journey_tests;
+mod title_request_tests;
 mod usage_tests;
 
 struct Mapper;

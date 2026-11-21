@@ -14,6 +14,9 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    pub(crate) fn poll_title(&mut self) {
+        self.pump.poll_title(true, &mut self.transport);
+    }
     pub(crate) fn begin_configure_session(
         &mut self,
         intent: &ConfigIntent,
