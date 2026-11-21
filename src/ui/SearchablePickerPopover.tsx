@@ -98,13 +98,12 @@ export function SearchablePickerPopover({
     () => visible.slice(0, SEARCHABLE_PICKER_MAX_RENDERED),
     [visible],
   );
-  const selectable = useMemo(
-    () => rendered.filter((candidate) => !candidate.disabledReason),
-    [rendered],
-  );
   const selectableIds = useMemo(
-    () => selectable.map((candidate) => candidate.id),
-    [selectable],
+    () =>
+      rendered
+        .filter((candidate) => !candidate.disabledReason)
+        .map((candidate) => candidate.id),
+    [rendered],
   );
   const option = useActiveOption(selectableIds, "none");
   const setActiveId = option.setActiveId;
@@ -115,7 +114,7 @@ export function SearchablePickerPopover({
     },
     [setActiveId],
   );
-  const active = selectable[option.activeIndex];
+  const active = option.activeId;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -129,9 +128,9 @@ export function SearchablePickerPopover({
     inputRef.current?.focus();
   }, [holdFocus, searchable]);
   useLayoutEffect(() => {
-    if (!active) return;
+    if (active === null) return;
     triggerRef.current?.ownerDocument
-      .getElementById(optionId(id, active.id))
+      .getElementById(optionId(id, active))
       ?.scrollIntoView?.({ block: "nearest" });
   }, [active, id, triggerRef]);
 
@@ -151,19 +150,18 @@ export function SearchablePickerPopover({
     const { key } = event;
     setKeyboard(true);
     if (isImeComposing(event)) return;
-    if (key === "ArrowDown" || key === "ArrowUp") {
-      event.preventDefault();
-      moveActive(key);
-    } else if (key === "Home" || key === "End") {
-      if (selectableIds.length === 0) return;
-      event.preventDefault();
-      moveActive(key);
-    } else if (key === "PageDown" || key === "PageUp") {
+    if (
+      ["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"].includes(
+        key,
+      )
+    ) {
+      if ((key === "Home" || key === "End") && selectableIds.length === 0)
+        return;
       event.preventDefault();
       moveActive(key);
     } else if (key === "Enter") {
       event.preventDefault();
-      if (active) selectCandidate(active.id);
+      if (active !== null) selectCandidate(active);
     } else if (key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -216,7 +214,9 @@ export function SearchablePickerPopover({
             className="searchable-picker__input"
             role="combobox"
             aria-label={ariaLabel}
-            aria-activedescendant={active ? optionId(id, active.id) : undefined}
+            aria-activedescendant={
+              active !== null ? optionId(id, active) : undefined
+            }
             aria-autocomplete="list"
             aria-controls={`${id}-listbox`}
             aria-expanded
@@ -254,7 +254,7 @@ export function SearchablePickerPopover({
         {rendered.map((candidate) => (
           <PickerOption
             key={candidate.id}
-            active={candidate.id === active?.id}
+            active={candidate.id === active}
             candidate={candidate}
             id={optionId(id, candidate.id)}
             onActivate={searchable ? activateFromPointer : undefined}

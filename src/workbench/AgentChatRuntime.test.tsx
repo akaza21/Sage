@@ -96,11 +96,93 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   clearAgentChatOwner();
+  useAgentSettingsState.getState().close();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initial, true);
   useSessionAccessModeStore.setState(initialAccess, true);
   vi.restoreAllMocks();
 });
+
+it.each([false, true])(
+  "receives Settings diagnostics without a queue (read already pending=%s)",
+  async (delayed) => {
+    const { page, listeners, configListeners } = nativeProjection();
+    useWorkbenchStore.setState({
+      chatUiById: { "chat-a": { ...queue(), queuedPrompts: [] } },
+    });
+    pinAgentChatOwner("chat-a");
+    const tree = (settings: boolean) => (
+      <>
+        <AgentChatRuntime ids={["chat-a"]} visible={!settings} />
+        {settings ? <AgentSettingsSurface chatRuntimeOwned /> : null}
+      </>
+    );
+    const view = render(tree(false));
+    await waitFor(() => expect(listeners.size).toBe(1));
+    await act(async () => vi.dynamicImportSettled());
+    let deliver!: (page: AcpChatPage) => void;
+    vi.mocked(acpDesktop.getChatPage).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+    );
+    const emit = () =>
+      act(() => {
+        listeners.forEach((listener) =>
+          listener({
+            projectId: "project-a",
+            chatId: "chat-a",
+            sessionId: "session-a",
+            projectionRevision: "2",
+          } as AcpProjectionChangedEvent),
+        );
+      });
+    if (delayed) {
+      emit();
+      await waitFor(() => expect(deliver).toBeTypeOf("function"));
+    }
+    const pendingDelivery = delayed ? deliver : null;
+    act(() => useAgentSettingsState.getState().open("Harnesses"));
+    view.rerender(tree(true));
+    await screen.findByRole("button", { name: "Refresh discovery" });
+    if (!delayed) {
+      emit();
+      await waitFor(() => expect(deliver).toBeTypeOf("function"));
+    }
+    await act(async () =>
+      (pendingDelivery ?? deliver)({
+        ...page,
+        projectionRevision: "2" as AcpChatPage["projectionRevision"],
+        sessionNotices: [
+          {
+            level: "warning",
+            diagnostic: true,
+            text: "Unknown configuration key received in Settings",
+            source: "fixture",
+          },
+        ],
+      }),
+    );
+    expect(
+      await screen.findByText("Unknown configuration key received in Settings"),
+    ).toBeVisible();
+    expect(listeners.size).toBe(1);
+    expect(configListeners.size).toBe(1);
+    // Other Settings pages and a minimized window do not retain a reader.
+    act(() => useAgentSettingsState.getState().open("Chats"));
+    await waitFor(() => expect(listeners.size).toBe(0));
+    expect(configListeners.size).toBe(0);
+    act(() => useAgentSettingsState.getState().open("Harnesses"));
+    await waitFor(() => expect(listeners.size).toBe(1));
+    act(() => {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(listeners.size).toBe(0));
+    expect(configListeners.size).toBe(0);
+  },
+);
 
 it("shares the queued chat reader with Harnesses settings without losing a pending response or exceeding four native reads", async () => {
   const { listeners } = nativeProjection();

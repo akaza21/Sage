@@ -8,8 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { page } from "./acpProjection.fixture";
-import { TurnFailureDetails as TurnFailure } from "./TurnFailureDetails";
-import { TurnFailure as DeferredTurnFailure } from "./TurnFailure";
+import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { useWorkbenchStore } from "../../../app/store";
 
@@ -277,12 +276,7 @@ describe("TurnFailure", () => {
   });
 
   it("shows no failure box for a completed turn", () => {
-    render(
-      <DeferredTurnFailure
-        turn={page("completed").turns[0]}
-        onRetry={vi.fn()}
-      />,
-    );
+    render(<TurnFailure turn={page("completed").turns[0]} onRetry={vi.fn()} />);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("group", { name: "Turn failed" })).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();

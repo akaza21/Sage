@@ -20,7 +20,7 @@ import {
   harnessSignInStatus,
 } from "./harnessSignIn";
 
-export { TurnFailureDetails } from "../chat/acp/TurnFailureDetails";
+export { HarnessTurnSignInRecovery } from "./HarnessTurnSignInRecovery";
 
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./HarnessSignInMenu"),

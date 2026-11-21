@@ -51,37 +51,7 @@ function PopoverSlot(props: PopoverProps) {
   return Loaded ? createElement(Loaded, props) : null;
 }
 
-export function SearchablePicker({
-  ariaLabel,
-  candidates,
-  className,
-  disabled = false,
-  emptyLabel = "Select…",
-  footer,
-  onOptionRender,
-  open: controlledOpen,
-  onOpenChange,
-  popoverClassName,
-  popoverGap,
-  popoverPlacement,
-  triggerClassName,
-  triggerRole,
-  triggerIcon,
-  triggerLabel,
-  triggerDetail,
-  appearance = "field",
-  menuAppearance = false,
-  chevron = true,
-  sectionLabel,
-  searchable = true,
-  searchPlaceholder,
-  onSelect,
-  portalTarget = "document",
-  selectedId,
-  state,
-  stateDetail,
-  stateTitle,
-}: {
+type SearchablePickerProps = {
   ariaLabel: string;
   candidates: readonly SearchablePickerOption[];
   className?: string;
@@ -115,7 +85,29 @@ export function SearchablePicker({
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
   stateTitle?: string;
-}) {
+};
+
+export function SearchablePicker(props: SearchablePickerProps) {
+  const {
+    ariaLabel,
+    candidates,
+    className,
+    disabled = false,
+    emptyLabel = "Select…",
+    open: controlledOpen,
+    onOpenChange,
+    triggerClassName,
+    triggerRole,
+    triggerIcon,
+    triggerLabel,
+    triggerDetail,
+    appearance = "field",
+    chevron = true,
+    searchable = true,
+    portalTarget = "document",
+    selectedId,
+    stateTitle,
+  } = props;
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [keyboardOpen, setKeyboardOpen] = useState(true);
@@ -254,33 +246,19 @@ export function SearchablePicker({
       ) : null}
       {expanded && Loaded ? (
         <PopoverSlot
+          {...props}
           {...{
-            ariaLabel,
-            candidates,
             close,
             draft,
             query: query ?? draft,
             onQueryChange: setQuery,
             focusMoved: coldOpen.focusMoved,
-            footer,
             id,
-            onOptionRender,
-            onSelect,
-            popoverClassName,
-            popoverGap,
-            popoverPlacement,
             portalTarget,
             searchable,
-            searchPlaceholder,
-            menuAppearance,
             keyboardOpen,
-            sectionLabel,
             selected,
-            selectedId,
             setDraft,
-            state,
-            stateDetail,
-            stateTitle,
             triggerRef,
           }}
         />
