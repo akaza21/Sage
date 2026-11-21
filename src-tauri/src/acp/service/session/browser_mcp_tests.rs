@@ -50,7 +50,7 @@ fn browser_activation(version: &str, browser_admitted: bool) {
             .authenticate_observed_for_test(executable.clone(), version.into())
             .unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();

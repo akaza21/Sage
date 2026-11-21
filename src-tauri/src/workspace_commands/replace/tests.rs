@@ -19,7 +19,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-replace-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {
             root,

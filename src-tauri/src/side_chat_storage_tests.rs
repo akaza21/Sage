@@ -15,7 +15,7 @@ fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("sage-side-purge-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    database.create_project_from_root(&root).unwrap();
+    database.create_project_with_chat(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project = snapshot.project.as_ref().unwrap().id.clone();
     let parent = snapshot.active_tab_id.clone().unwrap();
@@ -91,7 +91,7 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
     } = fixture();
     let other_root = root.join("other-project");
     std::fs::create_dir_all(&other_root).unwrap();
-    let other = database.create_project_from_root(&other_root).unwrap();
+    let other = database.create_project_with_chat(&other_root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let parent = snapshot.active_tab_id.clone().unwrap();
     let layout = sage_domain::chat::ProjectLayoutRequest {

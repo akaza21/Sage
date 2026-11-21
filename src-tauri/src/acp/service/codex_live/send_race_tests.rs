@@ -96,7 +96,7 @@ fn idle_session() -> IdleSession {
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_id =
-        SageProjectId::parse(database.create_project_from_root(&root).unwrap().id).unwrap();
+        SageProjectId::parse(database.create_project_with_chat(&root).unwrap().id).unwrap();
     let chat_id = SageChatId::parse(
         database
             .bootstrap_snapshot()

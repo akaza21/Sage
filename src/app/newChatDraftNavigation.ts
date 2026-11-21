@@ -1,14 +1,22 @@
 import type { StoreApi } from "zustand";
 import { agentChatFocus } from "./agentChatOwner";
 import { sessionAccessModeCandidates } from "../domain/sessionAccessMode";
+import { preferredAvailableHarness } from "../domain/harness";
 import { preferredModelId } from "./harnessSlice";
 import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
-export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
-  const state = get();
+export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
+  let state = get();
   if (state.projectTransitioning) return;
+  if (!state.project) {
+    // Initialization supplies an owner, while projectId keeps the requested
+    // destination (including the omitted, no-project destination).
+    await state.ensureLocalProject();
+    state = get();
+    if (!state.project || state.projectTransitioning) return;
+  }
   // An omitted target reopens the draft. Explicit retargeting may replace an
   // empty draft, but an unsent prompt must be sent or discarded by its owner.
   const draft = state.newChatDraft;
@@ -22,29 +30,28 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       draft.submission.status !== "released")
       ? draft
       : null;
-  if (!retainedDraft && projectId && projectId !== state.project?.id)
-    return state.createChat(projectId);
-  if (!retainedDraft && !state.project)
-    return (async () => {
-      const created = await state.createChat(null);
-      if (
-        created.status !== "confirmed" ||
-        get().activeTabId !== created.chatId
-      )
-        return;
-      openNewChatDraft(set, get);
-      const draft = get().newChatDraft;
-      if (draft)
-        set({
-          newChatDraft: {
-            ...draft,
-            submission: { status: "created", chatId: created.chatId },
-          },
-        });
-    })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
-  if (state.agentCenter === "draft" && retainedDraft) {
+  const preferred = preferredAvailableHarness(
+    state.harnesses,
+    retainedDraft ? retainedDraft.harnessId : state.selectedHarnessId,
+  );
+  const resolvedDraft =
+    retainedDraft?.submission.status === "released" &&
+    retainedDraft.harnessId !== (preferred?.id ?? null)
+      ? {
+          ...retainedDraft,
+          harnessId: preferred?.id ?? null,
+          modelId: null,
+          access: null,
+          effort: null,
+        }
+      : retainedDraft;
+  if (
+    state.agentCenter === "draft" &&
+    retainedDraft &&
+    resolvedDraft === retainedDraft
+  ) {
     set({ draftFocusRequest });
     return;
   }
@@ -61,19 +68,25 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft: retainedDraft ?? {
+    newChatDraft: resolvedDraft ?? {
       id: {},
       projectId: state.project?.id ?? null,
       targetProjectId: projectId ?? null,
       text: "",
-      harnessId: state.selectedHarnessId,
-      modelId: state.selectedModelId,
+      harnessId: preferred?.id ?? null,
+      modelId:
+        preferred?.id === state.selectedHarnessId
+          ? state.selectedModelId
+          : null,
       access: null,
       effort: null,
       submission: { status: "released" },
       error: null,
     },
   });
+  const opened = get().newChatDraft;
+  if (opened?.harnessId && opened.harnessId !== get().selectedHarnessId)
+    return selectDraftHarness(set, get, opened.harnessId);
 }
 /**
  * The choices a draft sends with under the current catalog, or null while

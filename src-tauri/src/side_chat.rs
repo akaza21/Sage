@@ -229,7 +229,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-side-list-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap().id;
+        let project = database.create_project_with_chat(&root).unwrap().id;
         let parent = database
             .bootstrap_snapshot()
             .unwrap()
@@ -311,7 +311,7 @@ mod tests {
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let settings =
             crate::settings_store::SettingsStore::open(&root.join("settings.db")).unwrap();
-        database.create_project_from_root(&root).unwrap();
+        database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();
         let parent = snapshot.active_tab_id.clone().unwrap();
@@ -353,7 +353,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let settings = crate::settings_store::SettingsStore::in_memory().unwrap();
-        let project = database.create_project_from_root(&root).unwrap().id;
+        let project = database.create_project_with_chat(&root).unwrap().id;
         let parent = database
             .bootstrap_snapshot()
             .unwrap()

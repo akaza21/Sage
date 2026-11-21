@@ -102,11 +102,11 @@ describe("harness discovery reconciliation", () => {
     expect(useWorkbenchStore.getState().error).toBeNull();
   });
 
-  it("selects the first available real harness once discovery settles", async () => {
+  it("selects the first available harness in catalog order once discovery settles", async () => {
     discoverCodex.mockResolvedValue(discovery);
     await useWorkbenchStore
       .getState()
-      .applyHarnessDiscovery([simulator, available]);
+      .applyHarnessDiscovery([available, simulator]);
     const state = useWorkbenchStore.getState();
     expect(state.selectedHarnessId).toBe("codex");
     expect(state.selectedModelId).toBe("gpt-x");
@@ -130,6 +130,31 @@ describe("harness discovery reconciliation", () => {
     expect(state.models).toEqual([
       { id: "gpt-x", name: "GPT-X", isDefault: true },
     ]);
+  });
+
+  it("keeps a still-available user selection ahead of catalog order", async () => {
+    seed({ harnesses: [available], selectedHarnessId: available.id });
+    discoverCodex.mockResolvedValue(discovery);
+    await useWorkbenchStore
+      .getState()
+      .applyHarnessDiscovery([simulator, available]);
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBe(available.id);
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("gpt-x");
+  });
+
+  it("clears the new-chat selection and models when no harness is available", async () => {
+    seed({
+      harnesses: [available],
+      selectedHarnessId: available.id,
+      selectedModelId: "gpt-x",
+      models: discovery.models,
+    });
+    await useWorkbenchStore
+      .getState()
+      .applyHarnessDiscovery([{ ...available, installState: "unavailable" }]);
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBeNull();
+    expect(useWorkbenchStore.getState().selectedModelId).toBeNull();
+    expect(useWorkbenchStore.getState().models).toEqual([]);
   });
 
   it("drops a discovery result issued for a superseded project generation", async () => {

@@ -15,7 +15,7 @@ fn fixture() -> (
     let root = std::env::temp_dir().join(format!("sage-create-command-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join("src")).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     (root, Arc::new(AppState::new(database)), project)
 }
 
@@ -183,7 +183,7 @@ fn stale_epoch_and_project_switch_fail_before_mutation() {
         *state.project_transitions.lock().await = 0;
         let root_b = root_a.with_extension("project-b");
         fs::create_dir_all(&root_b).unwrap();
-        state.database.create_project_from_root(&root_b).unwrap();
+        state.database.create_project_with_chat(&root_b).unwrap();
         let switched = execute(
             &state,
             request(&project_a.id, &project_a.roots[0].id, "switched.rs"),

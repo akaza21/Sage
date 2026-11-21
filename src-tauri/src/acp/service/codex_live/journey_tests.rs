@@ -753,7 +753,7 @@ impl FixtureSetup {
     ) -> Self {
         let database = crate::database::open_database(path).unwrap();
         let root_path = selected_project_root.canonicalize().unwrap();
-        let project = database.create_project_from_root(&root_path).unwrap();
+        let project = database.create_project_with_chat(&root_path).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         Self {
             service: AcpService::new_with_registry_publisher_for_test(

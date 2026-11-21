@@ -21,9 +21,85 @@ import { agentSessionFixture } from "../domain/acpProjection.fixture";
 import { useSideChatState } from "./sideChatState";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { emptyChatOwnershipEntry } from "../app/chatOwnershipProjection";
+import { AgentCenterKeeper } from "./WorkbenchContinuity";
+import * as workspaceNotify from "../app/workspaceNotifyLifecycle";
+import { browserSnapshot } from "../services/browserWorkspaceFixture";
+import { durableChatIds } from "../services/browserChatState";
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
+
+it("sends a private chat when continuity runs during a fresh-profile New chat open", async () => {
+  Object.assign(browserSnapshot, {
+    project: null,
+    projects: [],
+    unscopedChats: [],
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+    messages: [],
+    sessionId: null,
+  });
+  durableChatIds.clear();
+  await useWorkbenchStore.getState().initialize();
+  let releaseBinding!: () => void;
+  let bindingStarted!: () => void;
+  const started = new Promise<void>((resolve) => (bindingStarted = resolve));
+  const binding = new Promise<void>((resolve) => (releaseBinding = resolve));
+  vi.spyOn(
+    workspaceNotify,
+    "bindWorkspaceNotifyFromState",
+  ).mockImplementationOnce(async () => {
+    bindingStarted();
+    await binding;
+  });
+  render(<AgentCenterKeeper windowMode="agent" />);
+  let opening!: Promise<unknown>;
+  await act(async () => {
+    opening = useWorkbenchStore.getState().openNewChatDraft();
+    await started;
+  });
+  try {
+    // Projection is available to the mounted keeper before the open resumes.
+    expect(useWorkbenchStore.getState().project?.name).toBe("Local");
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    await settleLazyModules();
+  } finally {
+    await act(async () => {
+      releaseBinding();
+      await opening;
+    });
+  }
+  expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBeNull();
+  expect(durableChatIds.size).toBe(0);
+  await act(async () => {
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Fixture ACP",
+          description: "Draft initialization fixture",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "fixture-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    await state.selectDraftHarness("sage-simulator");
+    state.updateNewChatDraft({ text: "First private prompt" });
+    await state.sendNewChatDraft();
+  });
+  const sent = useWorkbenchStore.getState();
+  expect(sent.error).toBeNull();
+  expect(sent.project?.isInternal).toBe(true);
+  expect(sent.composerText).toBe("First private prompt");
+  expect(durableChatIds.size).toBe(1);
+});
 
 beforeEach(async () => {
   localStorage.clear();
@@ -298,19 +374,26 @@ it.each(["approval", "disabled"] as const)(
       expect(
         screen.queryByRole("combobox", { name: "Message agent" }),
       ).toBeNull();
-    } else
+    } else {
       expect(
-        screen.getByRole("combobox", { name: "Message agent" }),
-      ).toBeDisabled();
+        screen.queryByRole("combobox", { name: "Message agent" }),
+      ).toBeNull();
+      expect(screen.getByText(/No harness is available here/)).toBeVisible();
+    }
     const pane = screen.getByRole("region", { name: /^Chat pane / });
     const home = screen.getByRole("button", { name: "Home" });
     home.focus();
     fireEvent.click(home);
     await settleLazyModules();
     expect(pane).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toHaveFocus();
+    if (unavailable === "disabled")
+      expect(
+        screen.getByRole("region", { name: "New chat draft" }),
+      ).toHaveFocus();
+    else
+      expect(
+        screen.getByRole("combobox", { name: "Message agent" }),
+      ).toHaveFocus();
     expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
     expect(useWorkbenchStore.getState().chatUiById[chatId]?.composerText).toBe(
       "Preserved draft",
@@ -369,8 +452,11 @@ it.each(["parent", "side"] as const)(
     const focused = panes.find((pane) => pane.dataset.chatId === focusedId)!;
     const other = panes.find((pane) => pane !== focused)!;
     expect(
-      within(focused).getByRole("combobox", { name: "Message agent" }),
-    ).toBeDisabled();
+      within(focused).queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
+    expect(
+      within(focused).getByRole("button", { name: "Continue in a new chat" }),
+    ).toBeEnabled();
     expect(
       within(other).getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
@@ -508,3 +594,27 @@ it.each([false, true])(
     expect(useWorkbenchStore.getState().tabs).toEqual([]);
   },
 );
+
+it("uses the draft continuity path after project creation without creating a durable default chat", async () => {
+  render(<Workbench />);
+  await settleLazyModules();
+  await act(async () => {
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .createProject({ name: "Fresh project", sourceTokens: [] }),
+    ).toBe(true);
+  });
+  await settleLazyModules();
+  expect(
+    await screen.findByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  const state = useWorkbenchStore.getState();
+  expect(state.newChatDraft?.targetProjectId).toBe(state.project!.id);
+  expect(state.tabs.filter((tab) => tab.kind === "chat")).toEqual([]);
+  const project = screen
+    .getByRole("button", { name: "Project Fresh project" })
+    .closest(".project-entry")!;
+  expect(project.querySelectorAll(".project-chat-row")).toHaveLength(0);
+  expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual([]);
+});

@@ -80,7 +80,7 @@ fn stored_root_rejects_case_sensitive_junction_substitution() {
         sage_workspace::root_identity_path(&other).unwrap()
     );
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     fs::remove_dir(&root).unwrap();
     let junction = Command::new("cmd")
         .args(["/c", "mklink", "/J"])
@@ -123,7 +123,7 @@ fn stored_workspace_rejects_junction_substitution_without_case_sensitivity() {
     let canonical = root.canonicalize().unwrap();
     assert!(Workspace::open_registered_root("project", "root", &canonical).is_ok());
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     fs::remove_dir(&root).unwrap();
     let junction = Command::new("cmd")
         .args(["/c", "mklink", "/J"])

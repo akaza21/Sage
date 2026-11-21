@@ -49,7 +49,7 @@ pub(super) async fn prepare_fixture_environment(
     std::fs::create_dir_all(&project_root).unwrap();
     let database_path = temp_root.path().join("sage.db");
     let database = crate::database::open_database(&database_path).unwrap();
-    let project = database.create_project_from_root(&project_root).unwrap();
+    let project = database.create_project_with_chat(&project_root).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(chat_id).unwrap();
     let now_millis = sage_core::time::now_millis();

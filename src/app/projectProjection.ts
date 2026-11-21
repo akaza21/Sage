@@ -3,6 +3,7 @@ import type {
   ProjectLayoutRequest,
 } from "../domain/workbench";
 import { browserLiveTabs } from "../ports/nativeBrowserPort";
+import { preferredAvailableHarness } from "../domain/harness";
 import type { WorkbenchState } from "./store";
 import { positionTab } from "./tabState";
 
@@ -58,6 +59,10 @@ export async function reconcileLiveBrowserTabs(
 }
 
 export function snapshotProjection(snapshot: BootstrapSnapshot) {
+  const selectedHarnessId = snapshot.sessionId
+    ? snapshot.selectedHarnessId
+    : (preferredAvailableHarness(snapshot.harnesses, snapshot.selectedHarnessId)
+        ?.id ?? null);
   return {
     nativeTransitionEpoch: snapshot.transitionEpoch,
     phase: "ready" as const,
@@ -71,8 +76,11 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     selectedRootId: snapshot.selectedRootId,
     selectedResource: snapshot.selectedResource,
     harnesses: snapshot.harnesses,
-    selectedHarnessId: snapshot.selectedHarnessId,
-    selectedModelId: snapshot.selectedModelId,
+    selectedHarnessId,
+    selectedModelId:
+      selectedHarnessId === snapshot.selectedHarnessId
+        ? snapshot.selectedModelId
+        : null,
     sessionId: snapshot.sessionId,
     messages: snapshot.messages,
     repositories: snapshot.repositories,

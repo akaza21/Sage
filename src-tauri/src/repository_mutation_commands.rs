@@ -200,7 +200,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -249,7 +249,7 @@ mod tests {
             git(&root, &["commit", "-q", "-m", "fixture"]);
             fs::write(root.join("tracked.txt"), "keep changed\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -302,7 +302,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -346,7 +346,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            database.create_project_from_root(&root).unwrap();
+            database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -399,7 +399,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = Arc::new(AppState::new(database));
@@ -456,7 +456,7 @@ mod tests {
             git(&root, &["commit", "-q", "-m", "fixture"]);
             fs::write(root.join("tracked.txt"), "changed\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = Arc::new(AppState::new(database));
@@ -509,7 +509,7 @@ mod tests {
             fs::write(root.join("new.txt"), "new\n").unwrap();
             hold_staging_of_new_file(&root);
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -580,7 +580,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -635,7 +635,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
@@ -687,7 +687,7 @@ mod tests {
             fs::write(root.join("new.txt"), "new\n").unwrap();
             hold_staging_of_new_file(&root);
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,
@@ -778,7 +778,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,
@@ -878,7 +878,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             let database = crate::database::open_database(&base.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,

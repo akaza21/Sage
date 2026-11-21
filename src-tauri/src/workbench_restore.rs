@@ -436,7 +436,7 @@ mod tests {
             fs::create_dir_all(&folder).unwrap();
             fs::write(folder.join("main.rs"), "fn main() {}\n").unwrap();
             let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-            let project = database.create_project_from_root(&folder).unwrap();
+            let project = database.create_project_with_chat(&folder).unwrap();
             Self {
                 folder,
                 database,

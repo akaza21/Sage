@@ -40,7 +40,7 @@ impl Fixture {
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src/old.rs"), "preserve\n").unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let layout = ProjectLayoutRequest {
             project_id: project.id.clone(),

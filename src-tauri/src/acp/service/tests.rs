@@ -77,7 +77,7 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
         );
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project_root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&project_root).unwrap();
+        let project = database.create_project_with_chat(&project_root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -227,7 +227,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -314,7 +314,7 @@ fn codex_start_rejects_a_model_without_current_scoped_discovery() {
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -382,7 +382,7 @@ fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
             .authenticate_observed_for_test(executable, "codex 0.145.0".into())
             .unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -432,7 +432,7 @@ fn codex_start_rejects_drift_before_any_durable_write() {
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -838,7 +838,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
     tauri::async_runtime::block_on(async {
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -988,7 +988,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
     tauri::async_runtime::block_on(async {
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -1162,7 +1162,7 @@ fn codex_session_setup() -> (
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id.clone()).unwrap();
     let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
@@ -1519,8 +1519,8 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         fs::create_dir_all(&root_a).unwrap();
         fs::create_dir_all(&root_b).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project_a = database.create_project_from_root(&root_a).unwrap();
-        let project_b = database.create_project_from_root(&root_b).unwrap();
+        let project_a = database.create_project_with_chat(&root_a).unwrap();
+        let project_b = database.create_project_with_chat(&root_b).unwrap();
         let snapshot_b = database.bootstrap_snapshot().unwrap();
         database
             .switch_project(&ProjectSwitchRequest {

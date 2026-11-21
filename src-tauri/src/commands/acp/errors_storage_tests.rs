@@ -17,7 +17,7 @@ fn storage_gate_blocks_refusal_evidence_without_hiding_the_sign_in_error() {
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&directory).unwrap();
+    let project = database.create_project_with_chat(&directory).unwrap();
     let chat = database
         .bootstrap_snapshot()
         .unwrap()
