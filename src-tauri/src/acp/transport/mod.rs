@@ -12,7 +12,9 @@ pub(crate) use command_catalog::CommandWirePath;
 pub(crate) use egress::{BoundedQueue, EgressQueue, QueueError, ReservedQueue};
 #[allow(unused_imports, reason = "transport-test reader entrypoint")]
 pub(crate) use framer::{Frame, FrameError, FrameReader, IncrementalFrameDecoder};
-pub(crate) use ingress::{StructuralError, validate_structure};
+#[cfg(test)]
+pub(crate) use ingress::validate_structure;
+pub(crate) use ingress::{StructuralError, validate_structure_with_catalog};
 #[allow(unused_imports, reason = "P-02 Decision B adapter egress entrypoint")]
 pub(crate) use p02_egress::{
     DeadlineAsyncWriter, P02Cancellation, P02Egress, P02EgressOutcome, write_p02_response_until,

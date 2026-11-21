@@ -137,6 +137,22 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
 }
 
 impl CodexAdapter {
+    pub(crate) fn command_catalog_path(
+        &self,
+        bytes: &[u8],
+    ) -> crate::acp::transport::CommandWirePath {
+        use crate::acp::transport::CommandWirePath::{Commands, Elements, Field, Other};
+        let id = crate::acp::bindings::adapter::catalog_response_id(bytes);
+        if id.and_then(|id| self.pending_kind(id)) == Some(RequestKind::SkillsList) {
+            Field(
+                "result",
+                &Field("data", &Elements(&Field("skills", &Commands))),
+            )
+        } else {
+            Other
+        }
+    }
+
     pub(crate) fn skills(&self) -> Arc<CommandState> {
         Arc::clone(&self.skills.list)
     }

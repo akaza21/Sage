@@ -93,7 +93,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         now_millis: i64,
     ) -> Result<bool, ActivationPumpError> {
         let Some(frame) = frame else { return Ok(false) };
-        let batch = if validate_structure(&frame).is_err() {
+        let batch = if self.adapter.validate_ingress(&frame).is_err() {
             self.adapter.discard_invalid_response(&frame).map_err(|_| {
                 self.fail_closed();
                 ActivationPumpError::Frame

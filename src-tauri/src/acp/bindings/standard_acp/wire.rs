@@ -10,6 +10,13 @@ use crate::acp::transport::CommandWirePath;
 use sage_core::limits::LIMITS;
 
 pub(crate) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
+    decode_frame_with_catalog(raw, || CommandWirePath::for_frame(raw))
+}
+
+pub(crate) fn decode_frame_with_catalog(
+    raw: &[u8],
+    catalog: impl FnOnce() -> CommandWirePath,
+) -> Result<Value, WireError> {
     if raw.is_empty() || raw.len() as u64 > LIMITS.wire.frame_bytes || raw.contains(&0) {
         return Err(WireError::ByteLimitOrNul);
     }
@@ -18,7 +25,7 @@ pub(crate) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     let (value, path) = match decode_value(raw, CommandWirePath::Other) {
         Ok(value) => (value, CommandWirePath::Other),
         Err(error) if error.to_string().starts_with("array entry limit exceeded") => {
-            let path = CommandWirePath::for_frame(raw);
+            let path = catalog();
             (decode_value(raw, path).map_err(|_| WireError::Json)?, path)
         }
         Err(_) => return Err(WireError::Json),
@@ -113,7 +120,7 @@ impl<'de> de::Visitor<'de> for UniqueVisitor {
                 .min(self.path.array_limit() as usize),
         );
         while let Some(value) = sequence.next_element_seed(UniqueVisitor {
-            path: CommandWirePath::Other,
+            path: self.path.element(),
         })? {
             if values.len() as u64 >= self.path.array_limit() {
                 return Err(de::Error::custom("array entry limit exceeded"));
@@ -212,7 +219,7 @@ fn validate_value(
                 return Err(WireError::ArrayEntries);
             }
             for child in array {
-                validate_value(child, depth + 1, nodes, CommandWirePath::Other)?;
+                validate_value(child, depth + 1, nodes, path.element())?;
             }
         }
         Value::Number(number)

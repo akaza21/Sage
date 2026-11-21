@@ -9,6 +9,9 @@ const RAW_COMMANDS: u64 = 2048;
 /// Children of each row retain the ordinary structural limits.
 #[derive(Clone, Copy, Default)]
 pub(crate) enum CommandWirePath {
+    /// A binding-declared object field or array element on the catalog path.
+    Field(&'static str, &'static Self),
+    Elements(&'static Self),
     Acp,
     Rpc,
     Params,
@@ -48,10 +51,18 @@ impl CommandWirePath {
 
     pub(crate) fn child(self, key: &str) -> Self {
         match (self, key) {
+            (Self::Field(field, next), key) if field == key => *next,
             (Self::Acp, "params") => Self::Params,
             (Self::Params, "update") => Self::Update,
             (Self::Update, "availableCommands") | (Self::Data, "commands") => Self::Commands,
             (Self::Rpc, "data") => Self::Data,
+            _ => Self::Other,
+        }
+    }
+
+    pub(crate) fn element(self) -> Self {
+        match self {
+            Self::Elements(next) => *next,
             _ => Self::Other,
         }
     }

@@ -40,3 +40,49 @@ pub(super) fn commands(reply: &Value) -> Value {
         })
         .collect()
 }
+
+/// Read only envelope fields here; both validators still check every catalog row.
+#[derive(serde::Deserialize)]
+struct CatalogEnvelope {
+    r#type: String,
+    subtype: Option<String>,
+    response: Option<CatalogResponse>,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogResponse {
+    subtype: String,
+    request_id: String,
+}
+
+impl super::SdkBridge {
+    pub(in crate::acp::bindings::claude::sdk) fn command_catalog_path(
+        &self,
+        bytes: &[u8],
+    ) -> crate::acp::transport::CommandWirePath {
+        use crate::acp::transport::CommandWirePath::{Commands, Field, Other};
+        let Ok(envelope) = serde_json::from_slice::<CatalogEnvelope>(bytes) else {
+            return Other;
+        };
+        match envelope.r#type.as_str() {
+            "system" if envelope.subtype.as_deref() == Some("commands_changed") => {
+                Field("commands", &Commands)
+            }
+            "control_response"
+                if envelope.response.is_some_and(|response| {
+                    response.subtype == "success"
+                        && matches!(
+                            self.pending.get(&response.request_id),
+                            Some(super::Pending::Initialize(_))
+                        )
+                }) =>
+            {
+                Field(
+                    "response",
+                    &Field("response", &Field("commands", &Commands)),
+                )
+            }
+            _ => Other,
+        }
+    }
+}

@@ -119,6 +119,10 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn command_catalog_path(&self, frame: &Frame) -> crate::acp::transport::CommandWirePath {
+        self.0.command_catalog_path(frame)
+    }
+
     fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
         self.5.as_ref().map(|titles| titles.foreground_turn())
     }

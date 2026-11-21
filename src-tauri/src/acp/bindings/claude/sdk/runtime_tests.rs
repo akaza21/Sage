@@ -144,6 +144,105 @@ fn ready() -> ClaudeSdkRuntime {
 }
 
 #[test]
+fn oversized_claude_sdk_catalog_reaches_shared_admission_through_wire_ingress() {
+    let mut runtime = runtime();
+    let initialize = send(&mut runtime, AdapterCommand::Initialize);
+    let commands: Vec<_> = (0..600)
+        .map(|i| json!({"name":format!("cmd{i:03}"),"description":"Command"}))
+        .collect();
+    let incoming = frame(json!({"type":"control_response","response":{
+        "subtype":"success","request_id":initialize["request_id"],
+        "response":{"commands":commands,"current_permission_mode":"default"}}}));
+    runtime.validate_ingress(&incoming).unwrap();
+    let batch = runtime.ingest(&incoming, &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Initialized { .. }]));
+    let session = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    reply(&mut runtime, &session, json!({"applied":{}}));
+    let list = runtime.available_commands().snapshot();
+    assert_eq!((list.commands.len(), list.omitted), (512, 90));
+    assert_eq!(list.commands[0].name, "status");
+    assert_eq!(list.commands[1].name, "mcp");
+    assert_eq!(list.commands.last().unwrap().name, "cmd509");
+    assert!(list.validate(list.revision, "/cmd509").is_ok());
+    assert!(list.validate(list.revision, "/cmd510").is_err());
+
+    let changed = frame(json!({"type":"system","subtype":"commands_changed",
+        "commands":commands.into_iter().rev().collect::<Vec<_>>() }));
+    runtime.validate_ingress(&changed).unwrap();
+    runtime.ingest(&changed, &Mapper).unwrap();
+    let changed = runtime.available_commands().snapshot();
+    assert!(changed.revision > list.revision);
+    assert_eq!((changed.commands.len(), changed.omitted), (512, 90));
+    assert_eq!(changed.commands[2].name, "cmd599");
+    assert_eq!(changed.commands.last().unwrap().name, "cmd090");
+    assert!(changed.validate(changed.revision, "/cmd090").is_ok());
+    assert!(changed.validate(changed.revision, "/cmd089").is_err());
+}
+
+#[test]
+fn sdk_catalog_ceiling_keeps_unrelated_arrays_and_uncorrelated_replies_bounded() {
+    use crate::acp::transport::StructuralError;
+    let mut runtime = runtime();
+    let initialize = send(&mut runtime, AdapterCommand::Initialize);
+    let response = |id: Value, commands: Value| {
+        json!({"type":"control_response","response":{
+        "subtype":"success","request_id":id,"response":{"commands":commands,
+        "current_permission_mode":"default"}}})
+    };
+    let oversized = json!(vec![Value::Null; 513]);
+    for value in [
+        response(json!("foreign"), oversized.clone()),
+        response(
+            initialize["request_id"].clone(),
+            json!(vec![Value::Null; 2049]),
+        ),
+        response(
+            initialize["request_id"].clone(),
+            json!([{"name":"cmd","aliases":oversized}]),
+        ),
+        json!({"type":"system","subtype":"init","commands":oversized}),
+        json!({"type":"system","subtype":"commands_changed","commands":[{"name":"cmd","aliases":oversized}]}),
+        json!({"type":"system","subtype":"commands_changed","commands":[],"other":oversized}),
+    ] {
+        let incoming = frame(value);
+        assert_eq!(
+            runtime.validate_ingress(&incoming),
+            Err(StructuralError::ArrayTooLarge)
+        );
+        assert!(runtime.ingest(&incoming, &Mapper).is_err());
+    }
+    let commands: Vec<_> = (0..2048)
+        .map(|i| json!({"name":format!("cmd{i:04}")}))
+        .collect();
+    let incoming = frame(response(initialize["request_id"].clone(), json!(commands)));
+    runtime.validate_ingress(&incoming).unwrap();
+    assert!(matches!(
+        runtime.ingest(&incoming, &Mapper).unwrap().events(),
+        [AdapterEvent::Initialized { .. }]
+    ));
+    let session = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    reply(&mut runtime, &session, json!({"applied":{}}));
+    for count in [2048, 2049] {
+        let incoming = frame(json!({"type":"system","subtype":"commands_changed",
+            "commands":vec![json!({"name":"cmd"}); count]}));
+        assert_eq!(runtime.validate_ingress(&incoming).is_ok(), count == 2048);
+        assert_eq!(runtime.ingest(&incoming, &Mapper).is_ok(), count == 2048);
+    }
+}
+
+#[test]
 fn a_claude_code_turn_reaches_the_store_as_shared_events() {
     let mut runtime = ready();
     let user = send(

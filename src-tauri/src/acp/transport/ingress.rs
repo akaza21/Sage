@@ -33,12 +33,18 @@ struct Budget {
     nodes: u64,
 }
 
+#[cfg(test)]
 pub(crate) fn validate_structure(frame: &Frame) -> Result<(), StructuralError> {
+    validate_structure_with_catalog(frame, || CommandWirePath::for_frame(frame.as_bytes()))
+}
+
+pub(crate) fn validate_structure_with_catalog(
+    frame: &Frame,
+    catalog: impl FnOnce() -> CommandWirePath,
+) -> Result<(), StructuralError> {
     validate_numeric_tokens(frame.as_bytes())?;
     match validate_with_path(frame, CommandWirePath::Other) {
-        Err(StructuralError::ArrayTooLarge) => {
-            validate_with_path(frame, CommandWirePath::for_frame(frame.as_bytes()))
-        }
+        Err(StructuralError::ArrayTooLarge) => validate_with_path(frame, catalog()),
         result => result,
     }
 }
@@ -204,7 +210,7 @@ impl<'de> Visitor<'de> for NodeVisitor<'_> {
                 depth: self.depth + 1,
                 method: false,
                 count_node: true,
-                path: CommandWirePath::Other,
+                path: self.path.element(),
             })?
             .is_some()
         {

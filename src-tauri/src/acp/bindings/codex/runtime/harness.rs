@@ -14,6 +14,10 @@ use sage_acp_protocol::{
 use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
+    fn command_catalog_path(&self, frame: &Frame) -> crate::acp::transport::CommandWirePath {
+        self.inner.command_catalog_path(frame.as_bytes())
+    }
+
     fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
         self.begin_title(input)
     }
