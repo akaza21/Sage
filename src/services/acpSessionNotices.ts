@@ -10,7 +10,7 @@ function safeNotice(value: unknown): SessionNotice | null {
   if (!isRecord(value) || !LEVELS.includes(value.level as string)) return null;
   const text = safeText(value.text, 1024);
   const source = value.source == null ? null : safeText(value.source, 128);
-  const diagnostic = value.diagnostic ?? true;
+  const diagnostic = value.diagnostic ?? false;
   if (
     !text ||
     (value.source != null && !source) ||

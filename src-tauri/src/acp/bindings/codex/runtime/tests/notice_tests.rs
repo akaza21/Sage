@@ -76,7 +76,7 @@ fn warning_with_no_active_turn_becomes_a_session_warning() {
             SessionNoticeLevel::Warning,
             "codex",
             "Codex warning: Model metadata is missing; using defaults.",
-            true
+            false
         )]
     );
 }
@@ -132,7 +132,7 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
             SessionNoticeLevel::Warning,
             "codex",
             "Codex warning: Sandbox is degraded.",
-            true
+            false
         )]
     );
 }
@@ -412,7 +412,7 @@ fn upstream_additions_are_tolerated() {
             SessionNoticeLevel::Warning,
             "codex",
             "Codex warning: Heads up.",
-            true
+            false
         )]
     );
     assert_eq!(
@@ -482,6 +482,23 @@ const IGNORED_SETTING_DETAILS: &str =
     "user [path] `computer_use.windows.always_allowed_app_ids` is ignored.";
 
 #[test]
+fn only_the_ignored_settings_summary_is_a_generic_configuration_diagnostic() {
+    for (message, diagnostic) in [
+        (IGNORED_SETTING.to_owned(), true),
+        ("Codex is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n`old_key` is ignored.".to_owned(), true),
+        ("Sandbox is degraded.".to_owned(), false),
+        ("Codex is ignoring sandbox restrictions.".to_owned(), false),
+        (format!("{IGNORED_SETTING} Sandbox is degraded."), false),
+    ] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        let warning = one_notice(&notify(&mut runtime, "warning", json!({"message": message})));
+        assert_eq!(warning.diagnostic, diagnostic, "{message}");
+        assert_eq!(warning.text.as_str(), format!("Codex warning: {message}"));
+    }
+}
+
+#[test]
 fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let config = json!({"summary": IGNORED_SETTING, "details": IGNORED_SETTING_DETAILS});
     let generic = json!({"message": format!("{IGNORED_SETTING}\n  {IGNORED_SETTING_DETAILS}")});
@@ -489,6 +506,7 @@ fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let first = one_notice(&notify(&mut runtime, "configWarning", config.clone()));
+    assert!(first.diagnostic);
     assert_eq!(first.source.unwrap().as_str(), "codex config");
     assert!(matches!(
         notify(&mut runtime, "warning", generic.clone()).as_slice(),
@@ -498,6 +516,7 @@ fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let first = one_notice(&notify(&mut runtime, "warning", generic));
+    assert!(first.diagnostic);
     assert_eq!(first.source.unwrap().as_str(), "codex");
     assert!(matches!(
         notify(&mut runtime, "configWarning", config).as_slice(),

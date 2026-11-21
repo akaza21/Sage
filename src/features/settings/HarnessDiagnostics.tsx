@@ -4,7 +4,7 @@ import { useAcpChatProjection } from "../chat/acp/useAcpChatProjection";
 
 export function HarnessDiagnostics() {
   const chatId = useAgentChatFocus();
-  const page = useAcpChatProjection(!!chatId, chatId);
+  const page = useAcpChatProjection(!!chatId, chatId, "subscribe");
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const session = page?.sessions.find(
     (entry) => entry.id === page.currentSessionId,
@@ -14,7 +14,7 @@ export function HarnessDiagnostics() {
   );
   const notices =
     page?.sessionNotices?.filter(
-      (notice) => notice.diagnostic !== false && notice.level !== "error",
+      (notice) => notice.diagnostic === true && notice.level !== "error",
     ) ?? [];
   if (!chatId || page?.chatId !== chatId || !harness || !notices.length)
     return null;

@@ -23,21 +23,23 @@ const notices = safeSessionNotices([
 ]);
 
 describe("SessionNoticeStrip", () => {
-  it("routes unclassified legacy details to diagnostics while preserving errors", () => {
+  it("replays legacy actionable warnings visibly in chat", () => {
     const legacy = safeSessionNotices([
       {
         level: "warning",
-        text: "Codex configuration problem: unknown key",
-        source: "codex config",
+        text: "The MCP server calendar needs you to sign in again; its tools are unavailable until then.",
+        source: "codex mcp",
       },
-      { level: "info", text: "Legacy detail", source: null },
+      { level: "warning", text: "Sandbox is degraded.", source: "codex" },
       { level: "error", text: "Legacy blocking failure", source: null },
     ]);
     render(<SessionNoticeStrip session="restored" notices={legacy} />);
     expect(
-      screen.queryByText("Codex configuration problem: unknown key"),
-    ).toBeNull();
-    expect(screen.queryByText("Legacy detail")).toBeNull();
+      screen.getByText(
+        "The MCP server calendar needs you to sign in again; its tools are unavailable until then.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("Sandbox is degraded.")).toBeVisible();
     expect(screen.getByText("Legacy blocking failure")).toBeVisible();
   });
   it("keeps protocol diagnostics out of chat while retaining blocking errors", () => {

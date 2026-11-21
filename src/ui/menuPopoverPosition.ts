@@ -51,8 +51,9 @@ export function menuPopoverPosition(
       bottomEdge = bottom;
     }
   }
+  // Content avoidance is a preference; viewport containment takes priority.
   const clampTop = (top: number, height = surface.height) =>
-    Math.max(topEdge, Math.min(top, bottomEdge - height));
+    Math.min(Math.max(topEdge, top), bottomEdge - height);
   const parent = trigger.closest(".menu-popover")?.getBoundingClientRect();
   const shared = {
     minWidth: matchTriggerWidth ? Math.min(anchor.width, maxWidth) : undefined,

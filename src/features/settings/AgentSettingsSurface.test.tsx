@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,8 +18,10 @@ import {
   pinAgentChatOwner,
   clearAgentChatOwner,
 } from "../../app/agentChatOwner";
-import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
-import { acpDesktop } from "../../services/acpDesktop";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
 import { page as chatPage } from "../chat/acp/acpProjection.fixture";
 
 const workbench = useWorkbenchStore.getState();
@@ -255,7 +258,16 @@ it("shows protocol diagnostics under the originating harness in Settings", async
       source: "fixture",
     },
   ];
-  vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(page);
+  acpProjectionStoreFor(page.chatId).setState({
+    page,
+    scope: {
+      projectId: page.projectId,
+      projectGeneration: String(
+        useWorkbenchStore.getState().projectGeneration,
+      ) as never,
+      chatId: page.chatId,
+    },
+  });
   pinAgentChatOwner(page.chatId);
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
@@ -264,6 +276,15 @@ it("shows protocol diagnostics under the originating harness in Settings", async
   ).toHaveTextContent("Unknown configuration key");
   expect(screen.queryByText("Session blocked")).toBeNull();
   expect(screen.queryByText("Approval needs attention in Chat")).toBeNull();
+  act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+  expect(screen.queryByText("Unknown configuration key")).toBeNull();
+  act(() =>
+    useWorkbenchStore.setState({
+      projectTransitioning: false,
+      projectGeneration: useWorkbenchStore.getState().projectGeneration + 1,
+    }),
+  );
+  expect(screen.queryByText("Unknown configuration key")).toBeNull();
 });
 
 it("labels transient harness/model selection honestly and exposes only real access defaults", () => {

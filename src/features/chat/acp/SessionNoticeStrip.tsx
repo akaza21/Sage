@@ -61,7 +61,7 @@ export function SessionNoticeStrip({
   }
   const shown = notices.filter(
     (notice) =>
-      (notice.diagnostic === false || notice.level === "error") &&
+      (notice.diagnostic !== true || notice.level === "error") &&
       !kept.includes(keyOf(notice)),
   );
   if (shown.length === 0) return null;

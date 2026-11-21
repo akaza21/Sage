@@ -10,11 +10,18 @@ fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionSco
 }
 
 #[test]
-fn legacy_notice_routing_is_conservative_and_new_notices_keep_explicit_routing() {
-    let legacy: SessionNotice =
-        serde_json::from_str(r#"{"level":"warning","text":"Unknown setting","source":null}"#)
-            .unwrap();
-    assert!(legacy.diagnostic);
+fn replayed_legacy_actionable_warning_stays_visible() {
+    let legacy: SessionScopedEvent = serde_json::from_str(
+        r#"{"kind":"notice","level":"warning","text":"The MCP server calendar needs you to sign in again; its tools are unavailable until then.","source":"codex mcp"}"#,
+    ).unwrap();
+    let mut surface = SessionSurface::default();
+    surface.apply(1, &legacy);
+    assert_eq!(surface.notices.len(), 1);
+    assert!(!surface.notices[0].diagnostic);
+    assert_eq!(
+        surface.notices[0].text.as_str(),
+        "The MCP server calendar needs you to sign in again; its tools are unavailable until then."
+    );
     let current = super::fixtures::notice(SessionNoticeLevel::Warning, "Approval needs attention");
     let encoded = serde_json::to_value(&current).unwrap();
     assert_eq!(encoded["diagnostic"], false);
