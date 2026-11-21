@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
-import { writeFileSync, appendFileSync } from "node:fs";
+import { writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const scenario = process.env.TITLE_FIXTURE_SCENARIO ?? process.argv[2];
@@ -45,7 +45,11 @@ input.on("line", (line) => {
       line + "\n",
     );
   }
-  if (scenario === "hang") {
+  if (
+    scenario === "hang" ||
+    (scenario === "hang-once" &&
+      !existsSync(join(process.env.TITLE_FIXTURE_DIR, "child.pid")))
+  ) {
     const child = spawn(
       process.execPath,
       ["-e", "setInterval(() => {}, 1000)"],

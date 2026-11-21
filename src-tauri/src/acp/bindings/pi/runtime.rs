@@ -151,7 +151,7 @@ impl HarnessAdapter for PiRuntime {
         }
         let command = self
             .title_launch
-            .take()
+            .as_ref()
             .ok_or(AdapterRuntimeError::LaunchUnavailable)?
             .command(model)?;
         self.title_request = Some(super::title_request::TitleRequest::start(command, input)?);
@@ -163,7 +163,11 @@ impl HarnessAdapter for PiRuntime {
             .as_mut()
             .and_then(|request| request.poll())
         {
-            self.title_result = Some(result);
+            self.title_result = match result {
+                super::title_request::TitleOutcome::Generated(title) => Some(Some(title)),
+                super::title_request::TitleOutcome::Failed => Some(None),
+                super::title_request::TitleOutcome::Preempted => None,
+            };
             self.title_request = None;
         }
         None
@@ -177,6 +181,7 @@ impl HarnessAdapter for PiRuntime {
         self.title_request.is_some()
     }
     fn take_title_result(&mut self) -> Option<Option<String>> {
+        self.poll_title();
         self.title_result.take()
     }
     /// Pi ends each run with `agent_end`, which repeats the whole run and can outgrow a frame.

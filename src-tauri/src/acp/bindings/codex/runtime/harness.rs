@@ -22,6 +22,9 @@ impl HarnessAdapter for CodexRuntime {
     }
     fn cancel_title(&mut self) {
         if let Some(request) = &mut self.title {
+            if !request.cancelled && request.result.is_none() {
+                request.preempted = true;
+            }
             request.cancel();
         }
     }

@@ -18,6 +18,8 @@ mod sessions;
 mod slash_commands;
 mod steer;
 mod store_ingress;
+#[cfg(feature = "acp-fixture")]
+mod title_retry;
 
 use super::*;
 use crate::acp::{

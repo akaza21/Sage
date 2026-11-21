@@ -108,6 +108,17 @@ fn captured_launch_preserves_account_and_model_and_refuses_changed_authority() {
     let result = finish(&mut request);
     assert_eq!(result.as_deref(), Some("Check Sage chat titles"));
     drop(request);
+    // The same captured authority must support a later admitted title try.
+    let mut retry = super::super::title_request::TitleRequest::start(
+        launch.command(&model).unwrap(),
+        "first exchange after foreground preemption",
+    )
+    .unwrap();
+    assert_eq!(
+        finish(&mut retry).as_deref(),
+        Some("Check Sage chat titles")
+    );
+    drop(retry);
     assert_eq!(std::fs::read(&history).unwrap(), original);
     assert_eq!(
         std::fs::read(agent.join("settings.json")).unwrap(),
@@ -127,7 +138,11 @@ fn finish(request: &mut super::super::title_request::TitleRequest) -> Option<Str
     let end = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(result) = request.poll() {
-            return result;
+            return match result {
+                super::super::title_request::TitleOutcome::Generated(title) => Some(title),
+                super::super::title_request::TitleOutcome::Failed
+                | super::super::title_request::TitleOutcome::Preempted => None,
+            };
         }
         assert!(Instant::now() < end);
         std::thread::sleep(Duration::from_millis(5));

@@ -15,7 +15,7 @@ fn fixture(scenario: &str) -> Command {
     command
 }
 
-fn finish(request: &mut TitleRequest) -> Option<String> {
+fn finish_outcome(request: &mut TitleRequest) -> TitleOutcome {
     let end = Instant::now() + Duration::from_secs(20);
     loop {
         if let Some(result) = request.poll() {
@@ -23,6 +23,13 @@ fn finish(request: &mut TitleRequest) -> Option<String> {
         }
         assert!(Instant::now() < end, "fixture did not finish");
         thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn finish(request: &mut TitleRequest) -> Option<String> {
+    match finish_outcome(request) {
+        TitleOutcome::Generated(title) => Some(title),
+        TitleOutcome::Failed | TitleOutcome::Preempted => None,
     }
 }
 
@@ -57,7 +64,11 @@ fn failures_and_oversize_output_preserve_the_local_fallback() {
     let _process = PROCESS_LOCK.lock().unwrap();
     for scenario in ["nonzero", "malformed", "oversize", "stream-oversize"] {
         let mut request = TitleRequest::start(fixture(scenario), "first exchange").unwrap();
-        assert_eq!(finish(&mut request), None, "{scenario}");
+        assert_eq!(
+            finish_outcome(&mut request),
+            TitleOutcome::Failed,
+            "{scenario}"
+        );
     }
 }
 
@@ -119,10 +130,10 @@ fn timeout_and_cancellation_kill_the_whole_process_tree() {
         let child = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
         assert!(!child.is_null());
         if timeout {
-            assert_eq!(finish(&mut request), None);
+            assert_eq!(finish_outcome(&mut request), TitleOutcome::Failed);
         } else {
             request.cancel();
-            assert_eq!(finish(&mut request), None);
+            assert_eq!(finish_outcome(&mut request), TitleOutcome::Preempted);
         }
         drop(request); // The same ownership drop is used by adapter cancellation.
         // SAFETY: this test owns the live handle until CloseHandle.

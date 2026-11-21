@@ -1,5 +1,9 @@
-//! One immutable claim per chat, using the existing bounded fact ledger.
-//! A claimed request is spent even if its process or Sage exits before a result.
+//! Bounded title state in the immutable fact ledger. Only the latest fact is
+//! authoritative: at most one pending retry per chat, and three admitted tries.
+//! Busy admission adds at most one initial pending fact. Each admitted try adds
+//! a claim and at most one preemption fact (at most six facts for the chat).
+//! Claims fail closed on errors or process exit; only foreground preemption
+//! explicitly returns a claim to pending.
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
@@ -10,32 +14,56 @@ const CLAIM: &str = "chatTitleAttempt";
 pub(crate) struct TitleAttempt {
     pub(crate) owner: RuntimeOwner,
     pub(crate) anchor: SageTurnId,
+    completed_turn: SageTurnId,
     pub(crate) token: String,
     pub(crate) input: String,
     title: String,
     source: String,
+    tries: u8,
+}
+
+pub(crate) enum TitleClaim {
+    Pending,
+    Stopped,
+    Started(Box<TitleAttempt>),
 }
 
 pub(crate) fn claim(
     connection: &mut Connection,
     owner: RuntimeOwner,
-    anchor: SageTurnId,
-) -> Result<Option<TitleAttempt>, StoreError> {
+    completed_turn: SageTurnId,
+    admitted: bool,
+) -> Result<TitleClaim, StoreError> {
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let row: Option<(String, String)> = transaction
         .query_row(
             "SELECT title,title_source FROM chats c WHERE project_id=?1 AND id=?2
          AND title_source IN ('default','prompt')
-         AND EXISTS(SELECT 1 FROM chat_tabs WHERE project_id=c.project_id AND chat_id=c.id)
-         AND NOT EXISTS(SELECT 1 FROM session_facts WHERE project_id=c.project_id
-           AND chat_id=c.id AND kind='chatTitleAttempt')",
+         AND EXISTS(SELECT 1 FROM chat_tabs WHERE project_id=c.project_id AND chat_id=c.id)",
             params![owner.project_id.as_str(), owner.chat_id.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
     let Some((title, source)) = row else {
-        return Ok(None);
+        return Ok(TitleClaim::Stopped);
+    };
+    let previous = latest(&transaction, &owner)?;
+    let tries = match &previous {
+        Some(previous) => {
+            if previous.session != owner.session_id.as_str()
+                || !previous.pending
+                || previous.tries >= 3
+            {
+                return Ok(TitleClaim::Stopped);
+            }
+            // Repeated busy completions do not append facts or spend tries.
+            if !admitted {
+                return Ok(TitleClaim::Pending);
+            }
+            previous.tries
+        }
+        None => 0,
     };
     let first: Option<String> = transaction
         .query_row(
@@ -49,19 +77,24 @@ pub(crate) fn claim(
             |row| row.get(0),
         )
         .optional()?;
-    if first.as_deref() != Some(anchor.as_str()) {
-        return Ok(None);
+    let Some(first) = first else {
+        return Ok(TitleClaim::Stopped);
+    };
+    if previous.is_none() && first != completed_turn.as_str() {
+        return Ok(TitleClaim::Stopped);
     }
     let attempt = TitleAttempt {
         owner,
-        anchor,
+        anchor: SageTurnId::parse(first).map_err(|_| StoreError::Corrupt("title anchor"))?,
+        completed_turn,
         token: uuid::Uuid::new_v4().to_string(),
         input: String::new(),
         title,
         source,
+        tries: tries + u8::from(admitted),
     };
     if !anchor_valid(&transaction, &attempt)? {
-        return Ok(None);
+        return Ok(TitleClaim::Stopped);
     }
     // SQLite clips each extracted text before it crosses the native boundary.
     // Only the prompt and last completed assistant text are admitted, never tools/thoughts.
@@ -81,7 +114,7 @@ pub(crate) fn claim(
     };
     let (Some(user), Some(assistant)) = (text("ordinal=0", "ASC")?, text("ordinal>0", "DESC")?)
     else {
-        return Ok(None);
+        return Ok(TitleClaim::Stopped);
     };
     let mut attempt = attempt;
     attempt.input = format!(
@@ -89,7 +122,49 @@ pub(crate) fn claim(
         prefix(&user, 2000),
         prefix(&assistant, 2000)
     );
-    let payload = serde_json::json!({"state":"claimed","token":attempt.token}).to_string();
+    append_state(
+        &transaction,
+        &attempt,
+        if admitted { "claimed" } else { "pending" },
+    )?;
+    transaction.commit()?;
+    Ok(if admitted {
+        TitleClaim::Started(Box::new(attempt))
+    } else {
+        TitleClaim::Pending
+    })
+}
+
+struct AttemptState {
+    session: String,
+    pending: bool,
+    token: String,
+    tries: u8,
+}
+
+fn latest(
+    connection: &Connection,
+    owner: &RuntimeOwner,
+) -> Result<Option<AttemptState>, StoreError> {
+    Ok(connection.query_row(
+        "SELECT session_id,json_extract(payload_json,'$.state'),json_extract(payload_json,'$.token'),
+         COALESCE(json_extract(payload_json,'$.tries'),3) FROM session_facts
+         WHERE project_id=?1 AND chat_id=?2 AND kind=?3 ORDER BY sequence DESC LIMIT 1",
+        params![owner.project_id.as_str(), owner.chat_id.as_str(), CLAIM],
+        |row| Ok(AttemptState {
+            session: row.get(0)?, pending: row.get::<_, String>(1)? == "pending",
+            token: row.get(2)?, tries: row.get(3)?,
+        }),
+    ).optional()?)
+}
+
+fn append_state(
+    transaction: &rusqlite::Transaction<'_>,
+    attempt: &TitleAttempt,
+    state: &str,
+) -> Result<(), StoreError> {
+    let payload =
+        serde_json::json!({"state":state,"token":attempt.token,"tries":attempt.tries}).to_string();
     // Claiming is invisible metadata and does not invalidate a racing send.
     let current: i64 = transaction.query_row(
         "SELECT projection_revision FROM chats WHERE id=?1",
@@ -98,7 +173,7 @@ pub(crate) fn claim(
     )?;
     let revision = facts::projection_from_i64(current)?;
     facts::append_fact_payload(
-        &transaction,
+        transaction,
         attempt.owner.project_id.as_str(),
         attempt.owner.chat_id.as_str(),
         attempt.owner.session_id.as_str(),
@@ -108,8 +183,44 @@ pub(crate) fn claim(
         revision,
         sage_core::time::now_millis(),
     )?;
+    Ok(())
+}
+
+pub(crate) fn preempt(
+    connection: &mut Connection,
+    attempt: &TitleAttempt,
+) -> Result<bool, StoreError> {
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let pending = attempt.tries < 3 && valid(&transaction, attempt)?;
+    if pending {
+        append_state(&transaction, attempt, "pending")?;
+    }
     transaction.commit()?;
-    Ok(Some(attempt))
+    Ok(pending)
+}
+
+/// A following turn may finish while cancellation is still cleaning up.
+/// Its durable completion is the retry signal; no waiting intent is retained.
+pub(crate) fn next_completion(
+    connection: &Connection,
+    attempt: &TitleAttempt,
+) -> Result<Option<SageTurnId>, StoreError> {
+    let next: Option<String> = connection
+        .query_row(
+            "SELECT id FROM turns WHERE session_id=?1 AND runtime_epoch=?2 AND state='completed'
+         AND ordinal > (SELECT ordinal FROM turns WHERE id=?3)
+         ORDER BY ordinal DESC LIMIT 1",
+            params![
+                attempt.owner.session_id.as_str(),
+                attempt.owner.runtime_epoch.get() as i64,
+                attempt.completed_turn.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()?;
+    next.map(|id| SageTurnId::parse(id).map_err(|_| StoreError::Corrupt("title retry turn")))
+        .transpose()
 }
 
 pub(crate) fn prefix(text: &str, bytes: usize) -> &str {
@@ -150,19 +261,11 @@ fn anchor_valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool,
 
 pub(crate) fn valid(connection: &Connection, attempt: &TitleAttempt) -> Result<bool, StoreError> {
     Ok(anchor_valid(connection, attempt)?
-        && connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM session_facts WHERE project_id=?1 AND chat_id=?2
-         AND session_id=?3 AND turn_id=?4 AND kind=?5 AND json_extract(payload_json,'$.token')=?6)",
-            params![
-                attempt.owner.project_id.as_str(),
-                attempt.owner.chat_id.as_str(),
-                attempt.owner.session_id.as_str(),
-                attempt.anchor.as_str(),
-                CLAIM,
-                attempt.token
-            ],
-            |row| row.get::<_, bool>(0),
-        )?)
+        && latest(connection, &attempt.owner)?.is_some_and(|state| {
+            state.session == attempt.owner.session_id.as_str()
+                && !state.pending
+                && state.token == attempt.token
+        }))
 }
 
 pub(crate) fn apply(

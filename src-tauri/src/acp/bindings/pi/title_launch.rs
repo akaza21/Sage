@@ -9,6 +9,14 @@ pub(super) struct TitleLaunch {
 }
 
 impl TitleLaunch {
+    #[cfg(all(test, feature = "acp-fixture"))]
+    pub(super) fn fixture(command: Command) -> Self {
+        Self {
+            command,
+            configuration: Vec::new(),
+        }
+    }
+
     pub(super) fn capture(spec: &LaunchSpec) -> Option<Self> {
         let environment = spec.environment.as_slice();
         let home = environment
@@ -44,7 +52,7 @@ impl TitleLaunch {
     }
 
     pub(super) fn command(
-        mut self,
+        &self,
         model: &super::ModelSummary,
     ) -> Result<Command, AdapterRuntimeError> {
         for (path, expected) in &self.configuration {
@@ -55,9 +63,18 @@ impl TitleLaunch {
         if model.provider.is_empty() || model.id.is_empty() {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
-        self.command
-            .args(["--provider", &model.provider, "--model", &model.id]);
-        Ok(self.command)
+        let mut command = Command::new(self.command.get_program());
+        command.args(self.command.get_args()).env_clear();
+        for (key, value) in self.command.get_envs() {
+            if let Some(value) = value {
+                command.env(key, value);
+            }
+        }
+        if let Some(directory) = self.command.get_current_dir() {
+            command.current_dir(directory);
+        }
+        command.args(["--provider", &model.provider, "--model", &model.id]);
+        Ok(command)
     }
 }
 

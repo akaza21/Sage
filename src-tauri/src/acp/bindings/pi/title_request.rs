@@ -36,12 +36,25 @@ pub(super) const TITLE_ARGS: &[&str] = &[
 ];
 
 pub(super) struct TitleRequest {
+    #[cfg(test)]
     tree: Arc<OwnedTree>,
     cancel: Option<oneshot::Sender<()>>,
-    result: mpsc::Receiver<Option<String>>,
+    result: mpsc::Receiver<TitleOutcome>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum TitleOutcome {
+    Generated(String),
+    Failed,
+    Preempted,
 }
 
 impl TitleRequest {
+    #[cfg(all(test, feature = "acp-fixture"))]
+    pub(super) fn tree_empty(&self) -> bool {
+        self.tree.is_empty()
+    }
+
     pub(super) fn start(command: Command, input: &str) -> Result<Self, AdapterRuntimeError> {
         Self::start_until(command, input, Instant::now() + Duration::from_secs(15))
     }
@@ -114,10 +127,19 @@ impl TitleRequest {
                     Ok(_) => None,
                 }
             };
-            let title = tokio::select! {
+            let outcome = tokio::select! {
                 biased;
-                _ = cancelled => None,
-                result = tokio::time::timeout_at(deadline.into(), operation) => result.ok().flatten(),
+                result = tokio::time::timeout_at(deadline.into(), operation) => match result.ok().flatten() {
+                    Some(title) => TitleOutcome::Generated(title),
+                    None => TitleOutcome::Failed,
+                },
+                _ = cancelled => {
+                    if Instant::now() >= deadline || exit_code(&process.child).is_some_and(|code| code != 0) {
+                        TitleOutcome::Failed
+                    } else {
+                        TitleOutcome::Preempted
+                    }
+                },
             };
             process.tree.terminate();
             drop(stdin);
@@ -144,19 +166,20 @@ impl TitleRequest {
                 .as_millis() as u64,
                 "Isolated Pi title process stopped"
             );
-            let _ = send.send(if clean { title } else { None });
+            let _ = send.send(if clean { outcome } else { TitleOutcome::Failed });
         });
         Ok(Self {
+            #[cfg(test)]
             tree,
             cancel: Some(cancel),
             result,
         })
     }
 
-    pub(super) fn poll(&mut self) -> Option<Option<String>> {
+    pub(super) fn poll(&mut self) -> Option<TitleOutcome> {
         match self.result.try_recv() {
             Ok(result) => Some(result),
-            Err(mpsc::TryRecvError::Disconnected) => Some(None),
+            Err(mpsc::TryRecvError::Disconnected) => Some(TitleOutcome::Failed),
             Err(mpsc::TryRecvError::Empty) => None,
         }
     }
@@ -165,7 +188,9 @@ impl TitleRequest {
         if let Some(cancel) = self.cancel.take() {
             let _ = cancel.send(());
         }
-        self.tree.terminate();
+        // The worker classifies any already-completed failure before it kills
+        // the tree. Killing here would turn our cancellation into a read/exit
+        // failure and make a legitimate foreground preemption look terminal.
     }
 }
 

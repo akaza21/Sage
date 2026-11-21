@@ -56,7 +56,7 @@ pub(crate) fn scheduler_fixture() -> (sage_db::database::Database, crate::acp::r
 
 fn claim(fixture: &mut Fixture) -> Option<TitleAttempt> {
     let owner = &fixture.owner;
-    title_attempt::claim(
+    match title_attempt::claim(
         &mut fixture.connection,
         RuntimeOwner {
             project_id: owner.project_id.clone(),
@@ -65,8 +65,13 @@ fn claim(fixture: &mut Fixture) -> Option<TitleAttempt> {
             runtime_epoch: owner.runtime_epoch,
         },
         owner.turn_id.clone(),
+        true,
     )
     .unwrap()
+    {
+        title_attempt::TitleClaim::Started(attempt) => Some(*attempt),
+        _ => None,
+    }
 }
 
 fn shown(fixture: &Fixture) -> (String, String) {
@@ -117,6 +122,41 @@ fn a_durable_claim_spends_one_attempt_across_duplicates_and_reopen() {
         )
         .unwrap()
         .is_none()
+    );
+}
+
+#[test]
+fn a_preempted_claim_cannot_apply_after_a_retry_claim_is_admitted() {
+    let mut fixture = completed();
+    let first = claim(&mut fixture).unwrap();
+    assert!(title_attempt::preempt(&mut fixture.connection, &first).unwrap());
+    assert!(!title_attempt::preempt(&mut fixture.connection, &first).unwrap());
+    let retry = claim(&mut fixture).unwrap();
+    assert_eq!(retry.input, "User:\nprompt\nAssistant:\nadapter text");
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &first,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        title_attempt::apply(
+            &mut fixture.connection,
+            &retry,
+            "Investigate empty sidebar chats"
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(
+        shown(&fixture),
+        (
+            "Chat: Investigate empty sidebar chats".into(),
+            "harness".into()
+        )
     );
 }
 

@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 pub(super) struct TitleRead {
     session: String,
     ids: Vec<u64>,
+    retired_ids: Vec<u64>,
+    attempts: u8,
     waiting: Option<u64>,
     read_at: Instant,
     pub(super) finished: bool,
@@ -16,17 +18,17 @@ impl StandardAcpRuntime {
     pub(super) fn may_receive_title_response(&self) -> bool {
         self.title_read
             .as_ref()
-            .is_some_and(|read| !read.ids.is_empty())
+            .is_some_and(|read| !read.ids.is_empty() || !read.retired_ids.is_empty())
     }
     pub(super) fn reject_title_read(&mut self, id: u64) -> bool {
         let Some(read) = self
             .title_read
             .as_mut()
-            .filter(|read| read.ids.contains(&id))
+            .filter(|read| read.ids.contains(&id) || read.retired_ids.contains(&id))
         else {
             return false;
         };
-        if !read.finished {
+        if !read.finished && !read.retired_ids.contains(&id) {
             read.waiting = None;
             read.result = Some(None);
             read.finished = true;
@@ -35,12 +37,27 @@ impl StandardAcpRuntime {
     }
     pub(super) fn begin_title_read(&mut self) -> Result<(), AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Operation)?;
-        if active.turn.is_some() || !self.pending.is_empty() {
+        if active.turn.is_some()
+            || !self.pending.is_empty()
+            || self
+                .title_read
+                .as_ref()
+                .is_some_and(|read| !read.finished || read.attempts >= 3)
+        {
             return Err(AdapterRuntimeError::Operation);
+        }
+        let previous = self.title_read.take();
+        let attempts = previous.as_ref().map_or(1, |read| read.attempts + 1);
+        let mut retired_ids = Vec::with_capacity(4);
+        if let Some(previous) = previous {
+            retired_ids = previous.retired_ids;
+            retired_ids.extend(previous.ids);
         }
         self.title_read = Some(TitleRead {
             session: active.external_id.as_str().to_owned(),
             ids: Vec::with_capacity(2),
+            retired_ids,
+            attempts,
             waiting: None,
             read_at: Instant::now(),
             finished: false,
@@ -76,6 +93,13 @@ impl StandardAcpRuntime {
         let Some(read) = &mut self.title_read else {
             return false;
         };
+        if value.get("method").is_none()
+            && value["id"]
+                .as_u64()
+                .is_some_and(|id| read.retired_ids.contains(&id))
+        {
+            return true;
+        }
         if value.get("method").is_some()
             || !value["id"]
                 .as_u64()
