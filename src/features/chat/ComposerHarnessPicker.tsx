@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import "../../styles/harness-picker.css";
-import { Settings } from "../../ui/leanIcons";
+import { PickerLogo } from "../../ui/PickerLogo";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
@@ -37,7 +37,7 @@ export function ComposerHarnessPicker({
         ariaLabel="Harness"
         open={open}
         onOpenChange={onOpenChange}
-        triggerIcon={<Settings size={16} aria-hidden="true" />}
+        triggerIcon={<PickerLogo icon="generic" />}
         candidates={candidates}
         popoverClassName="composer__popover composer__harness-menu"
         popoverGap={8}
