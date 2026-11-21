@@ -85,6 +85,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         project_commands::add_project_root_from_picker,
         project_commands::ensure_local_project,
         chat_commands::create_chat,
+        chat_commands::get_reusable_chat,
         chat_commands::set_chat_project,
         crate::side_chat::open_side_chat,
         crate::side_chat::close_side_chat,

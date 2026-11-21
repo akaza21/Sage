@@ -127,19 +127,15 @@ export function LeftSidebar({
           tab.id === viewedChatId ||
           protectedChatIds.includes(tab.id)),
     );
-    return [
-      ...groupAgentRailProjects({
-        projects,
-        currentProjectId: project?.isInternal ? null : (project?.id ?? null),
-        currentChats: project?.isInternal ? [] : currentChats,
-      }),
-      ...groupAgentRailProjects({
-        projects: unscopedChats,
-        isInternal: true,
-        currentProjectId: project?.isInternal ? project.id : null,
-        currentChats: project?.isInternal ? currentChats : [],
-      }),
-    ];
+    return [false, true].flatMap((isInternal) => {
+      const active = Boolean(project?.isInternal) === isInternal;
+      return groupAgentRailProjects({
+        projects: isInternal ? unscopedChats : projects,
+        isInternal,
+        currentProjectId: active ? (project?.id ?? null) : null,
+        currentChats: active ? currentChats : [],
+      });
+    });
   }, [project, projects, unscopedChats, tabs, viewedChatId, unsentChatIds]);
   const prefs = useAgentRailViewPrefs();
   useEffect(() => {

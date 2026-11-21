@@ -48,6 +48,7 @@ import { AgentChatPanes } from "./AgentChatPanes";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { launchSideChat } from "./AgentToolPanel";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
+import { currentShownAgentChatId, useShownAgentChatId } from "./shownAgentChat";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
 
 beforeAll(() => preloadAgentHeaderMenu());
@@ -162,6 +163,31 @@ afterEach(() => {
 });
 
 describe("AgentChatPanes measured focus-only fallback", () => {
+  it("agrees with title and history on an explicitly selected hidden chat and retained focus", () => {
+    useWorkbenchStore.setState({
+      tabs: [tabs[0]!, { ...tabs[1]!, chatListed: false }],
+    });
+    function ShownChat() {
+      return <output>{useShownAgentChatId()}</output>;
+    }
+    const { container } = render(
+      <>
+        <AgentChatPanes />
+        <ShownChat />
+      </>,
+    );
+    expect(
+      screen.getByRole("region", { name: "Chat pane Chat B" }),
+    ).toBeVisible();
+    expect(container.querySelector("output")).toHaveTextContent("chat:b");
+    expect(currentShownAgentChatId()).toBe("chat:b");
+    act(() => useWorkbenchStore.setState({ activeTabId: "file:editor" }));
+    expect(
+      screen.getByRole("region", { name: "Chat pane Chat B" }),
+    ).toBeVisible();
+    expect(container.querySelector("output")).toHaveTextContent("chat:b");
+    expect(currentShownAgentChatId()).toBe("chat:b");
+  });
   it("keeps the project home free of header chrome when no Chat is open", () => {
     useWorkbenchStore.setState({ tabs: [], activeTabId: null });
     const onArtifactHeaderMount = vi.fn();
@@ -1082,6 +1108,21 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(
       localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY) ?? "",
     ).not.toContain("48");
+  });
+
+  it("keeps both unlisted members when focus returns to the parent", () => {
+    useWorkbenchStore.setState({
+      tabs: sideTabs.map((tab) => ({ ...tab, chatListed: false })),
+    });
+    render(<AgentChatPanes />);
+    reportCenterWidth(1_000);
+    act(() => useWorkbenchStore.setState({ activeTabId: "chat:a" }));
+    expect(
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:a", "side-x"]);
+    expect(pinnedAgentChatOwner()).toBe("chat:a");
   });
 
   it("restores focus inside the explicit pair after an Editor resource roundtrip", () => {

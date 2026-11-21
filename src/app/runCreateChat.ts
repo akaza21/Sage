@@ -38,6 +38,7 @@ export async function runCreateChat(
   },
   projectId?: string | null,
   chatId?: string,
+  reuse = false,
 ): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
@@ -100,6 +101,7 @@ export async function runCreateChat(
     current,
     expectedTransitionEpoch,
     chatId: chatId ?? crypto.randomUUID(),
+    reuse,
     targetProjectId: sourceProjectId ?? null,
   });
 }
@@ -120,6 +122,7 @@ async function createOnActiveProject(input: {
   targetProjectId: string | null;
   expectedTransitionEpoch: number;
   chatId: string;
+  reuse: boolean;
 }): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
@@ -129,6 +132,20 @@ async function createOnActiveProject(input: {
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
+    // A reused identity already existed. Only a newer epoch selecting it
+    // proves the native selection committed; mere presence proves nothing.
+    if (
+      input.reuse &&
+      snapshot.transitionEpoch === input.expectedTransitionEpoch &&
+      snapshot.project?.id === input.current?.projectId
+    )
+      return "unchanged" as const;
+    if (
+      input.reuse &&
+      (snapshot.transitionEpoch <= input.expectedTransitionEpoch ||
+        snapshot.activeTabId !== chatId)
+    )
+      return committed ? null : ("unchanged" as const);
     if (
       snapshot.transitionEpoch === input.expectedTransitionEpoch &&
       snapshot.project?.id === input.current?.projectId &&
@@ -196,6 +213,7 @@ async function createOnActiveProject(input: {
       input.expectedTransitionEpoch,
       input.targetProjectId,
       chatId,
+      input.reuse,
     );
     committed = result.committed;
     validateTransitionIntent(result, input.expectedTransitionEpoch);

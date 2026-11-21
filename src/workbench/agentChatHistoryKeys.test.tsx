@@ -92,6 +92,21 @@ it("goes back and forward between chats on Alt+arrows and the mouse buttons", as
   expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
 });
 
+it("records an explicitly selected unlisted chat in the title-bar history", async () => {
+  useWorkbenchStore.setState({
+    tabs: [chat("a1"), { ...chat("a2"), chatListed: false }],
+  });
+  render(<AgentWindow />);
+  act(() => useWorkbenchStore.setState({ activeTabId: "a2" }));
+  expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  await settle();
+  expect(shown()).toBe("project-a/a1");
+  fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+  await settle();
+  expect(shown()).toBe("project-a/a2");
+});
+
 it("keeps the way back while a pending send holds the project, then takes it", async () => {
   render(<AgentWindow />);
   act(() => showProject("project-b", "b1"));

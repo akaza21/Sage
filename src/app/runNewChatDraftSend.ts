@@ -16,6 +16,7 @@ export async function runNewChatDraftSend(
       status: "submitting";
       chatId: string;
       creation: DraftCreation;
+      reuse?: boolean;
     };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
@@ -30,6 +31,7 @@ export async function runNewChatDraftSend(
       (state.project?.id ?? null) !== draft?.projectId ||
       state.chatOwnershipEpoch !== submission.ownershipEpoch ||
       state.projectTransitioning ||
+      state.pendingFirstSend !== submission ||
       draft?.submission !== attempt.submission
     )
       throw new Error("Project changed during submission. Retry to continue.");
@@ -51,6 +53,7 @@ export async function runNewChatDraftSend(
         : initial.createChat(
             attempt.targetProjectId,
             attempt.submission.chatId,
+            attempt.submission.reuse,
           ));
       // Record the durable result before validating this attempt's ownership.
       // A recovered project can invalidate the attempt, never its creation.
@@ -159,7 +162,7 @@ export async function runNewChatDraftSend(
     if (choice.modelId && choice.effort)
       useChatEffortDraft.setState({
         draft: {
-          chatId,
+          chatId: attempt.submission.chatId,
           bindingId: choice.bindingId,
           modelId: choice.modelId,
           effort: choice.effort,

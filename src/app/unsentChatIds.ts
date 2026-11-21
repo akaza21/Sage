@@ -4,15 +4,14 @@ import type { WorkbenchState } from "./store";
 export function unsentChatIdsJson(
   state: Pick<WorkbenchState, "chatUiById">,
 ): string {
-  const ids: string[] = [];
-  for (const [id, input] of Object.entries(state.chatUiById)) {
-    if (
-      input.composerText ||
-      input.attachedContext.length ||
-      input.queuedPrompts?.length
-    ) {
-      ids.push(id);
-    }
-  }
-  return JSON.stringify(ids);
+  return JSON.stringify(
+    Object.keys(state.chatUiById).filter((id) => {
+      const input = state.chatUiById[id]!;
+      return (
+        input.composerText ||
+        input.attachedContext.length ||
+        input.queuedPrompts?.length
+      );
+    }),
+  );
 }

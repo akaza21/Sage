@@ -116,6 +116,7 @@ mod tests {
         let db = Connection::open_in_memory().unwrap();
         db.execute_batch("CREATE TABLE chats(project_id TEXT,id TEXT,title TEXT,title_source TEXT,created_at INTEGER);
           CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);
+          CREATE TABLE chat_lineage(child_project_id TEXT,child_chat_id TEXT,relation TEXT);
           CREATE TABLE workbench_tabs(id TEXT,pinned INTEGER);
           CREATE TABLE chat_queued_prompts(project_id TEXT,chat_id TEXT,prompts_json TEXT);
           CREATE TABLE agent_sessions(id TEXT,ordinal INTEGER,project_id TEXT,chat_id TEXT,

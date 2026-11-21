@@ -16,12 +16,10 @@ export interface AgentCenterScanTab {
   kind: TabKind;
 }
 
-const workbenchWindowModes = new Set<string>(WORKBENCH_WINDOW_MODES);
-
 export function isWorkbenchWindowMode(
   value: unknown,
 ): value is WorkbenchWindowMode {
-  return typeof value === "string" && workbenchWindowModes.has(value);
+  return WORKBENCH_WINDOW_MODES.includes(value as WorkbenchWindowMode);
 }
 
 export function isAgentArtifactTabKind(kind: TabKind): kind is "file" | "diff" {
@@ -39,8 +37,7 @@ export function agentCenterNeedsDraft(
 export function firstChatTabId(
   tabs: ReadonlyArray<AgentCenterScanTab>,
 ): string | null {
-  const ids = collectChatTabIds(tabs, null, null, 1);
-  return ids[0] ?? null;
+  return collectChatTabIds(tabs, null, null, 1)[0] ?? null;
 }
 
 export function collectChatTabIds(
@@ -71,11 +68,10 @@ export function focusedAgentChatId(
   activeTabId: string | null,
   previousFocusedId: string | null,
 ): string | null {
-  return (
-    [activeTabId, previousFocusedId, candidates[0]].find((id): id is string =>
-      Boolean(id && candidates.includes(id)),
-    ) ?? null
-  );
+  if (activeTabId && candidates.includes(activeTabId)) return activeTabId;
+  if (previousFocusedId && candidates.includes(previousFocusedId))
+    return previousFocusedId;
+  return candidates[0] || null;
 }
 
 export function lastArtifactTabId(
@@ -83,18 +79,11 @@ export function lastArtifactTabId(
   preferredId: string | null,
 ): string | null {
   const scanLimit = Math.min(tabs.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
-  if (preferredId) {
-    for (let index = 0; index < scanLimit; index += 1) {
-      const tab = tabs[index];
-      if (tab?.id === preferredId && isAgentArtifactTabKind(tab.kind)) {
-        return preferredId;
-      }
-    }
-  }
   let found: string | null = null;
   for (let index = 0; index < scanLimit; index += 1) {
     const tab = tabs[index];
     if (tab && isAgentArtifactTabKind(tab.kind)) {
+      if (preferredId && tab.id === preferredId) return tab.id;
       found = tab.id;
     }
   }

@@ -26,7 +26,12 @@ export interface NewChatDraft {
   effort: string | null;
   submission:
     | DraftCreation
-    | { status: "submitting"; chatId: string; creation: DraftCreation };
+    | {
+        status: "submitting";
+        chatId: string;
+        creation: DraftCreation;
+        reuse?: boolean;
+      };
   error: string | null;
 }
 

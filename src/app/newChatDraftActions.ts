@@ -10,6 +10,8 @@ import {
   type NewChatDraftSlice,
 } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { unsentChatIdsJson } from "./unsentChatIds";
 
 /** Loaded before the first draft opens; its mutations then run synchronously. */
 export function createNewChatDraftActions(
@@ -28,13 +30,14 @@ export function createNewChatDraftActions(
   const submit = async (draft: NewChatDraft) => {
     if (draft.submission.status === "submitting") return;
     const creation = liveDraftCreation(draft.submission, get());
-    const attempt = {
+    let attempt = {
       status: "submitting" as const,
       chatId:
         creation.status === "released" ? crypto.randomUUID() : creation.chatId,
       creation,
+      reuse: false,
     };
-    const submittingDraft = { ...draft, submission: attempt, error: null };
+    let submittingDraft = { ...draft, submission: attempt, error: null };
     const submission = {
       projectId: draft.projectId,
       chatId: null,
@@ -55,6 +58,31 @@ export function createNewChatDraftActions(
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
       ]);
+      const target =
+        draft.targetProjectId === undefined
+          ? draft.projectId
+          : draft.targetProjectId;
+      if (creation.status === "released" && target) {
+        const chatId = await getWorkbenchPorts().chat.getReusableChat(
+          target,
+          JSON.parse(unsentChatIdsJson(get())),
+        );
+        const state = get();
+        if (
+          state.newChatDraft?.submission !== attempt ||
+          state.pendingFirstSend !== submission
+        )
+          throw new Error("Chat submission cancelled. Retry to continue.");
+        if (chatId) {
+          attempt = { ...attempt, chatId, reuse: true };
+          submittingDraft = {
+            ...state.newChatDraft,
+            submission: attempt,
+            error: null,
+          };
+          set({ newChatDraft: submittingDraft });
+        }
+      }
       released = await send.runNewChatDraftSend(
         set,
         get,

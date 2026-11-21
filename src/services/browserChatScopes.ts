@@ -22,6 +22,11 @@ const owners = new Map<string, string>();
 export function hasBrowserScope(project: string) {
   return scopes.has(project);
 }
+export function browserScopeTabs(snapshot: BootstrapSnapshot, project: string) {
+  return snapshot.project?.id === project
+    ? snapshot.tabs
+    : (scopes.get(project)?.tabs ?? []);
+}
 export function browserChatBelongsTo(chat: string, project: string) {
   return !owners.has(chat) || owners.get(chat) === project;
 }
@@ -193,6 +198,10 @@ export function createScopedBrowserChat(
   chatId: string,
 ) {
   selectBrowserScope(snapshot, projectId);
+  if (snapshot.tabs.some((tab) => tab.id === chatId)) {
+    snapshot.activeTabId = chatId;
+    return null;
+  }
   const chat = { ...createBrowserChatTab(snapshot.tabs, 0), id: chatId };
   snapshot.tabs = [...snapshot.tabs, chat];
   snapshot.activeTabId = chat.id;
@@ -206,6 +215,7 @@ interface ScopeCommandContext {
   commit: () => ProjectTransitionResult;
   chatCount: () => number;
   hasSession: (chat: string) => boolean;
+  canReuse: (tab: BootstrapSnapshot["tabs"][number]) => boolean;
   register: (chat: BootstrapSnapshot["tabs"][number]) => void;
   remove: (chat: string) => void;
   title: (chat: string) => string;
@@ -285,17 +295,23 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
       epoch: number,
       project: string | null,
       chatId?: string,
+      reuse = false,
     ) {
       admit(epoch);
-      if (context.chatCount() >= 64) throw new Error("Chat capacity reached");
+      const existing =
+        project &&
+        browserScopeTabs(snapshot, project).find((tab) => tab.id === chatId);
+      if (existing && (!reuse || !context.canReuse(existing)))
+        throw new Error("Chat ID already exists");
+      if (!existing && context.chatCount() >= 64)
+        throw new Error("Chat capacity reached");
       if (current) await persist(current, epoch);
-      context.register(
-        createScopedBrowserChat(
-          snapshot,
-          project,
-          chatId ?? crypto.randomUUID(),
-        ),
+      const created = createScopedBrowserChat(
+        snapshot,
+        project,
+        chatId ?? crypto.randomUUID(),
       );
+      if (created) context.register(created);
       context.activate();
       return commit();
     },

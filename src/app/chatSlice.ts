@@ -33,6 +33,7 @@ export interface ChatSlice {
   createChat: (
     projectId?: string | null,
     chatId?: string,
+    reuse?: boolean,
   ) => Promise<CreateChatResult>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
   moveChat: (
@@ -333,7 +334,7 @@ export const createChatSlice: StateCreator<
       }
     },
 
-    createChat: async (projectId, chatId) => {
+    createChat: async (projectId, chatId, reuse) => {
       const source = get();
       const { runCreateChat } = await import("./runCreateChat");
       if (
@@ -351,6 +352,7 @@ export const createChatSlice: StateCreator<
         },
         projectId,
         chatId,
+        reuse,
       );
     },
   };

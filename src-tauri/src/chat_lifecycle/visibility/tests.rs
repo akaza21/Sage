@@ -329,3 +329,167 @@ fn foreign_first_send_creation_keeps_its_explicit_selection_over_an_older_real_c
         .unwrap();
     assert_eq!(listed(&db, &target.id).len(), 2);
 }
+
+#[test]
+fn upgrade_at_capacity_reuses_the_oldest_eligible_chat_without_growing() {
+    let db = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
+    let project = db
+        .create_named_project_if_active("Upgrade", &[], None)
+        .unwrap();
+    let ids: Vec<_> = (0..64).map(|_| create(&db)).collect();
+    assert!(listed(&db, &project.id).is_empty());
+    // Local typed input protects the oldest chat; native pinning, renaming,
+    // queued input, archives and any previous prompt protect the others.
+    db.connection()
+        .execute("UPDATE workbench_tabs SET pinned=1 WHERE id=?1", [&ids[1]])
+        .unwrap();
+    db.connection()
+        .execute(
+            "UPDATE chats SET title_source='user' WHERE id=?1",
+            [&ids[2]],
+        )
+        .unwrap();
+    db.append_simulator_turn(&ids[3], "Existing prompt", "Answer")
+        .unwrap();
+    db.connection()
+        .execute(
+            "UPDATE chats SET title_source='default' WHERE id=?1",
+            [&ids[3]],
+        )
+        .unwrap();
+    db.replace_chat_queued_prompts(
+        &project.id,
+        &ids[4],
+        &[DurableQueuedPrompt {
+            id: "queued".into(),
+            text: "Keep this".into(),
+            attached_context: Default::default(),
+            binding_id: "binding".into(),
+            model_id: None,
+            status: QueuedPromptStatus::Queued,
+        }],
+    )
+    .unwrap();
+    let selected = super::reusable_chat(&db.connection(), &project.id, &[ids[0].clone()], None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(selected, ids[5]);
+    let reused = db
+        .reuse_empty_chat(&project.id, &layout(&db), &selected)
+        .unwrap();
+    assert_eq!(reused, selected);
+    db.append_simulator_turn(&reused, "First send after upgrade", "Answer")
+        .unwrap();
+    let snapshot = db.bootstrap_snapshot().unwrap();
+    assert_eq!(snapshot.active_tab_id.as_deref(), Some(reused.as_str()));
+    assert_eq!(snapshot.tabs.len(), 64);
+    let count: i64 = db
+        .connection()
+        .query_row(
+            "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",
+            [&project.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 64);
+    assert!(listed(&db, &project.id).contains(&reused));
+}
+
+#[test]
+fn pinned_empty_archive_survives_restart_and_can_be_restored() {
+    use crate::chat_archive::ChatArchiveStore;
+    use crate::chat_pin::ChatPinStore;
+    use sage_domain::chat::{ChatLifecycleRequest, PinChatRequest};
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../local-evidence/emptychat/archive")
+        .join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("sage.db");
+    let db = crate::database::open_database(&path).unwrap();
+    let project = db
+        .create_named_project_if_active("Archive", &[], None)
+        .unwrap();
+    let chat = create(&db);
+    db.pin_chat(&PinChatRequest {
+        project_id: project.id.clone(),
+        chat_id: chat.clone(),
+    })
+    .unwrap();
+    db.archive_chat(&ChatLifecycleRequest {
+        project_id: project.id.clone(),
+        chat_id: chat.clone(),
+        current_layout: layout(&db),
+    })
+    .unwrap();
+    drop(db);
+    let db = crate::database::open_database(&path).unwrap();
+    assert!(
+        db.bootstrap_snapshot()
+            .unwrap()
+            .archived_chats
+            .iter()
+            .any(|c| c.id == chat && c.chat_listed == Some(true))
+    );
+    assert_eq!(search(&db, &project.id, ""), vec![chat.clone()]);
+    assert!(
+        super::reusable_chat(&db.connection(), &project.id, &[], None)
+            .unwrap()
+            .is_none()
+    );
+    db.restore_chat(&ChatLifecycleRequest {
+        project_id: project.id,
+        chat_id: chat.clone(),
+        current_layout: layout(&db),
+    })
+    .unwrap();
+    let restored = db.bootstrap_snapshot().unwrap();
+    assert_eq!(restored.active_tab_id, Some(chat.clone()));
+    assert!(restored.tabs.iter().any(|tab| tab.id == chat));
+    assert!(restored.archived_chats.is_empty());
+}
+
+#[test]
+fn fork_title_or_native_lineage_remains_discoverable_after_switch_and_restart() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../local-evidence/emptychat/fork")
+        .join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("sage.db");
+    let db = crate::database::open_database(&path).unwrap();
+    let project = db
+        .create_named_project_if_active("Fork", &[], None)
+        .unwrap();
+    let parent = create(&db);
+    db.append_simulator_turn(&parent, "Parent prompt", "Answer")
+        .unwrap();
+    let titled = create(&db);
+    db.connection()
+        .execute(
+            "UPDATE chats SET title_source='fork' WHERE id=?1",
+            [&titled],
+        )
+        .unwrap();
+    let lineage = create(&db);
+    db.connection().execute(
+        "INSERT INTO chat_lineage(child_project_id,child_chat_id,parent_project_id,parent_chat_id,source_session_id,source_turn_id,relation,created_at)
+         SELECT project_id,?1,project_id,chat_id,session_id,id,'nativeFork',1 FROM turns WHERE chat_id=?2 LIMIT 1",
+        params![lineage,parent],
+    ).unwrap();
+    db.create_named_project_if_active("Other", &[], Some(&project.id))
+        .unwrap();
+    db.switch_project(&ProjectSwitchRequest {
+        target_project_id: project.id.clone(),
+        current_layout: layout(&db),
+    })
+    .unwrap();
+    assert_eq!(
+        db.bootstrap_snapshot().unwrap().active_tab_id,
+        Some(lineage.clone())
+    );
+    drop(db);
+    let db = crate::database::open_database(&path).unwrap();
+    for id in [titled, lineage] {
+        assert!(listed(&db, &project.id).contains(&id));
+        assert!(search(&db, &project.id, "Chat").contains(&id));
+    }
+}

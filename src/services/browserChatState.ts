@@ -3,6 +3,7 @@ import type {
   ArchivedChatSummary,
   ChatMessage,
   ProjectTransitionResult,
+  WorkbenchTab,
 } from "../domain/workbench";
 import {
   browserSnapshot as snapshot,
@@ -12,6 +13,7 @@ import { resetBrowserFileCreate } from "./browserFileCreate";
 import {
   browserChatBelongsTo,
   resetBrowserChatScopes,
+  browserScopeTabs,
 } from "./browserChatScopes";
 
 const initialProject = structuredClone(snapshot.project);
@@ -27,6 +29,41 @@ export let simulatorSessions = new Map<
 >();
 export let durableChatIds = new Set(["tab-chat"]);
 export let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
+
+export function registerBrowserChat(chat: WorkbenchTab) {
+  durableChatIds.add(chat.id);
+  chatTitles.set(chat.id, chat.title);
+  messagesByChat.set(chat.id, []);
+}
+
+export function forgetBrowserChat(chatId: string) {
+  durableChatIds.delete(chatId);
+  chatTitles.delete(chatId);
+  messagesByChat.delete(chatId);
+}
+
+export function canReuseBrowserChat(tab?: WorkbenchTab) {
+  return Boolean(
+    tab &&
+    tab.kind === "chat" &&
+    !tab.pinned &&
+    tab.chatListed !== true &&
+    tab.title === "Chat: Chat" &&
+    !messagesByChat.get(tab.id)?.length &&
+    !simulatorSessions.has(tab.id),
+  );
+}
+
+export async function getReusableBrowserChat(
+  projectId: string,
+  protectedChatIds: string[],
+) {
+  return (
+    browserScopeTabs(snapshot, projectId).find(
+      (tab) => canReuseBrowserChat(tab) && !protectedChatIds.includes(tab.id),
+    )?.id ?? null
+  );
+}
 export function resetBrowserDesktopForTests() {
   resetBrowserDirectories();
   resetBrowserChatScopes();

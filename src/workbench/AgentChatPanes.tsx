@@ -111,20 +111,21 @@ export function AgentChatPanes({
     [tabs, activeTabId, retainedChatId],
   );
   const splitPercent = useSideChatState((state) => state.split);
-  const pairedId = useSideChatState((state) => state.pairedId);
   const side = useSideChatState((state) =>
     state.sides.find(
       (entry) =>
+        entry.id === state.pairedId &&
         entry.projectId === project?.id &&
-        chatIds.includes(entry.id) &&
-        chatIds.includes(entry.parentChatId),
+        tabs.some((tab) => tab.kind === "chat" && tab.id === entry.id) &&
+        tabs.some(
+          (tab) => tab.kind === "chat" && tab.id === entry.parentChatId,
+        ),
     ),
   );
   const splitRequested =
     !draftOpened &&
     Boolean(
       side &&
-      pairedId === side.id &&
       (!activeTabId ||
         !chatIds.includes(activeTabId) ||
         activeTabId === side.id ||
@@ -313,7 +314,7 @@ export function AgentChatPanes({
               })}
             </div>
           </div>
-          {chatIds.some(isSideChatId) ? (
+          {splitRequested || chatIds.some(isSideChatId) ? (
             <TranscriptPart part="SideChatDialogs" />
           ) : null}
         </Activity>

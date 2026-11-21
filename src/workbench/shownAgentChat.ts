@@ -15,30 +15,30 @@ import {
   type AgentCenterScanTab,
 } from "./workbenchWindowMode";
 
-function focusedRailChatId(input: {
-  tabs: ReadonlyArray<AgentCenterScanTab>;
-  activeTabId: string | null;
-  agentFocusId: string | null;
-  sides: readonly SideChatEntry[];
-}): string | null {
+function focusedRailChatId(
+  tabs: ReadonlyArray<AgentCenterScanTab>,
+  activeTabId: string | null,
+  agentFocusId: string | null,
+  sides: readonly SideChatEntry[],
+): string | null {
   return railChatIdIn(
-    input.sides,
+    sides,
     focusedAgentChatId(
-      collectChatTabIds(input.tabs),
-      input.activeTabId,
-      input.agentFocusId,
+      collectChatTabIds(tabs, activeTabId, agentFocusId),
+      activeTabId,
+      agentFocusId,
     ),
   );
 }
 
 export function currentShownAgentChatId(): string | null {
   const state = useWorkbenchStore.getState();
-  const id = focusedRailChatId({
-    tabs: state.tabs,
-    activeTabId: state.activeTabId,
-    agentFocusId: agentChatFocus(),
-    sides: useSideChatState.getState().sides,
-  });
+  const id = focusedRailChatId(
+    state.tabs,
+    state.activeTabId,
+    agentChatFocus(),
+    useSideChatState.getState().sides,
+  );
   return draftShownFor(state, id) ? null : id;
 }
 
@@ -47,7 +47,7 @@ function useFocusedRailChatId(): string | null {
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const agentFocusId = useAgentChatFocus();
   const sides = useSideChatState((state) => state.sides);
-  return focusedRailChatId({ tabs, activeTabId, agentFocusId, sides });
+  return focusedRailChatId(tabs, activeTabId, agentFocusId, sides);
 }
 
 export function useDraftShown(): boolean {

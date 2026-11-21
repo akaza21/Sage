@@ -8,6 +8,13 @@ import { resetHarnessModelCache } from "./harnessModelCache";
 import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
+import {
+  chatTitles,
+  durableChatIds,
+  messagesByChat,
+} from "../services/browserChatState";
+import { browserSnapshot } from "../services/browserWorkspaceFixture";
+import { emptyChatOwnershipEntry } from "./chatOwnershipProjection";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -22,6 +29,195 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
   resetBrowserDesktopForTests();
 });
+
+async function readyProjectDraft(
+  text: string,
+  projectId = useWorkbenchStore.getState().project!.id,
+) {
+  const state = useWorkbenchStore.getState();
+  await state.openNewChatDraft(projectId);
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        id: "sage-simulator",
+        name: "Fixture ACP",
+        description: "Draft handoff fixture",
+        source: "builtIn",
+        transport: "acp",
+        installState: "available",
+        bindingId: "fixture-binding",
+        accountModelDiscovery: false,
+      },
+    ],
+  });
+  await state.selectDraftHarness("sage-simulator");
+  state.updateNewChatDraft({ text });
+}
+
+it("hands a first prompt to a reusable chat in another project", async () => {
+  const state = useWorkbenchStore.getState();
+  const sourceId = state.project!.id;
+  await state.createProject({ name: "Target", sourceTokens: [] });
+  const targetId = useWorkbenchStore.getState().project!.id;
+  await state.createChat(targetId);
+  const reusable = useWorkbenchStore.getState().activeTabId;
+  await state.switchProject(sourceId);
+  await readyProjectDraft("First prompt in target", targetId);
+  await state.sendNewChatDraft();
+  expect(useWorkbenchStore.getState()).toMatchObject({
+    project: { id: targetId },
+    activeTabId: reusable,
+    newChatDraft: null,
+    composerText: "First prompt in target",
+    pendingFirstSend: { chatId: reusable, text: "First prompt in target" },
+  });
+  expect(durableChatIds.size).toBe(2);
+});
+
+it.each(["refused", "committed"])(
+  "recovers a lost reuse response only when the selection %s",
+  async (outcome) => {
+    const state = useWorkbenchStore.getState();
+    await state.createChat(state.project!.id);
+    const reusable = useWorkbenchStore.getState().activeTabId;
+    await readyProjectDraft("Preserve through lost response");
+    const nativeCreate = ports.chat.createChat;
+    vi.spyOn(ports.chat, "createChat").mockImplementationOnce(
+      async (...args) => {
+        if (outcome === "committed") await nativeCreate(...args);
+        else
+          browserSnapshot.tabs = browserSnapshot.tabs.map((tab) =>
+            tab.id === reusable ? { ...tab, pinned: true } : tab,
+          );
+        throw new Error("Reuse reply lost");
+      },
+    );
+    await state.sendNewChatDraft();
+    const result = useWorkbenchStore.getState();
+    if (outcome === "committed") {
+      expect(result.newChatDraft).toBeNull();
+      expect(result.composerText).toBe("Preserve through lost response");
+      expect(result.pendingFirstSend).toMatchObject({ chatId: reusable });
+    } else {
+      expect(result.newChatDraft).toMatchObject({
+        text: "Preserve through lost response",
+        submission: { status: "released" },
+      });
+      expect(result.composerText).toBe("");
+      expect(result.pendingFirstSend).toBeNull();
+    }
+    expect(durableChatIds.size).toBe(2);
+  },
+);
+
+it("cancels without allocating when Editor is entered during the reusable-chat lookup", async () => {
+  const state = useWorkbenchStore.getState();
+  await readyProjectDraft("Keep this cancelled prompt");
+  let finishLookup!: (id: string | null) => void;
+  let began!: () => void;
+  const started = new Promise<void>((resolve) => {
+    began = resolve;
+  });
+  const lookup = new Promise<string | null>((resolve) => {
+    finishLookup = resolve;
+  });
+  vi.spyOn(ports.chat, "getReusableChat").mockImplementationOnce(() => {
+    began();
+    return lookup;
+  });
+  const sending = state.sendNewChatDraft();
+  await started;
+  useWorkbenchStore.setState({ pendingFirstSend: null });
+  finishLookup(null);
+  await sending;
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "Keep this cancelled prompt",
+    submission: { status: "released" },
+  });
+  expect(durableChatIds.size).toBe(1);
+});
+
+it.each(["none", "typed", "queued"])(
+  "sends an upgraded project draft at capacity, preserving %s input",
+  async (input) => {
+    const state = useWorkbenchStore.getState();
+    messagesByChat.set(state.activeTabId!, []);
+    const ids: string[] = [state.activeTabId!];
+    for (let index = 1; index < 64; index += 1) {
+      const result = await state.createChat(state.project!.id);
+      expect(result.status).toBe("confirmed");
+      ids.push(useWorkbenchStore.getState().activeTabId!);
+    }
+    // Model the native upgrade projection: all 64 durable defaults are hidden.
+    browserSnapshot.tabs = browserSnapshot.tabs.map((tab) => ({
+      ...tab,
+      title: "Chat: Chat",
+      pinned: false,
+      chatListed: false,
+    }));
+    for (const id of ids) chatTitles.set(id, "Chat: Chat");
+    useWorkbenchStore.setState({
+      tabs: structuredClone(browserSnapshot.tabs),
+      activeTabId: null,
+    });
+    if (input !== "none")
+      useWorkbenchStore.setState({
+        chatUiById: {
+          ...useWorkbenchStore.getState().chatUiById,
+          [ids[0]]: {
+            ...emptyChatOwnershipEntry(),
+            composerText: input === "typed" ? "Keep my unsent prompt" : "",
+            queuedPrompts:
+              input === "queued"
+                ? [
+                    {
+                      id: "queued",
+                      text: "Keep my queue",
+                      attachedContext: [],
+                      bindingId: "fixture-binding",
+                      modelId: null,
+                      status: "queued",
+                    },
+                  ]
+                : [],
+          },
+        },
+      });
+    await state.openNewChatDraft(state.project!.id);
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Fixture ACP",
+          description: "Draft handoff fixture",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "fixture-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    await state.selectDraftHarness("sage-simulator");
+    state.updateNewChatDraft({ text: "First prompt after upgrade" });
+    await state.sendNewChatDraft();
+    const sent = useWorkbenchStore.getState();
+    expect(sent.error).toBeNull();
+    expect(sent.newChatDraft).toBeNull();
+    expect(sent.activeTabId).toBe(ids[input === "none" ? 0 : 1]);
+    expect(sent.composerText).toBe("First prompt after upgrade");
+    expect(sent.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(64);
+    expect(durableChatIds.size).toBe(64);
+    if (input === "typed")
+      expect(sent.chatUiById[ids[0]].composerText).toBe(
+        "Keep my unsent prompt",
+      );
+    if (input === "queued")
+      expect(sent.chatUiById[ids[0]].queuedPrompts?.[0].text).toBe(
+        "Keep my queue",
+      );
+  },
+);
 
 it.each(["current", "foreign"])(
   "preserves an unsent draft when New chat explicitly targets a different %s project",

@@ -166,18 +166,21 @@ const repository: RepositoryPort = {
 };
 
 const chat: ChatPort = {
+  getReusableChat: (...args) => browserDesktop.getReusableChat(...args),
   setChatProject: (...args) => browserDesktop.setChatProject(...args),
   createChat: (
     currentLayout: ProjectLayoutRequest | null,
     expectedTransitionEpoch: number,
     projectId?: string | null,
     chatId?: string,
+    reuse?: boolean,
   ) =>
     browserDesktop.createChat(
       currentLayout,
       expectedTransitionEpoch,
       projectId,
       chatId,
+      reuse,
     ),
   activateChat: (
     currentLayout: ProjectLayoutRequest,

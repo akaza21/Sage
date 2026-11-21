@@ -114,7 +114,7 @@ const repository: RepositoryPort = {
   getFileDiff(resource, scope) {
     return invokeNative("get_file_diff", {
       resource,
-      ...(scope ? { scope } : {}),
+      scope,
     });
   },
   getFileGitBase(resource, knownOid) {
@@ -156,12 +156,16 @@ const chat: ChatPort = {
   forkChat(request) {
     return invokeNative("fork_chat", { ...request });
   },
-  createChat(currentLayout, expectedTransitionEpoch, projectId, chatId) {
+  getReusableChat(projectId, protectedChatIds) {
+    return invokeNative("get_reusable_chat", { projectId, protectedChatIds });
+  },
+  createChat(currentLayout, expectedTransitionEpoch, projectId, chatId, reuse) {
     return invokeNative("create_chat", {
       currentLayout,
       expectedTransitionEpoch,
-      ...(projectId ? { projectId } : {}),
-      ...(chatId ? { chatId } : {}),
+      projectId,
+      chatId,
+      reuse,
     });
   },
   activateChat(currentLayout, expectedTransitionEpoch) {
