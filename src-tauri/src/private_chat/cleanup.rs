@@ -177,7 +177,12 @@ pub(super) fn admit_base(path: &Path) -> AppResult<()> {
         .parent()
         .ok_or_else(|| AppError::InvalidRequest("missing private Chat profile".into()))?
         .canonicalize()?;
-    if path.canonicalize()?.parent() != Some(parent.as_path()) {
+    let canonical = path.canonicalize()?;
+    if canonical
+        .parent()
+        .map(crate::project_registry::canonical_comparison_key)
+        != Some(crate::project_registry::canonical_comparison_key(&parent))
+    {
         return Err(AppError::InvalidRequest(
             "private Chat storage escaped its profile".into(),
         ));

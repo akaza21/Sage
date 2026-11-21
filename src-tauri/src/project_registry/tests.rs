@@ -23,6 +23,44 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[cfg(windows)]
 #[test]
+fn windows_root_identity_is_length_independent_and_preserves_special_components() {
+    let folders = Folders::new();
+    let drive_root = folders.root("root");
+    for root in [drive_root, PathBuf::from(r"\\server\share\root")] {
+        let ordinary = root.to_str().unwrap();
+        let verbatim = if let Some(unc) = ordinary.strip_prefix(r"\\") {
+            format!(r"\\?\UNC\{unc}")
+        } else {
+            format!(r"\\?\{ordinary}")
+        };
+        for suffix in [
+            String::new(),
+            format!(r"\{}", "component".repeat(8)).repeat(4),
+        ] {
+            let plain = format!("{ordinary}{suffix}");
+            let prefixed = format!("{verbatim}{suffix}");
+            let key = canonical_comparison_key(Path::new(&prefixed));
+            assert_eq!(canonical_comparison_key(Path::new(&plain)), key);
+            assert!(Path::new(&key).starts_with(canonical_comparison_key(&root)));
+            assert!(
+                !Path::new(&canonical_comparison_key(Path::new(&format!(
+                    "{plain}-sibling"
+                ))))
+                .starts_with(&key)
+            );
+        }
+        let literal =
+            |suffix: &str| canonical_comparison_key(Path::new(&format!(r"{verbatim}\{suffix}")));
+        for special in ["name.", "name ", "NUL", r".\name", r"name\..\other"] {
+            assert_ne!(literal(special), literal("name"), "{special}");
+        }
+        assert_ne!(literal(r"name\..\other"), literal("other"));
+        assert_eq!(literal("NAME"), literal("name"));
+    }
+}
+
+#[cfg(windows)]
+#[test]
 fn ordinary_and_legacy_verbatim_roots_share_one_identity_and_cannot_be_added_twice() {
     let folders = Folders::new();
     let root = folders.root("root");

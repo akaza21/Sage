@@ -1,4 +1,5 @@
 pub(crate) mod create;
+mod identity;
 mod launch_root;
 mod local;
 mod rail;
@@ -29,6 +30,7 @@ use sage_domain::{
 use sage_workspace::Workspace;
 
 pub use create::project_name;
+pub use identity::canonical_comparison_key;
 pub(crate) use launch_root::ProjectRootAuthority;
 
 use self::rail::load_project_list;
@@ -43,15 +45,6 @@ pub struct RootRecord {
     pub project_id: String,
     pub absolute_path: PathBuf,
     pub ordinal: i64,
-}
-
-pub fn canonical_comparison_key(path: &Path) -> String {
-    if cfg!(windows) {
-        let path = sage_core::win32_path::simplified(path);
-        path.to_string_lossy().replace('/', "\\").to_lowercase()
-    } else {
-        path.to_string_lossy().into_owned()
-    }
 }
 
 pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {

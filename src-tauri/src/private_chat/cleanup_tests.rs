@@ -3,7 +3,7 @@ use crate::chat_archive::{ChatArchiveStore, delete::ArchivedChatDeleteStore};
 use crate::project_registry::{ProjectRegistryStore, create::ProjectCreateStore};
 use sage_domain::chat::{ChatDeleteRequest, ChatLifecycleRequest};
 
-fn delete_chat(database: &Database, chat: &str) {
+pub(super) fn delete_chat(database: &Database, chat: &str) {
     let current = super::tests::layout(database);
     database
         .archive_chat(&ChatLifecycleRequest {
