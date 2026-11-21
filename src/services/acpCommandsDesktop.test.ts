@@ -31,6 +31,13 @@ describe("native command list contract", () => {
       decodeCommandList({ revision: 3, commands: [usage] })?.commands[0]
         ?.aliases,
     ).toEqual(["cost"]);
+    const placed = {
+      ...usage,
+      placement: { section: "usage", control: "usagePanel" },
+    };
+    expect(
+      decodeCommandList({ revision: 4, commands: [placed] })?.commands,
+    ).toEqual([placed]);
   });
   it("rejects duplicate names, malformed entries, unsafe revisions and oversized lists", () => {
     const command = {
@@ -53,6 +60,25 @@ describe("native command list contract", () => {
       { revision: 1, commands: [{ ...command, source: undefined }] },
       { revision: 1, commands: [{ ...command, panel: "settings" }] },
       { revision: 1, commands: [{ ...command, panel: null }] },
+      {
+        revision: 1,
+        commands: [{ ...command, placement: { section: "invented" } }],
+      },
+      {
+        revision: 1,
+        commands: [
+          {
+            ...command,
+            placement: { section: "session", control: "invented" },
+          },
+        ],
+      },
+      {
+        revision: 1,
+        commands: [
+          { ...command, placement: { section: "session", extra: true } },
+        ],
+      },
       { revision: 1, commands: [{ ...command, aliases: ["bad name"] }] },
       { revision: 1, commands: [{ ...command, aliases: "cost" }] },
       {

@@ -12,6 +12,9 @@ use sage_acp_protocol::contract::RuntimeEpoch;
 use super::PiRuntime;
 
 pub(crate) trait PiLaunch: Send {
+    fn harness_version(&self) -> Option<&str> {
+        None
+    }
     /// A launch is used at most once.
     fn launch_spec(&mut self, epoch: RuntimeEpoch) -> Result<LaunchSpec, AdapterRuntimeError>;
     fn revalidate_title(&self) -> Result<(), AdapterRuntimeError> {

@@ -4,7 +4,7 @@ import type {
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { utf8ByteLength } from "../domain/text";
-import { isRecord } from "./acpDesktopGuards";
+import { isRecord, safeOrdinal } from "./acpDesktopGuards";
 import {
   isCommandPanel,
   isCommandSource,
@@ -12,6 +12,10 @@ import {
   type AcpCommandSource,
 } from "../domain/acpCommand";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
+import {
+  isCommandPlacement,
+  type AcpCommandPlacement,
+} from "../domain/acpCommandPlacement";
 
 export type { AcpCommandSource };
 
@@ -24,6 +28,8 @@ export interface AvailableAcpCommand {
   /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
   aliases?: string[];
+  /** Native placement; absent only in older host responses. */
+  placement?: AcpCommandPlacement;
 }
 
 const MAX_COMMANDS = 512;
@@ -49,11 +55,9 @@ function invalid(): AcpDesktopError {
 export function decodeCommandList(value: unknown): AcpCommandList | null {
   if (
     !isRecord(value) ||
-    !Number.isSafeInteger(value.revision) ||
-    (value.revision as number) < 0 ||
+    safeOrdinal(value.revision) === null ||
     (value.omitted !== undefined &&
-      (!Number.isInteger(value.omitted) ||
-        (value.omitted as number) < 0 ||
+      (safeOrdinal(value.omitted) === null ||
         (value.omitted as number) > 0xffff_ffff)) ||
     !Array.isArray(value.commands) ||
     value.commands.length > MAX_COMMANDS
@@ -79,7 +83,8 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       (c.inputHint !== null && !text(c.inputHint, 256)) ||
       !isCommandSource(c.source) ||
       (c.sourceLabel !== undefined && !text(c.sourceLabel, 128)) ||
-      (c.panel !== undefined && !isCommandPanel(c.panel))
+      (c.panel !== undefined && !isCommandPanel(c.panel)) ||
+      (c.placement !== undefined && !isCommandPlacement(c.placement))
     )
       return null;
     names.add(c.name);
@@ -91,15 +96,17 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
         aliases.join(""),
     );
     if (bytes > MAX_COMMAND_BYTES) return null;
-    commands.push({
+    const command: AvailableAcpCommand = {
       name: c.name,
       description: c.description,
       inputHint: c.inputHint,
       source: c.source,
-      ...(c.sourceLabel ? { sourceLabel: c.sourceLabel } : {}),
-      ...(c.panel ? { panel: c.panel } : {}),
-      ...(aliases.length ? { aliases } : {}),
-    });
+    };
+    if (c.sourceLabel) command.sourceLabel = c.sourceLabel;
+    if (c.panel) command.panel = c.panel;
+    if (aliases.length) command.aliases = aliases;
+    if (c.placement) command.placement = c.placement;
+    commands.push(command);
   }
   return {
     revision: value.revision as number,
@@ -126,8 +133,7 @@ export function decodeCommandsNotice(
   if (
     typeof value.runtimeEpoch !== "string" ||
     !/^[1-9][0-9]{0,19}$/u.test(value.runtimeEpoch) ||
-    !Number.isSafeInteger(value.revision) ||
-    (value.revision as number) < 1
+    (safeOrdinal(value.revision) ?? 0) < 1
   )
     return null;
   return {

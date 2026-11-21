@@ -44,6 +44,7 @@ fn runtime() -> ClaudeSdkRuntime {
             [7; 32],
             RuntimeEpoch::new(1).unwrap(),
             SageAgentSessionId::parse("session-claude-sdk").unwrap(),
+            super::super::admission::CLAUDE_CODE_VERSION,
         ),
         bridge: None,
         children: Default::default(),
@@ -129,6 +130,10 @@ fn ready() -> ClaudeSdkRuntime {
         ("Manage MCP servers", None)
     );
     assert_eq!(mcp.aliases, ["servers"]);
+    assert_eq!(
+        serde_json::to_value(mcp).unwrap()["placement"],
+        json!({"section":"connections","control":"mcpPanel"})
+    );
     assert_eq!(
         listed[0].description,
         "Show the session's model, access, context and usage"

@@ -12,11 +12,14 @@ pub(crate) const MAX_COMMANDS: usize = 512;
 pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 
 mod entry;
+pub(crate) mod placement;
 pub(crate) use entry::*;
 
-/// Stable priority seam: T2 can rank curated commands ahead of built-ins here.
+/// Curated commands survive admission ahead of other built-ins and external commands.
 fn priority(command: &AvailableCommand) -> u8 {
-    if command.source == CommandSource::Builtin {
+    if command.placement.known {
+        0
+    } else if command.source == CommandSource::Builtin {
         1
     } else {
         2
