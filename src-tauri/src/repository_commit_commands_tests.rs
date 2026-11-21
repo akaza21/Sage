@@ -81,7 +81,7 @@ fn write_executable(path: &Path, body: &str) {
 fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
     let fixture = TwoRootProject::new();
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
         .unwrap();
@@ -149,7 +149,7 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
     );
 
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
         .unwrap();
@@ -205,7 +205,7 @@ fn post_commit_projection_preserves_a_staged_type_change() {
     );
 
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
         .unwrap();
@@ -238,7 +238,7 @@ fn post_commit_projection_preserves_a_staged_type_change() {
 fn effect_unknown_recovery_never_projects_a_replacement_root_identity() {
     let fixture = TwoRootProject::new();
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
         .unwrap();
@@ -323,7 +323,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
     .unwrap();
 
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
     let error = tokio::runtime::Runtime::new()
@@ -366,7 +366,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
 fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics() {
     let fixture = TwoRootProject::new();
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
     let hook_root = fixture.root_a.clone();
@@ -441,7 +441,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
 fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
     let fixture = TwoRootProject::new();
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -497,7 +497,7 @@ fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
 fn timeout_returns_effect_unknown_with_an_authoritative_all_root_projection() {
     let fixture = TwoRootProject::new();
     let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let project = database.create_project_with_chat(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
         .unwrap();

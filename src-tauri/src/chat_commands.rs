@@ -290,7 +290,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             let database_path = root.join("sage.db");
             let database = crate::database::open_database(&database_path).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let initial = database.bootstrap_snapshot().unwrap();
             let history = database
                 .append_simulator_turn(
@@ -499,7 +499,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             let database =
                 crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let initial = database.bootstrap_snapshot().unwrap();
             let layout = ProjectLayoutRequest {
                 project_id: project.id,

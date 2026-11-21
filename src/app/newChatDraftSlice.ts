@@ -34,6 +34,9 @@ export interface NewChatDraftSlice {
   agentCenter: "chat" | "draft";
   newChatDraft: NewChatDraft | null;
   draftFocusRequest: number;
+  newChatDraftOpening: boolean;
+  /** Cancellation permits one continuity open; failure requires user retry. */
+  newChatDraftOpenOutcome: "cancelled" | "failed" | null;
   /** A first send waiting for its chat, then for that chat's page. */
   pendingFirstSend:
     | { projectId: string | null; chatId: null; ownershipEpoch: number }
@@ -75,18 +78,34 @@ export const createNewChatDraftSlice: StateCreator<
     agentCenter: "chat",
     newChatDraft: null,
     draftFocusRequest: 0,
+    newChatDraftOpening: false,
+    newChatDraftOpenOutcome: null,
     pendingFirstSend: null,
     openNewChatDraft: async (projectId) => {
       const from = get();
-      const loaded = await load();
-      const now = get();
-      // A selection made while the actions loaded supersedes this open.
-      if (
-        now.project?.id === from.project?.id &&
-        now.activeTabId === from.activeTabId &&
-        now.chatOwnershipEpoch === from.chatOwnershipEpoch
-      )
-        return loaded.openNewChatDraft(projectId);
+      if (from.newChatDraftOpening) return;
+      // Reserve the explicit open through action loading and initialization.
+      set({ newChatDraftOpening: true, newChatDraftOpenOutcome: null });
+      let outcome: NewChatDraftSlice["newChatDraftOpenOutcome"] = null;
+      try {
+        const loaded = await load();
+        const now = get();
+        // A selection made while the actions loaded supersedes this open.
+        if (
+          now.project?.id === from.project?.id &&
+          now.activeTabId === from.activeTabId &&
+          now.chatOwnershipEpoch === from.chatOwnershipEpoch
+        )
+          return await loaded.openNewChatDraft(projectId);
+        outcome = "cancelled";
+      } catch {
+        outcome = "failed";
+      } finally {
+        set({
+          newChatDraftOpening: false,
+          newChatDraftOpenOutcome: outcome,
+        });
+      }
     },
     updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),
     selectDraftHarness: async (harnessId) =>

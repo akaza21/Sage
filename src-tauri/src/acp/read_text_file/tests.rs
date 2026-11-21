@@ -46,7 +46,7 @@ fn fixture() -> (std::path::PathBuf, ReadTextFileService, String, ResourceRef) {
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("file.txt"), "one\ntwo\n").unwrap();
     let database = crate::database::open_database(":memory:".as_ref()).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
     (
         root,

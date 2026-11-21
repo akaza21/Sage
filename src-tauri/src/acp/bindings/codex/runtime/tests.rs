@@ -124,7 +124,7 @@ fn codex_authority_accepts_exactly_one_registered_root_without_process_admission
         let root = base.join("root");
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();
         let context = state
@@ -157,7 +157,7 @@ fn codex_authority_rejects_two_registered_roots_without_process_admission() {
         std::fs::create_dir_all(&first).unwrap();
         std::fs::create_dir_all(&second).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&first).unwrap();
+        let project = database.create_project_with_chat(&first).unwrap();
         database.add_project_root(&project.id, &second).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();

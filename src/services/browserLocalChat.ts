@@ -6,15 +6,11 @@ import type {
   ProjectSwitchRequest,
   ProjectTransitionResult,
 } from "../domain/workbench";
-import { createBrowserChatTab } from "./browserChat";
 import { pinPrivateBrowserChat } from "./browserChatScopes";
 
 export function ensureBrowserLocalProject(input: {
   snapshot: BootstrapSnapshot;
   expectedTransitionEpoch: number;
-  durableChatIds: Set<string>;
-  chatTitles: Map<string, string>;
-  messagesByChat: Map<string, ChatMessage[]>;
   activeMessages: () => ChatMessage[];
 }): ProjectTransitionResult {
   const { snapshot } = input;
@@ -33,19 +29,15 @@ export function ensureBrowserLocalProject(input: {
     return committed(snapshot, input.activeMessages);
   }
   const id = crypto.randomUUID();
-  const chat = createBrowserChatTab([], input.durableChatIds.size);
   snapshot.project = { id, name: "Local", roots: [] };
   snapshot.projects = [
     ...snapshot.projects,
     { id, name: "Local", rootCount: 0, lastOpenedAt: Date.now() },
   ];
-  snapshot.tabs = [chat];
-  snapshot.activeTabId = chat.id;
+  snapshot.tabs = [];
+  snapshot.activeTabId = null;
   snapshot.selectedRootId = null;
   snapshot.selectedResource = null;
-  input.durableChatIds.add(chat.id);
-  input.chatTitles.set(chat.id, chat.title);
-  input.messagesByChat.set(chat.id, []);
   snapshot.transitionEpoch += 1;
   return committed(snapshot, input.activeMessages);
 }

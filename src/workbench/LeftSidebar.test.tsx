@@ -235,27 +235,17 @@ it("announces the New chat shortcut without printing it in the row", () => {
 });
 
 it("keeps New chat available when no folder project is open", async () => {
-  const createChat = vi.fn(async () => {
+  const ensureLocalProject = async () => {
     useWorkbenchStore.setState({
       project: { id: "local", name: "Local", roots: [] },
-      tabs: [
-        {
-          id: "local-chat",
-          kind: "chat",
-          title: "Local chat",
-          position: 0,
-          pinned: false,
-          dirty: false,
-        },
-      ],
-      activeTabId: "local-chat",
+      tabs: [],
+      activeTabId: null,
     });
-    return { status: "confirmed" as const, chatId: "local-chat" };
-  });
+  };
   useWorkbenchStore.setState({
     project: null,
     projects: [],
-    createChat,
+    ensureLocalProject,
   });
   render(<LeftSidebar />);
   const button = screen.getByRole("button", { name: "New chat" });
@@ -266,9 +256,14 @@ it("keeps New chat available when no folder project is open", async () => {
     ),
   ).toBeInTheDocument();
   fireEvent.click(button);
-  expect(
-    await screen.findByRole("button", { name: "Open chat Local chat" }),
-  ).toBeVisible();
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      projectId: "local",
+      targetProjectId: null,
+      submission: { status: "released" },
+    });
+  });
+  expect(useWorkbenchStore.getState().tabs).toEqual([]);
 });
 
 it("lists chats under every project folder and opens a foreign chat", () => {
@@ -434,29 +429,7 @@ it("restores a foreign-folder archived chat without switching first", async () =
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("creates a chat from a foreign project menu without switching first", async () => {
-  const createChat = vi.fn(async (projectId?: string | null) => {
-    useWorkbenchStore.setState((state) => ({
-      projects: state.projects.map((project) =>
-        project.id === projectId
-          ? {
-              ...project,
-              railChats: [
-                ...(project.railChats ?? []),
-                {
-                  id: "foreign-created",
-                  title: "Created foreign chat",
-                  position: 1,
-                  pinned: false,
-                },
-              ],
-            }
-          : project,
-      ),
-    }));
-    return { status: "confirmed-in-other-project" as const };
-  });
-  const switchProject = vi.fn(async () => undefined);
+it("opens an unsent draft from a foreign project menu", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [
@@ -488,8 +461,6 @@ it("creates a chat from a foreign project menu without switching first", async (
       },
     ],
     activeTabId: "chat:sage",
-    createChat,
-    switchProject,
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
@@ -499,11 +470,16 @@ it("creates a chat from a foreign project menu without switching first", async (
   fireEvent.click(
     screen.getByRole("menuitem", { name: "New chat in project" }),
   );
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      projectId: "sage",
+      targetProjectId: "cross",
+      text: "",
+    });
+  });
   expect(
-    await screen.findByRole("button", {
-      name: "Open chat Created foreign chat",
-    }),
-  ).toBeVisible();
+    screen.queryByRole("button", { name: "Open chat Created foreign chat" }),
+  ).toBeNull();
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
   expect(useWorkbenchStore.getState().activeTabId).toBe("chat:sage");
 });

@@ -6,9 +6,16 @@ import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
-export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
-  const state = get();
+export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
+  let state = get();
   if (state.projectTransitioning) return;
+  if (!state.project) {
+    // Initialization supplies an owner, while projectId keeps the requested
+    // destination (including the omitted, no-project destination).
+    await state.ensureLocalProject();
+    state = get();
+    if (!state.project || state.projectTransitioning) return;
+  }
   // An omitted target reopens the draft. Explicit retargeting may replace an
   // empty draft, but an unsent prompt must be sent or discarded by its owner.
   const draft = state.newChatDraft;
@@ -22,26 +29,6 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       draft.submission.status !== "released")
       ? draft
       : null;
-  if (!retainedDraft && projectId && projectId !== state.project?.id)
-    return state.createChat(projectId);
-  if (!retainedDraft && !state.project)
-    return (async () => {
-      const created = await state.createChat(null);
-      if (
-        created.status !== "confirmed" ||
-        get().activeTabId !== created.chatId
-      )
-        return;
-      openNewChatDraft(set, get);
-      const draft = get().newChatDraft;
-      if (draft)
-        set({
-          newChatDraft: {
-            ...draft,
-            submission: { status: "created", chatId: created.chatId },
-          },
-        });
-    })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
   if (state.agentCenter === "draft" && retainedDraft) {

@@ -273,11 +273,9 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
         lastOpenedAt: Date.now(),
       });
       selectBrowserScope(snapshot, id);
-      const chat = createBrowserChatTab([], 0);
-      snapshot.tabs = [chat];
-      snapshot.activeTabId = chat.id;
+      snapshot.tabs = [];
+      snapshot.activeTabId = null;
       snapshot.archivedChats = [];
-      context.register(chat);
       context.activate();
       rememberBrowserScope(snapshot);
       return commit();

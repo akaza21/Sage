@@ -158,7 +158,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-p02-row-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let resource = ResourceRef {
             root_id: project.roots[0].id.clone(),
             relative_path: "file.txt".into(),
