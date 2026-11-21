@@ -35,6 +35,8 @@ export interface NewChatDraftSlice {
   newChatDraft: NewChatDraft | null;
   draftFocusRequest: number;
   newChatDraftOpening: boolean;
+  /** Cancellation permits one continuity open; failure requires user retry. */
+  newChatDraftOpenOutcome: "cancelled" | "failed" | null;
   /** A first send waiting for its chat, then for that chat's page. */
   pendingFirstSend:
     | { projectId: string | null; chatId: null; ownershipEpoch: number }
@@ -77,12 +79,14 @@ export const createNewChatDraftSlice: StateCreator<
     newChatDraft: null,
     draftFocusRequest: 0,
     newChatDraftOpening: false,
+    newChatDraftOpenOutcome: null,
     pendingFirstSend: null,
     openNewChatDraft: async (projectId) => {
       const from = get();
       if (from.newChatDraftOpening) return;
       // Reserve the explicit open through action loading and initialization.
-      set({ newChatDraftOpening: true });
+      set({ newChatDraftOpening: true, newChatDraftOpenOutcome: null });
+      let outcome: NewChatDraftSlice["newChatDraftOpenOutcome"] = null;
       try {
         const loaded = await load();
         const now = get();
@@ -93,8 +97,14 @@ export const createNewChatDraftSlice: StateCreator<
           now.chatOwnershipEpoch === from.chatOwnershipEpoch
         )
           return await loaded.openNewChatDraft(projectId);
+        outcome = "cancelled";
+      } catch {
+        outcome = "failed";
       } finally {
-        set({ newChatDraftOpening: false });
+        set({
+          newChatDraftOpening: false,
+          newChatDraftOpenOutcome: outcome,
+        });
       }
     },
     updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),

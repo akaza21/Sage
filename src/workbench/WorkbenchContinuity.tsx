@@ -56,8 +56,8 @@ export function AgentCenterKeeper({
 }: {
   windowMode: WorkbenchWindowMode;
 }) {
-  const newChatDraftOpening = useWorkbenchStore(
-    (state) => state.newChatDraftOpening,
+  const newChatDraftOpenOutcome = useWorkbenchStore(
+    (state) => state.newChatDraftOpenOutcome,
   );
   const projectId = useWorkbenchStore((state) =>
     windowMode === "agent" &&
@@ -73,12 +73,13 @@ export function AgentCenterKeeper({
     if (
       projectId &&
       state.project?.id === projectId &&
-      !state.newChatDraftOpening
+      !state.newChatDraftOpening &&
+      state.newChatDraftOpenOutcome !== "failed"
     )
       void state.openNewChatDraft(
         state.project.isInternal ? undefined : projectId,
       );
-  }, [projectId, newChatDraftOpening]);
+  }, [projectId, newChatDraftOpenOutcome]);
 
   return null;
 }
