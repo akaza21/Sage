@@ -51,6 +51,34 @@ impl StandardAcpRuntime {
                 Vec::new(),
             );
         }
+        // Session metadata can arrive after the prompt has completed. Consume
+        // it before the turn translator, retaining the bound session identity.
+        if value["params"]["update"]["sessionUpdate"] == "session_info_update" {
+            let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+            if value["params"]["sessionId"].as_str() != Some(active.external_id.as_str()) {
+                return Err(AdapterRuntimeError::Frame);
+            }
+            let event = match value["params"]["update"].get("title") {
+                None => None,
+                Some(Value::Null) => {
+                    Some(crate::acp::bindings::session_title::harness_title_cleared())
+                }
+                Some(Value::String(title)) => {
+                    crate::acp::bindings::session_title::harness_title_event(title)
+                }
+                Some(_) => return Err(AdapterRuntimeError::Frame),
+            };
+            return AdapterBatch::new(
+                vec![match event {
+                    Some(event) => SharedEvent::Session {
+                        id: self.session_identity(active.external_id.clone()),
+                        event,
+                    },
+                    None => SharedEvent::Absorbed,
+                }],
+                Vec::new(),
+            );
+        }
         if let Some(active) = self.active.as_mut()
             && crate::acp::bindings::standard_acp::surface::update_commands(
                 &value,

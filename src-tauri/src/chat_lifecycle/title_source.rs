@@ -22,8 +22,8 @@ impl ChatTitleSource {
     }
 }
 
-/// Leaves user and fork titles alone; a title empty once sanitized is ignored,
-/// so a harness can never blank a chat.
+/// Leaves user and fork titles alone; empty and placeholder titles are ignored,
+/// so a harness can never replace a useful title with a generic label.
 pub(crate) fn apply_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -34,6 +34,27 @@ pub(crate) fn apply_harness_title_in(
     let Some(title) = super::auto_title::first_line_title(harness_title) else {
         return Ok(());
     };
+    let display = super::chat_display_title(&title)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if [
+        "new chat",
+        "untitled",
+        "new session",
+        "untitled chat",
+        "untitled session",
+        "chat",
+        "new conversation",
+    ]
+    .iter()
+    .any(|placeholder| {
+        display
+            .trim_end_matches(['.', '!', '?', '…'])
+            .eq_ignore_ascii_case(placeholder)
+    }) {
+        return Ok(());
+    }
     let changed = transaction.execute(
         "UPDATE chats SET title=?3,updated_at=?4,title_source=?5
          WHERE project_id=?1 AND id=?2 AND title_source IN (?6,?7,?5)
@@ -128,7 +149,7 @@ fn first_prompt_title(
     }
     Ok(item["payload"]["text"]
         .as_str()
-        .and_then(super::auto_title::first_line_title))
+        .and_then(super::auto_title::prompt_title))
 }
 
 pub(super) fn retitle_attached_tab_in(
@@ -280,6 +301,45 @@ mod tests {
         fixture.harness("Resumed session");
         fixture.prompt("a new first prompt");
         assert_eq!(fixture.shown(), shown("Chat: Resumed session", "harness"));
+    }
+
+    #[test]
+    fn placeholder_harness_titles_never_replace_a_useful_prompt_title() {
+        let fixture = Fixture::new();
+        fixture.prompt("Please check Sage Claude progress?");
+        let expected = shown("Chat: Check Sage Claude progress", "prompt");
+        for title in [
+            "New chat",
+            "Untitled",
+            "New session",
+            "  NEW\t SESSION  ",
+            "Untitled chat",
+            "Chat",
+            "New conversation",
+            "New chat...",
+            "Untitled!",
+            "",
+            "\u{7}\u{202e}",
+        ] {
+            fixture.harness(title);
+            assert_eq!(fixture.shown(), expected, "{title:?}");
+        }
+        fixture.harness("New session recovery for Sage");
+        assert_eq!(
+            fixture.shown(),
+            shown("Chat: New session recovery for Sage", "harness")
+        );
+    }
+
+    #[test]
+    fn an_existing_prompt_title_is_not_recomputed() {
+        let fixture = Fixture::new();
+        fixture.prompt("Previously stored first prompt title");
+        fixture.prompt("Please check Sage progress");
+        assert_eq!(
+            fixture.shown(),
+            shown("Chat: Previously stored first prompt title", "prompt")
+        );
     }
 
     #[test]

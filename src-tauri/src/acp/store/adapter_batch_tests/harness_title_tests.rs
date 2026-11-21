@@ -113,6 +113,49 @@ fn a_cleared_harness_title_restores_the_first_prompt_title() {
 }
 
 #[test]
+fn a_clear_restores_the_prompt_summary_in_the_chat_and_tab() {
+    let mut fixture = untitled_chat();
+    fixture
+        .connection
+        .execute(
+            "UPDATE items SET payload_json=?1 WHERE ordinal=0 AND origin='primary'",
+            [serde_json::json!({"kind":"text","payload":{"text":
+            "Can you please check Sage Claude progress?"}})
+            .to_string()],
+        )
+        .unwrap();
+    apply(&mut fixture, title("Check Claude progress in Sage"), 6);
+    apply(&mut fixture, harness_title_cleared(), 7);
+    assert_eq!(
+        shown(&fixture),
+        same("Chat: Check Sage Claude progress", "prompt")
+    );
+}
+
+#[test]
+fn title_updates_and_clears_preserve_user_and_fork_ownership() {
+    for source in ["user", "fork"] {
+        let mut fixture = untitled_chat();
+        fixture
+            .connection
+            .execute(
+                "UPDATE chats SET title='Chat: Mine',title_source=?1",
+                [source],
+            )
+            .unwrap();
+        fixture
+            .connection
+            .execute("UPDATE workbench_tabs SET title='Chat: Mine'", [])
+            .unwrap();
+        apply(&mut fixture, title("Harness name"), 6);
+        assert_eq!(shown(&fixture), same("Chat: Mine", source));
+        apply(&mut fixture, harness_title_cleared(), 7);
+        assert_eq!(shown(&fixture), same("Chat: Mine", source));
+        assert_eq!(surface(&fixture).title, None);
+    }
+}
+
+#[test]
 fn a_cleared_harness_title_skips_a_turn_the_harness_started_before_the_first_prompt() {
     let mut fixture = untitled_chat();
     let started = super::super::TurnMutationCommand {
