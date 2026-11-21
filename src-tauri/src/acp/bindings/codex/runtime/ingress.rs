@@ -6,14 +6,17 @@ use sage_acp_protocol::intent::ExternalId;
 
 impl CodexRuntime {
     /// A response past the structural bounds every frame is held to. Only
-    /// an MCP list, a model page or a fork answer may be one; any other
-    /// fails the session.
+    /// an auxiliary title, MCP list, model page or fork answer may be one;
+    /// any other fails the session.
     pub(super) fn discard_invalid_answer(
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
             .ok_or(AdapterRuntimeError::Frame)?;
+        if self.reject_title_response(id) {
+            return super::support::one(AdapterEvent::Absorbed);
+        }
         match self.inner.take_mcp_list_answer(id) {
             Some(McpListAnswer::Awaited) => {
                 self.native_rpc_reply = Some(unbounded_mcp_list(frame.as_bytes()));

@@ -55,6 +55,15 @@ fn a_committed_harness_title_renames_the_chat_and_its_tab() {
 }
 
 #[test]
+fn pushed_metadata_preserves_short_titles_issue_identifiers_and_chinese_text() {
+    for raw in ["Fix tests", "Fix issue #443", "修复测试失败"] {
+        let mut fixture = untitled_chat();
+        apply(&mut fixture, title(raw), 6);
+        assert_eq!(shown(&fixture), same(&format!("Chat: {raw}"), "harness"));
+    }
+}
+
+#[test]
 fn a_user_named_chat_keeps_its_title_while_the_surface_records_the_harness_title() {
     let mut fixture = untitled_chat();
     fixture

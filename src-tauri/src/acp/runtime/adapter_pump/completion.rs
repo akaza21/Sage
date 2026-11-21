@@ -402,6 +402,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let Some(terminal_cursor) = self.durable_turn_cursor.clone() else {
             return Err(Box::new((self, AdapterPumpError::TeardownRequired)));
         };
+        self.foreground.take();
         if terminal_cursor.state() == TurnState::Completed {
             self.adapter.title_completed(&self.intent);
         }

@@ -50,7 +50,11 @@ pub(super) fn answer(
         }
         "turn/interrupt" if temporary => json!({}),
         "thread/unsubscribe" if temporary => {
-            emit_json(output, state, &json!({"id":request["id"],"result":{}}))?;
+            emit_json(
+                output,
+                state,
+                &json!({"id":request["id"],"result":{"status":"unsubscribed"}}),
+            )?;
             emit_json(
                 output,
                 state,

@@ -13,6 +13,26 @@ pub(super) struct TitleRead {
 }
 
 impl StandardAcpRuntime {
+    pub(super) fn may_receive_title_response(&self) -> bool {
+        self.title_read
+            .as_ref()
+            .is_some_and(|read| !read.ids.is_empty())
+    }
+    pub(super) fn reject_title_read(&mut self, id: u64) -> bool {
+        let Some(read) = self
+            .title_read
+            .as_mut()
+            .filter(|read| read.ids.contains(&id))
+        else {
+            return false;
+        };
+        if !read.finished {
+            read.waiting = None;
+            read.result = Some(None);
+            read.finished = true;
+        }
+        true
+    }
     pub(super) fn begin_title_read(&mut self) -> Result<(), AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Operation)?;
         if active.turn.is_some() || !self.pending.is_empty() {
@@ -137,7 +157,9 @@ fn select_title(value: &Value, session: &str, bytes: usize) -> Selection {
     if default_title(title) {
         return Selection::Default;
     }
-    crate::chat_lifecycle::generated_title(title).map_or(Selection::Rejected, Selection::Title)
+    crate::chat_lifecycle::harness_title(title).map_or(Selection::Rejected, |title| {
+        Selection::Title(crate::chat_lifecycle::chat_display_title(&title).to_owned())
+    })
 }
 
 fn default_title(title: &str) -> bool {

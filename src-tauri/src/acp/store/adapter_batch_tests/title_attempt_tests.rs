@@ -121,6 +121,25 @@ fn a_durable_claim_spends_one_attempt_across_duplicates_and_reopen() {
 }
 
 #[test]
+fn existing_metadata_accepts_short_issue_and_chinese_titles_but_generated_output_does_not() {
+    for raw in ["Fix tests", "Fix issue #443", "修复测试失败"] {
+        let mut fixture = completed();
+        let attempt = claim(&mut fixture).unwrap();
+        assert!(
+            title_attempt::apply(&mut fixture.connection, &attempt, raw)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            title_attempt::apply_existing(&mut fixture.connection, &attempt, raw)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(shown(&fixture), (format!("Chat: {raw}"), "harness".into()));
+    }
+}
+
+#[test]
 fn user_fork_and_useful_harness_titles_are_ineligible_and_win_result_races() {
     for source in ["user", "fork", "harness"] {
         let mut fixture = completed();

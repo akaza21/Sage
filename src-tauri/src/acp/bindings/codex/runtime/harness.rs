@@ -142,7 +142,7 @@ impl HarnessAdapter for CodexRuntime {
     /// Each read whose reply may be past the frame bound keeps the decoder
     /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.inner.oversize_recoverable()
+        self.inner.oversize_recoverable() || self.may_receive_title_response()
     }
 
     fn answered_control(
@@ -181,6 +181,9 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        if self.reject_title_response(id) {
+            return Ok(());
+        }
         if self.inner.skills_oversized(id) {
             return Ok(());
         }

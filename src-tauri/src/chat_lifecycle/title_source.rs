@@ -40,8 +40,17 @@ pub(super) fn is_placeholder(display: &str) -> bool {
     })
 }
 
-/// Leaves user and fork titles alone; empty and placeholder titles are ignored,
-/// so a harness can never replace a useful title with a generic label.
+/// Ordinary harness metadata permits short phrases, punctuation and any language.
+pub(crate) fn harness_title(raw: &str) -> Option<String> {
+    let title = super::auto_title::first_line_title(raw)?;
+    let display = super::chat_display_title(&title)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!is_placeholder(&display)).then_some(title)
+}
+
+/// Leaves user and fork titles alone; empty and placeholder titles are ignored.
 pub(crate) fn apply_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -49,16 +58,9 @@ pub(crate) fn apply_harness_title_in(
     harness_title: &str,
     now: i64,
 ) -> rusqlite::Result<()> {
-    let Some(title) = super::auto_title::first_line_title(harness_title) else {
+    let Some(title) = self::harness_title(harness_title) else {
         return Ok(());
     };
-    let display = super::chat_display_title(&title)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if is_placeholder(&display) {
-        return Ok(());
-    }
     let changed = transaction.execute(
         "UPDATE chats SET title=?3,updated_at=?4,title_source=?5
          WHERE project_id=?1 AND id=?2 AND title_source IN (?6,?7,?5)

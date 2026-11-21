@@ -62,6 +62,33 @@ impl TitleRequest {
 }
 
 impl CodexRuntime {
+    pub(super) fn may_receive_title_response(&self) -> bool {
+        // Cancelled reads retain a bounded set of IDs for late replies.
+        self.title
+            .as_ref()
+            .is_some_and(|request| !request.ids.is_empty())
+    }
+    pub(super) fn reject_title_response(&mut self, id: u64) -> bool {
+        let Some(request) = self
+            .title
+            .as_mut()
+            .filter(|request| request.ids.contains(&id))
+        else {
+            return false;
+        };
+        if request.finished {
+            return true;
+        }
+        request.result = Some(None);
+        request.cancel();
+        // A malformed allocation or cleanup reply cannot prove remote unload.
+        if request.pending.iter().any(|(pending, step)| {
+            *pending == id && matches!(step, Step::Start | Step::Unsubscribe)
+        }) {
+            request.cleanup_deadline = Some(Instant::now());
+        }
+        true
+    }
     pub(super) fn begin_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
         if input.len() > 4096 || self.title.as_ref().is_some_and(|t| !t.finished) {
             return Err(AdapterRuntimeError::Operation);
@@ -274,7 +301,12 @@ impl CodexRuntime {
                     );
                     // Keep global admission through Codex's unload grace period.
                     // thread/closed releases it earlier when the supervisor confirms unload.
-                    request.cancel();
+                    if value.pointer("/result/status").and_then(Value::as_str) == Some("notLoaded")
+                    {
+                        request.finish();
+                    } else {
+                        request.cancel();
+                    }
                 }
             }
             return true;

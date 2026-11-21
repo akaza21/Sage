@@ -11,6 +11,31 @@ fn title_generation_survives_post_completion_usage_reads_without_changing_the_ma
 }
 
 #[test]
+fn a_turn_already_running_in_another_chat_refuses_title_admission() {
+    title_lifecycle(Scenario::ForegroundAlreadyActive);
+}
+
+#[test]
+fn structurally_oversized_title_config_reply_keeps_the_worker_and_local_title() {
+    for cancelled in [false, true] {
+        title_lifecycle(Scenario::InvalidTitleReply {
+            frame_bytes: false,
+            cancelled,
+        });
+    }
+}
+
+#[test]
+fn oversized_title_config_frame_keeps_the_worker_and_local_title() {
+    for cancelled in [false, true] {
+        title_lifecycle(Scenario::InvalidTitleReply {
+            frame_bytes: true,
+            cancelled,
+        });
+    }
+}
+
+#[test]
 fn title_cancellation_deadline_releases_capacity_during_an_unfinished_foreground_turn() {
     title_lifecycle(Scenario::Cleanup { observe: true });
 }
@@ -34,6 +59,8 @@ fn partial_title_write_enters_supervisor_recovery_before_any_further_writes() {
 
 enum Scenario {
     Complete,
+    ForegroundAlreadyActive,
+    InvalidTitleReply { frame_bytes: bool, cancelled: bool },
     Cleanup { observe: bool },
     WriteFailure(FrameWriteOutcome),
 }
@@ -96,6 +123,15 @@ fn title_lifecycle(scenario: Scenario) {
             assert!(reply.recv().unwrap().is_ok());
         }
         let FirstTurnWorkerState::Active(mut active) = state else { panic!("active") };
+        if matches!(scenario, Scenario::ForegroundAlreadyActive) {
+            let (db, intent) = crate::acp::store::title_fixture();
+            let mut other = TitleScheduler::new(db.clone(),fixture.publisher.clone(),TitleCapability::GenerateIsolated,Arc::clone(&admission));
+            let mut adapter = ready_runtime(&fixture.external_session);
+            other.completed(&intent, &mut adapter);
+            assert!(!other.pending(), "chat A skips title work while chat B's turn is active");
+            let title:String=db.connection().query_row("SELECT title FROM chats",[],|r|r.get(0)).unwrap();
+            assert_eq!(title,"Chat: Prompt fallback");
+        }
         let prompt = writes.lock().unwrap().last().unwrap().clone();
         for event in [
             json!({"id":prompt["id"],"result":{"turn":{"id":"main-turn"}}}),
@@ -115,6 +151,28 @@ fn title_lifecycle(scenario: Scenario) {
         assert_eq!(attempted,0);
         let active=active.accept_terminal(&cursor).unwrap_or_else(|_|panic!("accept terminal"));
         let mut reusable=active.try_into_completed(mailbox.as_ref()).unwrap_or_else(|_|panic!("reusable"));
+        let mut late_title_reply = None;
+        if let Scenario::InvalidTitleReply { frame_bytes, cancelled } = scenario {
+            reusable.completed.poll_title(false, &mut reusable.transport).unwrap();
+            let request = writes.lock().unwrap().last().unwrap().clone();
+            assert_eq!(request["method"], "config/read");
+            if cancelled {
+                assert!(!reusable.completed.poll_title(true, &mut reusable.transport).unwrap());
+            }
+            let oversized = if frame_bytes { json!("x".repeat(1_048_576)) } else { json!(vec![0;513]) };
+            let mut bytes = serde_json::to_vec(&json!({"id":request["id"],"result":{"config":{"oversized":oversized}}})).unwrap();
+            bytes.push(b'\n');
+            if cancelled {
+                late_title_reply = Some(bytes);
+            } else {
+                for chunk in bytes.chunks(8192) {
+                    reusable.completed.accept_idle_stdout_chunk(chunk,fixture.now_millis+10,&mut reusable.transport).await.unwrap();
+                }
+            }
+            assert!(!reusable.completed.poll_title(false,&mut reusable.transport).unwrap());
+            let title:String=fixture.database.connection().query_row("SELECT title FROM chats WHERE id='chat-first-turn'",[],|r|r.get(0)).unwrap();
+            assert_eq!(title,"Chat: Look into why the sidebar shows");
+        }
         if let Some(failure) = title_failure {
             reusable.transport.title_failure = Some(failure);
             let result = reusable.completed.poll_title(false, &mut reusable.transport);
@@ -128,7 +186,7 @@ fn title_lifecycle(scenario: Scenario) {
             }
             assert_eq!(result, Ok(false));
         }
-        if cancel_foreground || title_failure.is_some() {
+        if cancel_foreground || title_failure.is_some() || matches!(scenario, Scenario::InvalidTitleReply { .. }) {
             // Start the auxiliary turn, then withhold every cancellation/unload reply.
             let mut answered = writes.lock().unwrap().len();
             for _ in 0..if cancel_foreground { 3 } else { 0 } {
@@ -174,6 +232,12 @@ fn title_lifecycle(scenario: Scenario) {
             assert!(matches!(state, FirstTurnWorkerState::Active(_)));
             if !cancel_foreground {
                 let FirstTurnWorkerState::Active(mut active) = state else { unreachable!() };
+                if let Some(bytes) = late_title_reply {
+                    for chunk in bytes.chunks(8192) {
+                        mailbox.try_push_chunk(chunk.to_vec()).unwrap();
+                        active.turn.driver.run_next(mailbox.as_ref()).await.unwrap();
+                    }
+                }
                 active.turn.driver.poll_title().unwrap();
                 assert!(active.turn.driver.teardown_cause().is_none());
                 return;

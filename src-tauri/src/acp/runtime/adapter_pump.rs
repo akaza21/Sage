@@ -155,6 +155,7 @@ pub(crate) enum FlushDisposition {
 }
 
 pub(crate) struct AdapterPump<A, J, R> {
+    foreground: Option<crate::acp::service::chat_title::ForegroundLease>,
     adapter: A,
     journal: J,
     resources: R,
@@ -244,6 +245,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     ) -> Self {
         adapter.finish_model_config_hydration();
         Self {
+            foreground: adapter.foreground_turn(),
             adapter,
             journal,
             resources,

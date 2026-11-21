@@ -79,6 +79,9 @@ pub(crate) enum AdapterRuntimeError {
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
+    fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
+        None
+    }
     fn title_completed(&mut self, _intent: &crate::acp::runtime::PumpIntent) {}
     fn start_title(&mut self, _input: &str) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)

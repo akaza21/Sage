@@ -119,6 +119,9 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
+        self.5.as_ref().map(|titles| titles.foreground_turn())
+    }
     fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
         self.0.start_title(input)
     }

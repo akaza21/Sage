@@ -11,7 +11,7 @@ use sage_core::{
 };
 pub(crate) use title_source::{
     ChatTitleSource, SIDE_CHAT_ID_PREFIX, apply_harness_title_in, clear_harness_title_in,
-    placeholder_chat_title,
+    harness_title, placeholder_chat_title,
 };
 
 use crate::{workbench_persistence::persist_layout_in, workbench_restore::validate_tab_projection};

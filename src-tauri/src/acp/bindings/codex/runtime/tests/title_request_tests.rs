@@ -101,6 +101,40 @@ fn cancelling_during_start_waits_for_identity_then_detaches_without_sending_a_tu
 }
 
 #[test]
+fn not_loaded_unsubscribe_finishes_cleanup_without_a_closed_notification() {
+    let mut runtime = titled_runtime();
+    runtime.start_title("bounded input").unwrap();
+    let config = request(&mut runtime);
+    absorb(
+        &mut runtime,
+        json!({"id":config["id"],"result":{"config":{}}}),
+    );
+    let start = request(&mut runtime);
+    absorb(
+        &mut runtime,
+        json!({"id":start["id"],"result":{"thread":{"id":"temporary"},"sandbox":{"type":"readOnly"}}}),
+    );
+    runtime.cancel_title();
+    let unsubscribe = request(&mut runtime);
+    assert_eq!(unsubscribe["method"], "thread/unsubscribe");
+    absorb(
+        &mut runtime,
+        json!({"id":unsubscribe["id"],"result":{"status":"notLoaded"}}),
+    );
+    assert!(!runtime.title_pending());
+    assert!(!runtime.title_requires_teardown());
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Continue").unwrap(),
+                client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            })
+            .is_ok()
+    );
+}
+
+#[test]
 fn failed_configuration_and_oversized_response_keep_the_main_session_usable() {
     let mut runtime = titled_runtime();
     let main = runtime.inner.clone();

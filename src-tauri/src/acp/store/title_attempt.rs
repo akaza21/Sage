@@ -173,6 +173,17 @@ pub(crate) fn apply(
     let Some(title) = crate::chat_lifecycle::generated_title(raw) else {
         return Ok(None);
     };
+    apply_existing(connection, attempt, &title)
+}
+
+pub(crate) fn apply_existing(
+    connection: &mut Connection,
+    attempt: &TitleAttempt,
+    raw: &str,
+) -> Result<Option<sage_acp_protocol::contract::ProjectionRevision>, StoreError> {
+    let Some(title) = crate::chat_lifecycle::harness_title(raw) else {
+        return Ok(None);
+    };
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     if !valid(&transaction, attempt)? {
@@ -183,7 +194,7 @@ pub(crate) fn apply(
         &transaction,
         attempt.owner.project_id.as_str(),
         attempt.owner.chat_id.as_str(),
-        &title,
+        crate::chat_lifecycle::chat_display_title(&title),
         now,
     )?;
     let revision = facts::next_projection_revision(

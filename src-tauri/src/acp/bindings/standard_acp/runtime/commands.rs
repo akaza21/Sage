@@ -40,6 +40,26 @@ pub(crate) fn scoped_permission_id(
 }
 
 impl HarnessAdapter for StandardAcpRuntime {
+    fn child_read_pending(&self) -> bool {
+        self.may_receive_title_response()
+    }
+    fn discard_invalid_response(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
+            .ok_or(AdapterRuntimeError::Frame)?;
+        self.accept_oversized_response(id)?;
+        AdapterBatch::new(
+            vec![crate::acp::bindings::adapter::AdapterEvent::Absorbed],
+            Vec::new(),
+        )
+    }
+    fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        self.reject_title_read(id)
+            .then_some(())
+            .ok_or(AdapterRuntimeError::Frame)
+    }
     fn title_requires_teardown(&self) -> bool {
         self.delivery_unknown.is_some()
     }

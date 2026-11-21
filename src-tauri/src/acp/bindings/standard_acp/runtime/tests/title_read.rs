@@ -6,6 +6,118 @@ fn poll(runtime: &mut NativeRuntime) -> Value {
 }
 
 #[test]
+fn existing_titles_keep_short_phrases_issue_identifiers_and_chinese_text() {
+    for title in ["Fix tests", "Fix issue #443", "修复测试失败"] {
+        let mut fixture = running("existing-title");
+        fixture.runtime.start_title("").unwrap();
+        let request = poll(&mut fixture.runtime);
+        fixture.runtime.ingest(&frame(json!({"id":request["id"],"result":{"sessions":[{"sessionId":SESSION,"title":title}]}})), &Mapper).unwrap();
+        assert_eq!(
+            fixture.runtime.take_title_result(),
+            Some(Some(title.into()))
+        );
+    }
+}
+
+#[test]
+fn oversized_title_pages_through_the_idle_pump_leave_foreground_prompts_usable() {
+    use crate::acp::runtime::{
+        ActivatedSession, CompletedActivationDriverParts, EgressTransport, IdleActivationParts,
+        StdinTransport, SystemDriverClock,
+    };
+    use crate::acp::transport::{FrameWriteOutcome, OutboundFrame};
+    use sage_acp_protocol::{
+        contract::{SageAgentSessionId, SageChatId},
+        intent::ExternalId,
+        scheduler::RuntimeOwner,
+    };
+    struct Transport;
+    impl EgressTransport for Transport {
+        fn write(&mut self, _: &OutboundFrame) -> FrameWriteOutcome {
+            FrameWriteOutcome::Complete
+        }
+    }
+    impl StdinTransport for Transport {
+        fn close(&mut self) {}
+    }
+    for (rows, cancelled) in [
+        (
+            json!(vec![json!({"sessionId":SESSION,"title":"Fix tests"}); 513]),
+            false,
+        ),
+        (
+            json!([{"sessionId":SESSION,"title":"x".repeat(1_048_576)}]),
+            false,
+        ),
+        (
+            json!(vec![json!({"sessionId":SESSION,"title":"Fix tests"}); 513]),
+            true,
+        ),
+        (
+            json!([{"sessionId":SESSION,"title":"x".repeat(1_048_576)}]),
+            true,
+        ),
+    ] {
+        let mut fixture = running("oversized-title-pump");
+        fixture.runtime.start_title("").unwrap();
+        let request = poll(&mut fixture.runtime);
+        if cancelled {
+            fixture.runtime.cancel_title();
+        }
+        let owner = RuntimeOwner {
+            project_id: SageProjectId::parse("project-title").unwrap(),
+            chat_id: SageChatId::parse("chat-title").unwrap(),
+            session_id: SageAgentSessionId::parse("session-title").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let session = ActivatedSession {
+            binding_digest: [1; 32],
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            external_session_id: ExternalId::new("session", SESSION).unwrap(),
+            capabilities: fixture.runtime.capabilities().unwrap(),
+            models: Vec::new(),
+            next_model_cursor: None,
+        };
+        let replacement = NativeRuntime::new(crate::acp::bindings::codex::CodexRuntime::fixture(
+            crate::acp::bindings::codex::Platform::WindowsX86_64,
+        ));
+        let runtime = std::mem::replace(&mut fixture.runtime, replacement);
+        let mut pump = CompletedActivationDriverParts {
+            parts: IdleActivationParts::new(runtime, (), Mapper, session),
+            idle_decoder: IncrementalFrameDecoder::new(),
+            transport: Transport,
+            control: (),
+            owner,
+            clock: Arc::new(SystemDriverClock),
+        };
+        let mut bytes =
+            serde_json::to_vec(&json!({"id":request["id"],"result":{"sessions":rows}})).unwrap();
+        bytes.push(b'\n');
+        for chunk in bytes.chunks(8192) {
+            pump.accept_idle_stdout_chunk(chunk).unwrap();
+        }
+        let (mut runtime, _, _, _) = pump.parts.into_parts();
+        assert_eq!(
+            runtime.take_title_result(),
+            if cancelled { None } else { Some(None) }
+        );
+        assert!(!runtime.title_pending());
+        assert!(
+            runtime
+                .command(AdapterCommand::Prompt {
+                    prompt: Prompt::new("prompt", "Continue").unwrap(),
+                    client_message_id: RequiredText::new("client", "foreground").unwrap(),
+                    access_mode: SessionAccessMode::ReadOnly,
+                })
+                .is_ok()
+        );
+    }
+}
+
+#[test]
 fn selects_only_the_bound_id_and_rereads_a_default_once_without_paging() {
     let mut fixture = running("read-title");
     fixture.runtime.start_title("ignored").unwrap();
