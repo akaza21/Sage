@@ -8,6 +8,7 @@ import {
 } from "../features/git/remotes";
 import {
   sourceActionChanges,
+  sourceActionCandidates,
   type SourceGroupAction,
 } from "../features/git/sourceControlActions";
 import { Ellipsis } from "../ui/leanIcons";
@@ -136,21 +137,24 @@ export function SourceRepositoryMenu({
                   </button>
                 </div>
               ))}
-              <button
-                className="menu-item"
-                role="menuitem"
-                type="button"
-                disabled={
-                  !writable ||
-                  sourceActionChanges(repository, "discard").length === 0
-                }
-                onClick={() => {
-                  setOpen(false);
-                  setDiscard(true);
-                }}
-              >
-                Discard All Changes…
-              </button>
+              {sourceActionCandidates(repository.changes, "discard").length >
+              0 ? (
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  type="button"
+                  disabled={
+                    !writable ||
+                    sourceActionChanges(repository, "discard").length === 0
+                  }
+                  onClick={() => {
+                    setOpen(false);
+                    setDiscard(true);
+                  }}
+                >
+                  Discard All Changes…
+                </button>
+              ) : null}
               <button
                 className="menu-item"
                 role="menuitem"

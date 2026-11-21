@@ -26,7 +26,7 @@ pub async fn mutate_git_file(
         .map_err(git_mutation_command_error)
 }
 
-fn git_mutation_command_error(error: AppError) -> GitFileMutationCommandError {
+pub(crate) fn git_mutation_command_error(error: AppError) -> GitFileMutationCommandError {
     match error {
         AppError::GitContainment { state, message } => GitFileMutationCommandError::Containment {
             process_state: match state {

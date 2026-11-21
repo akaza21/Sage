@@ -58,6 +58,7 @@ mod project_commands;
 mod project_create_commands;
 mod project_migration;
 mod project_registry;
+mod repository_batch_commands;
 mod repository_branch_create_commands;
 mod repository_branch_delete_commands;
 mod repository_branch_rename_commands;

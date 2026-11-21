@@ -8,7 +8,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import type { RootRepositoryStatus } from "../domain/workbench";
+import type {
+  GitFileMutationRequest,
+  GitFileMutationResult,
+  GitPathsMutationRequest,
+  RootRepositoryStatus,
+} from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { SourceControlView } from "./SourceControlView";
 import { StatusBar } from "./StatusBar";
@@ -65,47 +70,61 @@ beforeEach(async () => {
     loadEditor: async () => undefined,
     revealFile: async () => undefined,
   });
-  vi.spyOn(desktop, "mutateGitFile").mockImplementation(
-    async (request, epoch) => {
-      const current = useWorkbenchStore.getState().repositories.roots[0];
-      return {
-        projectId: request.projectId,
-        transitionEpoch: epoch!,
-        error: null,
-        repositories: {
-          roots: [
-            {
-              ...current,
-              changes:
-                request.action === "discard"
-                  ? current.changes.filter(
-                      (change) =>
-                        change.resource.relativePath !==
-                        request.resource.relativePath,
-                    )
-                  : current.changes.map((change) =>
-                      change.resource.relativePath !==
-                      request.resource.relativePath
-                        ? change
-                        : {
-                            ...change,
-                            indexStatus:
-                              request.action === "stage"
-                                ? "modified"
-                                : "unchanged",
-                            worktreeStatus:
-                              request.action === "stage"
-                                ? "unchanged"
-                                : "modified",
-                          },
-                    ),
-            },
-          ],
-          truncated: false,
-          elapsedMs: 1,
-        },
-      };
-    },
+  const mutationResponse = async (
+    request:
+      | GitFileMutationRequest
+      | (GitPathsMutationRequest & { action: "stage" | "unstage" | "discard" }),
+    epoch: number,
+  ): Promise<GitFileMutationResult> => {
+    const current = useWorkbenchStore.getState().repositories.roots[0];
+    const paths =
+      "resources" in request ? request.resources : [request.resource];
+    const selected = (path: string) =>
+      paths.some((resource) => resource.relativePath === path);
+    return {
+      projectId: request.projectId,
+      transitionEpoch: epoch!,
+      error: null,
+      repositories: {
+        roots: [
+          {
+            ...current,
+            changes:
+              request.action === "discard"
+                ? current.changes.filter(
+                    (change) => !selected(change.resource.relativePath),
+                  )
+                : current.changes.map((change) =>
+                    !selected(change.resource.relativePath)
+                      ? change
+                      : {
+                          ...change,
+                          indexStatus:
+                            request.action === "stage"
+                              ? "modified"
+                              : "unchanged",
+                          worktreeStatus:
+                            request.action === "stage"
+                              ? "unchanged"
+                              : "modified",
+                        },
+                  ),
+          },
+        ],
+        truncated: false,
+        elapsedMs: 1,
+      },
+    };
+  };
+  vi.spyOn(desktop, "mutateGitFile").mockImplementation(mutationResponse);
+  vi.spyOn(desktop, "stageGitPaths").mockImplementation((request, epoch) =>
+    mutationResponse({ ...request, action: "stage" }, epoch),
+  );
+  vi.spyOn(desktop, "unstageGitPaths").mockImplementation((request, epoch) =>
+    mutationResponse({ ...request, action: "unstage" }, epoch),
+  );
+  vi.spyOn(desktop, "discardGitPaths").mockImplementation((request, epoch) =>
+    mutationResponse({ ...request, action: "discard" }, epoch),
   );
   vi.spyOn(desktop, "commitGitRepository").mockImplementation(
     async (request, epoch) => {
@@ -196,6 +215,47 @@ it("stages from the header, unstages from the staged row and group, and hides em
   expect(useWorkbenchStore.getState().repositories.roots[0].changes).toEqual(
     root.changes,
   );
+});
+
+it("keeps conflicts intact through stage, unstage and discard group actions", async () => {
+  const conflict = {
+    ...root.changes[0],
+    resource: { rootId: root.rootId, relativePath: "conflict.txt" },
+    indexStatus: "conflicted" as const,
+    worktreeStatus: "conflicted" as const,
+  };
+  useWorkbenchStore.setState({
+    repositories: {
+      roots: [{ ...root, changes: [conflict, ...root.changes] }],
+      truncated: false,
+      elapsedMs: 1,
+    },
+  });
+  render(<SourceControlView />);
+  fireEvent.click(screen.getByRole("button", { name: "Stage All Changes" }));
+  await waitFor(() => expect(screen.getByText("Staged Changes")).toBeVisible());
+  expect(useWorkbenchStore.getState().repositories.roots[0].changes[0]).toEqual(
+    conflict,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Unstage All Changes" }));
+  await waitFor(() =>
+    expect(screen.queryByText("Staged Changes")).not.toBeInTheDocument(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Source Control Actions" }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: /Discard All Changes/ }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Discard All Changes" }));
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().repositories.roots[0].changes).toEqual([
+      conflict,
+    ]),
+  );
+  expect(
+    screen.queryByRole("button", { name: /^(Stage|Unstage|Discard) / }),
+  ).not.toBeInTheDocument();
 });
 
 it("renders file name, folder and status without line counts; opens the File and Diff resources", async () => {
@@ -425,7 +485,7 @@ it("keeps a dirty branch selected and shows the checkout rejection at the status
 });
 
 it("stops a smart commit when staging fails and keeps the message for recovery", async () => {
-  vi.spyOn(desktop, "mutateGitFile").mockRejectedValue(
+  vi.spyOn(desktop, "stageGitPaths").mockRejectedValue(
     new Error("The index is locked."),
   );
   render(<SourceControlView />);
@@ -486,15 +546,52 @@ it("shows each version of a partially staged file in its group with its own stat
   ).toBeEnabled();
 });
 
-it("keeps the 300-file cap and disables group mutations when status is truncated", () => {
+it.each(["unchanged", "modified"] as const)(
+  "keeps the shared 300-row cap with %s index status when truncated",
+  (indexStatus) => {
+    useWorkbenchStore.setState({
+      repositories: {
+        roots: [
+          {
+            ...root,
+            truncated: true,
+            changes: Array.from({ length: 301 }, (_, index) => ({
+              ...root.changes[0],
+              indexStatus,
+              resource: {
+                rootId: root.rootId,
+                relativePath: `src/file-${index}.ts`,
+              },
+            })),
+          },
+        ],
+        truncated: true,
+        elapsedMs: 1,
+      },
+    });
+    render(<SourceControlView />);
+    expect(
+      screen.getAllByRole("button", { name: /^Open diff for/ }),
+    ).toHaveLength(300);
+    expect(screen.getByText("Change list capped at 300 files.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Stage All Changes" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Stage changes" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("caps 300 partially staged files at 300 rendered rows and explains the overflow", () => {
   useWorkbenchStore.setState({
     repositories: {
       roots: [
         {
           ...root,
-          truncated: true,
-          changes: Array.from({ length: 301 }, (_, index) => ({
+          changes: Array.from({ length: 300 }, (_, index) => ({
             ...root.changes[0],
+            indexStatus: "modified" as const,
             resource: {
               rootId: root.rootId,
               relativePath: `src/file-${index}.ts`,
@@ -502,7 +599,7 @@ it("keeps the 300-file cap and disables group mutations when status is truncated
           })),
         },
       ],
-      truncated: true,
+      truncated: false,
       elapsedMs: 1,
     },
   });
@@ -511,12 +608,6 @@ it("keeps the 300-file cap and disables group mutations when status is truncated
     screen.getAllByRole("button", { name: /^Open diff for/ }),
   ).toHaveLength(300);
   expect(screen.getByText("Change list capped at 300 files.")).toBeVisible();
-  expect(
-    screen.getByRole("button", { name: "Stage All Changes" }),
-  ).toBeDisabled();
-  expect(
-    screen.queryByRole("button", { name: "Stage changes" }),
-  ).not.toBeInTheDocument();
 });
 
 afterEach(() => {

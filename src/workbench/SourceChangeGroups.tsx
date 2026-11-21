@@ -14,6 +14,7 @@ import { ChevronRight, Minus, Plus } from "../ui/leanIcons";
 
 export function SourceChangeGroups({
   changes,
+  truncated = false,
   repository,
   rootName,
   rebaseInProgress,
@@ -26,6 +27,7 @@ export function SourceChangeGroups({
   onGroupAction,
 }: {
   changes: readonly FileChange[];
+  truncated?: boolean;
   repository: RepositoryRef | undefined;
   rootName: string;
   rebaseInProgress: boolean;
@@ -44,11 +46,22 @@ export function SourceChangeGroups({
   ) => Promise<void>;
   onGroupAction?: (action: "stage" | "unstage") => void;
 }) {
-  const { conflicts, others } = partitionSourceChanges(changes);
-  const staged = others.filter((change) => change.indexStatus !== "unchanged");
-  const unstaged = others.filter(
+  const partitioned = partitionSourceChanges(changes.slice(0, 300));
+  const staged = partitioned.others.filter(
+    (change) => change.indexStatus !== "unchanged",
+  );
+  const unstaged = partitioned.others.filter(
     (change) => change.worktreeStatus !== "unchanged",
   );
+  const conflicts = partitioned.conflicts;
+  const visibleStaged = staged.slice(0, 300 - conflicts.length);
+  const visibleUnstaged = unstaged.slice(
+    0,
+    300 - conflicts.length - visibleStaged.length,
+  );
+  const overflow =
+    changes.length > 300 ||
+    partitioned.conflicts.length + staged.length + unstaged.length > 300;
   const renderChange = (change: FileChange, stagedGroup: boolean) => (
     <SourceChangeRow
       key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
@@ -119,8 +132,11 @@ export function SourceChangeGroups({
       ) : rebaseInProgress || cherryPickInProgress || revertInProgress ? (
         <p className="sidebar__empty">Conflicts are resolved.</p>
       ) : null}
-      {group("Staged Changes", staged, "unstage")}
-      {group("Changes", unstaged, "stage")}
+      {group("Staged Changes", visibleStaged, "unstage")}
+      {group("Changes", visibleUnstaged, "stage")}
+      {overflow || truncated ? (
+        <p className="tree__limit">Change list capped at 300 files.</p>
+      ) : null}
     </>
   );
 }

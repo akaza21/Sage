@@ -259,7 +259,8 @@ export function SourceControlView() {
                 </p>
               ) : null}
               <SourceChangeGroups
-                changes={repository.changes.slice(0, 300)}
+                changes={repository.changes}
+                truncated={repository.truncated && !repository.message}
                 onGroupAction={
                   writable && !repository.truncated ? runGroupAction : undefined
                 }
@@ -273,9 +274,6 @@ export function SourceControlView() {
                 mutateRepositoryFile={mutateRepositoryFile}
                 openDiff={openDiff}
               />
-              {repository.truncated && !repository.message ? (
-                <p className="tree__limit">Change list capped at 300 files.</p>
-              ) : null}
             </section>
           );
         })}

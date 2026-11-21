@@ -6,6 +6,7 @@ import { canPushRemote, visibleRemotes } from "../features/git/remotes";
 import { SearchablePicker } from "../ui/SearchablePicker";
 import {
   sourceActionChanges,
+  sourceActionCandidates,
   type SourceGroupAction,
 } from "../features/git/sourceControlActions";
 import { Check, Plus, RefreshCw } from "../ui/leanIcons";
@@ -71,20 +72,22 @@ export function SourceRepositoryControl({
           >
             <Check size={14} aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className="source-change__action"
-            aria-label="Stage All Changes"
-            title="Stage All Changes"
-            disabled={
-              controlsDisabled ||
-              !writable ||
-              sourceActionChanges(repository, "stage").length === 0
-            }
-            onClick={() => onGroupAction("stage")}
-          >
-            <Plus size={14} aria-hidden="true" />
-          </button>
+          {sourceActionCandidates(repository.changes, "stage").length > 0 ? (
+            <button
+              type="button"
+              className="source-change__action"
+              aria-label="Stage All Changes"
+              title="Stage All Changes"
+              disabled={
+                controlsDisabled ||
+                !writable ||
+                sourceActionChanges(repository, "stage").length === 0
+              }
+              onClick={() => onGroupAction("stage")}
+            >
+              <Plus size={14} aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             type="button"
             className="source-change__action"

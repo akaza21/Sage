@@ -34,6 +34,11 @@ export interface RepositoryMutationSlice {
     action: GitFileMutationAction,
     discardConfirmed?: boolean,
   ) => Promise<boolean>;
+  mutateRepositoryPaths: (
+    resources: ResourceRef[],
+    action: "stage" | "unstage" | "discard",
+    discardConfirmed?: boolean,
+  ) => Promise<boolean>;
 }
 
 function eligibleMutation(
@@ -74,6 +79,45 @@ export const createRepositoryMutationSlice: StateCreator<
 > = (set, get) => ({
   repositoryMutation: null,
   repositoryMutationError: null,
+  mutateRepositoryPaths: async (
+    resources,
+    action,
+    discardConfirmed = false,
+  ) => {
+    const state = get();
+    const resource = resources[0];
+    const root = state.repositories.roots.find(
+      (root) => root.rootId === resource?.rootId,
+    );
+    if (
+      !resource ||
+      resources.length > 300 ||
+      root?.state !== "repository" ||
+      root.truncated ||
+      root.changes.length > 300 ||
+      state.fileRenameInFlight ||
+      state.resourceTrashInFlight ||
+      resources.some(
+        (candidate) =>
+          candidate.rootId !== resource.rootId ||
+          !eligibleMutation(state, candidate, action, discardConfirmed),
+      )
+    )
+      return false;
+    return runRepositoryCommand(
+      get,
+      set,
+      "repositoryMutation",
+      { resource, action },
+      (projectId, epoch) => {
+        const request = { projectId, resources, discardConfirmed };
+        if (action === "stage") return desktop.stageGitPaths(request, epoch);
+        if (action === "unstage")
+          return desktop.unstageGitPaths(request, epoch);
+        return desktop.discardGitPaths(request, epoch);
+      },
+    );
+  },
   mutateRepositoryFile: async (resource, action, discardConfirmed = false) => {
     if (
       get().fileRenameInFlight ||

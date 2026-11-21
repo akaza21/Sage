@@ -7,6 +7,19 @@ import type { FileChange, RootRepositoryStatus } from "../../domain/workbench";
 
 export type SourceGroupAction = "stage" | "unstage" | "discard";
 
+export function sourceActionCandidates(
+  changes: readonly FileChange[],
+  action: SourceGroupAction,
+): FileChange[] {
+  return changes.slice(0, 300).filter((change) => {
+    if (isConflictedChange(change)) return false;
+    if (action === "discard") return isSafeDiscardChange(change);
+    const status =
+      action === "stage" ? change.worktreeStatus : change.indexStatus;
+    return status !== "unchanged" && status !== "unknown";
+  });
+}
+
 export function sourceActionChanges(
   repository: RootRepositoryStatus,
   action: SourceGroupAction,
@@ -17,17 +30,11 @@ export function sourceActionChanges(
     repository.changes.length > 300
   )
     return [];
-  return repository.changes.slice(0, 300).filter((change) => {
-    if (isConflictedChange(change)) return false;
-    if (action === "discard") return isSafeDiscardChange(change);
-    const status =
-      action === "stage" ? change.worktreeStatus : change.indexStatus;
-    return status !== "unchanged" && status !== "unknown";
-  });
+  return sourceActionCandidates(repository.changes, action);
 }
 
-/** Serial, bounded calls to the admitted per-file Git command. Stop at the
- * first failure or project/branch change; never commit a partially staged set. */
+/** One bounded native batch and authoritative refresh. A smart commit must
+ * stop on failure or a project/branch change. */
 export async function mutateSourceGroup(
   repository: RootRepositoryStatus,
   action: SourceGroupAction,
@@ -50,16 +57,11 @@ export async function mutateSourceGroup(
   };
   const changes = sourceActionChanges(repository, action);
   if (changes.length === 0 || !current()) return false;
-  for (const change of changes) {
-    if (
-      !current() ||
-      !(await initial.mutateRepositoryFile(
-        change.resource,
-        action,
-        action === "discard",
-      ))
-    )
-      return false;
-  }
-  return current();
+  return (
+    (await initial.mutateRepositoryPaths(
+      changes.map((change) => change.resource),
+      action,
+      action === "discard",
+    )) && current()
+  );
 }
