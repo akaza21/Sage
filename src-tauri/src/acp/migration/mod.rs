@@ -32,6 +32,8 @@ mod sign_in_evidence_indexes;
 mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
+#[cfg(test)]
+pub(crate) mod test_schema;
 mod title_provenance;
 mod title_source;
 mod tool_result_fold;

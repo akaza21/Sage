@@ -165,7 +165,7 @@ fn existing_database_migrates_without_changing_projects_chats_or_history() {
     database
         .append_simulator_turn(&chat, "Keep this question", "Keep this answer")
         .unwrap();
-    database.connection().execute_batch("DROP INDEX idx_projects_kind_created; ALTER TABLE projects DROP COLUMN kind; DELETE FROM schema_migrations WHERE version=32; PRAGMA user_version=31;").unwrap();
+    crate::acp::migration::test_schema::rollback_to_version(&database.connection(), 31).unwrap();
     drop(database);
     let migrated = crate::database::open_database(&path).unwrap();
     let after = migrated.bootstrap_snapshot().unwrap();
