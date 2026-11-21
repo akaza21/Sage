@@ -7,10 +7,33 @@ import {
   type ReactNode,
 } from "react";
 
-import type { AcpItem, HarnessActivityProjection } from "../../../domain/acp";
+import type {
+  AcpItem,
+  HarnessActivityProjection,
+  TurnProjection,
+} from "../../../domain/acp";
+import { rootActivities } from "./acpTurnState";
 
 import { CollaborationItem } from "./CollaborationItem";
 import { UnknownItem } from "./UnknownItem";
+
+export function RootHarnessActivities({
+  turn,
+  renderItem,
+}: {
+  turn: TurnProjection;
+  renderItem: (item: AcpItem) => ReactNode;
+}) {
+  return rootActivities(turn).map((activity) => (
+    <HarnessActivity
+      key={activity.id}
+      activity={activity}
+      activities={turn.activities}
+      items={turn.items}
+      renderItem={renderItem}
+    />
+  ));
+}
 
 const lifecycleLabels = {
   observed: "Observed",

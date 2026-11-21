@@ -73,6 +73,47 @@ function transcriptProps() {
   };
 }
 
+it("keeps history progress neutral and retries a failed first page through the existing reload", () => {
+  const props = {
+    ...transcriptProps(),
+    page: null,
+    onLoadEarlier: () => rerender(<ChatTranscript {...props} historyLoading />),
+  };
+  const { rerender } = render(<ChatTranscript {...props} historyLoading />);
+  const progress = screen
+    .getByText("Loading chat history…")
+    .closest('[role="status"]');
+  expect(progress).toHaveTextContent("Loading chat history…");
+  expect(progress).toHaveClass("notice--info");
+  expect(progress).not.toHaveClass("composer__notice");
+  rerender(<ChatTranscript {...props} firstPageError="Read failed" />);
+  const failure = screen.getByRole("alert");
+  expect(failure).toHaveTextContent("Chat history could not be loaded.");
+  fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+  // The reload's observable result replaces the failed boundary.
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Loading chat history…")).toBeVisible();
+});
+
+it("keeps history diagnostics scoped to the owning chat", () => {
+  const props = {
+    ...transcriptProps(),
+    page: null,
+    firstPageError: "Read unavailable",
+  };
+  const { rerender } = render(
+    <ChatTranscript {...props} historyScope="chat-a" />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText("Read unavailable")).toBeVisible();
+  rerender(<ChatTranscript {...props} historyScope="chat-b" />);
+  expect(screen.queryByText("Read unavailable")).toBeNull();
+  expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+});
+
 it("replaces the established empty transcript with the real project home without inventing a turn", async () => {
   const { container } = render(<ChatTranscript {...transcriptProps()} />);
   await settleLazyModules();
@@ -258,10 +299,9 @@ it("shows an authoritative loading or failure notice before an empty page exists
   const { rerender } = render(
     <ChatTranscript {...props} page={null} historyLoading />,
   );
-  expect(screen.getByText("Loading chat history…")).toHaveAttribute(
-    "role",
-    "status",
-  );
+  expect(
+    screen.getByText("Loading chat history…").closest('[role="status"]'),
+  ).toHaveAttribute("role", "status");
   rerender(
     <ChatTranscript
       {...props}
@@ -270,8 +310,10 @@ it("shows an authoritative loading or failure notice before an empty page exists
     />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent(
-    "Chat history could not be loaded: History unavailable",
+    "Chat history could not be loaded.",
   );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText("History unavailable")).toBeVisible();
   expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
   await settleLazyModules();
 });
@@ -289,8 +331,12 @@ it("retains earlier-history retry and discarded-history disclosure after an empt
   );
   await settleLazyModules();
   expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-  expect(screen.getByRole("alert")).toHaveTextContent("History unavailable");
-  expect(screen.getByText(/Some chat history was discarded/)).toBeVisible();
+  expect(
+    screen.getByText("Earlier history could not be loaded."),
+  ).toBeVisible();
+  fireEvent.click(screen.getAllByRole("button", { name: "Details" })[0]);
+  expect(screen.getByText("History unavailable")).toBeVisible();
+  expect(screen.getByText(/some history was discarded/)).toBeVisible();
   const retry = screen.getByRole("button", { name: "Load earlier history" });
   expect(retry).toBeEnabled();
   fireEvent.click(retry);

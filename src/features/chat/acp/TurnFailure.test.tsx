@@ -15,6 +15,36 @@ import { useWorkbenchStore } from "../../../app/store";
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it("announces a newly failed turn once while keeping later copy revisions quiet", () => {
+    const running = page("running").turns[0];
+    const { rerender } = render(<TurnFailure turn={running} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    const failed = {
+      ...running,
+      state: "failed" as const,
+      terminalReason: {
+        kind: "timeout" as const,
+        message: "The request timed out.",
+      },
+    };
+    rerender(<TurnFailure turn={failed} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The request timed out.",
+    );
+    expect(screen.getByRole("alert")).not.toHaveAttribute("aria-live", "off");
+    rerender(
+      <TurnFailure
+        turn={{
+          ...failed,
+          terminalReason: {
+            kind: "timeout",
+            message: "The request timed out after reconnecting.",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "off");
+  });
   it("shows manual login instructions when the failed turn has no sign-in checker or remediation", async () => {
     const initial = useWorkbenchStore.getState();
     useWorkbenchStore.setState({

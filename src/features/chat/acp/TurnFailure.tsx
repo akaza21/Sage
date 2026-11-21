@@ -1,7 +1,9 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import { HarnessSignInPart } from "../lazyParts";
 import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
+import { Notice } from "../../../ui/Notice";
+import { turnFailureIdentity, turnFailureTarget } from "./noticeOwnership";
 
 export interface TurnFailureProps {
   turn: TurnProjection;
@@ -19,6 +21,7 @@ export function RetryTurnButton({ onRetry }: { onRetry: () => void }) {
 
 export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
   const headingId = useId();
+  const [initialTurn] = useState({ id: turn.id, state: turn.state });
   if (turn.state !== "failed") return null;
   const reason = turn.terminalReason;
   const message =
@@ -27,9 +30,20 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
       ? turnTerminalReasonLabels[reason.kind]
       : "The harness gave no error details.");
   return (
-    <div className="acp-turn__failure" role="group" aria-labelledby={headingId}>
+    <div
+      id={turnFailureTarget(turn)}
+      tabIndex={-1}
+      role="group"
+      aria-labelledby={headingId}
+    >
       <strong id={headingId}>Turn failed</strong>
-      <p data-turn-reason-message="">{message}</p>
+      <Notice
+        identity={turnFailureIdentity(turn)}
+        severity="blocking"
+        message={<span data-turn-reason-message="">{message}</span>}
+        announce={initialTurn.id === turn.id && initialTurn.state !== "failed"}
+        action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
+      />
       {reason?.remediation ? (
         <p data-turn-reason-remediation="">{reason.remediation}</p>
       ) : null}
@@ -40,7 +54,6 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
           turn={turn}
         />
       ) : null}
-      {onRetry ? <RetryTurnButton onRetry={onRetry} /> : null}
     </div>
   );
 }

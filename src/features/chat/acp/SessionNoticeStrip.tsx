@@ -1,26 +1,38 @@
 import { useState } from "react";
 
 import type { AcpChatPage, SessionNotice } from "../../../domain/acpProjection";
+import { Notice, type NoticeSeverity } from "../../../ui/Notice";
+import { sessionNoticeProblems, turnFailureIdentity } from "./noticeOwnership";
 import "./session-notice-strip.css";
 import { SessionSurfacePanel } from "./SessionSurfacePanel";
 
 const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
-  info: "Notice",
-  warning: "Warning",
-  error: "Error",
+  info: "notice",
+  warning: "warning",
+  error: "error",
 };
 
-// The session surface already collapses repeats.
-const keyOf = (notice: SessionNotice) =>
-  `${notice.level}\u0000${notice.source ?? ""}\u0000${notice.text}`;
+const SEVERITY: Record<SessionNotice["level"], NoticeSeverity> = {
+  info: "info",
+  warning: "warning",
+  error: "blocking",
+};
+const keyOf = (notice: SessionNotice) => notice.identity!;
 
 export function SessionStrip({ page }: { page: AcpChatPage }) {
   return (
     <>
       {page.sessionNotices?.length ? (
         <SessionNoticeStrip
-          session={page.chatId + page.currentSessionId}
-          notices={page.sessionNotices}
+          session={JSON.stringify([page.chatId, page.currentSessionId])}
+          notices={page.sessionNotices.filter(
+            (notice) =>
+              !page.turns.some(
+                (turn) =>
+                  turn.state === "failed" &&
+                  notice.identity === turnFailureIdentity(turn),
+              ),
+          )}
         />
       ) : null}
       {page.sessionSurface ? (
@@ -42,11 +54,12 @@ interface Dismissed {
 // dismissed set never outgrows the list.
 export function SessionNoticeStrip({
   session,
-  notices,
+  notices: records,
 }: {
   session: string;
   notices: readonly SessionNotice[];
 }) {
+  const notices = sessionNoticeProblems(records);
   const [dismissed, setDismissed] = useState<Dismissed>(() => ({
     session,
     keys: new Set(),
@@ -73,23 +86,17 @@ export function SessionNoticeStrip({
         {shown.map((notice) => {
           const key = keyOf(notice);
           return (
-            <li
-              key={key}
-              className={`acp-session-notice acp-session-notice--${notice.level}`}
-            >
-              <span className="acp-session-notice__level">
-                {LEVEL_LABEL[notice.level]}
-              </span>
-              <span className="acp-session-notice__text">{notice.text}</span>
-              {notice.source ? (
-                <span className="acp-session-notice__source">
-                  {notice.source}
-                </span>
-              ) : null}
+            <li key={key} className="acp-session-notice">
+              <Notice
+                identity={JSON.stringify([session, key])}
+                severity={SEVERITY[notice.level]}
+                message={notice.text}
+                details={notice.source ? `Source: ${notice.source}` : undefined}
+              />
               <button
                 type="button"
                 className="acp-session-notice__dismiss"
-                aria-label={`Dismiss ${LEVEL_LABEL[notice.level].toLowerCase()}: ${notice.text}`}
+                aria-label={`Dismiss ${LEVEL_LABEL[notice.level]}: ${notice.text}`}
                 onClick={() => dismiss([key])}
               >
                 ×

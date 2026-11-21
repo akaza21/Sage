@@ -13,6 +13,7 @@ import {
   type ResourceRef,
 } from "../../domain/workbench";
 import { ArrowDown } from "../../ui/leanIcons";
+import { Notice } from "../../ui/Notice";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
@@ -54,6 +55,8 @@ export function ChatTranscript({
   historyError,
   firstPageError = null,
   onLoadEarlier,
+  onReloadHistory = onLoadEarlier,
+  historyScope,
   messages,
   developmentSimulator,
   onRetry,
@@ -89,6 +92,8 @@ export function ChatTranscript({
   historyError: string | null;
   firstPageError?: string | null;
   onLoadEarlier: () => void;
+  onReloadHistory?: () => void;
+  historyScope?: string;
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
@@ -161,14 +166,23 @@ export function ChatTranscript({
     retentionIncomplete,
   });
   const historyFailure = historyError ?? firstPageError;
-  const historyNotice = historyFailure ? (
-    <div className="composer__notice" role="alert">
-      Chat history could not be loaded: {historyFailure}
-    </div>
-  ) : (
-    <div className="composer__notice" role="status">
-      Loading chat history…
-    </div>
+  const historyNotice = (
+    <Notice
+      identity={`history-load:${historyScope ?? page?.chatId ?? project?.id ?? "current"}`}
+      severity={historyFailure ? "blocking" : "info"}
+      message={
+        historyFailure
+          ? "Chat history could not be loaded."
+          : "Loading chat history…"
+      }
+      progress={!historyFailure}
+      action={
+        historyFailure
+          ? { label: "Retry", onClick: onReloadHistory }
+          : undefined
+      }
+      details={historyFailure}
+    />
   );
   return (
     <ForkChatDialogHost focusRoot={transcriptRef}>
@@ -180,9 +194,12 @@ export function ChatTranscript({
         >
           <div ref={contentRef} className="message-list__content">
             {projectTransitioning ? (
-              <div className="composer__notice" role="status">
-                Loading the authoritative project…
-              </div>
+              <Notice
+                identity={`project-transition:${project?.id ?? "current"}`}
+                severity="info"
+                progress
+                message="Loading the authoritative project…"
+              />
             ) : useNativeAcp &&
               !page &&
               (historyLoading || historyFailure || pageExpected) ? (

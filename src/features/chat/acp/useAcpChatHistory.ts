@@ -14,6 +14,10 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   const activeLoad = useStore(store, (state) => state.activeLoad);
   const historyLoad = useStore(store, (state) => state.historyLoad);
   const historyError = useStore(store, (state) => state.historyError);
+  const onReloadHistory = useStore(store, (state) => state.requestReload);
+  const resolvedChatId = useWorkbenchStore(
+    (state) => boundChatId ?? state.activeTabId,
+  );
   const firstPageError = useStore(store, (state) =>
     state.page ? null : state.error,
   );
@@ -75,5 +79,11 @@ export function useAcpChatHistory(boundChatId?: string | null) {
     historyError,
     firstPageError,
     onLoadEarlier: loadEarlier,
+    onReloadHistory,
+    historyScope: JSON.stringify([
+      scope?.projectId,
+      resolvedChatId,
+      scope?.projectGeneration,
+    ]),
   };
 }

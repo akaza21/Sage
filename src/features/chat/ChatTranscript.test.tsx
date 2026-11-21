@@ -17,6 +17,7 @@ import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import { snapshotPage } from "../../app/agentDiff.fixture";
+import { turnFailureIdentity } from "./acp/noticeOwnership";
 
 afterEach(() => {
   cleanup();
@@ -25,6 +26,49 @@ afterEach(() => {
     .forEach((slot) => slot.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it("explains a failed turn once with its work disclosure open and preserves diagnostics", async () => {
+  const failed = page("failed", {
+    kind: "harnessExited",
+    message: "The harness exited unexpectedly.",
+  });
+  const turn = failed.turns[0];
+  turn.items = [
+    {
+      ...textItem(),
+      id: "failure-item" as never,
+      kind: "error",
+      origin: "primary",
+      lifecycle: "failed",
+      payload: {
+        code: "harnessExited",
+        message: "The harness exited unexpectedly.",
+        recoverable: true,
+      },
+    } as never,
+  ];
+  failed.sessionNotices = [
+    {
+      identity: turnFailureIdentity(turn),
+      level: "error",
+      text: "The harness exited unexpectedly.",
+      source: "ACP",
+    },
+  ];
+  await renderTranscript(failed);
+  fireEvent.click(
+    document.querySelector<HTMLButtonElement>(".chat-transcript-work__toggle")!,
+  );
+  expect(screen.getAllByText("The harness exited unexpectedly.")).toHaveLength(
+    1,
+  );
+  expect(screen.queryByRole("region", { name: "Session notices" })).toBeNull();
+  const link = screen.getByRole("link", { name: "Turn failure" });
+  expect(
+    document.getElementById(link.getAttribute("href")!.slice(1))?.textContent,
+  ).toContain("The harness exited unexpectedly.");
+  expect(screen.getByText("harnessExited")).toBeVisible();
 });
 
 async function renderTranscript(

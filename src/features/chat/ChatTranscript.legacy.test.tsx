@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -72,8 +72,10 @@ it("shows why a native chat's first page failed instead of waiting for it", asyn
     />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent(
-    "Chat history could not be loaded: Store unavailable",
+    "Chat history could not be loaded.",
   );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText("Store unavailable")).toBeVisible();
   expect(screen.queryByText("Loading chat history…")).toBeNull();
   await settleLazyModules();
   expect(legacy.imports).toBe(0);

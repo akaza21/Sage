@@ -6,18 +6,22 @@ import { isRecord, safeText } from "./acpDesktopGuards";
 
 const LEVELS = ["info", "warning", "error"];
 
-function safeNotice(value: unknown): SessionNotice | null {
+function safeNotice(value: unknown, index: number): SessionNotice | null {
   if (!isRecord(value) || !LEVELS.includes(value.level as string)) return null;
   const text = safeText(value.text, 1024);
   const source = value.source == null ? null : safeText(value.source, 128);
   const diagnostic = value.diagnostic ?? false;
+  const identity =
+    value.identity == null ? undefined : safeText(value.identity, 1024);
   if (
     !text ||
     (value.source != null && !source) ||
-    typeof diagnostic !== "boolean"
+    typeof diagnostic !== "boolean" ||
+    (value.identity != null && !identity)
   )
     return null;
   return {
+    identity: identity ?? `legacy-record:${index}`,
     level: value.level as SessionNotice["level"],
     text,
     source,

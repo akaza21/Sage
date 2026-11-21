@@ -18,7 +18,6 @@ import { TurnDaySeparator } from "./AcpTurnDates";
 import {
   chronologicalTurnItems,
   promptAttachmentItems,
-  rootActivities,
   turnBindingId,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
@@ -26,13 +25,14 @@ import "./browser-operations.css";
 import { BrowserOperations } from "./BrowserOperations";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
 import { isEditingFiles } from "./editingFiles";
-import { HarnessActivity } from "./HarnessActivity";
+import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
 import { terminalTurnStates } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
+import { turnFailureItem, turnFailureTarget } from "./noticeOwnership";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { TurnPrompts } from "./TurnPrompts";
@@ -142,10 +142,13 @@ const Turn = memo(
         ) : null}
       </AnswerActions>
     ) : null;
+    const failureItem = turnFailureItem(turn);
+    const failureTarget = failureItem && turnFailureTarget(turn);
     const renderWorkingItem = (item: AcpItem) => (
       <ItemView
         key={item.id}
         item={item}
+        failureTarget={item.id === failureItem?.id ? failureTarget : undefined}
         workingItems={turn.items}
         interactive={interactive}
         fileReferenceOwner={fileReferenceOwner}
@@ -225,23 +228,21 @@ const Turn = memo(
                 fileReferenceOwner={fileReferenceOwner}
               />
             ) : null}
-            {rootActivities(turn).map((activity) => (
-              <HarnessActivity
-                key={activity.id}
-                activity={activity}
-                activities={turn.activities}
-                items={turn.items}
-                renderItem={(item) => (
-                  <ItemView
-                    item={item}
-                    turnState={turn.state}
-                    interactive={interactive}
-                    fileReferenceOwner={fileReferenceOwner}
-                    onOpenResource={openForTurn}
-                  />
-                )}
-              />
-            ))}
+            <RootHarnessActivities
+              turn={turn}
+              renderItem={(item) => (
+                <ItemView
+                  item={item}
+                  failureTarget={
+                    item.id === failureItem?.id ? failureTarget : undefined
+                  }
+                  turnState={turn.state}
+                  interactive={interactive}
+                  fileReferenceOwner={fileReferenceOwner}
+                  onOpenResource={openForTurn}
+                />
+              )}
+            />
             {isEditingFiles(page, turn) &&
             !turn.items.some(
               (item) =>
@@ -370,6 +371,7 @@ export function AcpChatPresentation({
       {hasEarlier || historyError || countIncomplete ? (
         <NavigationPart
           part="AcpHistoryNotices"
+          scope={JSON.stringify([page.chatId, page.currentSessionId])}
           hasEarlier={hasEarlier}
           loadingEarlier={loadingEarlier}
           historyError={historyError}

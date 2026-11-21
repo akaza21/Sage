@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { safeSessionNotices } from "../../../services/acpSessionNotices";
@@ -23,6 +29,52 @@ const notices = safeSessionNotices([
 ]);
 
 describe("SessionNoticeStrip", () => {
+  it("shows one highest-severity notice per problem identity across wording and sources", () => {
+    const decoded = safeSessionNotices([
+      {
+        identity: "mcp-start:calendar",
+        level: "warning",
+        text: "Calendar tools are unavailable.",
+        source: "runtime",
+      },
+      {
+        identity: "mcp-start:calendar",
+        level: "error",
+        text: "Calendar needs sign-in.",
+        source: "adapter",
+      },
+    ]);
+    render(<SessionNoticeStrip session="s1" notices={decoded} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Calendar needs sign-in.",
+    );
+    expect(screen.queryByText("Calendar tools are unavailable.")).toBeNull();
+  });
+
+  it("keeps different problems separate even with identical text", () => {
+    render(
+      <SessionNoticeStrip
+        session="s1"
+        notices={safeSessionNotices([
+          {
+            identity: "mcp-start:calendar",
+            level: "warning",
+            text: "Tools unavailable.",
+            source: "runtime",
+          },
+          {
+            identity: "mcp-start:mail",
+            level: "warning",
+            text: "Tools unavailable.",
+            source: "runtime",
+          },
+        ])}
+      />,
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByText("Tools unavailable.")).toHaveLength(2);
+  });
   it("replays legacy actionable warnings visibly in chat", () => {
     const legacy = safeSessionNotices([
       {
@@ -71,12 +123,17 @@ describe("SessionNoticeStrip", () => {
   it("shows each notice with its level and source, and dismisses one or all", () => {
     render(<SessionNoticeStrip session="s1" notices={notices} />);
     const items = screen.getAllByRole("listitem");
-    expect(items.map((item) => item.className)).toEqual([
-      "acp-session-notice acp-session-notice--warning",
-      "acp-session-notice acp-session-notice--info",
-      "acp-session-notice acp-session-notice--error",
+    expect(
+      items.map(
+        (item) => item.querySelector("[data-notice-identity]")?.className,
+      ),
+    ).toEqual([
+      "notice notice--warning",
+      "notice notice--info",
+      "notice notice--blocking",
     ]);
     expect(items[0]!.textContent).toContain("Warning");
+    fireEvent.click(within(items[0]).getByRole("button", { name: "Details" }));
     expect(items[0]!.textContent).toContain("fixture");
     expect(items[2]!.textContent).toContain("Extension crashed");
 

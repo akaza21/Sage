@@ -61,6 +61,7 @@ export function turnReasonMessage(turn: TurnProjection): string | undefined {
   if (detail) return detail;
   const stopped = turn.state === "interrupted" || turn.state === "cancelled";
   if (!stopped && turn.state !== "failed") return;
+  if (!stopped) return turnReasonErrorItem(turn)?.payload.message?.trim();
   for (let index = turn.items.length; index--;) {
     const item = turn.items[index];
     if (item.kind === "error" && item.payload.kind === undefined) {
@@ -74,6 +75,14 @@ export function turnReasonMessage(turn: TurnProjection): string | undefined {
       item.payload.outputSummary?.trim()
     )
       return item.payload.outputSummary;
+  }
+}
+
+/** The same retained source record used for a failed turn's fallback reason. */
+export function turnReasonErrorItem(turn: TurnProjection) {
+  for (let index = turn.items.length; index--;) {
+    const item = turn.items[index];
+    if (item.kind === "error" && item.payload.kind === undefined) return item;
   }
 }
 
