@@ -133,7 +133,7 @@ pub(crate) trait HarnessAdapter {
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
-    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+    fn goal_state(&self) -> Option<&crate::acp::goal::GoalState> {
         None
     }
     fn goal_pending(&self) -> bool {
@@ -224,6 +224,14 @@ pub(crate) trait HarnessAdapter {
         _action: &crate::acp::background_terminals::TerminalAction,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// A command-backed goal uses the normal command-turn admission path.
+    /// True means a bounded GoalCommand reply is ready without wire egress.
+    fn prepare_goal_command(
+        &mut self,
+        _action: &crate::acp::goal::GoalAction,
+    ) -> Result<bool, AdapterRuntimeError> {
+        Ok(false)
     }
     fn mutate_goal(
         &mut self,

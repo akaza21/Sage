@@ -7,7 +7,14 @@ import type { BoundGoalDetails } from "./useBoundGoalDetails";
 export function BoundChatGoalControl({
   state,
   chatId,
-  details: { detailsRef, canMutate, onReady },
+  details: {
+    detailsRef,
+    canMutate,
+    onReady,
+    capabilities,
+    editorOpen,
+    onEditorClose,
+  },
 }: {
   state: AcpGoalState;
   chatId: string;
@@ -20,6 +27,9 @@ export function BoundChatGoalControl({
     <ChatGoalControl
       state={state}
       canMutate={canMutate}
+      capabilities={capabilities}
+      editorOpen={editorOpen}
+      onEditorClose={onEditorClose}
       onMutation={mutate}
       detailsRef={detailsRef}
     />

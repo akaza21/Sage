@@ -308,9 +308,15 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 1971,
-        "maxCssGzipBytes": 764,
-        "reason": "Native Goal details, Pause and Delete with their mutations; loads with the first chat that shows a Goal. Measured 1842 B JS and 714 B CSS, plus 7%."
+        "maxGzipBytes": 2400,
+        "maxCssGzipBytes": 850,
+        "reason": "Capability-driven native Goal actions and progress: 2148 B JS (baseline 1842 B), 595 B CSS (baseline 714 B), with 250 B headroom. Editor and details load only on request."
+      },
+      {
+        "entry": "src/features/chat/GoalDetails.tsx",
+        "maxGzipBytes": 1100,
+        "maxCssGzipBytes": 650,
+        "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip retains its existing cap."
       },
       {
         "entry": "src/features/chat/ComposerAttachments.tsx",

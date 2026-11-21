@@ -1,10 +1,26 @@
 import type { AcpChatPage } from "../../../domain/acp";
+import type { GoalMutationAction } from "../../../domain/acpGoal";
 
-// The backend composes a Goal only when the binding supports native Goals, so
-// its presence is the capability check.
-export function canMutateGoal(page: AcpChatPage | null | undefined): boolean {
-  const session = page?.sessions.find(
+export function goalCapabilities(page: AcpChatPage | null | undefined) {
+  return page?.sessions?.find((item) => item.id === page.currentSessionId)
+    ?.capabilities?.goal;
+}
+
+export function canMutateGoal(
+  page: AcpChatPage | null | undefined,
+  action?: GoalMutationAction,
+): boolean {
+  const session = page?.sessions?.find(
     (item) => item.id === page.currentSessionId,
   );
-  return page?.goal?.kind === "goal" && !!session?.runtimeEpoch;
+  if (!session?.runtimeEpoch || !session.capabilities.goal) return false;
+  const goal = session.capabilities.goal;
+  if (action === "set")
+    return (
+      goal.set && (page?.goal?.kind === "noGoal" || page?.goal?.kind === "goal")
+    );
+  return (
+    page?.goal?.kind === "goal" &&
+    (action ? goal[action] : goal.set || goal.pause || goal.clear)
+  );
 }

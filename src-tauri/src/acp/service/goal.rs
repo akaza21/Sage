@@ -6,6 +6,11 @@ use sage_acp_protocol::scheduler::RuntimeOwner;
 
 impl AcpService {
     #[cfg(test)]
+    pub(crate) fn compose_goal_for_test(&self, page: &mut AcpChatPage) {
+        self.compose_goal(page);
+    }
+
+    #[cfg(test)]
     pub(crate) fn goal_channel_for_test(&self) -> std::sync::Arc<crate::acp::goal::GoalChannel> {
         std::sync::Arc::clone(&self.lane_at(0).runtime.goal)
     }
@@ -22,11 +27,11 @@ impl AcpService {
         lane.runtime.finish_start(&owner, host).unwrap();
         lane.runtime.publish_start(&owner).unwrap();
     }
-    pub(crate) fn mutate_existing_goal(
+    pub(crate) fn mutate_goal(
         &self,
         owner: RuntimeOwner,
         action: GoalAction,
-    ) -> Result<(), crate::acp::runtime::HostError> {
+    ) -> Result<Option<crate::acp::goal::GoalCommand>, crate::acp::runtime::HostError> {
         let lane = self
             .lane_for(&owner)
             .ok_or(crate::acp::runtime::HostError::Intent)?;
@@ -34,10 +39,32 @@ impl AcpService {
             .runtime
             .for_owner(&owner)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
-        if !matches!(
-            lane.runtime.goal.snapshot(&owner),
-            Some(GoalState::Goal { .. })
-        ) {
+        if !matches!(action, GoalAction::Set { .. })
+            && !matches!(
+                lane.runtime.goal.snapshot(&owner),
+                Some(GoalState::Goal { .. })
+            )
+        {
+            return Err(crate::acp::runtime::HostError::Intent);
+        }
+        // Enforce the negotiated policy snapshot as well as the binding's own
+        // admission. Missing capabilities on older sessions fail closed.
+        let json: String = self.database.connection().query_row(
+            "SELECT capabilities_json FROM agent_sessions WHERE id=?1 AND project_id=?2 AND chat_id=?3",
+            rusqlite::params![owner.session_id.as_str(), owner.project_id.as_str(), owner.chat_id.as_str()],
+            |row| row.get(0),
+        ).map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        if json.len() > sage_core::limits::LIMITS.wire.capability_metadata_bytes as usize {
+            return Err(crate::acp::runtime::HostError::Intent);
+        }
+        let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
+            serde_json::from_str(&json).map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        let admitted = match &action {
+            GoalAction::Set { .. } => capabilities.goal.set,
+            GoalAction::PauseExisting => capabilities.goal.pause,
+            GoalAction::ClearExisting => capabilities.goal.clear,
+        };
+        if !admitted {
             return Err(crate::acp::runtime::HostError::Intent);
         }
         let result = host.native_rpc(NativeRpcIntent {
@@ -72,9 +99,7 @@ impl AcpService {
         else {
             return;
         };
-        if !sage_acp_protocol::codex_protocol::speaks_pinned_protocol(
-            session.capabilities.protocol_version.as_str(),
-        ) {
+        if !session.capabilities.goal.supported() {
             return;
         }
         let Some(runtime_epoch) = session.runtime_epoch else {
@@ -112,9 +137,10 @@ impl AcpService {
 
 fn goal_reply(
     result: Result<NativeRpcReply, crate::acp::runtime::HostError>,
-) -> Result<(), crate::acp::runtime::HostError> {
+) -> Result<Option<crate::acp::goal::GoalCommand>, crate::acp::runtime::HostError> {
     match result {
-        Ok(NativeRpcReply::GoalApplied) => Ok(()),
+        Ok(NativeRpcReply::GoalApplied) => Ok(None),
+        Ok(NativeRpcReply::GoalCommand(command)) => Ok(Some(command)),
         Ok(
             NativeRpcReply::TurnsPage(_)
             | NativeRpcReply::SessionsPage(_)
@@ -163,7 +189,7 @@ mod tests {
 
     #[test]
     fn goal_reply_accepts_only_the_goal_applied_variant() {
-        assert_eq!(goal_reply(Ok(NativeRpcReply::GoalApplied)), Ok(()));
+        assert_eq!(goal_reply(Ok(NativeRpcReply::GoalApplied)), Ok(None));
         assert_eq!(
             goal_reply(Err(crate::acp::runtime::HostError::GoalMutationRejected)),
             Err(crate::acp::runtime::HostError::GoalMutationRejected)
@@ -186,6 +212,7 @@ mod tests {
                     time_used_seconds: 1,
                     created_at: None,
                     updated_at: None,
+                    progress: None,
                 },
             },
             usage: false,

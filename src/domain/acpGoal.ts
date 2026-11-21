@@ -1,3 +1,26 @@
+export interface AcpGoalCapabilities {
+  set: boolean;
+  pause: boolean;
+  resume: boolean;
+  tokenBudget: boolean;
+  clear: boolean;
+}
+
+export type GoalMutationAction = "set" | "pause" | "clear";
+
+export function decodeGoalCapabilities(
+  value: unknown,
+): AcpGoalCapabilities | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const fields = ["set", "pause", "resume", "tokenBudget", "clear"] as const;
+  const goal = value as Record<string, unknown>;
+  if (fields.some((field) => typeof goal[field] !== "boolean"))
+    return undefined;
+  return Object.fromEntries(
+    fields.map((field) => [field, goal[field]]),
+  ) as unknown as AcpGoalCapabilities;
+}
+
 import { safeOrdinal } from "./guards";
 import { utf8ByteLength } from "./text";
 
@@ -23,6 +46,12 @@ export interface AcpGoalSnapshot {
   timeUsedSeconds: number;
   createdAt: string | null;
   updatedAt: string | null;
+  progress?: {
+    iterations: number;
+    setAt: number;
+    tokensAtStart: number;
+    lastReason: string | null;
+  };
 }
 
 export interface AcpGoalChangedV1 {
@@ -75,7 +104,16 @@ export function decodeAcpGoal(value: unknown): AcpGoalState | null {
     !counter(goal.tokensUsed) ||
     !counter(goal.timeUsedSeconds) ||
     (goal.createdAt !== null && !bounded(goal.createdAt, 64)) ||
-    (goal.updatedAt !== null && !bounded(goal.updatedAt, 64))
+    (goal.updatedAt !== null && !bounded(goal.updatedAt, 64)) ||
+    (goal.progress !== undefined &&
+      (!record(goal.progress) ||
+        !counter(goal.progress.iterations) ||
+        !counter(goal.progress.setAt) ||
+        !counter(goal.progress.tokensAtStart) ||
+        (goal.progress.lastReason !== null &&
+          (typeof goal.progress.lastReason !== "string" ||
+            goal.progress.lastReason.includes("\0") ||
+            [...goal.progress.lastReason].length > 512))))
   )
     return null;
   return { kind: "goal", snapshot: goal as unknown as AcpGoalSnapshot };

@@ -87,6 +87,13 @@ function mutableGoalChat() {
           runtimeEpoch: "1" as never,
           capabilities: capabilitySetFixture({
             protocolVersion: "codex-app-server-observed-0.167.0",
+            goal: {
+              set: false,
+              pause: true,
+              resume: false,
+              tokenBudget: false,
+              clear: true,
+            },
           }),
         }),
       ],
@@ -158,4 +165,37 @@ it("offers the + menu's Goal only once the Goal control is there to open", async
   await openOptions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
   expect(screen.getByLabelText("Goal details")).toHaveFocus();
+});
+
+it("opens the shared editor from + Goal before any goal exists", async () => {
+  mutableGoalChat();
+  const store = acpProjectionStoreFor("chat-a");
+  const page = store.getState().page!;
+  store.setState({
+    page: {
+      ...page,
+      goal: { kind: "noGoal" },
+      sessions: page.sessions.map((session) => ({
+        ...session,
+        capabilities: {
+          ...session.capabilities,
+          goal: {
+            set: true,
+            pause: false,
+            resume: false,
+            tokenBudget: false,
+            clear: true,
+          },
+        },
+      })),
+    },
+  });
+  render(<ChatComposerRegion {...props} goal={{ kind: "noGoal" }} />);
+  await act(async () => chunk.release());
+  await openOptions();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Goal" }));
+  expect(await screen.findByLabelText("Goal objective")).toHaveFocus();
+  expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByLabelText("Goal objective")).toBeNull();
 });

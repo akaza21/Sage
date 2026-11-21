@@ -203,7 +203,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {goal.kind === "goal" ? (
+            {goal.kind === "goal" || goalDetails.capabilities?.set ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 state={goal}

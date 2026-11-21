@@ -78,6 +78,19 @@ pub(crate) async fn run(
     state: &AppState,
     request: RunCommandRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
+    run_command_turn(state, request, None).await
+}
+
+/// Reported commands may join a current turn through the harness's admitted
+/// steering path. They keep the same live command validation as new turns.
+pub(crate) async fn run_command_turn(
+    state: &AppState,
+    request: RunCommandRequest,
+    current_turn: Option<(
+        sage_acp_protocol::contract::SageTurnId,
+        sage_acp_protocol::contract::EntityRevision,
+    )>,
+) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     use session_operations::prompt_not_dispatched;
     let commands = list(state, &request.session)
         .await
@@ -100,6 +113,29 @@ pub(crate) async fn run(
     let prompt = command_prompt(&listed, input, text, request.expected_commands_revision)
         .map_err(prompt_not_dispatched)?;
     let r = request.session;
+    if let Some((turn_id, expected_turn_revision)) = current_turn {
+        return session_operations::steer_acp_turn_inner(
+            state,
+            SteerAcpTurnRequest {
+                project_id: r.project_id,
+                project_generation: r.project_generation,
+                chat_id: r.chat_id,
+                expected_projection_revision: r.expected_projection_revision,
+                client_intent_id: r.client_intent_id,
+                session_id: r.session_id,
+                runtime_epoch: r.runtime_epoch,
+                turn_id,
+                expected_turn_revision,
+                prompt,
+                attached_context: AttachedContexts::default(),
+            },
+        )
+        .await
+        .map_err(|failure| SendAcpTurnFailure {
+            failure,
+            prompt_dispatch: crate::acp::ipc::PromptDispatch::Unknown,
+        });
+    }
     session_operations::send_acp_turn_inner(
         state,
         SendAcpTurnRequest::Session {

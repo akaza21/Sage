@@ -2,6 +2,37 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::contract::{RequiredText, SchemaVersionV1};
 
+/// Native goal operations admitted for this session. Missing operations fail closed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GoalCapabilities {
+    pub set: bool,
+    pub pause: bool,
+    pub resume: bool,
+    pub token_budget: bool,
+    pub clear: bool,
+}
+
+impl GoalCapabilities {
+    pub fn supported(&self) -> bool {
+        self.set || self.pause || self.resume || self.token_budget || self.clear
+    }
+
+    pub fn intersect(self, other: Self) -> Self {
+        Self {
+            set: self.set && other.set,
+            pause: self.pause && other.pause,
+            resume: self.resume && other.resume,
+            token_budget: self.token_budget && other.token_budget,
+            clear: self.clear && other.clear,
+        }
+    }
+}
+
+fn no_goals(value: &GoalCapabilities) -> bool {
+    !value.supported()
+}
+
 /// What one harness-process negotiation admits. Activation replaces this
 /// snapshot on resume; it is not part of the native session's identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -32,6 +63,8 @@ pub struct CapabilitySnapshotV1 {
     /// The harness lists and stops the commands it left running.
     #[serde(skip_serializing_if = "is_false")]
     pub native_background_terminals: bool,
+    #[serde(skip_serializing_if = "no_goals")]
+    pub goal: GoalCapabilities,
     pub active_turn_steer: bool,
     pub child_conversation_projection: bool,
     pub child_transcript_read: bool,
@@ -65,6 +98,8 @@ struct CapabilitySnapshotWire {
     native_review: bool,
     #[serde(default)]
     native_background_terminals: bool,
+    #[serde(default)]
+    goal: GoalCapabilities,
     active_turn_steer: bool,
     child_conversation_projection: bool,
     child_transcript_read: bool,
@@ -101,6 +136,7 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             native_session_import: wire.native_session_import,
             native_review: wire.native_review,
             native_background_terminals: wire.native_background_terminals,
+            goal: wire.goal,
             active_turn_steer: wire.active_turn_steer,
             child_conversation_projection: wire.child_conversation_projection,
             child_transcript_read: wire.child_transcript_read,

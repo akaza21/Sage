@@ -43,6 +43,9 @@ impl RuntimeEngine for GoalEngine {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.result.is_ok() {
             let next = match &intent.request {
+                crate::acp::goal::NativeRpcRequest::Goal(GoalAction::Set { .. }) => {
+                    return Err(HostError::Intent);
+                }
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::PauseExisting) => {
                     GoalState::Goal {
                         snapshot: GoalSnapshot {
@@ -53,6 +56,7 @@ impl RuntimeEngine for GoalEngine {
                             time_used_seconds: 6,
                             created_at: None,
                             updated_at: None,
+                            progress: None,
                         },
                     }
                 }
@@ -228,6 +232,11 @@ pub(in crate::commands::acp) fn fixture(
                     native_session_import: false,
                     native_review: false,
                     native_background_terminals: false,
+                    goal: sage_acp_protocol::intent::GoalCapabilities {
+                        pause: true,
+                        clear: true,
+                        ..Default::default()
+                    },
                     active_turn_steer: false,
                     child_conversation_projection: false,
                     child_transcript_read: false,
@@ -272,6 +281,7 @@ pub(in crate::commands::acp) fn fixture(
                 time_used_seconds: 5,
                 created_at: None,
                 updated_at: None,
+                progress: None,
             },
         },
     );
@@ -358,5 +368,34 @@ async fn sqlite_owned_clear_ipc_returns_a_no_goal_projection() {
         .unwrap();
     assert_eq!(response.projection.goal, GoalState::NoGoal);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+    state.acp.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn compose_goal_uses_the_capability_instead_of_protocol_identity() {
+    let (state, request, _) = fixture(Ok(()));
+    let load = || {
+        state
+            .acp
+            .load_chat_page(request.project_id.clone(), request.chat_id.clone(), None)
+            .unwrap()
+    };
+    let mut page = load();
+    page.sessions.as_mut_slice()[0]
+        .capabilities
+        .protocol_version = RequiredText::new("protocol", "future-goal-protocol").unwrap();
+    for (supported, expected) in [(true, "goal"), (false, "unsupported")] {
+        page.sessions.as_mut_slice()[0].capabilities.goal = if supported {
+            sage_acp_protocol::intent::GoalCapabilities {
+                set: true,
+                clear: true,
+                ..Default::default()
+            }
+        } else {
+            Default::default()
+        };
+        state.acp.compose_goal_for_test(&mut page);
+        assert_eq!(page.goal.availability(), expected);
+    }
     state.acp.shutdown_blocking().unwrap();
 }

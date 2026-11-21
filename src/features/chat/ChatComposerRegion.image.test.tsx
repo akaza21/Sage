@@ -230,6 +230,13 @@ describe("composer image input", () => {
             runtimeEpoch: "1" as never,
             capabilities: capabilitySetFixture({
               protocolVersion: "codex-app-server-observed-0.167.0",
+              goal: {
+                set: false,
+                pause: true,
+                resume: false,
+                tokenBudget: false,
+                clear: true,
+              },
             }),
           }),
         ],
@@ -248,7 +255,9 @@ describe("composer image input", () => {
     }
     fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(screen.getByText("Ship safely", { selector: "p" })).toBeVisible();
+    expect(
+      await screen.findByText("Ship safely", { selector: "p" }),
+    ).toBeVisible();
     expect(screen.getByLabelText("Goal details")).toHaveFocus();
     expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
@@ -291,7 +300,7 @@ describe("composer image input", () => {
     expect(screen.getByLabelText("Goal details")).toBeVisible();
     fireEvent.click(screen.getByLabelText("Goal details"));
     expect(
-      screen.getByText(/Native Goal actions are unavailable/),
+      await screen.findByText(/Native Goal actions are unavailable/),
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
   });

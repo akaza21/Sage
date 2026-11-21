@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{ClaudeSdkRuntime, MAX_OPEN_DELIVERIES, SdkBridge, sdk_frame};
 use crate::acp::{
     bindings::{
-        adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+        adapter::{AdapterEgress, AdapterRuntimeError, EgressToken, HarnessAdapter},
         claude::sdk::bridge::UsageReply,
     },
     goal::NativeRpcReply,
@@ -11,6 +11,39 @@ use crate::acp::{
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 impl ClaudeSdkRuntime {
+    pub(super) fn prepare_goal(
+        &mut self,
+        action: &crate::acp::goal::GoalAction,
+    ) -> Result<bool, AdapterRuntimeError> {
+        use crate::acp::goal::{GoalAction, GoalCommand, valid_objective};
+        let bridge = self.bridge.as_ref().ok_or(AdapterRuntimeError::Operation)?;
+        let capabilities = bridge.goal_capabilities();
+        let input = match action {
+            GoalAction::Set { objective }
+                if capabilities.set
+                    && valid_objective(objective)
+                    && objective.trim() != "clear" =>
+            {
+                objective.as_str()
+            }
+            GoalAction::ClearExisting if capabilities.clear => "clear",
+            _ => return Err(AdapterRuntimeError::UnsupportedCommand),
+        };
+        let commands = self.session.available_commands().snapshot();
+        let name = bridge.goal_command_name();
+        if !commands.commands.iter().any(|command| command.name == name) {
+            return Err(AdapterRuntimeError::UnsupportedCommand);
+        }
+        self.native = Some(NativeRpcReply::GoalCommand(GoalCommand {
+            revision: commands.revision,
+            name: sage_acp_protocol::contract::RequiredText::new("goalCommand", name)
+                .map_err(|_| AdapterRuntimeError::Operation)?,
+            input: sage_acp_protocol::contract::RequiredText::new("goalInput", input)
+                .map_err(|_| AdapterRuntimeError::Operation)?,
+        }));
+        Ok(true)
+    }
+
     /// Only one native control request runs at a time, so its delivery token identifies it.
     pub(super) fn control_egress(
         &mut self,

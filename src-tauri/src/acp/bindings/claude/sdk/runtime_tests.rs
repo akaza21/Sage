@@ -1512,3 +1512,136 @@ fn a_background_subagents_approval_card_row_ends_with_the_answer_not_the_turn() 
         Some(ToolState::Declined)
     );
 }
+
+#[test]
+fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
+    use crate::acp::goal::{GoalAction, GoalChannel, GoalState, NativeRpcReply};
+    use sage_acp_protocol::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+    };
+    let mut sdk = runtime();
+    let initialize = send(&mut sdk, AdapterCommand::Initialize);
+    let events = reply(
+        &mut sdk,
+        &initialize,
+        json!({
+            "commands":[{"name":"goal","description":"Set a goal","argumentHint":"[<condition> | clear]","builtin":true}],
+            "current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]
+        }),
+    );
+    assert!(
+        matches!(&events[..], [AdapterEvent::Initialized { capabilities }] if capabilities.goal.set && capabilities.goal.clear && !capabilities.goal.pause)
+    );
+    let session = send(
+        &mut sdk,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    reply(&mut sdk, &session, json!({"applied":{}}));
+    let native_session = sdk.launch.as_ref().unwrap().session_id.clone();
+    let owner = RuntimeOwner {
+        project_id: SageProjectId::parse("project-goal").unwrap(),
+        chat_id: SageChatId::parse("chat-goal").unwrap(),
+        session_id: SageAgentSessionId::parse("session-claude-sdk").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    let channel = Arc::new(GoalChannel::default());
+    channel.reserve(owner.clone());
+    channel.publish(&owner);
+    let mut runtime = NativeRuntime::new(sdk);
+    runtime.attach_goal(owner.clone(), channel.clone());
+    for (value, expected) in [
+        (
+            json!({"condition":"Ship the release","iterations":3,"set_at":1795305600000_u64,"tokens_at_start":42,"last_reason":"Tests still failing"}),
+            "goal",
+        ),
+        (Value::Null, "noGoal"),
+        (
+            json!({"condition":"x".repeat(4001),"iterations":0,"set_at":1,"tokens_at_start":0}),
+            "unavailable",
+        ),
+    ] {
+        runtime.ingest(&frame(json!({"type":"active_goal","value":value,"uuid":"6fa716ae-a6c1-4a74-b270-1304d9f9c6be","session_id":native_session})), &Mapper).unwrap();
+        let state = channel.snapshot(&owner).unwrap();
+        assert_eq!(state.availability(), expected);
+        if let GoalState::Goal { snapshot } = state {
+            assert_eq!(snapshot.objective, "Ship the release");
+            let progress = snapshot.progress.unwrap();
+            assert_eq!(
+                (
+                    progress.iterations,
+                    progress.set_at,
+                    progress.tokens_at_start
+                ),
+                (3, 1795305600000, 42)
+            );
+            assert_eq!(progress.last_reason.as_deref(), Some("Tests still failing"));
+        }
+    }
+    for (action, expected) in [
+        (
+            GoalAction::Set {
+                objective: "Ship the release".into(),
+            },
+            "Ship the release",
+        ),
+        (GoalAction::ClearExisting, "clear"),
+    ] {
+        assert!(runtime.prepare_goal_command(&action).unwrap());
+        let Some(NativeRpcReply::GoalCommand(command)) = runtime.take_native_rpc_reply() else {
+            panic!("goal command")
+        };
+        assert_eq!(
+            (command.name.as_str(), command.input.as_str()),
+            ("goal", expected)
+        );
+        assert!(command.revision > 0);
+        let mut prompt = Prompt::new(
+            "command",
+            format!("/{} {}", command.name.as_str(), command.input.as_str()),
+        )
+        .unwrap();
+        prompt.command_revision = Some(command.revision);
+        let egress = runtime
+            .command(AdapterCommand::Prompt {
+                prompt,
+                client_message_id: RequiredText::new("client", "goal-turn").unwrap(),
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+            })
+            .unwrap();
+        let sent: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        assert_eq!(
+            sent["message"]["content"][0]["text"],
+            format!("/goal {expected}")
+        );
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        if expected != "clear" {
+            let mut clear = Prompt::new("command", "/goal clear").unwrap();
+            clear.command_revision = Some(command.revision);
+            let egress = runtime
+                .command(AdapterCommand::Steer {
+                    prompt: clear,
+                    client_message_id: RequiredText::new("client", "goal-clear").unwrap(),
+                })
+                .unwrap();
+            let sent: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+            assert_eq!(sent["message"]["content"][0]["text"], "/goal clear");
+            runtime
+                .resolve_egress(egress.into_token(), EgressResolution::Written)
+                .unwrap();
+            runtime.ingest(&frame(json!({"type":"command_lifecycle","command_uuid":sent["uuid"],"state":"completed"})), &Mapper).unwrap();
+        }
+        runtime.ingest(&frame(json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn"})), &Mapper).unwrap();
+    }
+    assert!(
+        runtime
+            .prepare_goal_command(&GoalAction::PauseExisting)
+            .is_err()
+    );
+    assert!(!ready().capabilities().unwrap().goal.supported());
+}
