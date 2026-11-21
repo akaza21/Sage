@@ -69,9 +69,7 @@ const text = (value: unknown, max: number): value is string =>
   [...value].length <= max;
 const timestamp = (value: unknown): value is string | null =>
   value === null ||
-  (text(value, 64) &&
-    !/\p{Cc}/u.test(value) &&
-    utf8ByteLength(value) <= 64);
+  (text(value, 64) && !/\p{Cc}/u.test(value) && utf8ByteLength(value) <= 64);
 const counter = (value: unknown): value is number =>
   safeOrdinal(value) !== null;
 
