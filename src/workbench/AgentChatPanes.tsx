@@ -252,7 +252,19 @@ export function AgentChatPanes({
         <div className="active-canvas" role="tabpanel">
           {draftLoadFailed ? (
             <div className="placeholder-surface">
-              <p>Couldn't open a new chat. Click New chat to try again.</p>
+              <p>
+                Couldn't open a new chat.{" "}
+                <button
+                  className="button button--compact"
+                  type="button"
+                  disabled={projectTransitioning}
+                  onClick={() =>
+                    void useWorkbenchStore.getState().openNewChatDraft()
+                  }
+                >
+                  New chat
+                </button>
+              </p>
             </div>
           ) : (
             <ChatSurface />

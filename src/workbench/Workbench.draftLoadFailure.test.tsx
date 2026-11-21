@@ -6,13 +6,13 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentChatPanes } from "./AgentChatPanes";
-import { AgentNewChatButton } from "./AgentCollapsedNavigation";
 import { AgentCenterKeeper } from "./WorkbenchContinuity";
+import { Workbench } from "./Workbench";
 
 // Isolate actions-chunk failures from already cached modules.
 const actionsLoad = vi.hoisted(() => ({ fail: true }));
@@ -24,18 +24,37 @@ vi.mock("../app/newChatDraftActions", async (importOriginal) => {
 
 const initial = useWorkbenchStore.getState();
 
+beforeEach(() => {
+  localStorage.clear();
+  vi.stubGlobal("innerWidth", 560);
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: ["(max-width: 600px)", "(max-width: 760px)"].includes(query),
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   useWorkbenchStore.setState(initial, true);
   resetBrowserDesktopForTests();
+  localStorage.clear();
 });
 
 function Center() {
   return (
     <>
-      <AgentNewChatButton />
       <AgentCenterKeeper windowMode="agent" />
-      <AgentChatPanes />
+      <AgentChatPanes navigationCollapsed />
     </>
   );
 }
@@ -64,11 +83,7 @@ it("explains a failed automatic draft load without retrying or an unhandled reje
     expect(
       screen.queryByRole("alert", { name: "New chat failed to load" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getAllByText(
-        "Couldn't open a new chat. Click New chat to try again.",
-      ),
-    ).toHaveLength(1);
+    expect(screen.getAllByText("Couldn't open a new chat.")).toHaveLength(1);
     expect(
       screen.queryByText(
         "The selected harness cannot accept prompts in this session.",
@@ -93,7 +108,7 @@ it("explains a failed automatic draft load without retrying or an unhandled reje
   }
 });
 
-it("opens an editable draft through New chat after a transient actions-load failure", async () => {
+it("opens an editable draft through inline New chat with navigation collapsed after a transient actions-load failure", async () => {
   resetBrowserDesktopForTests();
   await useWorkbenchStore.getState().initialize();
   await useWorkbenchStore.getState().createProject({
@@ -118,14 +133,19 @@ it("opens an editable draft through New chat after a transient actions-load fail
     models: [{ id: "model-a", name: "Model A", isDefault: true }],
     selectedModelId: "model-a",
   });
-  render(<Center />);
+  render(<Workbench />);
   await settleLazyModules();
+  const failure = screen.getByText(/Couldn't open a new chat\./);
+  const newChat = within(failure).getByRole("button", { name: "New chat" });
+  expect(newChat).toBeVisible();
   expect(
-    screen.getByText("Couldn't open a new chat. Click New chat to try again."),
-  ).toBeInTheDocument();
+    within(
+      screen.getByRole("complementary", { name: "Projects and chats" }),
+    ).queryByRole("button", { name: "New chat" }),
+  ).not.toBeInTheDocument();
 
   actionsLoad.fail = false;
-  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  fireEvent.click(newChat);
   await settleLazyModules();
 
   const draft = screen.getByRole("region", { name: "New chat draft" });
@@ -135,13 +155,12 @@ it("opens an editable draft through New chat after a transient actions-load fail
   expect(composer).toBeEnabled();
   fireEvent.change(composer, { target: { value: "Recovered prompt" } });
   expect(composer).toHaveValue("Recovered prompt");
+  expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBeNull();
   expect(
     within(draft).getByRole("button", { name: "Send message" }),
   ).toBeEnabled();
   expect(
-    screen.queryByText(
-      "Couldn't open a new chat. Click New chat to try again.",
-    ),
+    screen.queryByText("Couldn't open a new chat."),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByText(
