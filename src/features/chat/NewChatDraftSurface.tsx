@@ -7,6 +7,8 @@ import { ChatHome } from "./ChatHome";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { LazyHarnessNotice } from "./lazyParts";
+import { preferredAvailableHarness } from "../../domain/harness";
+import { HarnessUnavailableNotice } from "./ComposerStatusNotices";
 
 const emptyContext = [] as const;
 const unchangedSession = () => Promise.resolve();
@@ -37,6 +39,7 @@ export function NewChatDraftSurface({
   const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
   const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const surfaceRef = useRef<HTMLElement>(null);
   const submitting = draft?.submission.status === "submitting";
   const ownsChat = useWorkbenchStore((state) => !!draftOwnedChatId(state));
   const unconfirmed =
@@ -46,9 +49,21 @@ export function NewChatDraftSurface({
   useComposerFocusHotkey(composerRef, !submitting && !transitioning);
   const harness = harnesses.find((harness) => harness.id === draft?.harnessId);
   useEffect(() => {
-    composerRef.current?.focus();
+    (composerRef.current ?? surfaceRef.current)?.focus();
   }, [focusRequest]);
   useEffect(() => {
+    const available = preferredAvailableHarness(harnesses, draft?.harnessId);
+    if (
+      draft &&
+      draft.submission.status === "released" &&
+      !submitting &&
+      !transitioning &&
+      available &&
+      draft.harnessId !== available.id
+    ) {
+      void chooseHarness(available.id);
+      return;
+    }
     if (
       draft &&
       !transitioning &&
@@ -57,7 +72,14 @@ export function NewChatDraftSurface({
     ) {
       void chooseHarness(draft.harnessId);
     }
-  }, [chooseHarness, draft, selectedHarnessId, transitioning]);
+  }, [
+    chooseHarness,
+    draft,
+    harnesses,
+    selectedHarnessId,
+    submitting,
+    transitioning,
+  ]);
   if (!draft) return null;
   const targetId =
     draft.targetProjectId === undefined
@@ -76,6 +98,25 @@ export function NewChatDraftSurface({
     harnessDiscoveryPhase: discoveryPhase,
     models,
   });
+  const errorNotice =
+    draft.error || unconfirmed ? (
+      <>
+        {draft.error ??
+          (unconfirmed
+            ? "Chat creation is unconfirmed. Reload chats before trying again."
+            : null)}
+        {unconfirmed ? (
+          <button
+            type="button"
+            className="button button--compact"
+            disabled={transitioning || !!pendingFirstSend}
+            onClick={() => void reload()}
+          >
+            Reload chats
+          </button>
+        ) : null}
+      </>
+    ) : null;
   return (
     <div
       className="agent-chat-center surface surface--card"
@@ -90,13 +131,17 @@ export function NewChatDraftSurface({
         </div>
       ) : null}
       <section
+        ref={surfaceRef}
+        tabIndex={-1}
         className="chat-surface chat-surface--agent"
         aria-label="New chat draft"
       >
-        <LazyHarnessNotice
-          harness={harness ?? null}
-          discoveryPhase={discoveryPhase}
-        />
+        {available ? (
+          <LazyHarnessNotice
+            harness={harness ?? null}
+            discoveryPhase={discoveryPhase}
+          />
+        ) : null}
         <div className="message-list message-list--home">
           <div className="message-list__content">
             <ChatHome projectName={shownProject?.name ?? null} />
@@ -121,75 +166,68 @@ export function NewChatDraftSurface({
             ) : null}
           </div>
         </div>
-        <ChatComposerRegion
-          composerRef={composerRef}
-          fieldId="new-chat-prompt"
-          dictationScope=""
-          descriptionId="new-chat-description"
-          disabledReasonId="new-chat-disabled"
-          text={draft.text}
-          attachedContext={emptyContext}
-          enabled={!submitting}
-          sendBlocked={!choice || unconfirmed}
-          actionBusy={submitting}
-          activeTurn={false}
-          projectTransitioning={transitioning}
-          workbenchError={null}
-          chatError={
-            draft.error || unconfirmed ? (
-              <>
-                {draft.error}
-                {unconfirmed ? (
-                  <button
-                    type="button"
-                    className="button button--compact"
-                    disabled={transitioning || !!pendingFirstSend}
-                    onClick={() => void reload()}
-                  >
-                    Reload chats
-                  </button>
-                ) : null}
-              </>
-            ) : null
-          }
-          accessTarget={{ bindingId: harness?.bindingId }}
-          draftPickers={{
-            access: choice ? choice.access : draft.access,
-            effort: choice ? choice.effort : draft.effort,
-            onAccessChange: (access) => update({ access }),
-            onEffortChange: (effort) =>
-              update({ effort: effort === "default" ? null : effort }),
-          }}
-          availableBinding={!!harness?.bindingId}
-          canPrompt={!!available}
-          discoveryPhase={discoveryPhase}
-          sessionHarnessId={null}
-          sessionModelId={null}
-          selectedHarnessId={draft.harnessId}
-          selectedModelId={choice ? choice.modelId : draft.modelId}
-          sessionPromptUnavailable={false}
-          sessionConfig={null}
-          modePending={false}
-          modeError={null}
-          focused
-          onSetSessionMode={unchangedSession}
-          onSetSessionConfigOption={unchangedSession}
-          onSelectHarness={chooseHarness}
-          onSelectModel={chooseModel}
-          missingBindingNotice={false}
-          disabledReason={null}
-          project={shownProject}
-          newChat
-          usage={null}
-          goal={{ kind: "unsupported" }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void useWorkbenchStore.getState().sendNewChatDraft();
-          }}
-          onTextChange={(text) => update({ text })}
-          onRemoveContext={() => undefined}
-          onCancelTurn={null}
-        />
+        {!preferredAvailableHarness(harnesses) &&
+        !harnesses.some(
+          (item) =>
+            item.installState === "detecting" ||
+            item.installState === "installing",
+        ) ? (
+          <HarnessUnavailableNotice chatError={errorNotice} />
+        ) : (
+          <ChatComposerRegion
+            composerRef={composerRef}
+            fieldId="new-chat-prompt"
+            dictationScope=""
+            descriptionId="new-chat-description"
+            disabledReasonId="new-chat-disabled"
+            text={draft.text}
+            attachedContext={emptyContext}
+            enabled={!submitting}
+            sendBlocked={!choice || unconfirmed}
+            actionBusy={submitting}
+            activeTurn={false}
+            projectTransitioning={transitioning}
+            workbenchError={null}
+            chatError={errorNotice}
+            accessTarget={{ bindingId: harness?.bindingId }}
+            draftPickers={{
+              access: choice ? choice.access : draft.access,
+              effort: choice ? choice.effort : draft.effort,
+              onAccessChange: (access) => update({ access }),
+              onEffortChange: (effort) =>
+                update({ effort: effort === "default" ? null : effort }),
+            }}
+            availableBinding={!!harness?.bindingId}
+            canPrompt={!!available}
+            discoveryPhase={discoveryPhase}
+            sessionHarnessId={null}
+            sessionModelId={null}
+            selectedHarnessId={draft.harnessId}
+            selectedModelId={choice ? choice.modelId : draft.modelId}
+            sessionPromptUnavailable={false}
+            sessionConfig={null}
+            modePending={false}
+            modeError={null}
+            focused
+            onSetSessionMode={unchangedSession}
+            onSetSessionConfigOption={unchangedSession}
+            onSelectHarness={chooseHarness}
+            onSelectModel={chooseModel}
+            missingBindingNotice={false}
+            disabledReason={null}
+            project={shownProject}
+            newChat
+            usage={null}
+            goal={{ kind: "unsupported" }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void useWorkbenchStore.getState().sendNewChatDraft();
+            }}
+            onTextChange={(text) => update({ text })}
+            onRemoveContext={() => undefined}
+            onCancelTurn={null}
+          />
+        )}
       </section>
     </div>
   );

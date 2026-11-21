@@ -4,6 +4,91 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
+test("unavailable chat recovery silently selects the first usable harness in catalog order", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { desktop } = await import("/src/services/desktop.ts");
+    installChatChromeFixture("codex", false);
+    const harness = useWorkbenchStore.getState().harnesses[0];
+    desktop.listHarnessModels = async () => [
+      { id: "usable-model", name: "Usable model", isDefault: true },
+    ];
+    useWorkbenchStore.setState({
+      harnesses: [
+        { ...harness, installState: "unavailable" },
+        {
+          ...harness,
+          id: "first-available",
+          bindingId: "first-binding",
+          name: "First available",
+        },
+        {
+          ...harness,
+          id: "second-available",
+          bindingId: "second-binding",
+          name: "Second available",
+        },
+      ],
+    });
+  });
+  const issue = page.getByText(
+    "This chat used a harness that isn't available here.",
+    { exact: true },
+  );
+  await expect(issue).toHaveCount(1);
+  await expect(issue).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveCount(0);
+  const duplicates = page.getByText(
+    /can't start this harness|reviewed local binding|selected harness is unavailable/,
+  );
+  await expect(duplicates).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue in a new chat" }).click();
+  const draft = page.getByRole("region", {
+    name: "New chat draft",
+    exact: true,
+  });
+  await expect(
+    draft.getByRole("button", { name: "Harness", exact: true }),
+  ).toHaveText("First available");
+  await expect(
+    draft.getByRole("button", { name: "Model", exact: true }),
+  ).toHaveText("Usable model");
+  await expect(
+    draft.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveAttribute("placeholder", "Do anything");
+  await expect(issue).toHaveCount(0);
+  await expect(duplicates).toHaveCount(0);
+  await expect(
+    draft.getByRole("region", { name: "Composer notices" }),
+  ).toHaveCount(0);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    state.discardNewChatDraft();
+    useWorkbenchStore.setState({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        installState: "unavailable",
+      })),
+    });
+    await state.openNewChatDraft();
+  });
+  await expect(draft.getByText(/No harness is available here/)).toHaveCount(1);
+  await expect(draft.getByRole("status")).toHaveCount(1);
+  await expect(duplicates).toHaveCount(0);
+  await expect(
+    draft.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveCount(0);
+});
+
 for (const width of [1400, 900]) {
   test(`new chat project subtitle is centred under its heading at ${width}`, async ({
     page,
