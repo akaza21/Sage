@@ -7,10 +7,7 @@ use crate::acp::{
     },
     runtime::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice},
     store::AdapterTurnCursor,
-    transport::{
-        Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue,
-        validate_structure,
-    },
+    transport::{Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue},
 };
 use sage_acp_protocol::{
     contract::{

@@ -16,7 +16,7 @@ use crate::acp::{
         },
         claude::{
             runtime::{Children, ClaudeRuntime},
-            wire::decode_frame,
+            wire::decode_frame_with_catalog,
         },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
@@ -159,6 +159,14 @@ impl LaunchableRuntime for ClaudeSdkRuntime {
 }
 
 impl HarnessAdapter for ClaudeSdkRuntime {
+    fn command_catalog_path(&self, frame: &Frame) -> crate::acp::transport::CommandWirePath {
+        self.bridge
+            .as_ref()
+            .map_or(crate::acp::transport::CommandWirePath::Other, |bridge| {
+                bridge.command_catalog_path(frame.as_bytes())
+            })
+    }
+
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
         self.session.available_commands()
     }
@@ -291,7 +299,8 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let sdk = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        let sdk = decode_frame_with_catalog(frame.as_bytes(), || self.command_catalog_path(frame))
+            .map_err(|_| AdapterRuntimeError::Frame)?;
         self.ingest_sdk(sdk, resources)
     }
 

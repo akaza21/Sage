@@ -79,6 +79,20 @@ pub(crate) enum AdapterRuntimeError {
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
+    /// Only known catalog fields may use the raw catalog ceiling. Bindings with
+    /// request/reply protocols must correlate the response before declaring its path.
+    fn command_catalog_path(&self, frame: &Frame) -> crate::acp::transport::CommandWirePath {
+        crate::acp::transport::CommandWirePath::for_frame(frame.as_bytes())
+    }
+    fn validate_ingress(
+        &self,
+        frame: &Frame,
+    ) -> Result<(), crate::acp::transport::StructuralError> {
+        crate::acp::transport::validate_structure_with_catalog(frame, || {
+            self.command_catalog_path(frame)
+        })
+    }
+
     fn foreground_turn(&self) -> Option<crate::acp::service::chat_title::ForegroundLease> {
         None
     }

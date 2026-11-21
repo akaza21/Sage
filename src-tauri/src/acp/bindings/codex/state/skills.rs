@@ -4,10 +4,7 @@ use serde_json::{Map, Value};
 
 use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::{
-    bindings::{
-        codex::request::OutgoingRequest,
-        standard_acp::surface::{first_listed, panel},
-    },
+    bindings::{codex::request::OutgoingRequest, standard_acp::surface::panel},
     slash_commands::{
         AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
     },
@@ -89,7 +86,13 @@ fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
             let dispatch = CommandDispatch::Skill {
                 path: path.to_owned(),
             };
-            AvailableCommand::new(name, description, None, CommandSource::Skill, dispatch).ok()
+            AvailableCommand::new(name, description, None, CommandSource::Skill, dispatch)
+                .map(|command| {
+                    command.with_source_label(
+                        text(skill.get("pluginId")).or_else(|| text(skill.get("scope"))),
+                    )
+                })
+                .ok()
         })
         .collect();
     Some(skills)
@@ -134,6 +137,22 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
 }
 
 impl CodexAdapter {
+    pub(crate) fn command_catalog_path(
+        &self,
+        bytes: &[u8],
+    ) -> crate::acp::transport::CommandWirePath {
+        use crate::acp::transport::CommandWirePath::{Commands, Elements, Field, Other};
+        let id = crate::acp::bindings::adapter::catalog_response_id(bytes);
+        if id.and_then(|id| self.pending_kind(id)) == Some(RequestKind::SkillsList) {
+            Field(
+                "result",
+                &Field("data", &Elements(&Field("skills", &Commands))),
+            )
+        } else {
+            Other
+        }
+    }
+
     pub(crate) fn skills(&self) -> Arc<CommandState> {
         Arc::clone(&self.skills.list)
     }
@@ -197,7 +216,7 @@ impl CodexAdapter {
         let _ = self
             .skills
             .list
-            .replace_if_changed(first_listed(builtins.into_iter().chain(skills)));
+            .replace_if_changed(builtins.into_iter().chain(skills).collect());
     }
 
     pub(crate) fn skills_read_pending(&self) -> bool {

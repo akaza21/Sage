@@ -52,16 +52,16 @@ fn compact_is_listed_once_and_takes_the_place_of_a_same_named_template() {
     assert_eq!(
         names,
         [
-            ("fix-tests".into(), "Fix failing tests".into()),
             ("session".into(), "Show session info and stats".into()),
             (
                 "compact".into(),
                 "Manually compact the session context".into()
             ),
+            ("fix-tests".into(), "Fix failing tests".into()),
         ]
     );
     assert_eq!(
-        runtime.available_commands().snapshot().commands[1].dispatch,
+        runtime.available_commands().snapshot().commands[0].dispatch,
         crate::acp::slash_commands::CommandDispatch::Panel(
             crate::acp::slash_commands::CommandPanel::Status
         )
@@ -182,9 +182,9 @@ fn a_full_catalog_keeps_its_size_and_still_lists_compact() {
     discovered(&mut runtime, Value::Array(templates));
     let listed = runtime.available_commands().snapshot().commands;
     assert_eq!(listed.len(), max);
-    assert_eq!(listed[max - 3].name, format!("t{}", max - 3));
-    assert_eq!(listed[max - 2].name, "session");
-    assert_eq!(listed[max - 1].name, "compact");
+    assert_eq!(listed[max - 1].name, format!("t{}", max - 3));
+    assert_eq!(listed[0].name, "session");
+    assert_eq!(listed[1].name, "compact");
 }
 
 #[test]

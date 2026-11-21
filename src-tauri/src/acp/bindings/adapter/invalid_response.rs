@@ -16,6 +16,12 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error>
     IgnoredAny::deserialize(deserializer).map(|_| true)
 }
 
+/// A successful response can carry a catalog only after its binding correlates the id.
+pub(crate) fn catalog_response_id(bytes: &[u8]) -> Option<u64> {
+    let header: ResponseHeader = serde_json::from_slice(bytes).ok()?;
+    (!header.method && header.result && !header.error).then_some(header.id)
+}
+
 pub(crate) fn response_id_for_discard(frame: &Frame) -> Option<u64> {
     let header: ResponseHeader = serde_json::from_slice(frame.as_bytes()).ok()?;
     (!header.method && (header.result || header.error)).then_some(header.id)
