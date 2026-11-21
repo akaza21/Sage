@@ -35,7 +35,6 @@ import {
 } from "./agentRailInteractions";
 import { AgentRailSections } from "./AgentRailSections";
 import {
-  agentRailSectionCollapsed,
   expandAgentRailSection,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
@@ -135,10 +134,6 @@ export function LeftSidebar({
   const prefs = useAgentRailViewPrefs();
   useEffect(() => {
     if (projectTransitioning) return;
-    const scroll = () =>
-      sidebarRef.current
-        ?.querySelector(".project-chat[aria-current='page']")
-        ?.scrollIntoView?.({ block: "nearest" });
     if (previousChatId.current !== railChatId) {
       previousChatId.current = railChatId;
       const active = useWorkbenchStore
@@ -148,14 +143,8 @@ export function LeftSidebar({
         "projects",
         active?.pinned ? "pinned" : `project:${project?.id}`,
       ];
-      const hidden = sections.some(agentRailSectionCollapsed);
       sections.forEach(expandAgentRailSection);
-      if (hidden) {
-        const frame = requestAnimationFrame(scroll);
-        return () => cancelAnimationFrame(frame);
-      }
     }
-    scroll();
   }, [railChatId, project?.id, projectTransitioning]);
   useEffect(() => {
     pruneAgentRailInteractions(

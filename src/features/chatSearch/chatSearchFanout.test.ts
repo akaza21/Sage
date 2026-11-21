@@ -15,6 +15,66 @@ import {
 } from "./chatSearchExecution";
 
 describe("Chat search folder fan-out", () => {
+  it("keeps newer results from later folders even after the first folder fills the result cap", async () => {
+    const result = await runScopedChatSearch({
+      searchProjectId: CHAT_SEARCH_ALL_FOLDERS_ID,
+      folders: [{ id: "older" }, { id: "newer" }],
+      projectGeneration: 1,
+      expectedTransitionEpoch: 1,
+      query: "",
+      search: async (request) => ({
+        projectId: request.projectId,
+        projectGeneration: 1,
+        transitionEpoch: 1,
+        query: "",
+        hasMore: false,
+        elapsedMs: 1,
+        results: Array.from({ length: 64 }, (_, index) => ({
+          chatId: `${request.projectId}-${index}`,
+          title: "Chat",
+          attached: true,
+          matchedTitle: true,
+          snippet: null,
+          updatedAt: request.projectId === "newer" ? 100 + index : index,
+        })),
+      }),
+    });
+    expect(result.results).toHaveLength(64);
+    expect(result.results[0].chatId).toBe("newer-63");
+    expect(result.results[63].chatId).toBe("newer-0");
+    expect(result.hasMore).toBe(true);
+  });
+  it("interleaves searched folders by chat recency before keeping the newest 64", () => {
+    const page = (projectId: string, updatedAt: number) => ({
+      projectId,
+      projectGeneration: 1,
+      transitionEpoch: 1,
+      query: "",
+      results: [
+        {
+          chatId: "chat",
+          title: "Chat",
+          attached: true,
+          matchedTitle: true,
+          snippet: null,
+          updatedAt,
+        },
+      ],
+      hasMore: false,
+      elapsedMs: 1,
+    });
+    const merged = mergeChatSearchFanout(
+      [page("older", 10), page("newer", 30), page("middle", 20)],
+      3,
+      3,
+    );
+    expect(merged.results.map((result) => result.projectId)).toEqual([
+      "newer",
+      "middle",
+      "older",
+    ]);
+    expect(merged.hasMore).toBe(false);
+  });
   it("bounds private ownership to 64 groups even when all public folders are empty", async () => {
     const result = await runScopedChatSearch({
       searchProjectId: CHAT_SEARCH_ALL_FOLDERS_ID,

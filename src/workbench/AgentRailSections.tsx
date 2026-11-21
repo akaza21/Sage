@@ -9,32 +9,30 @@ import {
 import { useState, type ReactNode } from "react";
 
 import { lazyParts } from "../features/chat/lazyParts";
-import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import type { AgentRailChat } from "../domain/workbench";
-import { useChatReadMarks } from "../features/chat/acp/chatReadMarks";
-import { sessionRailUnreadVisible } from "../features/chat/acp/sessionRail";
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
 import {
   MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS,
   visibleProjectChats,
 } from "./agentChatRail";
-import { useAgentRailInteractions } from "./agentRailInteractions";
 import type * as ProjectMenuChunk from "./AgentProjectMenu";
 import { AgentRailOptionsMenu } from "./AgentRailOptionsMenu";
-import type {
-  AgentRailOrdering,
-  AgentRailTrailingState,
-} from "./agentRailStatusView";
+import type { AgentRailOrdering } from "./agentRailStatusView";
 import {
   agentRailSectionCollapsed,
   toggleAgentRailSection,
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import type * as RecentChatsChunk from "./AgentRecentChats";
-import { ProjectChatRailGlyph } from "./ProjectChatActionMenu";
-import { ProjectChatNavigation } from "./ProjectChatNavigation";
-import { useParentChatStatus, useRailChatId } from "./sideChatState";
+import type * as NavigationChunk from "./ProjectChatNavigation";
+const NavigationPart = lazyParts<typeof NavigationChunk>(
+  () => import("./ProjectChatNavigation"),
+);
+
+import type * as CollapsedStatusChunk from "./CollapsedProjectStatus";
+const CollapsedStatusPart = lazyParts<typeof CollapsedStatusChunk>(
+  () => import("./CollapsedProjectStatus"),
+);
 
 const RecentChatsPart = lazyParts<typeof RecentChatsChunk>(
   () => import("./AgentRecentChats"),
@@ -125,10 +123,6 @@ function ProjectEntry({
         ? { label: "Show less", onClick: () => setShowAll(false) }
         : undefined;
   const FolderIcon = expanded && group.chats.length > 0 ? FolderOpen : Folder;
-  const collapsedState = useCollapsedProjectState(
-    expanded ? [] : group.chats,
-    selected,
-  );
   return (
     <div className="project-entry">
       <div className="project-entry__header">
@@ -136,16 +130,25 @@ function ProjectEntry({
           className={`project-row ${selected ? "project-row--active" : ""}`}
           type="button"
           aria-current={selected ? "page" : undefined}
-          title={group.name}
-          aria-label={`Project ${group.name}`}
+          title={group.accessibleLabel ?? group.name}
+          aria-label={`Project ${group.accessibleLabel ?? group.name}`}
           aria-expanded={expanded}
           onClick={() => toggleAgentRailSection(`project:${group.id}`)}
         >
           <FolderIcon size={16} aria-hidden="true" />
-          <span>{group.name}</span>
+          <span className="project-row__name">{group.name}</span>
+          {group.subtitle ? (
+            <span className="project-row__suffix">{group.subtitle}</span>
+          ) : null}
         </button>
         <div className="project-entry__trailing">
-          <ProjectChatRailGlyph state={collapsedState} />
+          {!expanded ? (
+            <CollapsedStatusPart
+              part="CollapsedProjectStatus"
+              chats={group.chats}
+              selected={selected}
+            />
+          ) : null}
           <div className="project-entry__actions">
             <ProjectMenuPart
               part="AgentProjectMenu"
@@ -166,7 +169,8 @@ function ProjectEntry({
         </div>
       </div>
       {expanded ? (
-        <ProjectChatNavigation
+        <NavigationPart
+          part="ProjectChatNavigation"
           projectId={group.id}
           chats={chats}
           archived={selected ? undefined : group.archived}
@@ -179,36 +183,6 @@ function ProjectEntry({
   );
 }
 
-function useCollapsedProjectState(
-  chats: ReadonlyArray<AgentRailChat>,
-  selected: boolean,
-): AgentRailTrailingState | null {
-  const interactions = useAgentRailInteractions();
-  const parentChatStatus = useParentChatStatus();
-  const activeTabId = useRailChatId(
-    useWorkbenchStore((state) => state.activeTabId),
-  );
-  const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
-  const readMarks = useChatReadMarks();
-  if (chats.length === 0) return null;
-  const running = chats.some((chat) => {
-    const status = parentChatStatus(chat.id, chat.status);
-    return status === "working" || status === "recovering";
-  });
-  if (running) return { kind: "working", label: "Working" };
-  const unread = chats.some(
-    (chat) =>
-      interactions.unread.has(chat.id) ||
-      sessionRailUnreadVisible({
-        focused: selected && chat.id === viewedChatId,
-        status: chat.status,
-        finishedAt: chat.finishedAt,
-        readThrough: readMarks.get(chat.id),
-      }),
-  );
-  return unread ? { kind: "unread", label: "Unread" } : null;
-}
-
 function FlatChatList({
   items,
   currentProjectId,
@@ -219,7 +193,8 @@ function FlatChatList({
   return (
     <div className="agent-rail-flat-list">
       {items.map((item) => (
-        <ProjectChatNavigation
+        <NavigationPart
+          part="ProjectChatNavigation"
           key={`${item.projectId}:${item.chat.id}`}
           projectId={item.projectId}
           chats={[item.chat]}

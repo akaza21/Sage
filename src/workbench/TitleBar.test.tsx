@@ -229,10 +229,10 @@ describe("TitleBar center chrome", () => {
     });
     expect(titleSearch).toBeEnabled();
     fireEvent.click(titleSearch);
-    const dialog = screen.getByRole("dialog", { name: "Search chats" });
-    expect(screen.getByRole("button", { name: "Search in" })).toHaveTextContent(
-      "Workspace",
-    );
+    const dialog = await screen.findByRole("dialog", { name: "Search chats" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "Search chats" }),
+    ).toHaveFocus();
     expect(useWorkbenchStore.getState().sidebarView).toBe("explorer");
     expect(useWorkbenchStore.getState().sidebarOpen).toBe(false);
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -259,18 +259,18 @@ describe("TitleBar center chrome", () => {
     expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     titleSearch.focus();
     fireEvent.click(titleSearch);
-    const dialog = screen.getByRole("dialog", { name: "Search chats" });
+    const dialog = await screen.findByRole("dialog", { name: "Search chats" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Search in" }));
-    const folderInput = within(dialog).getByRole("combobox", {
-      name: "Search in",
+    const query = within(dialog).getByRole("combobox", {
+      name: "Search chats",
     });
-    fireEvent.keyDown(folderInput, { key: "Home" });
-    fireEvent.keyDown(folderInput, { key: "Enter" });
-    expect(
-      within(dialog).getByRole("button", { name: "Search in" }),
-    ).toHaveTextContent("All folders");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(query).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Chats" }));
+    expect(within(dialog).getByRole("tab", { name: "Chats" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
@@ -294,9 +294,9 @@ describe("TitleBar center chrome", () => {
         <LeftSidebar />
       </>,
     );
-    const dialog = screen.getByRole("dialog", { name: "Search chats" });
+    const dialog = await screen.findByRole("dialog", { name: "Search chats" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() =>
       expect(
         within(screen.getByRole("banner")).getByRole("button", {
@@ -306,7 +306,7 @@ describe("TitleBar center chrome", () => {
     );
   });
 
-  it("retains one search owner as persistent navigation resizes", () => {
+  it("retains one search owner as persistent navigation resizes", async () => {
     seedChats();
     const view = (width: number) => (
       <div style={{ width }}>
@@ -320,7 +320,7 @@ describe("TitleBar center chrome", () => {
         name: "Search chats",
       }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Search chats" });
+    const dialog = await screen.findByRole("dialog", { name: "Search chats" });
     for (const width of [720, 1280, 480]) {
       rerender(view(width));
       expect(screen.getAllByRole("dialog", { name: "Search chats" })).toEqual([

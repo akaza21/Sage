@@ -131,9 +131,11 @@ it.each([
     );
     expect(section).toContainElement(document.activeElement as HTMLElement);
     expect(
-      screen.getAllByRole("button", {
-        name: /Open chat Updated while collapsed/,
-      }).length,
+      (
+        await screen.findAllByRole("button", {
+          name: /Open chat Updated while collapsed/,
+        })
+      ).length,
     ).toBeGreaterThan(0);
     expect(loadRepositoryInventory).toHaveBeenCalledTimes(1);
   },

@@ -296,7 +296,7 @@ describe("composer image input", () => {
     expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
   });
 
-  it("keeps errors above the joined location and dock while the input scrolls separately from the toolbar", () => {
+  it("keeps errors above the joined location and dock while the input scrolls separately from the toolbar", async () => {
     const { rerenderComposer } = renderComposer({
       newChat: true,
       workbenchError: "Retry the request",
@@ -309,7 +309,9 @@ describe("composer image input", () => {
     );
     const error = screen.getByRole("alert");
     const notices = screen.getByRole("region", { name: "Composer notices" });
-    const location = screen.getByRole("group", { name: "Chat location" });
+    const location = await screen.findByRole("group", {
+      name: "Chat location",
+    });
     expect(error).toHaveTextContent("Retry the request");
     expect(notices).toContainElement(error);
     expect(notices).toHaveAttribute("tabindex", "0");
@@ -321,6 +323,7 @@ describe("composer image input", () => {
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
     rerenderComposer({ hidden: true });
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(
       screen.queryByRole("region", { name: "Composer notices" }),

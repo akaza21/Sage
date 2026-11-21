@@ -57,6 +57,11 @@ fn empty_query_browses_bounded_chats_without_scanning_transcripts() {
     .unwrap();
     assert_eq!(response.results.len(), 64);
     assert_eq!(response.results[0].chat_id, "browse-69");
+    assert_eq!(response.results[0].updated_at, 69);
+    assert_eq!(
+        serde_json::to_value(&response.results[0]).unwrap()["updatedAt"],
+        69
+    );
     assert!(response.has_more);
     assert!(
         response

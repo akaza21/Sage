@@ -1741,36 +1741,19 @@ test.describe("Wave 2 200% zoom state", () => {
     await titleSearch.click();
     const searchDialog = page.getByRole("dialog", { name: "Search chats" });
     await expect(searchDialog).toBeVisible();
-    const folderTrigger = searchDialog.getByRole("button", {
-      name: "Search in",
+    const searchInput = searchDialog.getByRole("combobox", {
+      name: "Search chats",
     });
-    await expect(folderTrigger).toHaveText("Sage");
-    await folderTrigger.click();
-    const folderInput = searchDialog.getByRole("combobox", {
-      name: "Search in",
-    });
-    const folderListbox = searchDialog.getByRole("listbox", {
-      name: "Search in",
-    });
-    await expect(folderInput).toBeFocused();
-    await expect(folderListbox.getByRole("option")).toHaveCount(2);
+    await expect(searchInput).toBeFocused();
     await expect(
-      folderListbox.getByRole("option", { name: "Sage", exact: true }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(
-      searchDialog.getByText("Current: Sage", { exact: true }),
+      searchDialog.getByRole("group", { name: "Quick actions" }),
     ).toBeVisible();
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
-    await expect(folderTrigger).toHaveText("All folders");
-    await expect(folderTrigger).toBeFocused();
-    await folderTrigger.click();
-    await expectOpenPickerContained(page, folderInput, folderListbox);
+    await searchDialog.getByRole("tab", { name: "Chats", exact: true }).click();
+    await expect(
+      searchDialog.getByRole("group", { name: "Quick actions" }),
+    ).toHaveCount(0);
     await expectNoViewportOverflow(page);
     await page.keyboard.press("Escape");
-    await expect(searchDialog).toBeVisible();
-    await expect(folderTrigger).toBeFocused();
-    await searchDialog.getByRole("button", { name: "Close" }).click();
     await expect(searchDialog).toHaveCount(0);
     await expect(titleSearch).toBeFocused();
     await expectNoViewportOverflow(page);

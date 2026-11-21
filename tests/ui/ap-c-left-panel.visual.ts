@@ -98,11 +98,9 @@ test("All folders includes private chats without listing their internal projects
   });
   await page.keyboard.press("Control+K");
   const dialog = page.getByRole("dialog", { name: "Search chats" });
-  await dialog.getByRole("button", { name: "Search in", exact: true }).click();
-  await expect(page.getByRole("option", { name: "private-owner" })).toHaveCount(
-    0,
-  );
-  await page.getByRole("option", { name: "All folders", exact: true }).click();
+  await expect(
+    dialog.getByRole("tab", { name: "All", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await dialog
     .getByRole("combobox", { name: "Search chats", exact: true })
     .fill("needle");
@@ -226,6 +224,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
       .getByRole("dialog")
       .getByRole("button", { name: "Search", exact: true }),
   ).toHaveCount(0);
+  await takeCanonicalScreenshot(page, "ap-c-search-palette-empty.png");
   await query.fill("Agent");
   await page.clock.runFor(250);
   const results = page.getByRole("listbox", { name: "Chat search results" });
@@ -237,9 +236,18 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await page.keyboard.press("Control+k");
   await expect(query).toBeFocused();
   await expect(query).toHaveValue("");
+  await page.mouse.click(10, 100);
+  await expect(page.getByRole("dialog", { name: "Search chats" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page
+      .locator("header.title-bar")
+      .getByRole("button", { name: "Search chats" }),
+  ).toBeFocused();
 });
 
-test("Search chats keeps Close reachable when a pending search fails", async ({
+test("Search chats can be dismissed with Escape when a pending search fails", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 690, height: 440 });
@@ -261,22 +269,11 @@ test("Search chats keeps Close reachable when a pending search fails", async ({
   const dialog = page.getByRole("dialog", { name: "Search chats" });
   await page.clock.runFor(250);
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
-  const cancel = dialog.getByRole("button", { name: "Close", exact: true });
-  await cancel.click({ trial: true });
-  await waitForAnimations(dialog);
-  const before = (await cancel.boundingBox())!;
-  await page.mouse.move(
-    before.x + before.width / 2,
-    before.y + before.height / 2,
-  );
-  await page.mouse.down();
   await pending.evaluate((request) => request.fail());
   await expect(dialog.getByRole("alert")).toHaveText(
     "Search became unavailable.",
   );
-  const after = (await cancel.boundingBox())!;
-  expect({ x: after.x, y: after.y }).toEqual({ x: before.x, y: before.y });
-  await page.mouse.up();
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await pending.dispose();

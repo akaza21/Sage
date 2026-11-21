@@ -24,6 +24,7 @@ export interface ProjectChatSearchResult {
   attached: boolean;
   matchedTitle: boolean;
   snippet: string | null;
+  updatedAt?: number;
 }
 
 export interface ProjectChatSearchResponse {
@@ -108,11 +109,13 @@ function searchResult(
       "attached",
       "matchedTitle",
       "snippet",
+      ...(Object.hasOwn(value, "updatedAt") ? ["updatedAt"] : []),
     ]) ||
     !boundedString(value.chatId, MAX_IDENTIFIER_BYTES) ||
     !boundedString(value.title, MAX_TITLE_BYTES) ||
     typeof value.attached !== "boolean" ||
     typeof value.matchedTitle !== "boolean" ||
+    (Object.hasOwn(value, "updatedAt") && !safeCount(value.updatedAt)) ||
     (value.snippet !== null &&
       !boundedString(value.snippet, MAX_CHAT_SEARCH_SNIPPET_BYTES, true))
   ) {

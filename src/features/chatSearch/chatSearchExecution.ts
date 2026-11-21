@@ -13,21 +13,34 @@ import {
   type ChatSearchFanoutPick,
   type ChatSearchFanoutView,
 } from "./chatSearchFanout";
+function mergePage(
+  current: ChatSearchFanoutPick[],
+  page: ProjectChatSearchResponse,
+) {
+  const candidates = [
+    ...current,
+    ...page.results.map((result) => ({ ...result, projectId: page.projectId })),
+  ];
+  candidates.sort(
+    (left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0),
+  );
+  return {
+    results: candidates.slice(0, MAX_CHAT_SEARCH_RESULTS),
+    hasMore: page.hasMore || candidates.length > MAX_CHAT_SEARCH_RESULTS,
+  };
+}
+
 export function mergeChatSearchFanout(
   pages: ReadonlyArray<ProjectChatSearchResponse>,
   visited: number,
   listed: number,
-): { results: ChatSearchFanoutPick[]; hasMore: boolean } {
-  const results: ChatSearchFanoutPick[] = [];
+) {
+  let results: ChatSearchFanoutPick[] = [];
   let hasMore = visited < listed;
   for (const page of pages) {
-    if (page.hasMore) hasMore = true;
-    for (const result of page.results) {
-      if (results.length >= MAX_CHAT_SEARCH_RESULTS) {
-        return { results, hasMore: true };
-      }
-      results.push({ ...result, projectId: page.projectId });
-    }
+    const merged = mergePage(results, page);
+    results = merged.results;
+    hasMore ||= merged.hasMore;
   }
   return { results, hasMore };
 }
@@ -39,9 +52,11 @@ export async function searchChatFolders(args: {
   projectGeneration: number;
   expectedTransitionEpoch: number;
   query: string;
+  isCurrent?: () => boolean;
   search: ProjectChatSearchGateway["search"];
 }): Promise<{ results: ChatSearchFanoutPick[]; hasMore: boolean }> {
-  const pages: ProjectChatSearchResponse[] = [];
+  let results: ChatSearchFanoutPick[] = [];
+  let hasMore = false;
   let visited = 0;
   // Ownership comes from native unscopedChats, independently of public previews.
   const folderIds = [
@@ -50,6 +65,7 @@ export async function searchChatFolders(args: {
   ];
   for (const projectId of new Set(folderIds)) {
     if (isChatSearchFanout(projectId)) continue;
+    if (args.isCurrent?.() === false) throw new Error("Chat search cancelled");
     const request: ProjectChatSearchRequest = {
       projectId,
       projectGeneration: args.projectGeneration,
@@ -58,17 +74,15 @@ export async function searchChatFolders(args: {
     };
     validateProjectChatSearchRequest(request);
     const page = await args.search(request);
-    pages.push(page);
     visited += 1;
-    const merged = mergeChatSearchFanout(pages, visited, args.listedCount);
-    if (merged.results.length >= MAX_CHAT_SEARCH_RESULTS) {
-      return merged;
-    }
+    const merged = mergePage(results, page);
+    results = merged.results;
+    hasMore ||= merged.hasMore;
   }
-  if (pages.length === 0) {
+  if (visited === 0) {
     throw new Error("Project chat search requires a valid project ID");
   }
-  return mergeChatSearchFanout(pages, visited, args.listedCount);
+  return { results, hasMore: hasMore || visited < args.listedCount };
 }
 
 export async function runScopedChatSearch(args: {
@@ -78,6 +92,7 @@ export async function runScopedChatSearch(args: {
   projectGeneration: number;
   expectedTransitionEpoch: number;
   query: string;
+  isCurrent?: () => boolean;
   search: ProjectChatSearchGateway["search"];
 }): Promise<ChatSearchFanoutView> {
   if (isChatSearchFanout(args.searchProjectId)) {
@@ -95,6 +110,7 @@ export async function runScopedChatSearch(args: {
       projectGeneration: args.projectGeneration,
       expectedTransitionEpoch: args.expectedTransitionEpoch,
       query: args.query,
+      isCurrent: args.isCurrent,
       search: args.search,
     });
     return {
