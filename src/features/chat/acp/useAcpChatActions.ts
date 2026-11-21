@@ -72,6 +72,9 @@ export function useAcpChatActions(boundChatId?: string | null) {
   const errorKind = useWorkbenchStore(
     (state) => chatUi(state)?.errorKind ?? null,
   );
+  const errorUnavailableReason = useWorkbenchStore(
+    (state) => chatUi(state)?.errorUnavailableReason ?? null,
+  );
   const modeError = useWorkbenchStore(
     (state) => chatUi(state)?.modeError ?? null,
   );
@@ -137,6 +140,10 @@ export function useAcpChatActions(boundChatId?: string | null) {
                   sending: state.busy,
                   error: state.error?.message ?? null,
                   errorKind: state.error?.failure.kind ?? null,
+                  errorUnavailableReason:
+                    state.error?.failure.kind === "unavailable"
+                      ? state.error.failure.reason
+                      : null,
                   errorBindingId: state.error ? state.bindingId : null,
                   errorReceivedAt: state.error?.receivedAt,
                 },
@@ -167,6 +174,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
     busy: sending,
     error: chatError,
     errorKind,
+    errorUnavailableReason,
     modeError: modeOwnerMatches ? modeError : null,
     modeChanging: modeOwnerMatches && modeChanging,
     cancellableTurnId: page ? cancellableTurnId(page) : null,
@@ -182,6 +190,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
     busy: boolean;
     error: string | null;
     errorKind: AcpCommandFailure["kind"] | null;
+    errorUnavailableReason:
+      Extract<AcpCommandFailure, { kind: "unavailable" }>["reason"] | null;
     modeError: string | null;
     modeChanging: boolean;
     cancellableTurnId: SageTurnId | null;
