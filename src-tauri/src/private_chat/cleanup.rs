@@ -4,7 +4,7 @@ use std::path::Path;
 const MAX_ENTRIES: usize = 200_000;
 const MAX_DEPTH: usize = 64;
 
-pub(crate) fn require_empty_folder(folder: &Path) -> AppResult<()> {
+pub(super) fn require_empty_folder(folder: &Path) -> AppResult<()> {
     ordinary_directory(folder)?;
     if fs::read_dir(folder)?.next().transpose()?.is_some() {
         return Err(AppError::InvalidRequest(
@@ -12,35 +12,6 @@ pub(crate) fn require_empty_folder(folder: &Path) -> AppResult<()> {
         ));
     }
     Ok(())
-}
-
-/// Automatic reclamation never leaves a recursive-delete receipt. Remove only
-/// an empty directory, then forget its ownership in the Chat purge transaction.
-/// A crash rolls the Chat back (possibly with a missing, empty folder); a file
-/// arriving before remove_dir makes it fail, and arriving afterward is never
-/// authorized for recursive deletion by a future startup.
-pub(crate) fn reclaim_empty_in(
-    transaction: &rusqlite::Transaction<'_>,
-    project: &str,
-    folder: &Path,
-) -> AppResult<()> {
-    let has_chats: bool = transaction
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1)",
-            [project],
-            |row| row.get(0),
-        )
-        .db()?;
-    if has_chats {
-        return Ok(());
-    }
-    require_unreferenced(transaction, project, folder)?;
-    match fs::remove_dir(folder) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    forget_empty(transaction, project)
 }
 
 pub(super) fn empty_projects(database: &Database) -> AppResult<()> {

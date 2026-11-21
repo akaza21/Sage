@@ -116,11 +116,7 @@ export function restoreScopedBrowserChat(
   scope.archivedChats = scope.archivedChats.filter((item) => item.id !== chat);
   scope.tabs = [
     ...scope.tabs,
-    {
-      ...createBrowserChatTab(scope.tabs, 0),
-      id: chat,
-      title,
-    },
+    { ...createBrowserChatTab(scope.tabs, 0), id: chat, title },
   ];
   scope.activeTabId = chat;
   refreshUnscoped(snapshot);

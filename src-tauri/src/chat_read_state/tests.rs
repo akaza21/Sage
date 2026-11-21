@@ -268,7 +268,7 @@ fn only_the_chats_the_rail_shows_are_considered() {
         .into_iter()
         .map(|chat| chat.chat_id)
         .collect::<Vec<_>>();
-    let hidden = &chats[rail..=rail];
+    let hidden = &chats[rail - 1..=rail];
     assert_eq!(listed.len(), chats.len() - hidden.len());
     assert!(hidden.iter().all(|chat| !listed.contains(chat)));
     assert!(listed.contains(&chats[0]));

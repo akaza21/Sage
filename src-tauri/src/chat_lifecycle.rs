@@ -1,7 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 use sage_db::error::SqliteResultExt;
 mod auto_title;
-pub(crate) mod cleanup;
 pub(crate) mod create;
 mod title_source;
 pub(crate) use auto_title::{auto_title_first_prompt_in, generated_title, title_line};

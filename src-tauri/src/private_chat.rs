@@ -21,7 +21,6 @@ use std::fs;
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 mod cleanup;
-pub(crate) use cleanup::{reclaim_empty_in, require_empty_folder};
 pub(crate) const MAX_UNSCOPED_CHATS: i64 = 64;
 const MAX_PRIVATE_PROJECTS: i64 = MAX_UNSCOPED_CHATS + 64;
 
@@ -34,7 +33,7 @@ pub(crate) fn lock_storage() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-pub(crate) fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
+fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
     Ok(database.profile_directory()?.join("chat-workspaces"))
 }
 
