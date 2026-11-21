@@ -26,8 +26,10 @@ const MAX_ITEM_SCAN_BYTES: usize = 32 * 1024 * 1024;
 const MAX_CHAT_SEARCH_DURATION: Duration = Duration::from_millis(250);
 const MAX_SAFE_JAVASCRIPT_INTEGER: u64 = 9_007_199_254_740_991;
 
+mod discovery;
 mod legacy_welcome;
 mod reader;
+use discovery::load_chats;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,6 +38,8 @@ pub struct ProjectChatSearchRequest {
     pub project_generation: u64,
     pub expected_transition_epoch: u64,
     pub query: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub draft_chat_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +114,16 @@ pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppRe
             "Chat search intent generation is invalid".into(),
         ));
     }
+    if request.draft_chat_ids.len() > crate::workbench_restore::MAX_RESTORED_TABS * 2
+        || request
+            .draft_chat_ids
+            .iter()
+            .any(|id| id.is_empty() || id.len() > 512 || id.chars().any(char::is_control))
+    {
+        return Err(AppError::InvalidRequest(
+            "Chat search draft identities exceed their limits".into(),
+        ));
+    }
     let query = request.query.trim();
     if query.len() > MAX_CHAT_SEARCH_QUERY_BYTES {
         return Err(AppError::ResourceLimit(format!(
@@ -141,7 +155,13 @@ fn search_with_limits(
     reader::with_snapshot(database, started + limits.deadline, |connection| {
         ensure_deadline(started, limits.deadline)?;
 
-        let mut chats = load_chats(connection, &request.project_id, &query, limits)?;
+        let mut chats = load_chats(
+            connection,
+            &request.project_id,
+            &query,
+            limits,
+            &request.draft_chat_ids,
+        )?;
         if !query.is_empty() {
             preflight_items(connection, &request.project_id, limits)?;
             load_primary_text_matches(
@@ -199,47 +219,6 @@ fn search_with_limits(
         }
         Ok(response)
     })
-}
-
-fn load_chats(
-    connection: &rusqlite::Connection,
-    project_id: &str,
-    query: &str,
-    limits: SearchLimits,
-) -> AppResult<Vec<ChatRow>> {
-    let row_limit = if query.is_empty() {
-        limits.max_results
-    } else {
-        limits.max_chat_rows
-    };
-    let limit = i64::try_from(row_limit.saturating_add(1)).unwrap_or(i64::MAX);
-    let mut statement = connection.prepare(
-        "SELECT c.id,c.title,EXISTS(
-           SELECT 1 FROM chat_tabs a WHERE a.project_id=c.project_id AND a.chat_id=c.id
-         ),c.updated_at
-         FROM chats c WHERE c.project_id=?1 AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
-         ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC LIMIT ?2",
-    ).db()?;
-    let rows = statement
-        .query_map(params![project_id, limit], |row| {
-            let title: String = row.get(1)?;
-            Ok(ChatRow {
-                id: row.get(0)?,
-                matched_title: title.contains(query),
-                title,
-                attached: row.get(2)?,
-                snippet: None,
-                updated_at: row.get(3)?,
-            })
-        })
-        .db()?;
-    let chats = rows.collect::<Result<Vec<_>, _>>().db()?;
-    if !query.is_empty() && chats.len() > limits.max_chat_rows {
-        return Err(AppError::ResourceLimit(
-            "Chat search Chat-row ceiling was exceeded".into(),
-        ));
-    }
-    Ok(chats)
 }
 
 fn preflight_items(

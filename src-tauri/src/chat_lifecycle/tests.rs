@@ -25,7 +25,7 @@ fn requested_creation_identity_survives_reopen_and_cannot_replace_another_chat()
     fs::create_dir_all(&root).unwrap();
     let path = root.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = Uuid::new_v4().to_string();
     assert_eq!(
@@ -68,7 +68,7 @@ fn rename_preserves_chat_activity_in_the_recent_rail() {
     let root = std::env::temp_dir().join(format!("sage-rename-activity-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.clone().unwrap();
     database
@@ -186,7 +186,7 @@ fn rename_rejects_an_over_limit_layout_before_searching_for_the_target() {
     let root = std::env::temp_dir().join(format!("sage-chat-rename-bound-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let chat_id = snapshot.active_tab_id.unwrap();
     let template = snapshot.tabs[0].clone();
@@ -224,7 +224,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
     fs::create_dir_all(&root).unwrap();
     let database_path = root.join("sage.db");
     let database = crate::database::open_database(&database_path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
     let history = database
@@ -521,7 +521,7 @@ fn renames_a_chat_on_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let cross_chat = database
         .bootstrap_snapshot()
         .unwrap()
@@ -539,7 +539,7 @@ fn renames_a_chat_on_a_non_active_project_without_switching() {
         )
         .unwrap();
     assert!(sessions_before > 0);
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     database
         .rename_chat(&RenameChatRequest {
@@ -581,13 +581,13 @@ fn creates_a_chat_on_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
-    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross = database.create_project_with_chat(&first_root).unwrap();
     let seeded = database
         .bootstrap_snapshot()
         .unwrap()
         .active_tab_id
         .unwrap();
-    let sage = database.create_project_from_root(&second_root).unwrap();
+    let sage = database.create_project_with_chat(&second_root).unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     let sage_layout = layout(&before);
     let created = database.create_chat_on(&cross.id, &sage_layout).unwrap();
@@ -611,13 +611,16 @@ fn creates_a_chat_on_a_non_active_project_without_switching() {
         .iter()
         .find(|item| item.id == cross.id)
         .unwrap();
-    assert!(cross_item.rail_chats.iter().any(|chat| chat.id == seeded));
-    let created_chat = cross_item
-        .rail_chats
-        .iter()
-        .find(|chat| chat.id == created)
+    assert!(cross_item.rail_chats.is_empty());
+    let retained: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM chats WHERE id IN (?1,?2)",
+            rusqlite::params![seeded, created],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(created_chat.title, "Chat: Chat");
+    assert_eq!(retained, 2);
     let sessions: i64 = database
         .connection()
         .query_row(

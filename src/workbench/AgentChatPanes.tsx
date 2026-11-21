@@ -105,7 +105,11 @@ export function AgentChatPanes({
   const [narrow, setNarrow] = useState(false);
   const previousFocusedId = usePinnedAgentChatOwner();
   const [lastFocusedId, setLastFocusedId] = useState<string | null>(null);
-  const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
+  const retainedChatId = previousFocusedId ?? lastFocusedId;
+  const chatIds = useMemo(
+    () => collectChatTabIds(tabs, activeTabId, retainedChatId),
+    [tabs, activeTabId, retainedChatId],
+  );
   const splitPercent = useSideChatState((state) => state.split);
   const pairedId = useSideChatState((state) => state.pairedId);
   const side = useSideChatState((state) =>
@@ -131,7 +135,7 @@ export function AgentChatPanes({
   const shownChatId = focusedAgentChatId(
     focusCandidates,
     activeTabId,
-    previousFocusedId ?? lastFocusedId,
+    retainedChatId,
   );
   const draftShown = useWorkbenchStore((state) =>
     draftShownFor(state, shownChatId),

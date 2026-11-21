@@ -28,7 +28,7 @@ fn home_project_does_not_exhaust_private_storage_after_repeated_deletes() {
         .join(format!("private-home-{}", Uuid::new_v4()));
     fs::create_dir_all(home.join("profile")).unwrap();
     let database = crate::database::open_database(&home.join("profile/sage.db")).unwrap();
-    let project = database.create_project_from_root(&home).unwrap();
+    let project = database.create_project_with_chat(&home).unwrap();
     fs::write(home.join("keep.txt"), "home files").unwrap();
     for _ in 0..=MAX_PRIVATE_PROJECTS {
         let chat = Uuid::new_v4().to_string();
@@ -107,6 +107,14 @@ fn round3_capacity_keeps_failed_cleanup_owned_until_files_are_reclaimed() {
     assert_eq!(fs::read_dir(base).unwrap().count(), 0);
     create(&reopened, None, &Uuid::new_v4().to_string()).unwrap();
     assert_eq!(list(&reopened).unwrap().len(), 1);
+    assert!(list(&reopened).unwrap()[0].rail_chats.is_empty());
+    assert_eq!(
+        reopened
+            .connection()
+            .query_row("SELECT COUNT(*) FROM chats", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
     drop(reopened);
     fs::remove_dir_all(root).unwrap();
 }
@@ -120,7 +128,7 @@ fn registration_refuses_managed_private_folders_for_new_and_existing_projects() 
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     create(&database, None, &Uuid::new_v4().to_string()).unwrap();
     let scope = super::tests::layout(&database);
@@ -133,7 +141,7 @@ fn registration_refuses_managed_private_folders_for_new_and_existing_projects() 
         &folder.join("nested"),
         &storage_root(&database).unwrap(),
     ] {
-        let error = database.create_project_from_root(path).unwrap_err();
+        let error = database.create_project_with_chat(path).unwrap_err();
         assert!(error.public_message().contains("managed private Chat"));
         assert!(
             database
@@ -171,7 +179,7 @@ fn deleting_private_chat_preserves_overlapping_registered_project_files() {
         fs::create_dir_all(root.join("user")).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let real = database
-            .create_project_from_root(&root.join("user"))
+            .create_project_with_chat(&root.join("user"))
             .unwrap();
         let chat = Uuid::new_v4().to_string();
         create(&database, None, &chat).unwrap();
@@ -262,6 +270,7 @@ fn cleanup_retries_reach_later_folders_and_failures_do_not_exhaust_live_chat_cap
     let _ = cleanup::empty_projects(&database);
     assert!(removable.iter().all(|folder| !folder.exists()));
     assert_eq!(list(&database).unwrap().len(), 1);
+    assert!(list(&database).unwrap()[0].rail_chats.is_empty());
     assert!(
         database
             .connection()
@@ -329,7 +338,7 @@ fn cleanup_preserves_files_when_another_root_identity_cannot_be_resolved() {
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     let chat = Uuid::new_v4().to_string();
     create(&database, None, &chat).unwrap();

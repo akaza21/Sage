@@ -15,12 +15,13 @@ fn database_with_project() -> (Database, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-search-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     (database, project.id, root)
 }
 
 fn request(project_id: &str, query: &str) -> ProjectChatSearchRequest {
     ProjectChatSearchRequest {
+        draft_chat_ids: Vec::new(),
         project_id: project_id.into(),
         project_generation: 7,
         expected_transition_epoch: 3,
@@ -40,8 +41,8 @@ fn empty_query_browses_bounded_chats_without_scanning_transcripts() {
         .unwrap();
     for ordinal in 1..70_i64 {
         database.connection().execute(
-            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
-             VALUES(?1,?2,?3,'Hidden chat',0,?3,?3)",
+            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
+             VALUES(?1,?2,?3,'Hidden chat',0,?3,?3,'user')",
             rusqlite::params![format!("browse-{ordinal}"), project_id, ordinal],
         ).unwrap();
     }
@@ -77,7 +78,7 @@ fn disk_search_does_not_wait_for_the_acp_writer_mutex() {
     let root = std::env::temp_dir().join(format!("sage-search-lock-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let search_database = database.clone();
     let search_request = request(&project.id, "Chat");
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -336,7 +337,7 @@ fn archived_primary_text_remains_searchable_after_restart() {
     let database_path = directory.join("sage.db");
     let (project_id, chat_id) = {
         let database = crate::database::open_database(&database_path).unwrap();
-        let project = database.create_project_from_root(&project_root).unwrap();
+        let project = database.create_project_with_chat(&project_root).unwrap();
         let chat = database
             .bootstrap_snapshot()
             .unwrap()
@@ -400,8 +401,8 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
             let id = format!("chat-search-{ordinal}");
             connection
                 .execute(
-                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
-                     VALUES(?1,?2,?3,'needle',0,?3,?3)",
+                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
+                     VALUES(?1,?2,?3,'needle',0,?3,?3,'user')",
                     rusqlite::params![id, project_id, ordinal],
                 )
                 .unwrap();

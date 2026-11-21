@@ -176,7 +176,6 @@ function ProjectEntry({
           archived={selected ? undefined : group.archived}
           more={more}
           selected={selected}
-          projectChatCount={group.totalChatCount ?? group.chats.length}
         />
       ) : null}
     </div>
@@ -201,8 +200,6 @@ function FlatChatList({
           selected={item.projectId === currentProjectId}
           hideArchived
           flat
-          projectChatCount={item.projectChatCount}
-          allowArchiveLast={item.isInternal}
         />
       ))}
     </div>

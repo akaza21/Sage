@@ -71,15 +71,6 @@ function seedArtifactOwner(): void {
   } as unknown as AcpChatPage);
 }
 
-async function failProjectTransition(label: string) {
-  useWorkbenchStore.setState({ projectTransitioning: true });
-  useWorkbenchStore.setState({
-    projectTransitioning: false,
-    error: `${label} failed`,
-    projectGeneration: useWorkbenchStore.getState().projectGeneration + 1,
-  });
-}
-
 async function pumpTransitionResets(times: number) {
   for (let index = 0; index < times; index += 1) {
     await act(async () => {
@@ -177,8 +168,7 @@ describe("Agent center workbench window mode seam", () => {
     expect(activateTab).not.toHaveBeenCalled();
   });
 
-  it("creates a Chat for the Agent center when no Chat tab exists to activate", async () => {
-    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
+  it("opens an unsent draft for the Agent center when no Chat tab exists to activate", async () => {
     useWorkbenchStore.setState({
       project,
       tabs: [
@@ -194,7 +184,6 @@ describe("Agent center workbench window mode seam", () => {
       ],
       activeTabId: "diff:a",
       loadDiff: vi.fn(async () => undefined),
-      createChat,
     });
     render(createElement(Workbench));
     await settleLazyModules();
@@ -202,7 +191,12 @@ describe("Agent center workbench window mode seam", () => {
     await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
-      expect(createChat).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
+        project.id,
+      );
+      expect(useWorkbenchStore.getState().tabs.map((t) => t.id)).toEqual([
+        "diff:a",
+      ]);
     });
   });
 
@@ -382,11 +376,7 @@ describe("Agent center workbench window mode seam", () => {
     expect(createChat).not.toHaveBeenCalled();
   });
 
-  it("does not re-create a Chat when a failed creation only resets the transition flag", async () => {
-    const createChat = vi.fn(async () => {
-      await failProjectTransition("Chat creation");
-      return { status: "not-created" as const };
-    });
+  it("preserves the unsent draft when transitions reset without creating a Chat", async () => {
     useWorkbenchStore.setState({
       project,
       tabs: [
@@ -402,7 +392,6 @@ describe("Agent center workbench window mode seam", () => {
       ],
       activeTabId: "diff:a",
       loadDiff: vi.fn(async () => undefined),
-      createChat,
     });
     render(createElement(Workbench));
     await settleLazyModules();
@@ -410,11 +399,17 @@ describe("Agent center workbench window mode seam", () => {
     await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
-      expect(createChat).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
+        project.id,
+      );
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
     });
+    const draft = useWorkbenchStore.getState().newChatDraft;
     await pumpTransitionResets(3);
-    expect(createChat).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().newChatDraft).toBe(draft);
+    expect(useWorkbenchStore.getState().tabs.map((t) => t.id)).toEqual([
+      "diff:a",
+    ]);
   });
 
   it("shows only the selected Agent chat when two chat tabs are open", async () => {

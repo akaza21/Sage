@@ -46,7 +46,14 @@ export function safeChatStatus(value: unknown): AcpChatStatus | null {
   const projectId = safeIdentifier(value.projectId);
   const chatId = safeIdentifier(value.chatId);
   const title = safeText(value.title, 8192);
-  if (!projectId || !chatId || title === null) return null;
+  const chatListed = value.chatListed;
+  if (
+    !projectId ||
+    !chatId ||
+    title === null ||
+    typeof chatListed !== "boolean"
+  )
+    return null;
   let latestTurn: AcpChatStatus["latestTurn"] = null;
   if (value.latestTurn !== null) {
     const turn = value.latestTurn;
@@ -85,6 +92,7 @@ export function safeChatStatus(value: unknown): AcpChatStatus | null {
     projectId: projectId as AcpChatStatus["projectId"],
     chatId: chatId as AcpChatStatus["chatId"],
     title,
+    chatListed,
     latestTurn,
   };
 }

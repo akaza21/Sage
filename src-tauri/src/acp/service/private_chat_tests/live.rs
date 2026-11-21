@@ -32,7 +32,7 @@ fn private_chat_fixture_answer_reaches_the_view_after_command_creates_its_worksp
         fs::create_dir_all(directory.join("project")).unwrap();
         let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
         database
-            .create_project_from_root(&directory.join("project"))
+            .create_project_with_chat(&directory.join("project"))
             .unwrap();
         let current = database.bootstrap_snapshot().unwrap();
         let current = sage_domain::chat::ProjectLayoutRequest {

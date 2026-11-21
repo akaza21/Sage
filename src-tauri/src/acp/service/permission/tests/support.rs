@@ -137,7 +137,7 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
 ) -> (AcpService, RuntimeOwner) {
     let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database
-        .create_project_from_root(&std::env::current_dir().unwrap())
+        .create_project_with_chat(&std::env::current_dir().unwrap())
         .unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let owner = RuntimeOwner {

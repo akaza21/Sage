@@ -70,7 +70,7 @@ fn selecting_a_project_refuses_private_files_and_preserves_the_chat_until_explic
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     let chat = Uuid::new_v4().to_string();
     create(&database, None, &chat).unwrap();
@@ -136,7 +136,7 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
     fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let real = database
-        .create_project_from_root(&root.join("user"))
+        .create_project_with_chat(&root.join("user"))
         .unwrap();
     let before = layout(&database);
     let chat = Uuid::new_v4().to_string();
@@ -147,6 +147,7 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
     assert_eq!(private.active_tab_id.as_deref(), Some(chat.as_str()));
     assert_eq!(private.projects.len(), 1);
     assert_eq!(private.unscoped_chats.len(), 1);
+    assert!(private.unscoped_chats[0].rail_chats.is_empty());
     let folder = database.root_records(&project.id).unwrap()[0]
         .absolute_path
         .clone();
@@ -209,7 +210,7 @@ fn existing_database_migrates_without_changing_projects_chats_or_history() {
     fs::create_dir_all(&root).unwrap();
     let path = root.join("sage.db");
     let database = crate::database::open_database(&path).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_with_chat(&root).unwrap();
     let before = database.bootstrap_snapshot().unwrap();
     let chat = before.active_tab_id.unwrap();
     database
@@ -311,8 +312,14 @@ fn hidden_project_ids_cannot_be_selected_as_user_projects() {
             .is_err()
     );
     assert_eq!(layout(&database).project_id, before.project_id);
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    assert_eq!(snapshot.unscoped_chats.len(), 1);
+    assert!(snapshot.unscoped_chats[0].rail_chats.is_empty());
     assert_eq!(
-        database.bootstrap_snapshot().unwrap().unscoped_chats.len(),
+        database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM chats", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
         2
     );
     drop(database);
@@ -327,10 +334,15 @@ fn private_chat_capacity_never_silently_hides_older_chats() {
         .join(format!("private-capacity-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    database.create_project_from_root(&root).unwrap();
+    database.create_project_with_chat(&root).unwrap();
     let real = layout(&database);
     for _ in 0..MAX_UNSCOPED_CHATS {
-        create(&database, None, &Uuid::new_v4().to_string()).unwrap();
+        let chat = Uuid::new_v4().to_string();
+        create(&database, None, &chat).unwrap();
+        database
+            .connection()
+            .execute("UPDATE chats SET title_source='user' WHERE id=?1", [&chat])
+            .unwrap();
     }
     let before = layout(&database);
     let refused = create(&database, None, &Uuid::new_v4().to_string()).unwrap_err();

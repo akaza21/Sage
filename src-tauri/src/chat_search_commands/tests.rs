@@ -19,9 +19,17 @@ fn command_searches_a_non_active_project_without_switching() {
         let first_root = root("first");
         let second_root = root("second");
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let first = database.create_project_from_root(&first_root).unwrap();
+        let first = database.create_project_with_chat(&first_root).unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE chats SET title_source='user' WHERE project_id=?1",
+                [&first.id],
+            )
+            .unwrap();
         let state = AppState::new(database.clone());
         let request = ProjectChatSearchRequest {
+            draft_chat_ids: Vec::new(),
             project_id: first.id.clone(),
             project_generation: 8,
             expected_transition_epoch: 0,
@@ -42,7 +50,7 @@ fn command_searches_a_non_active_project_without_switching() {
         assert!(stale.to_string().contains("project changed"));
 
         *state.project_transitions.lock().await = 0;
-        let second = database.create_project_from_root(&second_root).unwrap();
+        let second = database.create_project_with_chat(&second_root).unwrap();
         assert_eq!(
             database.active_project_id().unwrap().as_deref(),
             Some(second.id.as_str())
@@ -59,6 +67,7 @@ fn command_searches_a_non_active_project_without_switching() {
         let missing = search_project_chats_inner(
             &state,
             ProjectChatSearchRequest {
+                draft_chat_ids: Vec::new(),
                 project_id: "missing-project".into(),
                 ..request
             },

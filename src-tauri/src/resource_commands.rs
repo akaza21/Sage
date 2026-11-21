@@ -174,6 +174,7 @@ fn merge_recovered_file_tabs(snapshot: &mut BootstrapSnapshot) {
             status: Some("recovering".into()),
             updated_at: None,
             finished_at: None,
+            chat_listed: None,
             resource: Some(recovered.resource.clone()),
             repository: None,
             diff_ref: None,
@@ -415,7 +416,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-recovery-tabs-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         (root, snapshot, project.roots[0].id.clone())
     }
@@ -435,7 +436,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-initial-bootstrap-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(Path::new(":memory:")).unwrap();
-        database.create_project_from_root(&root).unwrap();
+        database.create_project_with_chat(&root).unwrap();
         let state = AppState::new(database);
 
         let snapshot = build_initial_bootstrap_snapshot(
@@ -478,6 +479,7 @@ mod tests {
                 status: None,
                 updated_at: None,
                 finished_at: None,
+                chat_listed: None,
                 resource: Some(ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),
@@ -526,6 +528,7 @@ mod tests {
                 status: None,
                 updated_at: None,
                 finished_at: None,
+                chat_listed: None,
                 resource: None,
                 repository: None,
                 diff_ref: None,
@@ -549,7 +552,7 @@ mod tests {
         }
         let database_path = base.join("sage.db");
         let database = crate::database::open_database(&database_path).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
+        let project = database.create_project_with_chat(&root).unwrap();
         let root_id = project.roots[0].id.clone();
         let initial = database.bootstrap_snapshot().unwrap();
         let mut tabs = initial.tabs;
@@ -564,6 +567,7 @@ mod tests {
                 status: None,
                 updated_at: None,
                 finished_at: None,
+                chat_listed: None,
                 resource: Some(ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),

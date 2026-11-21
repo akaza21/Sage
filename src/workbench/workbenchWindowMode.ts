@@ -11,6 +11,7 @@ export const AGENT_CENTER_CHAT_SCAN_LIMIT = 64;
 export const EDITOR_CANVAS_KINDS = ["file", "diff", "settings"] as const;
 
 export interface AgentCenterScanTab {
+  chatListed?: boolean;
   id: string;
   kind: TabKind;
 }
@@ -27,37 +28,39 @@ export function isAgentArtifactTabKind(kind: TabKind): kind is "file" | "diff" {
   return kind === "file" || kind === "diff";
 }
 
-export type AgentCenterDecision = { action: "none" } | { action: "create" };
-
-export function agentCenterChatAction(
+export function agentCenterNeedsDraft(
   tabs: ReadonlyArray<AgentCenterScanTab>,
-  _activeTabId: string | null,
-): AgentCenterDecision {
-  const scanLimit = Math.min(tabs.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
-  for (let index = 0; index < scanLimit; index += 1) {
-    if (tabs[index]?.kind === "chat") {
-      return { action: "none" };
-    }
-  }
-  return { action: "create" };
+  activeTabId: string | null,
+  focusedChatId?: string | null,
+): boolean {
+  return !collectChatTabIds(tabs, activeTabId, focusedChatId, 1).length;
 }
 
 export function firstChatTabId(
   tabs: ReadonlyArray<AgentCenterScanTab>,
 ): string | null {
-  const ids = collectChatTabIds(tabs);
+  const ids = collectChatTabIds(tabs, null, null, 1);
   return ids[0] ?? null;
 }
 
 export function collectChatTabIds(
   tabs: ReadonlyArray<AgentCenterScanTab>,
+  activeTabId: string | null = null,
+  focusedChatId: string | null = null,
+  limit = AGENT_CENTER_CHAT_SCAN_LIMIT,
 ): string[] {
   const ids: string[] = [];
   const scanLimit = Math.min(tabs.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
   for (let index = 0; index < scanLimit; index += 1) {
     const tab = tabs[index];
-    if (tab?.kind === "chat") {
+    if (
+      tab?.kind === "chat" &&
+      (tab.chatListed !== false ||
+        tab.id === activeTabId ||
+        tab.id === focusedChatId)
+    ) {
       ids.push(tab.id);
+      if (ids.length >= limit) break;
     }
   }
   return ids;

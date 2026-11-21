@@ -568,16 +568,6 @@ describe("browser simulator history bounds", () => {
     const beforeRejectedIdentities =
       await browserDesktop.getBootstrapSnapshot();
     await expect(
-      browserDesktop.archiveChat(
-        {
-          projectId: initial.project!.id,
-          chatId: firstChatId,
-          currentLayout: oneChatLayout,
-        },
-        archivedLast.transitionEpoch,
-      ),
-    ).rejects.toThrow("last attached chat");
-    await expect(
       browserDesktop.restoreChat(
         {
           projectId: initial.project!.id,
@@ -1222,4 +1212,30 @@ describe("browser simulator history bounds", () => {
     ).toThrow("capacity reached");
     expect(existing).toHaveLength(1);
   });
+});
+
+it("archives the last project chat without creating a replacement", async () => {
+  resetBrowserDesktopForTests();
+  const snapshot = await browserDesktop.getBootstrapSnapshot();
+  const chats = snapshot.tabs.filter((tab) => tab.kind === "chat");
+  let current = snapshot;
+  for (const chat of chats) {
+    const result = await browserDesktop.archiveChat(
+      {
+        projectId: current.project!.id,
+        chatId: chat.id,
+        currentLayout: {
+          projectId: current.project!.id,
+          tabs: current.tabs,
+          activeTabId: current.activeTabId,
+          selectedRootId: current.selectedRootId,
+          selectedResource: current.selectedResource,
+        },
+      },
+      current.transitionEpoch,
+    );
+    current = result.snapshot!;
+  }
+  expect(current.tabs.filter((tab) => tab.kind === "chat")).toEqual([]);
+  expect(current.archivedChats).toHaveLength(chats.length);
 });

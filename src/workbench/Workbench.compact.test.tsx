@@ -788,7 +788,7 @@ describe("compact Workbench project tools", () => {
     await openChatActions("A");
     expect(
       screen.getByRole("menuitem", { name: "Archive chat" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 
   it("keeps invalid rename feedback visible and focused with a File active", async () => {

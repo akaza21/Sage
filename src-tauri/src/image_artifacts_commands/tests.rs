@@ -347,7 +347,7 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
                 std::env::temp_dir().join(format!("sage-image-work-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
             let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
             let chat_id = database
                 .bootstrap_snapshot()
                 .unwrap()

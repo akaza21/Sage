@@ -40,7 +40,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-fork-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-        database.create_project_from_root(&root).unwrap();
+        database.create_project_with_chat(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();
         let parent = snapshot.active_tab_id.clone().unwrap();
@@ -660,6 +660,18 @@ fn private_chat_forks_keep_their_workspace_and_appear_once_each() {
         )
         .unwrap();
     let fork = fixture.fork("thread-private-fork").unwrap();
+    // A fork with no own prompt stays hidden until the user chooses to pin it.
+    // Its workspace and parent remain intact throughout.
+    let empty = fixture.database.bootstrap_snapshot().unwrap();
+    assert_eq!(empty.unscoped_chats[0].rail_chats.len(), 1);
+    use crate::chat_pin::ChatPinStore;
+    fixture
+        .database
+        .pin_chat(&sage_domain::chat::PinChatRequest {
+            project_id: fixture.project.clone(),
+            chat_id: fork.clone(),
+        })
+        .unwrap();
     let snapshot = fixture.database.bootstrap_snapshot().unwrap();
     assert!(snapshot.projects.is_empty());
     assert_eq!(snapshot.unscoped_chats.len(), 1);

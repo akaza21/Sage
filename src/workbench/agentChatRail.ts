@@ -35,7 +35,6 @@ export interface AgentRailProjectGroup {
   chats: AgentRailChat[];
   archived: ArchivedChatSummary[];
   truncated: boolean;
-  totalChatCount?: number;
 }
 
 function admittedProjectId(value: unknown): string | null {
@@ -201,8 +200,6 @@ function admitArchivedChats(
 export interface AgentRailChatItem {
   isInternal?: boolean;
   projectId: string;
-  projectName: string;
-  projectChatCount: number;
   chat: AgentRailChat;
 }
 
@@ -218,7 +215,6 @@ export interface AgentRailSections {
 
 export function deriveAgentRailSections(
   groups: ReadonlyArray<AgentRailProjectGroup>,
-  chatCountByProjectId?: Readonly<Record<string, number>>,
   ordering: AgentRailOrdering = "recency",
   activeChatId: string | null = null,
 ): AgentRailSections {
@@ -229,10 +225,6 @@ export function deriveAgentRailSections(
 
   for (const group of groups) {
     const projectChats: AgentRailChat[] = [];
-    const projectChatCount =
-      chatCountByProjectId?.[group.id] ??
-      group.totalChatCount ??
-      group.chats.length;
     const chats =
       ordering === "manual"
         ? group.chats
@@ -243,8 +235,6 @@ export function deriveAgentRailSections(
       const item = {
         isInternal: group.isInternal,
         projectId: group.id,
-        projectName: group.name,
-        projectChatCount,
         chat,
       };
       if (chat.pinned && pinned.length < MAX_AGENT_RAIL_PIN_IDS) {
@@ -266,7 +256,6 @@ export function deriveAgentRailSections(
       projects.push({
         ...group,
         chats: projectChats,
-        totalChatCount: projectChatCount,
       });
   }
 
