@@ -1,4 +1,3 @@
-import { Info } from "../../ui/leanIcons";
 import { Notice } from "../../ui/Notice";
 
 export function AcpHistoryNotices({
@@ -57,19 +56,5 @@ export function AcpHistoryNotices({
         />
       ) : null}
     </>
-  );
-}
-
-export function WorkspaceTrackingNotice() {
-  return (
-    <p
-      className="acp-system-notice"
-      role="status"
-      aria-label="Workspace tracking"
-    >
-      <Info size={14} aria-hidden="true" />
-      <span className="sr-only">System: </span>
-      <span>Workspace change tracking is incomplete for this turn.</span>
-    </p>
   );
 }

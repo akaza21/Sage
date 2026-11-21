@@ -17,6 +17,50 @@ import { useWorkbenchStore } from "../../../app/store";
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it("discloses the current failure diagnostics and unmounts them when closed", async () => {
+    const turn = page("failed", {
+      kind: "timeout",
+      message: "The request timed out.",
+    }).turns[0];
+    turn.items = [
+      {
+        kind: "error",
+        payload: {
+          code: "requestTimeout",
+          message: "The connection closed after 30 seconds.",
+          recoverable: true,
+        },
+      } as never,
+    ];
+    const { container, rerender } = render(<TurnFailure turn={turn} />);
+    expect(container.querySelector("pre")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    await waitFor(() => {
+      expect(container.querySelector("pre")).toHaveTextContent(
+        '"code": "requestTimeout"',
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(container.querySelector("pre")).toBeNull();
+    rerender(
+      <TurnFailure
+        turn={{
+          ...turn,
+          terminalReason: {
+            kind: "timeout",
+            message: "The request timed out after reconnecting.",
+          },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    await waitFor(() => {
+      expect(container.querySelector("pre")).toHaveTextContent(
+        '"message": "The request timed out after reconnecting."',
+      );
+    });
+  });
+
   it("announces a newly failed turn through the gate once while keeping later copy revisions quiet", async () => {
     const view = (projection: ReturnType<typeof page>) => (
       <>

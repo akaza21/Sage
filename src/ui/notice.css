@@ -43,7 +43,6 @@
   background: transparent;
   font: inherit;
   cursor: pointer;
-  margin-inline-start: var(--space-2);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -76,10 +75,6 @@
   cursor: pointer;
 }
 
-.notice__disclose {
+.notice__body > button {
   margin-inline-start: var(--space-2);
-}
-
-.notice__text-link:focus-visible {
-  outline: var(--focus-ring);
 }

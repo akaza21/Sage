@@ -166,22 +166,27 @@ export function ChatTranscript({
     retentionIncomplete,
   });
   const historyFailure = historyError ?? firstPageError;
+  const noticeFailure = projectTransitioning ? null : historyFailure;
   const historyNotice = (
     <Notice
-      identity={`history-load:${historyScope ?? page?.chatId ?? project?.id ?? "current"}`}
-      severity={historyFailure ? "blocking" : "info"}
+      identity={
+        projectTransitioning
+          ? `project-transition:${project?.id ?? "current"}`
+          : `history-load:${historyScope ?? page?.chatId ?? project?.id ?? "current"}`
+      }
+      severity={noticeFailure ? "blocking" : "info"}
       message={
-        historyFailure
-          ? "Chat history could not be loaded."
-          : "Loading chat history…"
+        projectTransitioning
+          ? "Loading the authoritative project…"
+          : noticeFailure
+            ? "Chat history could not be loaded."
+            : "Loading chat history…"
       }
-      progress={!historyFailure}
+      progress={!noticeFailure}
       action={
-        historyFailure
-          ? { label: "Retry", onClick: onReloadHistory }
-          : undefined
+        noticeFailure ? { label: "Retry", onClick: onReloadHistory } : undefined
       }
-      details={historyFailure}
+      details={noticeFailure}
     />
   );
   return (
@@ -193,16 +198,10 @@ export function ChatTranscript({
           onScroll={onScroll}
         >
           <div ref={contentRef} className="message-list__content">
-            {projectTransitioning ? (
-              <Notice
-                identity={`project-transition:${project?.id ?? "current"}`}
-                severity="info"
-                progress
-                message="Loading the authoritative project…"
-              />
-            ) : useNativeAcp &&
+            {projectTransitioning ||
+            (useNativeAcp &&
               !page &&
-              (historyLoading || historyFailure || pageExpected) ? (
+              (historyLoading || historyFailure || pageExpected)) ? (
               // A native chat never falls through to the legacy transcript
               // while its first page is on the way.
               historyNotice

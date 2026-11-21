@@ -25,6 +25,15 @@ it("announces a blocking problem once across copy updates and announces a new id
   expect(screen.getByText("File is unavailable.")).toBeVisible();
   rerender(
     <Notice
+      identity="read:file-a"
+      severity="blocking"
+      message="File could not be read."
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveAttribute("aria-live", "off");
+  expect(screen.getByText("File could not be read.")).toBeVisible();
+  rerender(
+    <Notice
       identity="read:file-b"
       severity="blocking"
       message="File is unavailable."

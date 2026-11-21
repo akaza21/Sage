@@ -57,11 +57,20 @@ it.each([true, false])(
     expect(
       screen.getByText("Sign in again, then retry the turn"),
     ).toBeVisible();
+    expect(
+      await screen.findByRole("alert", {
+        name: "Failure details failed to load",
+      }),
+    ).toHaveTextContent("Failure details could not be loaded.");
+    const turnRetry = screen
+      .getByRole("group", { name: "Turn failed" })
+      .querySelector<HTMLButtonElement>(".notice__action");
     if (retry) {
-      fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+      expect(turnRetry).toHaveAccessibleName("Retry");
+      fireEvent.click(turnRetry!);
       expect(screen.getByText("Retry requested")).toBeVisible();
     } else {
-      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(turnRetry).toBeNull();
     }
   },
 );

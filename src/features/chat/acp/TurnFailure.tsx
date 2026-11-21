@@ -6,6 +6,7 @@ import {
   turnTerminalReasonLabels,
 } from "./statusSemantics";
 import { Notice } from "../../../ui/Notice";
+import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 
 export interface TurnFailureProps {
   turn: TurnProjection;
@@ -39,47 +40,24 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
           <>
             <span data-turn-reason-message="">{message}</span>
             {reason?.remediation ? (
-              <>
-                {" "}
-                <span data-turn-reason-remediation="">
-                  {reason.remediation}
-                </span>
-              </>
+              <span data-turn-reason-remediation=""> {reason.remediation}</span>
             ) : null}
           </>
         }
         announce={false}
         details={
           reason || error ? (
-            <FailureDetails turn={turn} page={page} />
+            <LazyModuleBoundary
+              label="Failure details"
+              load={HarnessSignInPart.preload}
+              render={(Details) => (
+                <Details turn={turn} page={page} error={error?.payload} />
+              )}
+            />
           ) : undefined
         }
         action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
       />
     </div>
-  );
-}
-
-function FailureDetails({ turn, page }: TurnFailureProps) {
-  return (
-    <>
-      <pre>
-        {JSON.stringify(
-          {
-            reason: turn.terminalReason,
-            error: turnReasonErrorItem(turn)?.payload,
-          },
-          null,
-          2,
-        )}
-      </pre>
-      {turn.terminalReason?.kind === "authRequired" && page ? (
-        <HarnessSignInPart
-          part="HarnessTurnSignInRecovery"
-          page={page}
-          turn={turn}
-        />
-      ) : null}
-    </>
   );
 }

@@ -2,27 +2,34 @@ import {
   SESSION_NOTICES_MAX,
   type SessionNotice,
 } from "../domain/acpProjection";
-import { isRecord, safeText } from "./acpDesktopGuards";
+import {
+  isOneOf,
+  isRecord,
+  safeNullableText,
+  safeText,
+} from "./acpDesktopGuards";
 
-const LEVELS = ["info", "warning", "error"];
+const LEVELS = ["info", "warning", "error"] as const;
 
 function safeNotice(value: unknown, index: number): SessionNotice | null {
-  if (!isRecord(value) || !LEVELS.includes(value.level as string)) return null;
+  if (!isRecord(value) || !isOneOf(value.level, LEVELS)) return null;
   const text = safeText(value.text, 1024);
-  const source = value.source == null ? null : safeText(value.source, 128);
+  const source = safeNullableText(value.source ?? null, 128);
   const diagnostic = value.diagnostic ?? false;
   const identity =
-    value.identity == null ? undefined : safeText(value.identity, 1024);
+    value.identity == null
+      ? `legacy-record:${index}`
+      : safeText(value.identity, 1024);
   if (
     !text ||
-    (value.source != null && !source) ||
+    (source !== null && !source) ||
     typeof diagnostic !== "boolean" ||
-    (value.identity != null && !identity)
+    !identity
   )
     return null;
   return {
-    identity: identity ?? `legacy-record:${index}`,
-    level: value.level as SessionNotice["level"],
+    identity,
+    level: value.level,
     text,
     source,
     diagnostic,

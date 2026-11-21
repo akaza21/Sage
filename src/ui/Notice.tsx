@@ -26,53 +26,36 @@ function NoticeContent({
   message,
   action,
   details,
-  progress = false,
+  progress,
   announce = true,
 }: NoticeProps) {
   const [expanded, setExpanded] = useState(false);
-  const blocking = severity === "blocking" && announce;
-  const [announcement, setAnnouncement] = useState<{
-    message: ReactNode;
-    live: boolean;
-  } | null>(null);
+  const error = severity === "blocking";
+  const warning = severity === "warning";
+  const blocking = error && announce;
+  // Undefined is unannounced; false permanently quiets this identity.
+  const [announcement, setAnnouncement] = useState<
+    { message: ReactNode } | false
+  >();
   // Settle announcement state before committing changed copy to the tree.
   // Identity changes remount this bounded state; StrictMode replays preserve it.
-  if (blocking && !announcement) setAnnouncement({ message, live: true });
-  else if (announcement?.live && announcement.message !== message)
-    setAnnouncement({ ...announcement, live: false });
-  const Icon =
-    severity === "blocking"
-      ? CircleAlert
-      : severity === "warning"
-        ? TriangleAlert
-        : Info;
+  if (blocking && announcement === undefined) setAnnouncement({ message });
+  else if (announcement && announcement.message !== message)
+    setAnnouncement(false);
+  const Icon = error ? CircleAlert : warning ? TriangleAlert : Info;
   return (
     <div
       className={`notice notice--${severity}`}
       aria-live={
-        progress
-          ? "polite"
-          : blocking && announcement?.live
-            ? "assertive"
-            : "off"
+        progress ? "polite" : blocking && announcement ? "assertive" : "off"
       }
       data-notice-identity={identity}
-      role={
-        announce && severity === "blocking"
-          ? "alert"
-          : progress
-            ? "status"
-            : undefined
-      }
+      role={blocking ? "alert" : progress ? "status" : undefined}
     >
-      <Icon size={14} aria-hidden="true" />
+      <Icon size={14} />
       <div className="notice__body">
         <span className="sr-only">
-          {severity === "blocking"
-            ? "Error: "
-            : severity === "warning"
-              ? "Warning: "
-              : ""}
+          {error ? "Error: " : warning ? "Warning: " : ""}
         </span>
         <span>{message}</span>
         {action ? (
@@ -88,7 +71,7 @@ function NoticeContent({
           <>
             <button
               type="button"
-              className="notice__text-link notice__disclose"
+              className="notice__text-link"
               aria-expanded={expanded}
               onClick={() => setExpanded(!expanded)}
             >
