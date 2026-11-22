@@ -11,6 +11,8 @@ use sage_workspace::Workspace;
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
 
+mod guard;
+
 #[tauri::command]
 pub async fn checkout_git_local_branch(
     state: State<'_, AppState>,
@@ -45,6 +47,21 @@ async fn checkout_git_local_branch_inner(
     state: &AppState,
     request: GitRepositoryCheckoutRequest,
     expected_transition_epoch: u64,
+) -> AppResult<GitRepositoryCheckoutResult> {
+    checkout_git_local_branch_with(
+        state,
+        request,
+        expected_transition_epoch,
+        std::future::ready(()),
+    )
+    .await
+}
+
+async fn checkout_git_local_branch_with(
+    state: &AppState,
+    request: GitRepositoryCheckoutRequest,
+    expected_transition_epoch: u64,
+    before_checkout: impl std::future::Future<Output = ()>,
 ) -> AppResult<GitRepositoryCheckoutResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -93,6 +110,10 @@ async fn checkout_git_local_branch_inner(
             (root.id.clone(), workspace)
         })
         .collect();
+    // Prompt dispatch holds this same transition guard until its queued turn
+    // is durable. Keep it through Git's mutation so neither ordering can race.
+    guard::ensure_repository_idle(&state.database, &workspace).await?;
+    before_checkout.await;
     let checkout_result =
         sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await;
     let error = match checkout_result {
@@ -112,3 +133,6 @@ async fn checkout_git_local_branch_inner(
         error,
     })
 }
+
+#[cfg(test)]
+mod tests;
