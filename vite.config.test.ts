@@ -793,7 +793,6 @@ describe("desktop-native chunk topology", () => {
       "src/features/chat/ForkChat.tsx",
       "src/features/chat/RewindChatDialog.tsx",
       "src/features/chat/UserMessageActions.tsx",
-      "src/features/chat/conversationActionAvailability.ts",
       "src/features/chat/ForkHistory.tsx",
     ];
     const conversation = closureForModule(
@@ -818,6 +817,14 @@ describe("desktop-native chunk topology", () => {
         module,
       ).toBe(true);
     }
+    // Eligibility is needed before opening a menu; it still stays off startup.
+    const eligibility = "src/features/chat/conversationActionAvailability.ts";
+    expect(messageTrigger.some((id) => id.endsWith(eligibility))).toBe(true);
+    expect(conversation.some((id) => id.endsWith(eligibility))).toBe(true);
+    expect(chat.some((id) => id.endsWith(eligibility))).toBe(false);
+    expect(graph.initialModules.some((id) => id.endsWith(eligibility))).toBe(
+      false,
+    );
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>
