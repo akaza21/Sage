@@ -39,7 +39,7 @@ export function ChatAccessDraftSelection({
   bindingId: string;
   value?: SessionAccessMode | null;
   onChange?: (value: SessionAccessMode) => void;
-  chatId: string | undefined;
+  chatId?: string;
   endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   error: string | null;
@@ -49,7 +49,7 @@ export function ChatAccessDraftSelection({
   // Per-chat modes are offered only where they can be drafted.
   const candidates = sessionAccessModeCandidates(
     capabilities,
-    !!chatId || !!onChange,
+    !!(chatId || onChange),
   );
   const draft = useChatAccessDrafts((state) =>
     chatId ? state.drafts[chatId] : undefined,
@@ -104,7 +104,7 @@ function useCarriedAccess(
   useEffect(() => {
     if (from && unread) void loadChatAccess(from);
   }, [from, unread]);
-  if (mode === undefined) return undefined;
+  if (unread) return undefined;
   return (
     candidates.find(
       (candidate) =>

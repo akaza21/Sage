@@ -198,14 +198,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {goal.kind === "goal" ||
+            {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
-                (goal.kind === "noGoal" && goalCapabilities.set))) ? (
+                (goal?.kind === "noGoal" && goalCapabilities.set))) ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 key={dictationScope}
-                state={goal}
+                // Every chat passes its goal; only the new-chat draft has none.
+                state={goal!}
                 chatId={dictationScope}
                 details={goalDetails}
                 capabilities={goalCapabilities}

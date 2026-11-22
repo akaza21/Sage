@@ -25,17 +25,18 @@ export function FirstChatSend({
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (!pending?.chatId || pending.chatId !== chatId || transitioning) return;
+    if (pending?.chatId !== chatId || transitioning) return;
     const state = useWorkbenchStore.getState();
     if (state.pendingFirstSend !== pending) return;
     const entry = state.chatUiById[chatId];
     const harness = state.harnesses.find(
       (harness) => harness.id === entry?.harnessId,
     );
-    if (harness?.transport === "acp") {
-      const context = currentContext(chatId);
-      if (!page || !context || context.page !== page) return;
-    }
+    if (
+      harness?.transport === "acp" &&
+      (!page || currentContext(chatId)?.page !== page)
+    )
+      return;
     useWorkbenchStore.setState({ pendingFirstSend: null });
     if (
       draftShownFor(state, chatId) ||
@@ -44,18 +45,19 @@ export function FirstChatSend({
       state.chatOwnershipEpoch !== pending.ownershipEpoch
     )
       return;
+    // The draft's text is never empty, so this also needs a composer entry.
     if (
-      !entry?.composerText ||
-      entry.composerText !== pending.text ||
+      entry?.composerText !== pending.text ||
       harness?.installState !== "available"
     )
       return;
     if (harness.transport === "legacySimulator") {
       void state.sendPrompt();
     } else if (harness.bindingId) {
+      // Images a draft handed over are already in this composer.
       void actions.submit(
-        entry.composerText.trim(),
-        [],
+        pending.text.trim(),
+        entry.attachedContext,
         harness.bindingId as CuratedBindingId,
         (entry.modelId ?? null) as CuratedModelId | null,
       );

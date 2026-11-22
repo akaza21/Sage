@@ -22,31 +22,21 @@ interface AccessSelectionProps {
 }
 
 /** A chat's access: its live session's, or the access drafted for it. */
-export function ChatAccessView({
-  sessionConfig: session,
-  chatId,
-  endedPage,
-  value,
-  onChange,
-  ...props
-}: AccessSelectionProps &
-  Pick<
-    ComposerAccessControlProps,
-    "sessionConfig" | "chatId" | "endedPage" | "value" | "onChange"
-  >) {
+export function ChatAccessView(
+  props: AccessSelectionProps &
+    Pick<
+      ComposerAccessControlProps,
+      "sessionConfig" | "chatId" | "endedPage" | "value" | "onChange"
+    >,
+) {
+  const { sessionConfig: session, chatId } = props;
   // A chat with no head drafts the access of the session its next send
   // starts, even while it shows its last session's config; a removed session
   // is past, and its chat drafts too.
   return session && !session.removed && !chatId ? (
-    <LiveChatAccess session={session} {...props} />
+    <LiveChatAccess {...props} session={session} />
   ) : (
-    <ChatAccessDraftSelection
-      chatId={chatId}
-      endedPage={endedPage}
-      value={value}
-      onChange={onChange}
-      {...props}
-    />
+    <ChatAccessDraftSelection {...props} />
   );
 }
 

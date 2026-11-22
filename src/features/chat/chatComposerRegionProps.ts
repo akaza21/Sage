@@ -47,7 +47,7 @@ export interface ChatComposerRegionProps {
   queuedPrompts?: readonly QueuedChatPrompt[];
   steerAvailable?: boolean;
   projectTransitioning: boolean;
-  workbenchError: ComposerProblem | null;
+  workbenchError?: ComposerProblem | null;
   chatError: ComposerProblem | null;
   chatAuth?: {
     page: AcpChatPage | null | undefined;
@@ -58,14 +58,14 @@ export interface ChatComposerRegionProps {
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
-  sessionHarnessId: string | null;
-  sessionModelId: string | null;
+  sessionHarnessId?: string | null;
+  sessionModelId?: string | null;
   selectedHarnessId: string | null;
   selectedModelId: string | null;
-  sessionPromptUnavailable: boolean;
+  sessionPromptUnavailable?: boolean;
   sessionConfig: AcpSessionConfig | null;
   modePending: boolean;
-  modeError: string | null;
+  modeError?: string | null;
   focused: boolean;
   onSetSessionMode: (modeId: string) => Promise<unknown>;
   onSetSessionConfigOption: (
@@ -81,9 +81,9 @@ export interface ChatComposerRegionProps {
   /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string; isInternal?: boolean } | null | undefined;
   newChat?: boolean;
-  usage: ChatUsage | null;
+  usage?: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
-  goal: AcpGoalState;
+  goal?: AcpGoalState;
   /** Native goal operations of the live session; absent while offline. */
   goalCapabilities?: AcpGoalCapabilities;
   onSubmit: (
@@ -95,7 +95,7 @@ export interface ChatComposerRegionProps {
   imageInputAvailable?: boolean;
   imageInputDisabledReason?: string | null;
   onAddImages?: (files: File[]) => void;
-  onCancelTurn: (() => void) | null;
+  onCancelTurn?: (() => void) | null;
   onDeleteQueuedPrompt?: (id: string) => void;
   onRetryQueuedPrompt?: (id: string) => void;
   onSteerQueuedPrompt?: (id: string) => void;
