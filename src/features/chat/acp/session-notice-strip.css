@@ -35,3 +35,36 @@
 .acp-session-notices__clear {
   justify-self: start;
 }
+
+/* Each user message sits in an unclassed row (TurnPrompts); its lazy actions
+   style that row only once they mount. The row reserves a footer under the
+   bubble, never a transcript grid row of its own, so revealing the actions
+   moves nothing. The row stays a full-width grid item: the bubble keeps its
+   own width and breakpoints, and right: 0 lines the trigger up with the
+   bubble's right edge. Opacity, not visibility, keeps the button in the Tab
+   order while it is hidden. */
+.acp-turn__items > :has(> .acp-prompt-actions) {
+  position: relative;
+  padding-bottom: var(--space-6);
+}
+
+.acp-prompt-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  opacity: 0;
+  animation: none;
+}
+
+.acp-turn__items > :hover > .acp-prompt-actions,
+.acp-turn__items > :focus-within > .acp-prompt-actions,
+.acp-prompt-actions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .acp-prompt-actions {
+    opacity: 1;
+  }
+}
