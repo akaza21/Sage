@@ -77,6 +77,9 @@ pub(super) fn definition(
         sign_in: None,
         brand: None,
         update: None,
+        latest_version: None,
+        runs_version: None,
+        direct_from_version: None,
     };
     definition
         .validate_transport_contract()

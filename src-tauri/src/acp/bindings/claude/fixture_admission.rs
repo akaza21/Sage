@@ -64,6 +64,7 @@ impl AdmittedClaudeBinding {
                 artifact_sha256: artifact_sha256.clone(),
                 runtime_sha256: artifact_sha256,
             },
+            runs_version: None,
             binding_digest,
             binding_digest_hex: binding_digest
                 .iter()

@@ -35,13 +35,38 @@ export function conversationActions(
   turn: TurnProjection,
   state = conversationState(page),
 ) {
+  return loadedTurnActions(
+    page,
+    turn,
+    state,
+    page.turns.some((row) => row.id === turn.id),
+  );
+}
+
+/** One fold per page: the ids of loaded turns that offer rewind or fork. */
+export function pageConversationActions(page: AcpChatPage) {
+  const state = conversationState(page);
+  const offered = new Set<string>();
+  for (const turn of page.turns) {
+    const actions = loadedTurnActions(page, turn, state, true);
+    if (actions.rewind || actions.fork) offered.add(turn.id);
+  }
+  return offered;
+}
+
+function loadedTurnActions(
+  page: AcpChatPage,
+  turn: TurnProjection,
+  state: ReturnType<typeof conversationState>,
+  loaded: boolean,
+) {
   const { offer, boundary, hot, sessionId, busy, latest, undoTurn } = state;
   const latestOnly = offer?.targets === "latestTurn";
   const available =
     offer &&
     (latestOnly ? undoTurn === turn.id : turn.conversationTarget === true) &&
     turn.ordinal > boundary &&
-    page.turns.some((row) => row.id === turn.id) &&
+    loaded &&
     sessionId === turn.sessionId &&
     hot &&
     turn.terminalAt != null &&

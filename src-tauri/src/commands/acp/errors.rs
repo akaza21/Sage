@@ -266,6 +266,9 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
         StoreError::RewindUnavailable { reason } => AcpIpcError::Rejected {
             message: safe_message(reason),
         },
+        StoreError::RepositoryBusy => AcpIpcError::Rejected {
+            message: safe_message(crate::repository_mutation_guard::TURN_BLOCKED),
+        },
         StoreError::Capacity { limit, .. } => AcpIpcError::Capacity {
             resource: AcpCapacityResource::History,
             limit,
