@@ -44,6 +44,7 @@ import {
   SEARCH_DEBOUNCE_MS,
   type PasswordImportReport,
 } from "./savedPasswords";
+import { findWarning, queryWarning } from "../../test/notice";
 
 const all = () => matchingSettingsEntryIds("", "passwords");
 const ADA = { id: "a1", origin: "https://example.com", username: "ada" };
@@ -146,7 +147,7 @@ it("keeps a password hidden when the OS confirmation fails", async () => {
   render(<SettingsPasswordsPage visible={all()} />);
   const row = await screen.findByRole("group", { name: "ada on example.com" });
   fireEvent.click(within(row).getByRole("button", { name: "Show" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Windows didn't confirm it's you",
   );
   expect(screen.queryByLabelText("Password for ada on example.com")).toBeNull();
@@ -630,7 +631,7 @@ it.each([
     expect(
       screen.queryByText(/Its results will appear when it finishes/),
     ).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(queryWarning()).toBeNull();
 
     if (phase === "next import") {
       await act(async () =>

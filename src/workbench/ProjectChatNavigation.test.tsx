@@ -411,6 +411,35 @@ it("pins and moves a chat that belongs to another project folder", async () => {
   expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
 });
 
+it("keeps a refused rename beside its field and out of the workbench error", async () => {
+  seedChats();
+  const renameChat = vi.fn(async () => {
+    useWorkbenchStore.setState({ error: "Chat names hold up to 256 bytes" });
+    return false;
+  });
+  useWorkbenchStore.setState({ renameChat });
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  await openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
+  const field = await screen.findByLabelText("New name for Alpha");
+  fireEvent.change(field, { target: { value: "Research" } });
+  await act(async () => fireEvent.submit(field.closest("form")!));
+  expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(field).toHaveAccessibleDescription(
+    "Warning: Chat names hold up to 256 bytes",
+  );
+  const form = field.closest("form")!;
+  expect(form.querySelectorAll(".notice--warning")).toHaveLength(1);
+  expect(document.querySelectorAll(".notice")).toHaveLength(1);
+  expect(useWorkbenchStore.getState().error).toBeNull();
+});
+
 it("labels the archived count separately and preserves disclosure semantics", async () => {
   useWorkbenchStore.setState({
     archivedChats: [{ id: "chat:old", title: "Research" }],

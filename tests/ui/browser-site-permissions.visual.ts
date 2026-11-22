@@ -11,7 +11,7 @@ for (const width of [1060, 780]) {
     await page.goto("/tests/ui/fixtures/browser-site-permissions.html");
     const group = page.getByRole("group", { name: "Site permissions" });
     const description = group.locator("#browser-site-permissions-description");
-    const warning = group.getByRole("alert").filter({
+    const warning = group.locator(".notice--warning").filter({
       hasText: "have not reloaded since an Allow ended",
     });
     await expect(description).toBeVisible();

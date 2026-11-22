@@ -14,6 +14,7 @@ import type { ResourceRef, RootRepositoryStatus } from "../domain/workbench";
 import { workspaceSearchDesktop } from "../features/search/workspaceSearchDesktop";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { RightSidebar } from "./RightSidebar";
+import { findWarning } from "../test/notice";
 
 const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
@@ -886,7 +887,7 @@ describe("RightSidebar Explorer New File", () => {
       { rootId: "root-a", relativePath: "src" },
       "new.ts",
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "File already exists.",
     );
     useWorkbenchStore.setState({ fileCreateInFlight: true });
@@ -978,7 +979,7 @@ describe("RightSidebar Explorer New Folder", () => {
       { rootId: "root-b", relativePath: "src" },
       "nested",
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "Folder already exists.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -1060,7 +1061,7 @@ describe("RightSidebar Explorer Rename File", () => {
     expect(screen.getByText("Path: Root A/src/new.ts")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(renameProjectFile).toHaveBeenLastCalledWith(source, "new.ts");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "Target already exists.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
@@ -1178,7 +1179,7 @@ describe("RightSidebar Explorer Rename File", () => {
       expect(projectPort.renameProjectFile).toHaveBeenCalled(),
     );
     act(() => rejectRename(new Error("Native rename failed safely.")));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "Native rename failed safely.",
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -1519,7 +1520,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
     expect(trashProjectResource).toHaveBeenLastCalledWith(source, "file");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "Trash operation is unavailable.",
     );
 

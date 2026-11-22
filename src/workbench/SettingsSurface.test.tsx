@@ -14,6 +14,7 @@ import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { DEFAULT_EDITOR_SETTINGS } from "../domain/editorSettingsCatalogue";
 import { SettingsSurface } from "./SettingsSurface";
+import { getWarning } from "../test/notice";
 
 const initial = useEditorSettingsStore.getState();
 
@@ -418,7 +419,7 @@ describe("SettingsSurface", () => {
 
     render(<SettingsSurface />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(getWarning()).toHaveTextContent(
       "Editor settings could not be saved.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -435,6 +436,9 @@ describe("SettingsSurface", () => {
 
     render(<SettingsSurface />);
 
-    expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+    expect(getWarning()).toHaveTextContent(
+      "Editor settings could not be saved.",
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

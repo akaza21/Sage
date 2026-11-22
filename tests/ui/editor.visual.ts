@@ -287,13 +287,13 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         persistenceMessage: "Editor settings could not be saved.",
       });
     });
-    await expect(settings.getByRole("alert")).toContainText(
+    await expect(settings.locator(".notice--warning")).toContainText(
       "Editor settings could not be saved.",
     );
     await expect(settings.getByRole("button", { name: "Retry" })).toBeVisible();
     await expect(workbench).toHaveScreenshot("editor-settings-save-error.png");
     await settings.getByRole("button", { name: "Retry" }).click();
-    await expect(settings.getByRole("alert")).toHaveCount(0);
+    await expect(settings.locator(".notice--warning")).toHaveCount(0);
 
     await page.setViewportSize({ width: 720, height: 560 });
     await page.getByRole("button", { name: "Hide left sidebar" }).click();

@@ -40,7 +40,7 @@ test("clear browsing data stays pending until explicitly confirmed", async ({
     await expect(trigger).toBeFocused();
     await expect(address).toHaveValue("en.wikipedia.org");
     await expect(page.getByText("Browsing data cleared.")).toHaveCount(0);
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.locator(".notice--warning")).toHaveCount(0);
   }
 
   await trigger.click();
@@ -50,5 +50,6 @@ test("clear browsing data stays pending until explicitly confirmed", async ({
   // This fixture runs without the desktop backend: only the explicit action
   // should attempt the operation and expose its unavailable-runtime error.
   await trigger.click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.locator(".notice--warning")).toHaveCount(1);
+  await expect(page.locator(".notice--warning")).toBeVisible();
 });

@@ -22,6 +22,7 @@ import { useAgentSettingsState } from "../settings/agentSettingsState";
 // file, so its first render does not race a cold import against a one-second
 // query.
 import "./BrowserNewTab";
+import { findWarning, queryWarning } from "../../test/notice";
 
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
@@ -156,7 +157,7 @@ it("shows a restored page creation failure locally and clears it on the next att
       name: "Open new browser",
     });
     fireEvent.click(open);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await findWarning()).toHaveTextContent(
       "Could not open the browser tab. Try again.",
     );
     expect(useWorkbenchStore.getState().error).toBe(
@@ -166,7 +167,7 @@ it("shows a restored page creation failure locally and clears it on the next att
       useWorkbenchStore.setState({ openBrowser: async () => undefined }),
     );
     fireEvent.click(open);
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(queryWarning()).toBeNull());
   } finally {
     useWorkbenchStore.setState(previous, true);
   }
@@ -469,7 +470,7 @@ it("rejects page capture if navigation changes before attachment", async () => {
   fireEvent.click(
     await screen.findByRole("button", { name: "Ask about this page" }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Browser page or focused chat changed",
   );
   expect(
@@ -527,7 +528,7 @@ it.each([
     zoomPercent: 100,
   });
   fireEvent.click(ask);
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Browser page or focused chat changed",
   );
   expect(browserPageContext).toHaveBeenCalledWith(tab.id, "1");
@@ -572,7 +573,7 @@ it("rejects captured page if the user switches tabs during capture", async () =>
       text: "Old text",
     }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Browser page or focused chat changed",
   );
   expect(
@@ -1021,7 +1022,7 @@ it("shows a failed attach in the surface's error row and clears it on a successf
   });
   await waitFor(() => expect(attach).toBeEnabled());
   fireEvent.click(attach);
-  const error = await screen.findByRole("alert");
+  const error = await findWarning();
   expect(error).toHaveTextContent(
     "Could not attach this tab to the selected chat.",
   );
@@ -1033,7 +1034,7 @@ it("shows a failed attach in the surface's error row and clears it on a successf
 
   fireEvent.click(attach);
   await screen.findByRole("button", { name: "Detach tab from chat" });
-  expect(screen.queryByRole("alert")).toBeNull();
+  expect(queryWarning()).toBeNull();
   useWorkbenchStore.setState({
     project: previous.project,
     tabs: previous.tabs,

@@ -195,7 +195,7 @@ async function settingsContained(page: Page) {
         "Editor settings could not be saved. Your changes remain in this window; retry when storage is available.",
     });
   });
-  const error = settings.getByRole("alert");
+  const error = settings.locator(".notice--warning");
   await error.scrollIntoViewIfNeeded();
   expectInside(await expectContained(error, page), surface);
   await expectHitTarget(error.getByRole("button", { name: "Retry" }), page);

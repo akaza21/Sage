@@ -142,15 +142,20 @@ export function ProjectChatNavigation({
     event.preventDefault();
     setRenameError(null);
     setRenameSaving(true);
+    // renameChat clears the workbench error too; this keeps its failure ours.
+    if (useWorkbenchStore.getState().phase !== "error")
+      useWorkbenchStore.setState({ error: null });
     const committed = await renameChat(chatId, renameDraft, projectId);
     setRenameSaving(false);
     if (committed) {
       closeRename(chatId);
       return;
     }
-    setRenameError(
-      useWorkbenchStore.getState().error ?? "Chat rename could not be saved",
-    );
+    // The rename's own failure moves beside its field; nothing else repeats it.
+    const { error, phase } = useWorkbenchStore.getState();
+    const own = phase === "error" ? null : error;
+    if (own) useWorkbenchStore.setState({ error: null });
+    setRenameError(own ?? "Chat rename could not be saved");
   };
 
   return (

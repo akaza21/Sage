@@ -58,7 +58,6 @@ beforeEach(() => {
     ],
     activeTabId: "browser-clear-test",
     error: null,
-    browserClearNotice: null,
   });
 });
 
@@ -70,10 +69,16 @@ afterEach(() => {
     tabs: original.tabs,
     activeTabId: original.activeTabId,
     error: original.error,
-    browserClearNotice: original.browserClearNotice,
     activateChat: original.activateChat,
   });
 });
+
+async function warning() {
+  await waitFor(() =>
+    expect(document.querySelector(".notice--warning")).not.toBeNull(),
+  );
+  return document.querySelector(".notice--warning");
+}
 
 function confirmClear() {
   fireEvent.click(screen.getByRole("button", { name: "Clear browsing data" }));
@@ -106,7 +111,6 @@ it("keeps browsing state unchanged when clearing is cancelled", async () => {
   expect(useWorkbenchStore.getState().tabs.map((tab) => tab.id)).toEqual([
     "browser-clear-test",
   ]);
-  expect(useWorkbenchStore.getState().browserClearNotice).toBeNull();
 });
 
 it("removes natively closed tabs without closing them twice", async () => {
@@ -135,15 +139,49 @@ it("reports a partial clear failure after reconciling closed tabs", async () => 
   });
   render(<BrowserClearData />);
   confirmClear();
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "WebView2 clearing failed",
-  );
-  expect(useWorkbenchStore.getState().error).toBe("WebView2 clearing failed");
+  expect(await warning()).toHaveTextContent("WebView2 clearing failed");
+  expect(useWorkbenchStore.getState().error).toBeNull();
   expect(
     useWorkbenchStore
       .getState()
       .tabs.some((tab) => tab.id === "browser-clear-test"),
   ).toBe(false);
+});
+
+it("explains a failed clear once, at the control that started it", async () => {
+  browserClearData.mockResolvedValue({
+    closedTabIds: [],
+    cleared: false,
+    error: "WebView2 clearing failed",
+  });
+  render(
+    <>
+      <section aria-label="Settings">
+        <BrowserClearData />
+      </section>
+      <section aria-label="History">
+        <BrowserClearData />
+      </section>
+      <StatusBar showEditorSettings={false} />
+    </>,
+  );
+  const history = screen.getByRole("region", { name: "History" });
+  fireEvent.click(
+    within(history).getByRole("button", { name: "Clear browsing data" }),
+  );
+  fireEvent.click(
+    within(
+      screen.getByRole("dialog", { name: "Clear browsing data?" }),
+    ).getByRole("button", { name: "Clear browsing data" }),
+  );
+  await waitFor(() =>
+    expect(history.querySelector(".notice--warning")).toHaveTextContent(
+      "WebView2 clearing failed",
+    ),
+  );
+  expect(document.querySelectorAll(".notice")).toHaveLength(1);
+  expect(screen.getAllByText("WebView2 clearing failed")).toHaveLength(1);
+  expect(useWorkbenchStore.getState().error).toBeNull();
 });
 
 it("reports a pending clear failure when WebView2 finishes later", async () => {
@@ -163,10 +201,9 @@ it("reports a pending clear failure when WebView2 finishes later", async () => {
   act(() =>
     clearDataEvent?.({ cleared: false, error: "WebView2 clearing failed" }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "WebView2 clearing failed",
-  );
-  expect(useWorkbenchStore.getState().error).toBe("WebView2 clearing failed");
+  expect(await warning()).toHaveTextContent("WebView2 clearing failed");
+  expect(screen.queryByText(/still clearing/)).not.toBeInTheDocument();
+  expect(useWorkbenchStore.getState().error).toBeNull();
   expect(
     screen.getByRole("button", { name: "Clear browsing data" }),
   ).toBeEnabled();
@@ -196,9 +233,7 @@ it("clears pending state when WebView2 succeeds later", async () => {
   expect(useWorkbenchStore.getState().error).toBeNull();
   view.unmount();
   render(<StatusBar showEditorSettings={false} />);
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Browsing data cleared.",
-  );
+  expect(screen.queryByText("Browsing data cleared.")).toBeNull();
 });
 
 it("keeps an early completion when it arrives before the command reply", async () => {
@@ -243,9 +278,8 @@ it("reports a late failure after the closed browser surface unmounts", async () 
   });
   const view = render(<BrowserClearData />);
   confirmClear();
-  await waitFor(() =>
-    expect(useWorkbenchStore.getState().error).toContain("still clearing"),
-  );
+  expect(await screen.findByText(/still clearing/)).toBeInTheDocument();
+  expect(useWorkbenchStore.getState().error).toBeNull();
   view.unmount();
   act(() =>
     clearDataEvent?.({ cleared: false, error: "WebView2 clearing failed" }),
@@ -354,7 +388,7 @@ it("says plainly that nothing was cleared where WebView2 is unavailable", async 
   });
   render(<BrowserClearData />);
   confirmClear();
-  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(await warning()).toHaveTextContent(message);
   expect(
     useWorkbenchStore
       .getState()

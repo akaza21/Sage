@@ -44,6 +44,7 @@ vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
 import { resetBrowserPreferencesForTests } from "../../features/browser/browserPreferencesStore";
 import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { SettingsBrowserPage } from "./SettingsBrowserPage";
+import { findWarning, queryWarning } from "../../test/notice";
 
 const all = () => matchingSettingsEntryIds("", "browser");
 
@@ -99,7 +100,7 @@ it("loads the stored choice and saves a change through Rust", async () => {
 it("keeps the toggle disabled and says why when loading fails", async () => {
   getPreferences.mockRejectedValue(new Error("unavailable"));
   render(<SettingsBrowserPage visible={all()} />);
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Browser settings could not be loaded.",
   );
   expect(screen.getByRole("switch", { name: "Show full URL" })).toBeDisabled();
@@ -108,7 +109,7 @@ it("keeps the toggle disabled and says why when loading fails", async () => {
   await vi.waitFor(() =>
     expect(screen.getByRole("switch", { name: "Show full URL" })).toBeChecked(),
   );
-  expect(screen.queryByRole("alert")).toBeNull();
+  expect(queryWarning()).toBeNull();
 });
 
 it("hides entries the search filtered out", () => {
@@ -211,7 +212,7 @@ it("says so when developer mode cannot be changed, and keeps Rust's value", asyn
     name: "Enable CDP access",
   });
   fireEvent.click(toggle);
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Couldn't change developer mode. Try again.",
   );
   expect(toggle).not.toBeChecked();

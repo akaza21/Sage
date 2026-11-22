@@ -485,7 +485,7 @@ test("a narrow browser toolbar keeps the address usable and every action reachab
     // Attach behaves the same wherever it is: the fixture has no native
     // browser, so the attempt reports its failure.
     await page.getByRole("button", { name: "Attach tab to chat" }).click();
-    await expect(page.getByRole("alert")).toHaveText(
+    await expect(page.locator(".browser-surface__notice")).toContainText(
       "Could not attach this tab to the selected chat.",
     );
 
@@ -717,21 +717,12 @@ test("an attach error shows above the native page, never behind it", async ({
   await expect.poll(() => lastPlacement(page)).toBeTruthy();
 
   await surface.getByRole("button", { name: "Attach tab to chat" }).click();
-  const error = surface.getByRole("alert");
-  await expect(error).toHaveText(
+  const error = surface.locator(".browser-surface__notice");
+  await expect(error).toContainText(
     "Could not attach this tab to the selected chat.",
   );
-  // It reads as an error, in the danger text colour.
-  expect(await error.evaluate((node) => getComputedStyle(node).color)).toBe(
-    await page.evaluate(() => {
-      const probe = document.createElement("span");
-      probe.style.color = "var(--color-danger)";
-      document.body.append(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    }),
-  );
+  // It reads as a quiet warning beside the toolbar, not a danger banner.
+  await expect(error.locator(".notice")).toHaveClass(/notice--warning/);
   const shown = await bounds(error);
   // The native page is a window above Sage's DOM: whatever it covers is
   // hidden, so it must be placed wholly below the error.

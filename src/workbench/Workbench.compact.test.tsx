@@ -26,6 +26,7 @@ import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useSideChatState } from "./sideChatState";
 import { useAgentChangesState } from "./agentChangesState";
+import { findWarning } from "../test/notice";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -843,12 +844,14 @@ describe("compact Workbench project tools", () => {
       resolveRename(false);
     });
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(
+    const warning = await findWarning(input.closest("form")!);
+    expect(warning).toHaveTextContent(
       "Chat title must not be empty after trimming",
     );
     expect(input).toHaveAttribute("aria-invalid", "true");
-    expect(input).toHaveAttribute("aria-describedby", alert.id);
+    expect(input).toHaveAccessibleDescription(
+      "Warning: Chat title must not be empty after trimming",
+    );
     expect(input).not.toBeDisabled();
     expect(input).toHaveFocus();
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");

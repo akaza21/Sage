@@ -57,11 +57,13 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
   );
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
 
-  const alert = screen.getByRole("alert");
-  expect(alert).toHaveTextContent(
+  const notice = document.querySelector(".chat-row-error .notice--warning")!;
+  // The refusal stays on its own row, not in a workbench-wide banner.
+  expect(notice.closest(".archived-chat-row")).toHaveTextContent("Research");
+  expect(notice).toHaveTextContent(
     "Stop this Chat's running turn before deleting it",
   );
-  expect(alert).not.toHaveTextContent(/invalid request/i);
+  expect(notice).not.toHaveTextContent(/invalid request/i);
   expect(
     screen.getByRole("button", { name: "Delete chat Research" }),
   ).toHaveAccessibleDescription(
@@ -77,9 +79,9 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
   expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a", "row");
 
   fireEvent.click(
-    screen.getByRole("button", { name: "Dismiss error for Research" }),
+    screen.getByRole("button", { name: "Dismiss" }),
   );
-  expect(screen.queryByRole("alert")).toBeNull();
+  expect(document.querySelector(".chat-row-error")).toBeNull();
   expect(
     screen.getByRole("button", { name: "Delete chat Research" }),
   ).toHaveFocus();
@@ -102,7 +104,7 @@ it("returns focus to Restore after dismissing a refused restore", () => {
   );
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(
-    screen.getByRole("button", { name: "Dismiss error for Research" }),
+    screen.getByRole("button", { name: "Dismiss" }),
   );
   expect(
     screen.getByRole("button", { name: "Restore chat Research" }),

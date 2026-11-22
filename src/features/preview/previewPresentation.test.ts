@@ -25,10 +25,22 @@ describe("Preview presentation semantics", () => {
         label: previewPhaseLabel(phase),
       })),
     ).toEqual([
-      "Finding runnable preview targets for this chat.",
-      "Launching the selected Preview process.",
-      "The process started. Waiting for its safe loopback address.",
-      "The loopback server responded. Confirming it is ready.",
+      {
+        detail: "Finding runnable preview targets for this chat.",
+        label: "Discovering targets",
+      },
+      {
+        detail: "Launching the selected Preview process.",
+        label: "Starting process",
+      },
+      {
+        detail: "The process started. Waiting for its safe loopback address.",
+        label: "Waiting for origin",
+      },
+      {
+        detail: "The loopback server responded. Confirming it is ready.",
+        label: "Checking health",
+      },
     ]);
   });
 
