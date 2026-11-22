@@ -166,7 +166,6 @@ fn a_new_session_sends_exactly_one_catalog_read() {
         batch.events(),
         [AdapterEvent::SessionReady { loaded: false, .. }, ..]
     ));
-    assert!(runtime.available_commands().advertised());
     while let Some(egress) = runtime.discover_commands().unwrap() {
         written(&mut runtime, egress);
     }

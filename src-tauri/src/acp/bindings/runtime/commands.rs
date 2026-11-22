@@ -38,17 +38,13 @@ impl NativeRuntime {
         Ok(egress)
     }
 
-    /// `advertised`: the session had a catalog before this batch, so a ready event is a
-    /// resume or fork of a live session rather than a new one whose first read is pending.
-    pub(super) fn follow_catalog_triggers(&self, batch: &AdapterBatch, advertised: bool) {
+    pub(super) fn follow_catalog_triggers(&self, batch: &AdapterBatch) {
         let commands = self.0.available_commands();
         for event in batch.events() {
-            match event {
-                AdapterEvent::SessionReady { .. } if advertised => commands.request_refresh(),
-                AdapterEvent::Turn { state, .. } if state.is_terminal() => {
-                    commands.turn_completed()
-                }
-                _ => {}
+            if let AdapterEvent::Turn { state, .. } = event
+                && state.is_terminal()
+            {
+                commands.turn_completed();
             }
         }
     }

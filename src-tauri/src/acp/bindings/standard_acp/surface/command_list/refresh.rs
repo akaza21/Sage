@@ -1,10 +1,6 @@
 use super::CommandState;
 
 impl CommandState {
-    /// Whether this session has published a catalog (revision 0 means never).
-    pub(crate) fn advertised(&self) -> bool {
-        self.revision().is_some_and(|revision| revision > 0)
-    }
     pub(crate) fn refresh_after_turn(&self) {
         if let Some(list) = self
             .0
