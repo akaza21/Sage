@@ -94,10 +94,6 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
-const COMMAND_DYNAMIC_FACADES = [
-  // The typed command route loads with the first `/name` sent.
-  "src/features/chat/slashCommandTurn.ts",
-];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   // The draft actions (and the navigation they use) load with the first
   // new-chat draft.
@@ -156,7 +152,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/ProjectChatNavigation.tsx",
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
-  ...COMMAND_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
@@ -1083,6 +1078,27 @@ describe("desktop-native chunk topology", () => {
       }
     }
     const panel = "src/features/chat/ComposerCommandPanel.tsx";
+    const commandRuntime = "src/features/chat/ComposerCommandRuntime.tsx";
+    const commandRuntimeFile = groupedGraph.moduleFiles.get(commandRuntime);
+    expect(commandRuntimeFile).toBeDefined();
+    for (const module of [
+      "src/features/chat/slashCommandTurn.ts",
+      "src/features/chat/slashCommandPicks.ts",
+      "src/services/acpCommandsDesktop.ts",
+      "src/domain/acpCommandPlacement.ts",
+    ]) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(
+        commandRuntimeFile,
+      );
+      for (const root of [workbench, agent]) {
+        expect(
+          closureForModule(groupedGraph, root).some((id) =>
+            id.endsWith(module),
+          ),
+          `${root}: ${module}`,
+        ).toBe(false);
+      }
+    }
     const mcp = "src/features/chat/ComposerMcpServers.tsx";
     expect(groupedGraph.moduleFiles.get(mcp)).toBe(
       groupedGraph.moduleFiles.get(panel),
