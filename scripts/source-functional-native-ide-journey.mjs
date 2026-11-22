@@ -910,7 +910,7 @@ export const UI_PROBES = Object.freeze({
   insertConflictEdit:
     '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// SAGE_CONFLICT_EDIT native recovery\\n")})()',
   conflictVisible:
-    "(()=>{const groups=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"] [role=\"group\"][aria-label=\"External change\"]')];return groups.length===1&&groups[0].innerText.includes('This file changed outside Sage.')})()",
+    '(()=>{const groups=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] [role="group"][aria-label="External change"]\')];return groups.length===1&&groups[0].innerText.includes(\'This file changed outside Sage.\')})()',
   closeDirtyFile:
     "(()=>{const tabs=[...document.querySelectorAll('.tab')].filter(x=>x.querySelector('.file-kind-icon')&&x.textContent.includes('journey.ts'));if(tabs.length!==1)return false;const buttons=[...tabs[0].querySelectorAll('button[aria-label=\"Close journey.ts\"]')];if(buttons.length!==1)return false;buttons[0].click();return true})()",
   dirtyDialogVisible:
