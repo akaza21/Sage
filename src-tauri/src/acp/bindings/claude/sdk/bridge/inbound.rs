@@ -78,6 +78,7 @@ impl SdkBridge {
                 Pending::Control => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
+                Pending::ForkAt(_, turn) => self.forked_at(None, turn.as_str(), inbound),
                 Pending::Withdraw(uuid) => self.withdrawn(uuid, None, inbound),
                 _ => {}
             }
@@ -162,6 +163,9 @@ impl SdkBridge {
             Pending::Passive(request) => request.answered(Ok(reply), inbound),
             Pending::Abandoned => {}
             Pending::Fork(config) => self.forked(config.as_deref(), inbound),
+            Pending::ForkAt(config, turn) => {
+                self.forked_at(config.as_deref(), turn.as_str(), inbound)
+            }
         }
         Ok(())
     }
@@ -386,7 +390,8 @@ impl Pending {
             | Self::Control
             | Self::Passive(_)
             | Self::Abandoned
-            | Self::Fork(_) => None,
+            | Self::Fork(_)
+            | Self::ForkAt(..) => None,
         }
     }
 }

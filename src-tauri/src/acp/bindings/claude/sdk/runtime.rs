@@ -412,7 +412,7 @@ mod delivery;
 mod inbound;
 use inbound::settling;
 #[path = "runtime_native.rs"]
-mod native;
+pub(super) mod native;
 use native::sdk_capabilities;
 #[path = "runtime_oversize.rs"]
 mod oversize;

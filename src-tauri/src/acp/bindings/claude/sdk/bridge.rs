@@ -89,6 +89,10 @@ enum Pending {
     /// A fork, with Claude Code's profile to read the cut point from once
     /// its reply confirms the turn's transcript is written.
     Fork(Option<std::path::PathBuf>),
+    ForkAt(
+        Option<std::path::PathBuf>,
+        sage_acp_protocol::contract::SageTurnId,
+    ),
 }
 
 #[derive(Debug)]

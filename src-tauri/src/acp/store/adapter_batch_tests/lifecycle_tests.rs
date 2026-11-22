@@ -5,10 +5,12 @@ fn running_correlates_the_send_and_wait_states_preserve_delivery() {
     let mut fixture = fixture();
     let events = vec![
         AdapterInboundEvent::Turn {
+            native_turn_id: None,
             state: TurnState::Running,
             now_millis: 6,
         },
         AdapterInboundEvent::Turn {
+            native_turn_id: None,
             state: TurnState::WaitingModel,
             now_millis: 7,
         },
@@ -39,6 +41,7 @@ fn running_correlates_the_send_and_wait_states_preserve_delivery() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::WaitingModel,
                 now_millis: 8,
             }],
@@ -53,6 +56,7 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
     let mut fixture = fixture();
     let events = vec![
         AdapterInboundEvent::Turn {
+            native_turn_id: None,
             state: TurnState::Running,
             now_millis: 6,
         },
@@ -114,6 +118,7 @@ fn usage_snapshots_replace_context_window_and_never_create_transcript_items() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Running,
                 now_millis: 6,
             }],
@@ -195,6 +200,7 @@ fn first_terminal_wins_and_a_conflicting_terminal_fails_closed() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Running,
                 now_millis: 6,
             }],
@@ -204,6 +210,7 @@ fn first_terminal_wins_and_a_conflicting_terminal_fails_closed() {
     let completed = batch(
         &fixture.owner,
         vec![AdapterInboundEvent::Turn {
+            native_turn_id: None,
             state: TurnState::Completed,
             now_millis: 7,
         }],
@@ -220,6 +227,7 @@ fn first_terminal_wins_and_a_conflicting_terminal_fails_closed() {
             batch(
                 &fixture.owner,
                 vec![AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Failed,
                     now_millis: 8
                 }]
@@ -263,10 +271,12 @@ fn deferred_running_after_cancel_keeps_the_interrupted_terminal() {
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 7,
                 },
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Interrupted,
                     now_millis: 8,
                 },
@@ -310,6 +320,7 @@ fn adapter_cancelled_after_a_durable_user_cancel_projects_user_attribution() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Cancelled,
                 now_millis: 7,
             }],
@@ -337,6 +348,7 @@ fn adapter_cancelled_without_a_durable_user_cancel_keeps_reason_unattributed() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Cancelled,
                 now_millis: 6,
             }],

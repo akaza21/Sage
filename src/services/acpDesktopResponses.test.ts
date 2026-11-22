@@ -25,7 +25,12 @@ function session(index = 0, overrides: Record<string, unknown> = {}): object {
       closeSession: true,
       prompt: true,
       cancel: true,
-      nativeSessionFork: false,
+      rewind: {
+        effects: { conversation: false, files: false },
+        targets: "latestTurn",
+        forkAt: false,
+        onResume: false,
+      },
       activeTurnSteer: false,
       childConversationProjection: false,
       childTranscriptRead: false,

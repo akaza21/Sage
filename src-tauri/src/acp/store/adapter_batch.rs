@@ -74,6 +74,7 @@ pub(crate) struct ChildLiveItemCommand {
 pub(crate) enum AdapterInboundEvent {
     Turn {
         state: TurnState,
+        native_turn_id: Option<ExternalId>,
         now_millis: i64,
     },
     Item(ItemIngressCommand),
@@ -306,7 +307,14 @@ fn apply_event(
     event: &AdapterInboundEvent,
 ) -> Result<bool, StoreError> {
     match event {
-        AdapterInboundEvent::Turn { state, now_millis } => {
+        AdapterInboundEvent::Turn {
+            native_turn_id,
+            state,
+            now_millis,
+        } => {
+            if let Some(native_turn_id) = native_turn_id {
+                super::rewind::record_native_turn(transaction, owner, native_turn_id, *now_millis)?;
+            }
             Ok(
                 turns::apply(transaction, owner, *state, *now_millis)?.disposition
                     == MutationDisposition::Applied,
@@ -395,9 +403,9 @@ fn now_millis(events: &[AdapterInboundEvent]) -> i64 {
     events
         .iter()
         .filter_map(|event| match event {
-            AdapterInboundEvent::Turn { state, now_millis } if user_cancel_terminal(*state) => {
-                Some(*now_millis)
-            }
+            AdapterInboundEvent::Turn {
+                state, now_millis, ..
+            } if user_cancel_terminal(*state) => Some(*now_millis),
             _ => None,
         })
         .max()

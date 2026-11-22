@@ -76,7 +76,11 @@ fn unclassified_and_legacy_notice_identities_stay_stable_as_the_surface_changes(
 }
 
 fn turn(state: TurnState, now_millis: i64) -> AdapterInboundEvent {
-    AdapterInboundEvent::Turn { state, now_millis }
+    AdapterInboundEvent::Turn {
+        native_turn_id: None,
+        state,
+        now_millis,
+    }
 }
 
 fn surface(fixture: &Fixture) -> SessionSurface {

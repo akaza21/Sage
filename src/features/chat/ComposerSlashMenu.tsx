@@ -1,3 +1,5 @@
+import type * as CommandRuntime from "./ComposerCommandRuntime";
+import { lazyParts } from "./lazyParts";
 import {
   useEffect,
   useLayoutEffect,
@@ -5,9 +7,9 @@ import {
   type ComponentProps,
   type RefObject,
 } from "react";
-import {
-  type AcpCommandSource,
-  type AvailableAcpCommand,
+import type {
+  AcpCommandSource,
+  AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import {
   suggestionOptionId,
@@ -18,13 +20,11 @@ import {
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
-import type { CommandLoad as Load } from "./ComposerCommandRefresh";
-import type * as RefreshChunk from "./ComposerCommandRefresh";
-import { lazyParts } from "./lazyParts";
 import { SuggestionsPart } from "./composerSuggestionsPart";
 import { SlashCommandIcon } from "./SlashCommandIcon";
 import type { PickedSlashCommand } from "./composerSlashCommand";
 
+import type { SessionCommandsLoad } from "./useSessionCommands";
 /**
  * Rows each section shows before typing, so every source stays in view:
  * seven sources of seven rows fit the list's 50 rendered rows.
@@ -108,7 +108,7 @@ function suggestion(
 }
 
 function menuState(
-  load: Load | null,
+  load: SessionCommandsLoad | null,
   query: string,
   matches: number,
 ): TextFieldSuggestionsState {
@@ -143,14 +143,9 @@ function menuState(
   return { kind: "ready" };
 }
 
-const RefreshPart = lazyParts<typeof RefreshChunk>(
-  () => import("./ComposerCommandRefresh"),
-);
-
-function MenuContent({
+function ComposerSlashList({
   load,
   anchorRef,
-  boundChatId,
   keyHandlerRef,
   listboxId,
   onActiveOptionChange,
@@ -160,7 +155,7 @@ function MenuContent({
   onStatusChange,
   query,
 }: {
-  load: Load | null;
+  load: SessionCommandsLoad | null;
   anchorRef: RefObject<HTMLElement | null>;
   boundChatId?: string;
   keyHandlerRef: RefObject<((event: SuggestionKeyEvent) => boolean) | null>;
@@ -254,16 +249,14 @@ function MenuContent({
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
-        more > 0 || omitted > 0 || load?.kind === "ready" ? (
-          <RefreshPart
-            part="ComposerCommandRefresh"
-            more={more}
-            omitted={omitted}
-            boundChatId={boundChatId}
-            owner={load?.kind === "ready" ? load.owner : null}
-            pending={load?.kind === "ready" && load.list.pending === true}
-            onStatusChange={onStatusChange}
-          />
+        more > 0 || omitted > 0 ? (
+          <>
+            {more > 0 && <span>and {more} more, type to search</span>}
+            {more > 0 && omitted > 0 && <br />}
+            {omitted > 0 && (
+              <span>Catalog truncated: {omitted} commands not shown</span>
+            )}
+          </>
         ) : undefined
       }
       ariaLabel="Slash commands"
@@ -279,12 +272,20 @@ function MenuContent({
   );
 }
 
+const CatalogPart = lazyParts<typeof CommandRuntime>(
+  () => import("./ComposerCommandRuntime"),
+);
 export function ComposerSlashMenu(
-  props: Omit<ComponentProps<typeof MenuContent>, "load">,
+  props: Omit<ComponentProps<typeof ComposerSlashList>, "load">,
 ) {
+  const owner = props.boundChatId;
   return (
-    <RefreshPart part="ComposerCommandCatalog" boundChatId={props.boundChatId}>
-      {(load) => <MenuContent {...props} load={load} />}
-    </RefreshPart>
+    <CatalogPart
+      part="ComposerCommandCatalog"
+      boundChatId={owner}
+      fallback={<ComposerSlashList {...props} load={{ kind: "loading" }} />}
+    >
+      {(load) => <ComposerSlashList {...props} load={load} />}
+    </CatalogPart>
   );
 }

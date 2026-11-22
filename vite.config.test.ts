@@ -77,6 +77,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAttach.tsx",
   "src/features/chat/ComposerAccessMenu.tsx",
   "src/features/chat/ComposerAddActions.tsx",
+  "src/features/chat/ComposerSectionMenu.tsx",
+  "src/features/chat/ComposerCommandRuntime.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
   // The Thinking level a new chat chooses before its first session loads
@@ -203,7 +205,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Pasted-text staging, chips and messages load with a native chat's
   // composer or over-cap input; only the size check stays eager.
   "src/features/chat/ComposerPaste.tsx",
-  "src/features/chat/ForkChat.tsx",
+  "src/features/chat/ConversationActions.tsx",
   // An imported session's history and the session picker load on first use.
   "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
@@ -793,6 +795,35 @@ describe("desktop-native chunk topology", () => {
         graph.initialModules.some((id) => id.endsWith(module)),
         module,
       ).toBe(false);
+    }
+    const conversationDetails = [
+      "src/features/chat/ForkChat.tsx",
+      "src/features/chat/RewindChatDialog.tsx",
+      "src/features/chat/UserMessageActions.tsx",
+      "src/features/chat/conversationActionAvailability.ts",
+      "src/features/chat/ForkHistory.tsx",
+    ];
+    const conversation = closureForModule(
+      graph,
+      "src/features/chat/ConversationActions.tsx",
+    );
+    const messageTrigger = closureForModule(
+      graph,
+      "src/features/chat/MessageActionsTrigger.tsx",
+    );
+    for (const module of conversationDetails) {
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        messageTrigger.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        conversation.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
     }
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(

@@ -8,22 +8,20 @@ impl AcpService {
     pub(super) fn turn_undo(
         &self,
         owner: &RuntimeOwner,
-        binding: &str,
+        capabilities: &sage_acp_protocol::intent::CapabilitySnapshotV1,
         turn: &str,
-        turn_epoch: u64,
     ) -> Result<Option<TurnUndo>, StoreError> {
-        let Some(undo) =
-            TurnUndo::of(binding).filter(|undo| undo.offers(owner.runtime_epoch.get(), turn_epoch))
-        else {
+        let Some(undo) = TurnUndo::from_capability(capabilities.rewind) else {
             return Ok(None);
         };
         let withheld = crate::acp::store::turn_undo::undo_withheld(
             &self.database.connection(),
-            owner.project_id.as_str(),
-            owner.chat_id.as_str(),
             owner.session_id.as_str(),
             turn,
-            undo.reverts_thread,
+            capabilities
+                .rewind
+                .runtime_checkpoint
+                .then_some(owner.runtime_epoch.get()),
         )?;
         Ok((!withheld).then_some(undo))
     }
@@ -50,17 +48,16 @@ impl AcpService {
         )? {
             return Ok(None);
         }
-        let (binding, turn_epoch): (String, i64) = connection.query_row(
-            "SELECT s.binding_id,t.runtime_epoch FROM agent_sessions s
-             JOIN turns t ON t.session_id=s.id AND t.id=?4
+        let capabilities: String = connection.query_row(
+            "SELECT s.capabilities_json FROM agent_sessions s
              WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3",
-            rusqlite::params![project, chat, session, turn.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            rusqlite::params![project, chat, session],
+            |row| row.get(0),
         )?;
         drop(connection);
-        let turn_epoch =
-            u64::try_from(turn_epoch).map_err(|_| StoreError::Corrupt("turn epoch"))?;
-        self.turn_undo(owner, &binding, turn.as_str(), turn_epoch)
+        let capabilities = serde_json::from_str(&capabilities)
+            .map_err(|_| StoreError::Corrupt("rewind capabilities"))?;
+        self.turn_undo(owner, &capabilities, turn.as_str())
     }
 
     /// Persist the resolved plan before native IO, then settle the effect and
@@ -71,12 +68,57 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
+        self.apply_rewind(owner, turn_id, false).await
+    }
+
+    pub(crate) async fn rewind_conversation(
+        &self,
+        owner: &RuntimeOwner,
+        before: SageTurnId,
+    ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
+        self.apply_rewind(owner, before, true).await
+    }
+
+    async fn apply_rewind(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: SageTurnId,
+        mut conversation_only: bool,
+    ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
         let claim = self.claim_undo_lane(owner)?;
-        let unknown = |_| SessionControlError::RecoveryRequired;
-        let undo = self
-            .undoable_turn(owner, &turn_id)
-            .map_err(unknown)?
-            .ok_or(SessionControlError::Unavailable)?;
+        crate::acp::store::turn_undo::intent::ensure_settled(
+            &self.database.connection(),
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+        )
+        .map_err(|_| SessionControlError::RecoveryRequired)?;
+
+        let undo = if conversation_only {
+            let json: String = self
+                .database
+                .connection()
+                .query_row(
+                    "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                    [owner.session_id.as_str()],
+                    |r| r.get(0),
+                )
+                .map_err(|_| SessionControlError::RecoveryRequired)?;
+            let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
+                serde_json::from_str(&json).map_err(|_| SessionControlError::Unavailable)?;
+            if capabilities.rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
+                conversation_only = false;
+                self.undoable_turn(owner, &turn_id)
+                    .map_err(|_| SessionControlError::RecoveryRequired)?
+                    .ok_or(SessionControlError::Unavailable)?
+            } else {
+                TurnUndo::from_capability(capabilities.rewind)
+                    .ok_or(SessionControlError::Unavailable)?
+            }
+        } else {
+            self.undoable_turn(owner, &turn_id)
+                .map_err(|_| SessionControlError::RecoveryRequired)?
+                .ok_or(SessionControlError::Unavailable)?
+        };
         let (binding, external): (String, String) = self
             .database
             .connection()
@@ -88,21 +130,14 @@ impl AcpService {
             .map_err(|_| SessionControlError::RecoveryRequired)?;
         let binding = sage_acp_protocol::intent::BindingId::new("bindingId", binding)
             .map_err(|_| SessionControlError::RecoveryRequired)?;
-        let command = stage_turn_undo(
-            &self.database,
-            owner,
-            turn_id.clone(),
-            undo.reverts_thread,
-            || {
+        let (command, control) =
+            self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, || {
                 self.resolve_session_binding(&binding)
-                    .map_err(|_| crate::acp::bindings::claude::sdk::TranscriptError::Unreadable)?
+                    .map_err(|_| "The conversation transcript is unavailable.".to_owned())?
                     .undo_cut(&external, turn_id.as_str())
-            },
-        )?;
-        let summary = match self.control_session(
-            owner.clone(),
-            sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id },
-        ) {
+                    .map_err(|error| error.to_string())
+            })?;
+        let summary = match self.control_session(owner.clone(), control) {
             Ok(summary) => summary,
             Err(error) => {
                 if matches!(
@@ -157,6 +192,55 @@ impl AcpService {
             tracing::warn!(?refusal, "the runtime that undid a turn is not yet parked");
         }
         Ok(summary)
+    }
+
+    /// Resolve target eligibility only for the new conversation operation.
+    /// Last-turn undo retains the binding's own checkpoint/identity resolver.
+    fn prepare_rewind<E: std::fmt::Display>(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: SageTurnId,
+        undo: TurnUndo,
+        conversation_only: bool,
+        resolve_cut: impl FnOnce() -> Result<Option<String>, E>,
+    ) -> Result<
+        (
+            crate::acp::store::TurnUndoneCommand,
+            sage_acp_protocol::session_control::SessionControl,
+        ),
+        SessionControlError,
+    > {
+        let control = if conversation_only {
+            let target = crate::acp::store::rewind::target(
+                &self.database.connection(),
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                turn_id.as_str(),
+            )
+            .map_err(|error| match error {
+                StoreError::RewindUnavailable { reason } => SessionControlError::Refused(
+                    sage_acp_protocol::contract::SafeText::new("controlSummary", reason).ok(),
+                ),
+                _ => SessionControlError::Unavailable,
+            })?;
+            sage_acp_protocol::session_control::SessionControl::RewindConversation {
+                before: target,
+            }
+        } else {
+            sage_acp_protocol::session_control::SessionControl::UndoTurn {
+                turn_id: turn_id.clone(),
+            }
+        };
+        let command = stage_turn_undo(
+            &self.database,
+            owner,
+            turn_id,
+            undo.reverts_thread,
+            conversation_only,
+            resolve_cut,
+        )?;
+        Ok((command, control))
     }
 
     fn recover_undo_runtime(&self, owner: &RuntimeOwner) {
@@ -248,37 +332,20 @@ pub(crate) enum UndoneRelaunchError {
     Activation(CodexSessionError),
 }
 
-/// Claude Code checkpoints each turn's files and restores them, and has no
-/// control that drops a turn from its thread, so Sage cuts the thread on its
-/// next launch; Codex drops the turn from its thread itself and leaves files
-/// as they are.
+/// Last-turn effects and native execution strategy come from the binding's offer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TurnUndo {
     pub(super) keeps_files: bool,
-    /// The harness drops the turn from its own thread, which only the
-    /// process that ran the turn holds, and only its last turn at that.
+    /// The harness applies the conversation cut itself rather than on resume.
     reverts_thread: bool,
 }
 
 impl TurnUndo {
-    fn of(binding: &str) -> Option<Self> {
-        if binding == crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID {
-            Some(Self {
-                keeps_files: false,
-                reverts_thread: false,
-            })
-        } else if binding == crate::acp::bindings::codex::CODEX_BINDING_ID {
-            Some(Self {
-                keeps_files: true,
-                reverts_thread: true,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn offers(self, session_epoch: u64, turn_epoch: u64) -> bool {
-        !self.reverts_thread || session_epoch == turn_epoch
+    fn from_capability(capability: sage_acp_protocol::intent::RewindCapability) -> Option<Self> {
+        capability.effects.conversation.then_some(Self {
+            keeps_files: !capability.effects.files,
+            reverts_thread: !capability.on_resume,
+        })
     }
 }
 

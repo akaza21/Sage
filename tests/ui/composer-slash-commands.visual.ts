@@ -1,3 +1,4 @@
+import { installNativeCommands } from "./fixtures/composerCommands";
 import { expect, test, type Page } from "@playwright/test";
 import {
   expectNoViewportOverflow,
@@ -9,7 +10,7 @@ type Command = {
   name: string;
   description: string;
   inputHint: string | null;
-  source: string;
+  source: "harness";
 };
 
 const commands: Command[] = [
@@ -33,89 +34,11 @@ const commands: Command[] = [
   },
 ];
 
-/**
- * A desktop runtime stand-in: list_acp_commands answers with the current
- * list, and the change event reaches the listener the menu installs.
- */
-async function installNativeCommands(page: Page) {
-  await page.evaluate((initial) => {
-    const callbacks = new Map<number, (event: unknown) => void>();
-    const state = {
-      revision: 1,
-      commands: initial,
-      requests: [] as unknown[],
-      listeners: [] as { event: string; handler: number }[],
-    };
-    let nextId = 1;
-    Object.assign(window, {
-      __slashCommands: state,
-      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
-    });
-    Object.defineProperty(window, "__TAURI_INTERNALS__", {
-      configurable: true,
-      value: {
-        invoke: (
-          command: string,
-          args: { request?: unknown; event?: string; handler?: number },
-        ) => {
-          if (command === "list_acp_commands") {
-            state.requests.push(args.request);
-            return Promise.resolve({
-              revision: state.revision,
-              commands: state.commands,
-            });
-          }
-          if (command === "plugin:event|listen") {
-            state.listeners.push({
-              event: args.event!,
-              handler: args.handler!,
-            });
-            return Promise.resolve(state.listeners.length);
-          }
-          if (command === "plugin:event|unlisten") return Promise.resolve();
-          return Promise.reject(new Error("visual fixture"));
-        },
-        transformCallback: (callback: (event: unknown) => void) => {
-          callbacks.set(nextId, callback);
-          return nextId++;
-        },
-        unregisterCallback: (id: number) => callbacks.delete(id),
-      },
-    });
-    Object.assign(window, {
-      __emitCommandsChanged: (next: typeof initial) => {
-        const request = state.requests.at(-1) as {
-          projectId: string;
-          chatId: string;
-          sessionId: string;
-          runtimeEpoch: string;
-        };
-        state.revision += 1;
-        state.commands = next;
-        for (const listener of state.listeners)
-          if (listener.event === "acp-commands-changed-v1")
-            callbacks.get(listener.handler)?.({
-              event: listener.event,
-              id: listener.handler,
-              payload: {
-                schemaVersion: 1,
-                sageProjectId: request.projectId,
-                sageChatId: request.chatId,
-                sageAgentSessionId: request.sessionId,
-                runtimeEpoch: request.runtimeEpoch,
-                revision: state.revision,
-              },
-            });
-      },
-    });
-  }, commands);
-}
-
 async function openComposer(page: Page) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  await installNativeCommands(page);
+  await installNativeCommands(page, commands);
   const field = page
     .locator("form.composer")
     .first()

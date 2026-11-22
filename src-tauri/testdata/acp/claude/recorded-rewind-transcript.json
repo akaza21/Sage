@@ -1,0 +1,57 @@
+{
+  "source": "hyphae/tests/fixtures/spine/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b.jsonl",
+  "sourceBlob": "89718aa8c3d658006b8c8f3ee6ef1a6df6511fc2",
+  "cliVersion": "2.1.221",
+  "projection": "Recorded structural fields only; message content and machine metadata omitted.",
+  "records": [
+    {
+      "type": "assistant",
+      "uuid": "d0db0562-62b5-47b0-990b-1f99345fca1d",
+      "parentUuid": "cd6114d2-cddb-4113-8021-b06901225693",
+      "isSidechain": false
+    },
+    {
+      "type": "system",
+      "subtype": "turn_duration",
+      "uuid": "f65902cb-f4a2-4e85-9820-80b55b1d3e04",
+      "parentUuid": "d0db0562-62b5-47b0-990b-1f99345fca1d",
+      "isSidechain": false
+    },
+    {
+      "type": "user",
+      "uuid": "a24b87aa-d7a0-4e45-80ff-f57ed1377010",
+      "parentUuid": "f65902cb-f4a2-4e85-9820-80b55b1d3e04",
+      "isSidechain": false
+    },
+    {
+      "type": "user",
+      "uuid": "818588ad-3849-48fe-a546-573163768e04",
+      "parentUuid": "019822be-1ab7-4eff-a216-990895bf3266",
+      "isSidechain": false
+    },
+    {
+      "type": "attachment",
+      "uuid": "c8cd0edf-86e7-421f-be1f-65a512edb631",
+      "parentUuid": "818588ad-3849-48fe-a546-573163768e04",
+      "isSidechain": false
+    },
+    {
+      "type": "assistant",
+      "uuid": "c9f7381c-137c-4542-9785-5964c5119ffb",
+      "parentUuid": "c8cd0edf-86e7-421f-be1f-65a512edb631",
+      "isSidechain": false
+    },
+    {
+      "type": "assistant",
+      "uuid": "6dc92d21-6961-4ee8-8e17-e1e4b0849262",
+      "parentUuid": "c9f7381c-137c-4542-9785-5964c5119ffb",
+      "isSidechain": false
+    },
+    {
+      "type": "assistant",
+      "uuid": "aa10409b-6e39-4f56-a326-5dd35f9c4757",
+      "parentUuid": "6dc92d21-6961-4ee8-8e17-e1e4b0849262",
+      "isSidechain": false
+    }
+  ]
+}

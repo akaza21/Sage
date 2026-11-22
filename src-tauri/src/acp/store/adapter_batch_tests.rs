@@ -157,6 +157,7 @@ fn event_n_failure_rolls_back_the_complete_adapter_batch() {
         vec![
             AdapterInboundEvent::Item(item(&fixture.owner, "item-one")),
             AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::WaitingModel,
                 now_millis: 7,
             },
@@ -360,6 +361,7 @@ fn limit_plus_one_and_foreign_ownership_fail_before_mutation() {
     let before = projection(&fixture.connection);
     let events = (0..=LIMITS.queues.journal_facts_per_transaction)
         .map(|_| AdapterInboundEvent::Turn {
+            native_turn_id: None,
             state: TurnState::Running,
             now_millis: 6,
         })
@@ -376,6 +378,7 @@ fn limit_plus_one_and_foreign_ownership_fail_before_mutation() {
             batch(
                 &foreign,
                 vec![AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6
                 }]

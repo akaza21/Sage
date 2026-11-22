@@ -243,6 +243,7 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
             &owner,
             SageTurnId::parse(FIRST).unwrap(),
             true,
+            false,
             || Ok::<_, crate::acp::bindings::claude::sdk::TranscriptError>(None),
         )
         .unwrap();

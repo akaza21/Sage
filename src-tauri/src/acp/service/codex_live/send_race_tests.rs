@@ -60,7 +60,7 @@ fn capabilities() -> String {
         close_session: true,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
+        rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
         native_session_compact: false,
         native_session_import: false,
         native_review: false,
@@ -192,7 +192,11 @@ fn idle_session() -> IdleSession {
         binding_digest: "a".repeat(64),
         external_session_id,
     };
-    let turn = |state, now_millis| AdapterInboundEvent::Turn { state, now_millis };
+    let turn = |state, now_millis| AdapterInboundEvent::Turn {
+        native_turn_id: None,
+        state,
+        now_millis,
+    };
     apply(
         &database,
         &owner,
