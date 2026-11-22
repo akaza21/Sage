@@ -48,22 +48,15 @@
   margin-left: var(--space-1);
 }
 
-.text-field-suggestions__action {
+.text-field-suggestions__footer button {
   margin-left: var(--space-2);
   padding: 0;
   border: 0;
-  color: inherit;
-  background: transparent;
-  font: inherit;
+  background: none;
   cursor: pointer;
 }
 
-.text-field-suggestions__action:hover {
-  color: var(--color-text-primary);
-}
-
-.text-field-suggestions__action:disabled {
-  cursor: default;
+.text-field-suggestions__footer button:disabled {
   opacity: 0.6;
 }
 

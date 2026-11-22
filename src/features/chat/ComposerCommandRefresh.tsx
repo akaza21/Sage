@@ -44,7 +44,6 @@ export function ComposerCommandRefresh({
       )}
       {owner && (
         <button
-          className="text-field-suggestions__action"
           type="button"
           disabled={sending}
           onMouseDown={(event) => event.preventDefault()}
