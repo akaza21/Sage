@@ -5,11 +5,16 @@ import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { SettingsRow } from "./SettingsRow";
+import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
 
 // Native-only and below the fold, so it stays out of the Settings chunk.
 const loadNotificationSettings = () => import("./AgentNotificationSettings");
 
-export function AgentChatSettings() {
+export function AgentChatSettings({
+  presentation,
+}: {
+  presentation: HarnessNoticePresentation;
+}) {
   const notificationsHeading = useId();
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const harnessId = useWorkbenchStore((state) => state.selectedHarnessId);
@@ -123,7 +128,7 @@ export function AgentChatSettings() {
           </select>
         </SettingsRow>
       </div>
-      <LazyHarnessNotice />
+      <LazyHarnessNotice presentation={presentation} />
       {!project ? (
         <p role="status">Open a project to select a harness and model.</p>
       ) : null}

@@ -1,3 +1,4 @@
+import { composerProblem } from "../ComposerStatusNotices";
 import {
   act,
   cleanup,
@@ -217,11 +218,12 @@ describe("useAcpChatActions per-Chat ownership", () => {
         return (
           <ComposerNoticeSurface
             workbenchError={null}
-            chatError={actions.error}
+            chatError={composerProblem(
+              "signInRequired",
+              "chat-a",
+              actions.error,
+            )}
             imageStatus={null}
-            selectedHarnessId="account"
-            discoveryPhase="ready"
-            missingBindingNotice={false}
             chatAuth={{ page: page(), errorKind: actions.errorKind }}
           />
         );
@@ -401,16 +403,17 @@ describe("useAcpChatActions per-Chat ownership", () => {
       );
       const { result } = renderHook(() => useAcpChatActions());
       function Notices() {
-        const selected = useWorkbenchStore((state) => state.selectedHarnessId);
+        useWorkbenchStore((state) => state.selectedHarnessId);
         const actions = useAcpChatActions();
         return (
           <ComposerNoticeSurface
             workbenchError={null}
-            chatError={actions.error}
+            chatError={composerProblem(
+              "signInRequired",
+              "chat-a",
+              actions.error,
+            )}
             imageStatus={null}
-            selectedHarnessId={selected}
-            discoveryPhase="ready"
-            missingBindingNotice={false}
             chatAuth={{ page: emptyPage, errorKind: actions.errorKind }}
           />
         );

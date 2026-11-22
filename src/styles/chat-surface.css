@@ -21,12 +21,6 @@
   padding-block-end: var(--chat-column-inset-block-end);
 }
 
-.chat-surface--agent > .composer__notice,
-.chat-surface--agent > .build-notice,
-.chat-surface--agent > .composer__error {
-  grid-area: notice;
-}
-
 .chat-surface--agent > .message-list {
   grid-area: transcript;
 }
