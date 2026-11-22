@@ -28,6 +28,7 @@ fn native_failure_preserves_the_notice_rendering_contract() {
                 }),
                 AdapterInboundEvent::Turn {
                     state: TurnState::Failed,
+                    native_turn_id: None,
                     now_millis: 8,
                 },
             ],

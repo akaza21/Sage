@@ -6,7 +6,7 @@ import {
   readImportedHistory,
   type ImportedHistory as History,
 } from "../../services/nativeSessionImport";
-import { ConversationPart } from "./lazyParts";
+import { NoticePart } from "./lazyParts";
 
 export { ImportSessionDialog } from "../../workbench/ImportSessionDialog";
 
@@ -39,8 +39,9 @@ export function ImportedHistory({ chatId }: { chatId: string }) {
           The imported history couldn&apos;t be shown.
         </p>
       ) : history && page ? (
-        <ConversationPart
-          part="InheritedHistory"
+        <NoticePart
+          part="ConversationView"
+          view="InheritedHistory"
           page={{ ...page, turns: history.turns }}
           earlier={history.retentionLimited}
           label="History from the imported session"

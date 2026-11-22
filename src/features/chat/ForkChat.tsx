@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from "react";
 
+import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import {
   commitIdentityChatResult,
@@ -15,82 +16,16 @@ import {
 } from "../../app/chatTransitions";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { useWorkbenchStore } from "../../app/store";
-import type { AcpChatPage } from "../../domain/acp";
+import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
+import { Copy, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId } from "../../workbench/sideChatState";
-import { AnswerActionButton } from "./AnswerActions";
+import { UserMessageActions } from "./UserMessageActions";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
-import {
-  ConversationActionContext,
-  ConversationRequestContext,
-} from "./forkChatRequest";
-
-export function AnswerMoreMenu({
-  onCopy,
-  onBranch,
-  trigger,
-}: {
-  onCopy: () => void;
-  onBranch?: (keyboard: boolean) => void;
-  trigger: RefObject<HTMLButtonElement | null>;
-}) {
-  const menuId = useId();
-  const [open, setOpen] = useState(false);
-  const keyed = useRef(false);
-  const [Icon, label] = onBranch
-    ? [GitBranch, "Branch in new chat"]
-    : [Copy, "Copy"];
-  return (
-    <>
-      <AnswerActionButton
-        ref={trigger}
-        label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        data-fork-trigger={onBranch ? true : undefined}
-        onClick={() => setOpen(!open)}
-      >
-        <Ellipsis size={14} aria-hidden="true" />
-      </AnswerActionButton>
-      <MenuPopover
-        id={menuId}
-        open={open}
-        ariaLabel="Answer actions"
-        className="answer-more-menu"
-        gap={2}
-        placement="above-start"
-        triggerRef={trigger}
-        onDismiss={() => setOpen(false)}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          className="button--compact answer-more-menu__item"
-          onKeyDown={(event) => {
-            keyed.current = event.key === "Enter" || event.key === " ";
-          }}
-          onClick={() => {
-            setOpen(false);
-            if (onBranch) onBranch(keyed.current);
-            else {
-              trigger.current?.focus();
-              onCopy();
-            }
-            keyed.current = false;
-          }}
-        >
-          <Icon size={14} aria-hidden="true" />
-          <span>{label}</span>
-        </button>
-      </MenuPopover>
-    </>
-  );
-}
+import { ConversationRequestContext } from "./forkChatRequest";
 
 export interface ForkTarget {
   chatId: string;
@@ -158,36 +93,91 @@ export function AnswerMoreActions({
   page: passedPage,
   onCopy,
   forkable,
+  turn: prompt,
+  text,
+  trigger,
+  menuId,
+  onDismiss,
 }: {
   page: AcpChatPage;
-  onCopy: () => void;
+  onCopy?: () => void;
   forkable?: boolean;
+  turn?: TurnProjection;
+  text?: string;
+  trigger: RefObject<HTMLButtonElement | null>;
+  menuId: string;
+  onDismiss: () => void;
 }) {
-  const trigger = useRef<HTMLButtonElement>(null);
+  const keyed = useRef(false);
   const requestFork = useContext(ConversationRequestContext);
-  const page = useContext(ConversationActionContext) ?? passedPage;
+  const page =
+    useStore(acpProjectionStoreFor(passedPage.chatId), (state) => state.page) ??
+    passedPage;
   const turn = page.turns.at(-1);
+  const session = page.sessions.find(
+    (session) => session.id === turn?.sessionId,
+  );
   const canFork =
     requestFork &&
     forkable &&
     turn?.state === "completed" &&
     turn.conversationTarget === true &&
     turn.sessionId === page.currentSessionId &&
-    page.sessions.find((session) => session.id === turn.sessionId)?.capabilities
-      ?.rewind?.targets === "latestTurn" &&
+    session?.capabilities?.rewind?.targets === "latestTurn" &&
     !isSideChatId(page.chatId) &&
-    turnSessionForkState(page, turn.sessionId) === "forkable";
+    session.residency === "hot" &&
+    session.capabilities.rewind.forkAt;
+  const [Icon, label] = canFork
+    ? [GitBranch, "Branch in new chat"]
+    : [Copy, "Copy"];
   return (
-    <AnswerMoreMenu
-      onCopy={onCopy}
-      trigger={trigger}
-      onBranch={
-        canFork
-          ? (keyboard) =>
-              requestFork({ chatId: page.chatId, turnId: turn.id, keyboard })
-          : undefined
-      }
-    />
+    <MenuPopover
+      id={menuId}
+      open
+      ariaLabel={prompt ? "Prompt actions" : "Answer actions"}
+      className="answer-more-menu"
+      gap={2}
+      placement="above-start"
+      triggerRef={trigger}
+      onDismiss={onDismiss}
+    >
+      {prompt ? (
+        <UserMessageActions
+          page={page}
+          turn={prompt}
+          text={text ?? ""}
+          onDismiss={() => {
+            trigger.current?.focus();
+            onDismiss();
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          className="button--compact answer-more-menu__item"
+          onKeyDown={(event) => {
+            keyed.current = event.key === "Enter" || event.key === " ";
+          }}
+          onClick={() => {
+            onDismiss();
+            if (canFork)
+              requestFork({
+                chatId: page.chatId,
+                turnId: turn.id,
+                keyboard: keyed.current,
+              });
+            else {
+              trigger.current?.focus();
+              onCopy?.();
+            }
+          }}
+        >
+          <Icon size={14} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      )}
+    </MenuPopover>
   );
 }
 
@@ -298,12 +288,4 @@ export function ForkChatDialog({
       )}
     </ModalDialog>
   );
-}
-
-function turnSessionForkState(page: AcpChatPage, sessionId: string) {
-  const session = page.sessions.find(({ id }) => id === sessionId);
-  if (!session) return "absent";
-  return session.residency === "hot" && session.capabilities?.rewind?.forkAt
-    ? "forkable"
-    : "present";
 }

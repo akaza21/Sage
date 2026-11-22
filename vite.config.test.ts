@@ -792,6 +792,35 @@ describe("desktop-native chunk topology", () => {
         module,
       ).toBe(false);
     }
+    const conversationDetails = [
+      "src/features/chat/ForkChat.tsx",
+      "src/features/chat/RewindChatDialog.tsx",
+      "src/features/chat/UserMessageActions.tsx",
+      "src/features/chat/conversationActionAvailability.ts",
+      "src/features/chat/ForkHistory.tsx",
+    ];
+    const conversation = closureForModule(
+      graph,
+      "src/features/chat/ConversationActions.tsx",
+    );
+    const messageTrigger = closureForModule(
+      graph,
+      "src/features/chat/MessageActionsTrigger.tsx",
+    );
+    for (const module of conversationDetails) {
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        messageTrigger.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        conversation.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+    }
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>

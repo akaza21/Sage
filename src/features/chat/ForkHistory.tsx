@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
+import type { Turn } from "./acp/AcpChatPresentation";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { TurnDaySeparator } from "./acp/AcpTurnDates";
+import { useTurnDayTimestamps } from "./acp/useTurnDayTimestamps";
 import { GitBranch } from "../../ui/leanIcons";
 import "./fork-history.css";
 export function ForkDivider({
@@ -61,21 +64,48 @@ export function InheritedHistory({
       {earlier ? (
         <p className="acp-history-notice">Earlier history isn&apos;t shown.</p>
       ) : null}
-      <LazyModuleBoundary
-        label="Inherited history"
-        load={loadInheritedTurns}
-        render={(InheritedTurns) => <InheritedTurns page={page} />}
-      />
+      <InheritedTurns page={page} />
     </div>
   );
 }
 
 const MAX_INHERITED_TURNS = 20;
 
-const loadInheritedTurns = () =>
-  import("./acp/AcpChatPresentation").then(({ InheritedTurns }) => ({
-    default: InheritedTurns,
+// The fork transcript owns the navigator, find, virtual list and edit summary.
+const loadInheritedRows = () =>
+  import("./acp/AcpChatPresentation").then(({ Turn }) => ({
+    default: ({ page }: { page: AcpChatPage }) => (
+      <InheritedRows page={page} TurnView={Turn} />
+    ),
   }));
+
+export function InheritedTurns({ page }: { page: AcpChatPage }) {
+  return (
+    <LazyModuleBoundary
+      label="Inherited history"
+      load={loadInheritedRows}
+      render={(Rows) => <Rows page={page} />}
+    />
+  );
+}
+
+function InheritedRows({
+  page,
+  TurnView,
+}: {
+  page: AcpChatPage;
+  TurnView: typeof Turn;
+}) {
+  const dayTimestamps = useTurnDayTimestamps(page.turns);
+  return page.turns.map((turn, index) => (
+    <Fragment key={turn.id}>
+      <TurnDaySeparator timestamp={dayTimestamps[index]} />
+      <section className="chat-fork-turn" aria-label={`Turn ${turn.ordinal}`}>
+        <TurnView page={page} turn={turn} inherited />
+      </section>
+    </Fragment>
+  ));
+}
 
 type Inherited = AcpChatPage & {
   forkTurnId: string;

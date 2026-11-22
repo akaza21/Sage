@@ -8,15 +8,18 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { snapshotPage } from "../../app/agentDiff.fixture";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
-import { AcpChatPresentation, InheritedTurns } from "./acp/AcpChatPresentation";
+import { AcpChatPresentation } from "./acp/AcpChatPresentation";
+import { InheritedTurns } from "./ForkHistory";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import { ConversationRequestContext } from "./forkChatRequest";
 
 afterEach(() => {
   cleanup();
+  acpProjectionStoreFor("chat-1").setState({ page: null });
   vi.unstubAllGlobals();
 });
 
@@ -143,7 +146,7 @@ it('keeps Copy and "…" usable on inherited fork answers, with no fork there (s
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
   const { container } = render(<InheritedTurns page={forkable(twoTurns())} />);
-  const rows = screen.getAllByRole("group", { name: "Message actions" });
+  const rows = await screen.findAllByRole("group", { name: "Message actions" });
   expect(rows).toHaveLength(2);
   rows.forEach((row, index) => {
     const turn = row.closest("section");
@@ -172,7 +175,7 @@ it("announces Copy on an inherited answer through the transcript's feedback", as
       <InheritedTurns page={twoTurns()} />
     </AnswerCopyFeedback.Provider>,
   );
-  const rows = screen.getAllByRole("group", { name: "Message actions" });
+  const rows = await screen.findAllByRole("group", { name: "Message actions" });
   await act(async () => {
     fireEvent.click(within(rows[0]).getByRole("button", { name: "Copy" }));
   });
@@ -262,15 +265,17 @@ it("offers Retry and Branch only on the latest answer, following its session's r
   expect(await moreItems(row(1))).toEqual(["Copy"]);
   expect(await moreItems(row(2))).toEqual(["Branch in new chat"]);
 
-  rerender(
-    ui({
-      ...projection,
-      sessions: projection.sessions.map((session) => ({
-        ...session,
-        residency: "cold",
-      })) as never,
-    }),
-  );
+  const parked: AcpChatPage = {
+    ...projection,
+    sessions: projection.sessions.map((session) => ({
+      ...session,
+      residency: "cold",
+    })) as never,
+  };
+  await act(async () => {
+    acpProjectionStoreFor(projection.chatId).setState({ page: parked });
+  });
+  rerender(ui(parked));
   expect(await moreItems(row(2))).toEqual(["Copy"]);
 });
 

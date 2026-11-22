@@ -4,7 +4,7 @@ import {
   ConversationRequestContext,
   type ConversationRequest,
 } from "./forkChatRequest";
-import { ConversationPart } from "./lazyParts";
+import { NoticePart } from "./lazyParts";
 
 // A separate host: the source answer may disappear during a project switch.
 export function ForkChatDialogHost({
@@ -15,18 +15,17 @@ export function ForkChatDialogHost({
   focusRoot: RefObject<HTMLDivElement | null>;
 }) {
   const [request, setRequest] = useState<ConversationRequest | null>(null);
-  const part =
-    request && "kind" in request ? "RewindChatDialog" : "ForkChatDialog";
   return (
     <ConversationRequestContext.Provider value={setRequest}>
       {children}
       {request && (
-        <ConversationPart
-          key={part}
-          part={part}
-          {...request}
+        <NoticePart
+          part="ConversationView"
+          view="ConversationDialog"
+          request={request}
           focusRoot={focusRoot}
           onClose={() => setRequest(null)}
+          onLoadFailed={() => setRequest(null)}
         />
       )}
     </ConversationRequestContext.Provider>

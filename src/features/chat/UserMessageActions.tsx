@@ -1,42 +1,39 @@
 import { useContext } from "react";
 import { conversationActions } from "./conversationActionAvailability";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
-import {
-  ConversationActionContext,
-  ConversationRequestContext,
-} from "./forkChatRequest";
+import { ConversationRequestContext } from "./forkChatRequest";
 
 export function UserMessageActions({
   page,
   turn,
   text,
+  onDismiss,
 }: {
   page: AcpChatPage;
   turn: TurnProjection;
   text: string;
+  onDismiss: () => void;
 }) {
   const requestFork = useContext(ConversationRequestContext);
-  const context = useContext(ConversationActionContext);
-  const actions = conversationActions(context ?? page, turn);
-  if (!actions.rewind && !actions.fork) return null;
+  const actions = conversationActions(page, turn);
+  if (!actions.rewind && !actions.fork)
+    return <p role="status">No actions available.</p>;
   return (
-    <div
-      className="chat-transcript-actions"
-      role="group"
-      aria-label="Prompt actions"
-    >
+    <>
       {actions.rewind && requestFork ? (
         <button
           type="button"
-          className="button--compact"
-          onClick={() =>
+          role="menuitem"
+          className="button--compact answer-more-menu__item"
+          onClick={() => {
+            onDismiss();
             requestFork({
               kind: "rewind",
               chatId: page.chatId,
               turnId: turn.id,
               text,
-            })
-          }
+            });
+          }}
         >
           Rewind here
         </button>
@@ -44,18 +41,20 @@ export function UserMessageActions({
       {actions.fork && requestFork ? (
         <button
           type="button"
-          className="button--compact"
-          onClick={() =>
+          role="menuitem"
+          className="button--compact answer-more-menu__item"
+          onClick={() => {
+            onDismiss();
             requestFork({
               chatId: page.chatId,
               turnId: turn.id,
               keyboard: false,
-            })
-          }
+            });
+          }}
         >
           Fork from here
         </button>
       ) : null}
-    </div>
+    </>
   );
 }

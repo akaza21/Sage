@@ -30,11 +30,7 @@ import {
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import { composerWorkspaceName } from "./composerChrome";
-import {
-  ConversationPart,
-  LegacyTranscriptPart,
-  NoticePart,
-} from "./lazyParts";
+import { LegacyTranscriptPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -158,7 +154,6 @@ export function ChatTranscript({
     showJumpToLatest === "activity"
       ? "New activity below. Jump to latest"
       : "Jump to latest";
-  const forkedFrom = useNativeAcp ? page?.forkedFrom : undefined;
   const showHome = isNewProjectChat({
     useNativeAcp,
     page,
@@ -211,16 +206,14 @@ export function ChatTranscript({
               historyNotice
             ) : useNativeAcp && page ? (
               <>
-                {forkedFrom && !hasEarlier ? (
-                  <ConversationPart
-                    part="ForkDivider"
-                    parentChatId={forkedFrom}
-                    forkTurnId={page.forkedFromTurnId}
-                    forkChatId={page.chatId}
+                {page.forkedFrom ||
+                page.sessionNotices?.length ||
+                page.sessionSurface ? (
+                  <NoticePart
+                    part="SessionStrip"
+                    page={page}
+                    hasEarlier={hasEarlier}
                   />
-                ) : null}
-                {page.sessionNotices?.length || page.sessionSurface ? (
-                  <NoticePart part="SessionStrip" page={page} />
                 ) : null}
                 <AcpChatProjection
                   page={page}

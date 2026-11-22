@@ -1,26 +1,8 @@
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { isSideChatId } from "../../workbench/sideChatState";
 
-// Two visible chats may share this lazy chunk. Cache at most two immutable
-// page summaries; weak keys retain neither transcripts nor inactive views.
-let summaries = new WeakMap<AcpChatPage, ReturnType<typeof summarize>>();
-let summaryCount = 0;
-
+/** Only an open menu folds the bounded page; closed rows retain no summary. */
 export function conversationState(page: AcpChatPage) {
-  const cached = summaries.get(page);
-  if (cached) return cached;
-  if (summaryCount === 2) {
-    summaries = new WeakMap();
-    summaryCount = 0;
-  }
-  const state = summarize(page);
-  summaries.set(page, state);
-  summaryCount++;
-  return state;
-}
-
-/** Fold once per page, including when memoized older turns keep their props. */
-function summarize(page: AcpChatPage) {
   const session = page.sessions.find(({ id }) => id === page.currentSessionId);
   const offer = session?.capabilities?.rewind;
   let boundary = -1;

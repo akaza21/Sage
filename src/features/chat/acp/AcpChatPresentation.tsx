@@ -35,7 +35,6 @@ import { ItemView } from "./TurnActivityItem";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
 import { TurnPrompts } from "./TurnPrompts";
-import { ConversationActionContext } from "../forkChatRequest";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -45,7 +44,7 @@ import { VirtualTurnList } from "./VirtualTurnList";
 import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 
-const Turn = memo(
+export const Turn = memo(
   function Turn({
     page,
     turn,
@@ -280,12 +279,7 @@ const Turn = memo(
         {inherited && actions}
       </>
     );
-    if (!inherited) return content;
-    return (
-      <section className="chat-fork-turn" aria-label={`Turn ${turn.ordinal}`}>
-        {content}
-      </section>
-    );
+    return content;
   },
   (left, right) =>
     left.turn === right.turn &&
@@ -358,7 +352,7 @@ export function AcpChatPresentation({
     </Fragment>
   );
   return (
-    <ConversationActionContext.Provider value={page}>
+    <>
       <NavigationPart
         part="ChatNavigation"
         // Use a distinct sibling key to avoid remounting and closing find.
@@ -393,17 +387,6 @@ export function AcpChatPresentation({
       {editSummaryContainer
         ? createPortal(editSummary, editSummaryContainer)
         : null}
-    </ConversationActionContext.Provider>
+    </>
   );
-}
-
-// The fork transcript owns the navigator, find, virtual list and edit summary.
-export function InheritedTurns({ page }: { page: AcpChatPage }) {
-  const dayTimestamps = useTurnDayTimestamps(page.turns);
-  return page.turns.map((turn, index) => (
-    <Fragment key={turn.id}>
-      <TurnDaySeparator timestamp={dayTimestamps[index]} />
-      <Turn page={page} turn={turn} inherited />
-    </Fragment>
-  ));
 }

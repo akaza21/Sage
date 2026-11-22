@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
-import { ConversationPart } from "../lazyParts";
+import { NoticePart } from "../lazyParts";
 import { turnCommand } from "../../../domain/acpCommand";
+import { currentSession } from "./acpTurnState";
 import { ItemView } from "./TurnActivityItem";
 
 export function TurnPrompts({
@@ -16,15 +17,17 @@ export function TurnPrompts({
   page: AcpChatPage;
 }) {
   const command = turnCommand(turn);
+  const eligible = !!currentSession(page)?.capabilities?.rewind;
   return items.map((item) => (
     <Fragment key={item.id}>
       <ItemView item={item} interactive={interactive} command={command} />
-      {interactive && turn.terminalAt != null && item.kind === "text" ? (
-        <ConversationPart
-          part="UserMessageActions"
+      {eligible && item.kind === "text" ? (
+        <NoticePart
+          part="PromptActions"
           page={page}
           turn={turn}
-          text={item.payload.text}
+          item={item}
+          interactive={interactive}
         />
       ) : null}
     </Fragment>

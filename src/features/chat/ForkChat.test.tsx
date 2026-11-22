@@ -44,16 +44,10 @@ vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   getGoalChatPage,
 }));
-// Only InheritedTurns is loaded from this module here. Spreading the real
-// module in would resolve it through an RPC that vi.dynamicImportSettled does
-// not track, so settleLazyModules could return before the history renders.
+// Keep the inherited-page fetch tests focused on which bounded turns render.
 vi.mock("./acp/AcpChatPresentation", () => ({
-  InheritedTurns: ({ page }: { page: AcpChatPage }) => (
-    <ol>
-      {page.turns.map((turn) => (
-        <li key={turn.id}>{turn.id}</li>
-      ))}
-    </ol>
+  Turn: ({ turn }: { turn: AcpChatPage["turns"][number] }) => (
+    <li>{turn.id}</li>
   ),
 }));
 

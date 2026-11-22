@@ -11,7 +11,7 @@ import { Check, Copy } from "../../ui/leanIcons";
 import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import { chatTimestamp } from "./chatTimestamp";
-import { ForkPart } from "./lazyParts";
+import { NoticePart } from "./lazyParts";
 import "./answer-actions.css";
 
 export function AnswerActionButton({
@@ -92,8 +92,8 @@ export function AnswerActions({
         <CopyIcon size={14} aria-hidden="true" />
       </AnswerActionButton>
       {page ? (
-        <ForkPart
-          part="AnswerMoreActions"
+        <NoticePart
+          part="MessageActionsTrigger"
           page={page}
           onCopy={copyAnswer}
           forkable={forkable}

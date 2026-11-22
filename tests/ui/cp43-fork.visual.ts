@@ -29,7 +29,9 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
     .locator(".agent-task-header__title")
     .first()
     .innerText();
-  const more = page.getByRole("button", { name: "More actions", exact: true });
+  const more = page
+    .getByRole("group", { name: "Message actions" })
+    .getByRole("button", { name: "More actions", exact: true });
   await expect(more).toHaveAttribute("aria-haspopup", "menu");
   await more.click();
   const menu = page.getByRole("menu", { name: "Answer actions" });
@@ -159,19 +161,30 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
   });
   const actions = page.getByRole("group", { name: "Prompt actions" });
   await expect(actions).toHaveCount(2);
-  await expect(
-    actions.first().getByRole("button", { name: "Rewind here", exact: true }),
-  ).toBeVisible();
-  await expect(
-    actions
-      .first()
-      .getByRole("button", { name: "Fork from here", exact: true }),
-  ).toBeVisible();
-  await waitForAnimations(actions.first());
-  await expect(workbench).toHaveScreenshot("rewind-prompt-actions.png");
   await actions
     .first()
-    .getByRole("button", { name: "Rewind here", exact: true })
+    .getByRole("button", { name: "More actions", exact: true })
+    .click();
+  const menu = page.getByRole("menu", { name: "Prompt actions" });
+  await expect(
+    menu.getByRole("menuitem", { name: "Rewind here", exact: true }),
+  ).toBeVisible();
+  await expect(
+    menu.getByRole("menuitem", { name: "Fork from here", exact: true }),
+  ).toBeVisible();
+  await waitForAnimations(menu);
+  await expect(workbench).toHaveScreenshot("rewind-prompt-actions.png");
+  await menu
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  const trigger = actions
+    .first()
+    .getByRole("button", { name: "More actions", exact: true });
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await menu
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Confirm rewind", exact: true })
@@ -198,16 +211,58 @@ test("T11a: a fork-only offer has no in-place rewind and explains the shared fol
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture(false);
   });
+  const actions = page.getByRole("group", { name: "Prompt actions" });
+  await expect(actions).toHaveCount(2);
+  await actions
+    .first()
+    .getByRole("button", { name: "More actions", exact: true })
+    .click();
+  const menu = page.getByRole("menu", { name: "Prompt actions" });
   await expect(
-    page.getByRole("button", { name: "Rewind here", exact: true }),
+    menu.getByRole("menuitem", { name: "Rewind here", exact: true }),
   ).toHaveCount(0);
-  const fork = page.getByRole("button", {
-    name: "Fork from here",
-    exact: true,
-  });
-  await expect(fork).toHaveCount(2);
-  await fork.first().click();
+  await menu
+    .getByRole("menuitem", { name: "Fork from here", exact: true })
+    .click();
   await expect(
     page.getByRole("dialog", { name: "Fork chat from here" }),
   ).toContainText("This chat shares the project folder.");
+});
+
+test("T11a: message actions load only after their menu opens", async ({
+  page,
+}) => {
+  const requested = new Set<string>();
+  const feature =
+    /\/src\/features\/chat\/(?:ConversationActions|ForkChat|RewindChatDialog|UserMessageActions|ForkHistory|conversationActionAvailability)\.tsx?(?:\?|$)/;
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (feature.test(path)) requested.add(path);
+  });
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture();
+  });
+  const actions = page.getByRole("group", { name: "Prompt actions" });
+  await expect(actions).toHaveCount(2);
+  expect([...requested]).toEqual([]);
+  await actions
+    .first()
+    .getByRole("button", { name: "More actions", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Rewind here", exact: true }),
+  ).toBeVisible();
+  expect(
+    requested.has("/src/features/chat/conversationActionAvailability.ts"),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Prompt actions" })).toHaveCount(
+    0,
+  );
+  await expect(
+    actions.first().getByRole("button", { name: "More actions", exact: true }),
+  ).toBeFocused();
 });
