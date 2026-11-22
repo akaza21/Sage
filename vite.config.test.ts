@@ -867,10 +867,8 @@ describe("desktop-native chunk topology", () => {
   it("preserves chat-helper ownership without adding feature modules to lane-base closures", async () => {
     const baselineConfig = desktopGraphConfig(true);
     setDesktopGraphGroups(baselineConfig, LANE_BASE_DESKTOP_GROUPS);
-    const [baseline, grouped] = await Promise.all([
-      build(baselineConfig),
-      build(desktopGraphConfig(true)),
-    ]);
+    const baseline = await build(baselineConfig);
+    const grouped = await build(desktopGraphConfig(true));
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const files = [
@@ -903,10 +901,8 @@ describe("desktop-native chunk topology", () => {
 
   it("preserves the legacy module graph while separating Agent and Editor closures", async () => {
     const baselineConfig = legacyChunkGroupConfig();
-    const [baseline, grouped] = await Promise.all([
-      build(baselineConfig),
-      build(desktopGraphConfig(true)),
-    ]);
+    const baseline = await build(baselineConfig);
+    const grouped = await build(desktopGraphConfig(true));
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const workbench = "src/workbench/Workbench.tsx";
@@ -1279,10 +1275,8 @@ describe("desktop-native chunk topology", () => {
       codeSplittingGroups(ordinaryConfig.build.rolldownOptions?.output),
     ).toBeUndefined();
 
-    const [ordinary, grouped] = await Promise.all([
-      build(desktopGraphConfig(false)),
-      build(desktopGraphConfig(true)),
-    ]);
+    const ordinary = await build(desktopGraphConfig(false));
+    const grouped = await build(desktopGraphConfig(true));
     const ordinaryGraph = graphInventory(ordinary);
     const groupedGraph = graphInventory(grouped);
 
