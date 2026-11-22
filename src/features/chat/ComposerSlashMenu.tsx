@@ -15,13 +15,13 @@ import type {
 } from "../../domain/acp";
 import {
   acpCommandsDesktop,
-  commandSourceGroups,
   type AcpCommandList,
   type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import {
   suggestionOptionId,
+  TEXT_FIELD_SUGGESTIONS_MAX_RENDERED,
   useSuggestionNavigation,
   type SuggestionKeyEvent,
   type TextFieldSuggestion,
@@ -60,16 +60,35 @@ function liveOwnerKey(page: AcpChatPage | null): string {
  */
 const SECTION_ROWS = 7;
 
+const commandSourceGroups = {
+  builtin: "Commands",
+  skill: "Skills",
+  prompt: "Prompts",
+  extension: "Extensions",
+  mcp: "MCP prompts",
+  plugin: "Plugins",
+  harness: "Other commands",
+} as const satisfies Record<AcpCommandSource, string>;
+
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
 ): AvailableAcpCommand[] {
   if (!query)
     return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
-      (source) =>
-        commands
+      (source) => {
+        const rows = commands
           .filter((command) => command.source === source)
-          .slice(0, SECTION_ROWS),
+          .slice(0, SECTION_ROWS);
+        const labels = new Map<string, AvailableAcpCommand[]>();
+        for (const row of rows) {
+          const label = row.sourceLabel ?? "";
+          const group = labels.get(label) ?? [];
+          group.push(row);
+          labels.set(label, group);
+        }
+        return [...labels.values()].flat();
+      },
     );
   const needle = query.toLocaleLowerCase();
   const ranks: AvailableAcpCommand[][] = [[], [], [], []];
@@ -98,7 +117,11 @@ function suggestion(
 ): TextFieldSuggestion {
   return {
     id: command.name,
-    group: grouped ? commandSourceGroups[command.source] : undefined,
+    group: grouped
+      ? [commandSourceGroups[command.source], command.sourceLabel]
+          .filter(Boolean)
+          .join(" · ")
+      : undefined,
     label: `/${command.name}`,
     icon: <SlashCommandIcon name={command.name} />,
     hint: command.inputHint ?? undefined,
@@ -273,6 +296,10 @@ export function ComposerSlashMenu({
       });
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
+  const more =
+    (query ? items.length : commands.length) -
+    Math.min(items.length, TEXT_FIELD_SUGGESTIONS_MAX_RENDERED);
+  const omitted = load?.kind === "ready" ? (load.list.omitted ?? 0) : 0;
   const activeId = navigation.active?.id ?? null;
   const loading = load?.kind === "loading";
   useLayoutEffect(() => {
@@ -330,9 +357,15 @@ export function ComposerSlashMenu({
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
-        !query && commands.length > items.length
-          ? `${commands.length - items.length} more — keep typing to narrow`
-          : undefined
+        more > 0 || omitted > 0 ? (
+          <>
+            {more > 0 && <span>and {more} more, type to search</span>}
+            {more > 0 && omitted > 0 && <br />}
+            {omitted > 0 && (
+              <span>Catalog truncated: {omitted} commands not shown</span>
+            )}
+          </>
+        ) : undefined
       }
       ariaLabel="Slash commands"
       className="composer-slash-menu"

@@ -3,6 +3,7 @@ use serde_json::Value;
 use super::protocol::AdapterError;
 use crate::acp::bindings::standard_acp::sanitize::sanitized_content_output;
 use crate::acp::redaction::text as redaction;
+use crate::acp::transport::CommandWirePath;
 
 pub(super) const FRAME_BYTES: usize = 1_048_576;
 pub(super) const EXTERNAL_ID_BYTES: usize = 512;
@@ -20,7 +21,6 @@ pub(super) const PAGE_BYTES: usize = 2_097_152;
 const JSON_DEPTH: usize = 32;
 const JSON_NODES: usize = 16_384;
 const OBJECT_MEMBERS: usize = 256;
-const ARRAY_ENTRIES: usize = 512;
 const KEY_BYTES: usize = 256;
 
 #[derive(Debug)]
@@ -66,7 +66,12 @@ pub(super) fn decode_record_with_optional_request<'a>(
     }
     let text = std::str::from_utf8(record).map_err(|_| AdapterError::Malformed)?;
     let mut value: Value = serde_json::from_str(text).map_err(|_| AdapterError::Malformed)?;
-    validate_shape(&value, 0, &mut 0)?;
+    match validate_shape(&value, 0, &mut 0, CommandWirePath::Other) {
+        Err(AdapterError::Limit("JSON array entries")) => {
+            validate_shape(&value, 0, &mut 0, CommandWirePath::for_frame(record))?;
+        }
+        result => result?,
+    }
     let object = value.as_object_mut().ok_or(AdapterError::Malformed)?;
     let kind = bounded_field(object.get("type"), "record type", 128)?;
     if kind == "response" {
@@ -174,7 +179,12 @@ fn bounded_field(
     Ok(value.to_owned())
 }
 
-fn validate_shape(value: &Value, depth: usize, nodes: &mut usize) -> Result<(), AdapterError> {
+fn validate_shape(
+    value: &Value,
+    depth: usize,
+    nodes: &mut usize,
+    path: CommandWirePath,
+) -> Result<(), AdapterError> {
     *nodes = nodes
         .checked_add(1)
         .ok_or(AdapterError::Limit("JSON nodes"))?;
@@ -183,11 +193,11 @@ fn validate_shape(value: &Value, depth: usize, nodes: &mut usize) -> Result<(), 
     }
     match value {
         Value::Array(values) => {
-            if values.len() > ARRAY_ENTRIES {
+            if values.len() as u64 > path.array_limit() {
                 return Err(AdapterError::Limit("JSON array entries"));
             }
             for value in values {
-                validate_shape(value, depth + 1, nodes)?;
+                validate_shape(value, depth + 1, nodes, CommandWirePath::Other)?;
             }
         }
         Value::Object(values) => {
@@ -198,8 +208,8 @@ fn validate_shape(value: &Value, depth: usize, nodes: &mut usize) -> Result<(), 
             {
                 return Err(AdapterError::Limit("JSON object"));
             }
-            for value in values.values() {
-                validate_shape(value, depth + 1, nodes)?;
+            for (key, value) in values {
+                validate_shape(value, depth + 1, nodes, path.child(key))?;
             }
         }
         _ => {}
