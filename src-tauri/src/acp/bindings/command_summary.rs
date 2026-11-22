@@ -1,3 +1,5 @@
+use std::{borrow::Cow, fmt::Write};
+
 use sage_acp_protocol::contract::SafeText;
 
 use crate::acp::redaction::text::{
@@ -115,4 +117,30 @@ pub(crate) fn is_hidden_format(ch: char) -> bool {
         '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}'
         | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}'
     )
+}
+
+/// Preserve hidden characters visibly in approval text, refusing any expansion
+/// beyond the caller's byte budget instead of dropping or truncating content.
+pub(crate) fn escape_hidden_format(
+    input: &str,
+    maximum: usize,
+) -> Result<Cow<'_, str>, CommandSummaryError> {
+    if input.len() > maximum {
+        return Err(CommandSummaryError::TooLong);
+    }
+    if !input.chars().any(is_hidden_format) {
+        return Ok(Cow::Borrowed(input));
+    }
+    let mut shown = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if is_hidden_format(ch) {
+            write!(shown, "\\u{{{:04X}}}", u32::from(ch)).expect("write to string");
+        } else {
+            shown.push(ch);
+        }
+        if shown.len() > maximum {
+            return Err(CommandSummaryError::TooLong);
+        }
+    }
+    Ok(Cow::Owned(shown))
 }

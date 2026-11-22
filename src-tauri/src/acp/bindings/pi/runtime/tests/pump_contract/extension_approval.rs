@@ -40,6 +40,50 @@ async fn push(pump: &mut Pump, value: Value) {
 }
 
 #[tokio::test]
+async fn extension_hidden_formats_are_visible_after_persistence_and_projection() {
+    let fixture = Fixture::new();
+    let mut pump = fixture.pump(adapter());
+    start(&mut pump).await;
+    let name = "fixture_\u{200b}echo";
+    let args = json!({"path":"invoice\u{202e}txt.exe","apiKey":"private\u{202e}key"});
+    push(
+        &mut pump,
+        json!({"type":"tool_execution_start","toolCallId":"extension-1",
+            "toolName":name,"args":args}),
+    )
+    .await;
+    push(
+        &mut pump,
+        json!({"type":"extension_ui_request","method":"input","id":"extension-approval",
+            "title":"sage.pi.prepare.v1","placeholder":json!({"version":1,
+                "toolCallId":"extension-1","tool":name,"kind":"extension",
+                "label":"Invoice\u{2066} tool\u{2069}","args":args}).to_string()}),
+    )
+    .await;
+    {
+        let connection = fixture.database.connection();
+        let page = load_chat_page(&connection, owner().project_id, owner().chat_id, None).unwrap();
+        let summary = page.turns.as_slice()[0]
+            .items
+            .as_slice()
+            .iter()
+            .find_map(|item| match &item.content {
+                crate::acp::projection::ItemContent::PermissionRequest { summary, .. } => {
+                    Some(summary.as_str())
+                }
+                _ => None,
+            })
+            .expect("persisted approval card");
+        assert_eq!(
+            summary,
+            "Allow extension tool fixture_\\u{200B}echo (Invoice\\u{2066} tool\\u{2069})?\n\
+             {\"path\":\"invoice\\u{202E}txt.exe\",[redacted]}"
+        );
+    }
+    fixture.finish().await;
+}
+
+#[tokio::test]
 async fn denied_extension_credentials_are_redacted_in_both_sqlite_records_and_projection() {
     let fixture = Fixture::new();
     let mut pump = fixture.pump(adapter());
@@ -122,6 +166,7 @@ async fn serialized_extension_permissions_refuse_escaped_and_over_limit_inputs_c
         (json!({"text":"\"".repeat(22_000)}), false),
         (json!({"text":"x".repeat(65_300)}), true),
         (json!({"text":"x".repeat(65_400)}), false),
+        (json!({"text":"\u{202e}".repeat(9000)}), false),
         (
             json!({"apiKey":"x".repeat(9000),"path":"/tmp/report.txt","text":"operation after credential"}),
             false,
