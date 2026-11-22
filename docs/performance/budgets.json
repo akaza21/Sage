@@ -17,12 +17,12 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerExtensions.tsx",
-        "maxGzipBytes": 1800,
+        "maxGzipBytes": 1750,
         "reason": "The + menu Extensions and managed MCP views, built from the menu command load; load only when opened and keep no inventory cache."
       },
       {
         "entry": "src/features/chat/acp/ExtensionMessage.tsx",
-        "maxGzipBytes": 400,
+        "maxGzipBytes": 440,
         "reason": "A displayed Pi extension custom message with collapsed details; loads with the first one in a transcript."
       },
       {

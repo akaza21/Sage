@@ -1,5 +1,5 @@
 use super::{AdapterEgress, AdapterEvent, AdapterRuntimeError, PiRuntime, identity};
-use crate::acp::bindings::pi::{Operation, StateSnapshot};
+use crate::acp::bindings::pi::{ModelSummary, Operation, StateSnapshot};
 use sage_acp_protocol::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
 
 impl PiRuntime {
@@ -25,5 +25,31 @@ impl PiRuntime {
             .ok();
         self.configuration_models_pending = models.is_some();
         Ok((Some(AdapterEvent::IgnoredDuplicate), models))
+    }
+
+    pub(super) fn models_reply(
+        &mut self,
+        models: Vec<ModelSummary>,
+    ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
+        let event = identity::model_event(models.clone(), self.current_model.as_deref())?;
+        if let AdapterEvent::Models { models, .. } = &event {
+            self.model_count = models
+                .len()
+                .try_into()
+                .map_err(|_| AdapterRuntimeError::BatchCount)?;
+        }
+        self.available_models = models;
+        // A configuration read continues to the thinking levels.
+        let levels = if std::mem::take(&mut self.configuration_models_pending)
+            && self.initialized
+            && self.active_turn.is_some()
+            && self.refresh_thinking_after_model
+            && self.thinking_request_command.is_none()
+        {
+            Some(self.begin_thinking_discovery()?)
+        } else {
+            None
+        };
+        Ok((Some(event), levels))
     }
 }

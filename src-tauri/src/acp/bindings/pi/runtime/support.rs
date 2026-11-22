@@ -47,7 +47,7 @@ mod tool_output;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
-use identity::{external, model_event, text_payload};
+use identity::{external, text_payload};
 
 impl PiRuntime {
     pub(super) fn translate_outputs(
@@ -152,28 +152,7 @@ impl PiRuntime {
             AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,
-            AdapterOutput::Models(models) => {
-                let event = model_event(models.clone(), self.current_model.as_deref())?;
-                if let AdapterEvent::Models { models, .. } = &event {
-                    self.model_count = models
-                        .len()
-                        .try_into()
-                        .map_err(|_| AdapterRuntimeError::BatchCount)?;
-                }
-                self.available_models = models;
-                // A configuration read continues to the thinking levels.
-                let levels = if std::mem::take(&mut self.configuration_models_pending)
-                    && self.initialized
-                    && self.active_turn.is_some()
-                    && self.refresh_thinking_after_model
-                    && self.thinking_request_command.is_none()
-                {
-                    Some(self.begin_thinking_discovery()?)
-                } else {
-                    None
-                };
-                (Some(event), levels)
-            }
+            AdapterOutput::Models(models) => self.models_reply(models)?,
             AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
             AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,
