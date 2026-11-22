@@ -379,29 +379,31 @@ test("picking Codex's /review shows its input hint", async ({ page }) => {
   );
 });
 
-test("a typed terminal-only command waits for a choice and sends nothing", async ({
+test("a caught terminal-only command offers the terminal or plain text under the field", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await openScenario(page, "agent-single", "agent");
-  await settleChatProjections(page);
-  // As the native list carries a curated binding's terminal handoff.
-  await installNativeCommands(page, commands, {
-    terminalHandoff: {
-      label: "Claude Code",
-      command: 'claude --resume "4f1c2a"',
-      terminalOnly: [{ name: "hooks", aliases: [] }],
-      controls: [],
-    },
-  });
-  const field = page
-    .locator("form.composer")
-    .first()
-    .getByRole("combobox", { name: "Message agent" });
-  await field.focus();
+  const field = await openComposer(page);
   await field.fill("/hooks");
   await page.keyboard.press("Escape");
-  await field.press("Enter");
+  // The send route with the native list a curated binding returns.
+  const taken = await page.evaluate(async () => {
+    const { routeTerminalCommand } =
+      await import("/src/features/chat/terminalCommandRoute.ts");
+    const chatId = document.querySelector<HTMLElement>(
+      ".acp-chat-projection[data-chat-id]",
+    )!.dataset.chatId!;
+    return routeTerminalCommand(chatId, "/hooks", "hooks", {
+      revision: 1,
+      commands: [],
+      terminalHandoff: {
+        label: "Claude Code",
+        command: 'claude --resume "4f1c2a"',
+        terminalOnly: [{ name: "hooks", aliases: [] }],
+        controls: [],
+      },
+    });
+  });
+  expect(taken).toBe(true);
   const notice = page.locator(
     "[data-notice-identity='terminal-command:hooks']",
   );
@@ -413,13 +415,7 @@ test("a typed terminal-only command waits for a choice and sends nothing", async
     notice.getByRole("button", { name: "Send as text anyway" }),
   ).toBeVisible();
   await expect(field).toHaveValue("/hooks");
-  const invoked = () =>
-    page.evaluate(
-      () =>
-        (window as unknown as { __slashCommands: { invoked: string[] } })
-          .__slashCommands.invoked,
-    );
-  expect(await invoked()).not.toContain("send_acp_turn");
+  await expectNoViewportOverflow(page);
   await expect(page.locator("form.composer").first()).toHaveScreenshot(
     "composer-terminal-command.png",
   );

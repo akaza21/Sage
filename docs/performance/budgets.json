@@ -22,6 +22,16 @@
         "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
       },
       {
+        "entry": "src/features/chat/terminalCommandRoute.ts",
+        "maxGzipBytes": 1250,
+        "reason": "Typed terminal-only command catch: decodes the binding's curated handoff and routes the command; loads only on a send of an unreported /name with a handoff. Existing startup and composer caps stay unchanged."
+      },
+      {
+        "entry": "src/features/chat/ComposerTerminalCommand.tsx",
+        "maxGzipBytes": 1250,
+        "reason": "Terminal-only command choice (native control, terminal handoff or text); loads only when a typed command is caught. Existing startup and composer caps stay unchanged."
+      },
+      {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
         "maxGzipBytes": 5500,
         "maxCssGzipBytes": 500,

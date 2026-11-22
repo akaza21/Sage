@@ -90,6 +90,10 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerSlashMenu.tsx",
   // `/status` and `/mcp` load their panel when first opened.
   "src/features/chat/ComposerCommandPanel.tsx",
+  // A typed terminal-only command loads its route on send and its choice
+  // only when one is caught.
+  "src/features/chat/terminalCommandRoute.ts",
+  "src/features/chat/ComposerTerminalCommand.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
