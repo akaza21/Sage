@@ -33,6 +33,10 @@ import {
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
 
+// Menus and typed sends share one lazy catalog entry and transport.
+// eslint-disable-next-line react-refresh/only-export-components -- the chunk's command action, shared by its parts
+export { slashCommandTurn } from "./slashCommandTurn";
+
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./ComposerSlashMenu"),
 );
