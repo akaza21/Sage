@@ -62,6 +62,13 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
   },
   {
+    name: "notice",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Editor and Source Control notices must not pull Agent UI into a resource.
+    test: /src[\\/]ui[\\/]Notice\.tsx$/,
+  },
+  {
     name: "file-kind-icons",
     priority: 2,
     includeDependenciesRecursively: false,
