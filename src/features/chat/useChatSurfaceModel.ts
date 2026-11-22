@@ -276,7 +276,7 @@ export function useChatSurfaceModel({
                 harnessAvailable: model.harnessAvailable,
                 harnessDiscoveryPhase: discoveryPhase,
                 projectTransitioning,
-                selectedHarness: Boolean(model.selectedHarness),
+                selectedHarness: model.selectedHarness ?? null,
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(

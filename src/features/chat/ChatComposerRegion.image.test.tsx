@@ -1,3 +1,4 @@
+import { composerProblem } from "./ComposerStatusNotices";
 import {
   cleanup,
   fireEvent,
@@ -92,6 +93,29 @@ async function openAttachMenu() {
 }
 
 describe("composer image input", () => {
+  it("resolves one image problem reported by workspace, send and attachment channels at the attachment", () => {
+    renderComposer({
+      workbenchError: composerProblem(
+        "image-input",
+        "chat-a",
+        "Image could not be added.",
+      ),
+      chatError: composerProblem(
+        "image-input",
+        "chat-a",
+        "Cannot send the image.",
+      ),
+      imageInputDisabledReason: "Image could not be added.",
+    });
+    fireEvent.drop(screen.getByRole("form"), {
+      dataTransfer: { files: [png()], types: ["Files"] },
+    });
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Image could not be added.",
+    );
+    expect(screen.queryByText("Cannot send the image.")).toBeNull();
+  });
   it("unmounts hidden toolbar controls while preserving the draft", () => {
     const { container, rerenderComposer } = renderComposer();
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
@@ -314,10 +338,14 @@ describe("composer image input", () => {
     expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
   });
 
-  it("keeps errors above the joined location and dock while the input scrolls separately from the toolbar", async () => {
+  it("keeps errors beside the send action inside the joined dock while the input scrolls separately from the toolbar", async () => {
     const { rerenderComposer } = renderComposer({
       newChat: true,
-      workbenchError: "Retry the request",
+      workbenchError: composerProblem(
+        "workspace",
+        "project-a",
+        "Retry the request",
+      ),
     });
     const form = screen.getByRole("form");
     const body = form.querySelector(".composer__body");
@@ -335,9 +363,9 @@ describe("composer image input", () => {
     expect(notices).toHaveAttribute("tabindex", "0");
     notices.focus();
     expect(notices).toHaveFocus();
-    expect(notices.nextElementSibling).toBe(location);
+    expect(body).toContainElement(notices);
     expect(location.nextElementSibling).toContainElement(form);
-    expect(form.closest(".chat-dock")).not.toContainElement(error);
+    expect(form.closest(".chat-dock")).toContainElement(error);
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
     rerenderComposer({ hidden: true });
@@ -367,9 +395,11 @@ describe("composer image input", () => {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "This harness does not advertise image input.",
-    );
+    expect(
+      screen
+        .getByText("This harness does not advertise image input.")
+        .closest(".notice"),
+    ).toHaveClass("notice--info");
   });
 
   it("opens the attach menu for images where files are refused", async () => {
@@ -411,9 +441,11 @@ describe("composer image input", () => {
       clipboardData: { files: [png()] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "This harness does not advertise image input.",
-    );
+    expect(
+      screen
+        .getByText("This harness does not advertise image input.")
+        .closest(".notice"),
+    ).toHaveClass("notice--info");
   });
 
   it("clears the unavailable warning once the session takes images", () => {
@@ -425,9 +457,9 @@ describe("composer image input", () => {
     fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [png()] },
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "once the session starts",
-    );
+    expect(
+      screen.getByText(/once the session starts/).closest(".notice"),
+    ).toHaveClass("notice--info");
     rerenderComposer({
       imageInputAvailable: true,
       imageInputDisabledReason: null,
@@ -451,9 +483,11 @@ describe("composer image input", () => {
       clipboardData: { files: [huge] },
     });
     expect(onAddImages).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Choose PNG or JPEG images no larger than 10 MiB each.",
-    );
+    expect(
+      screen
+        .getByText("Choose PNG or JPEG images no larger than 10 MiB each.")
+        .closest(".notice"),
+    ).toHaveClass("notice--info");
   });
 
   it("opens the persistent chooser from Add's attach menu and closes it", async () => {
@@ -487,7 +521,9 @@ describe("composer image input", () => {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
+    expect(screen.getByText(/at most 4 images/).closest(".notice")).toHaveClass(
+      "notice--info",
+    );
     await openAttachMenu();
     expect(screen.getByRole("menuitem", { name: "Images…" })).toBeDisabled();
   });

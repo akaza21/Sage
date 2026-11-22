@@ -7,12 +7,17 @@ import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { SettingsRow } from "./SettingsRow";
 import HarnessAccountDetails from "./HarnessAccountDetails";
+import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
 
 // The user-defined agent editor loads only when Harnesses is open, below
 // the harness list, so it arrives without a loading notice.
 const loadCustomAgentSettings = () => import("./CustomAgentSettings");
 
-export function AgentHarnessSettings() {
+export function AgentHarnessSettings({
+  presentation,
+}: {
+  presentation: HarnessNoticePresentation;
+}) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const selectedId = useWorkbenchStore((state) => state.selectedHarnessId);
   const phase = useWorkbenchStore((state) => state.harnessDiscoveryPhase);
@@ -122,7 +127,7 @@ export function AgentHarnessSettings() {
         load={loadCustomAgentSettings}
         render={(CustomAgentSettings) => <CustomAgentSettings />}
       />
-      <LazyHarnessNotice />
+      <LazyHarnessNotice presentation={presentation} />
     </>
   );
 }

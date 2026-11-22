@@ -5,6 +5,7 @@ import type { SearchablePickerOption } from "./SearchablePicker";
 
 export const PickerOption = memo(function PickerOption({
   active,
+  tabIndex = -1,
   candidate,
   disabled = false,
   id,
@@ -15,6 +16,7 @@ export const PickerOption = memo(function PickerOption({
   showSelectedCheck = false,
 }: {
   active: boolean;
+  tabIndex?: 0 | -1;
   candidate: SearchablePickerOption;
   disabled?: boolean;
   id: string;
@@ -42,7 +44,7 @@ export const PickerOption = memo(function PickerOption({
       data-option-id={candidate.id}
       data-active={active || undefined}
       disabled={unavailable}
-      tabIndex={-1}
+      tabIndex={tabIndex}
       onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
       onClick={() => !unavailable && onSelect(candidate.id)}
     >

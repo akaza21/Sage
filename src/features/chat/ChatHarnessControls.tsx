@@ -40,6 +40,7 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 export function ChatHarnessControls({
   modelsPending,
+  discoveryPhase,
   draftPickers,
   contextUsage,
   usageRequest,
@@ -291,6 +292,8 @@ export function ChatHarnessControls({
           />
         ) : null}
         <ComposerHarnessPicker
+          canContinueInNewChat={!draftPickers && !availableBinding}
+          discoveryPhase={discoveryPhase}
           open={active === "harness"}
           onOpenChange={setHarnessOpen}
           candidates={harnessCandidates}
