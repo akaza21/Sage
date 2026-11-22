@@ -181,8 +181,12 @@ export function ComposerSectionRows({
       )
         ? props.onOpenMcp
         : undefined,
+    // Built from reported provenance only, so a harness reporting none has no row.
     onOpenExtensions:
-      load?.kind === "ready" ? props.onOpenExtensions : undefined,
+      load?.kind === "ready" &&
+      load.list.commands.some((command) => command.sourceInfo)
+        ? props.onOpenExtensions
+        : undefined,
   });
   const sections = composerMenuSections(
     rows,
