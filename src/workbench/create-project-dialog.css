@@ -247,12 +247,6 @@
   opacity: var(--opacity-disabled);
 }
 
-.create-project-dialog__error {
-  margin: 0;
-  color: var(--color-danger);
-  font-size: var(--font-size-xs);
-}
-
 .create-project-dialog__actions {
   display: flex;
   align-items: center;

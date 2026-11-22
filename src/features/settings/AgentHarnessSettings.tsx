@@ -5,6 +5,7 @@ import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { Notice } from "../../ui/Notice";
 import { SettingsRow } from "./SettingsRow";
 import HarnessAccountDetails from "./HarnessAccountDetails";
 import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
@@ -66,7 +67,13 @@ export function AgentHarnessSettings({
           {refreshing ? "Checking harnesses..." : "Refresh discovery"}
         </button>
       </div>
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <Notice
+          identity="settings:harness-discovery"
+          severity="warning"
+          message={error}
+        />
+      ) : null}
       <div className="agent-settings__card">
         {harnesses.slice(0, 32).map((harness) => {
           const availability = harnessAvailability(harness);

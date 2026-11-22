@@ -129,8 +129,8 @@
 .terminal-dock__message {
   grid-area: message;
   margin: 0;
-  padding: 4px 8px;
-  color: var(--color-warning);
+  padding: 0 8px;
+  color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
 

@@ -20,6 +20,7 @@ import {
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
 import type { HarnessBrowseOwner } from "./harnessBrowse";
 import { MenuPopover } from "../../ui/MenuPopover";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 export function HarnessBrowserSurface({
@@ -238,9 +239,13 @@ export function HarnessBrowserSurface({
         ) : null}
       </MenuPopover>
       {denied ? (
-        <p className="harness-browser__denied" role="alert">
-          Only loopback HTTP(S) with a port
-        </p>
+        <div className="harness-browser__denied">
+          <Notice
+            identity="harness-browser:address"
+            severity="warning"
+            message="Only loopback HTTP(S) with a port"
+          />
+        </div>
       ) : null}
       {replacement ??
         (session ? (

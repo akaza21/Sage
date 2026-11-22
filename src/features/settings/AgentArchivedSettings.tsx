@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
+import { Notice } from "../../ui/Notice";
 import { SettingsRow } from "./SettingsRow";
 
 const PRIVATE = "scope:private";
@@ -18,7 +19,10 @@ export function AgentArchivedSettings() {
   const [offset, setOffset] = useState(0);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{
+    chatId: string;
+    message: string;
+  } | null>(null);
   const projectId =
     chosenProject ?? (project?.isInternal ? PRIVATE : project?.id);
   const chats =
@@ -47,11 +51,14 @@ export function AgentArchivedSettings() {
     try {
       if (await restore(chatId, ownerId)) setMessage("Chat unarchived.");
       else
-        setError(
-          useWorkbenchStore.getState().error ?? "Chat could not be unarchived.",
-        );
+        setError({
+          chatId,
+          message:
+            useWorkbenchStore.getState().error ??
+            "Chat could not be unarchived.",
+        });
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError({ chatId, message: errorMessage(cause) });
     } finally {
       setPending(false);
     }
@@ -102,6 +109,15 @@ export function AgentArchivedSettings() {
               key={chat.id}
               title={chat.title}
               description="Archived chat"
+              notice={
+                error?.chatId === chat.id ? (
+                  <Notice
+                    identity={`settings:unarchive:${chat.id}`}
+                    severity="warning"
+                    message={error.message}
+                  />
+                ) : null
+              }
             >
               <button
                 className="button button--compact"
@@ -142,8 +158,14 @@ export function AgentArchivedSettings() {
           </button>
         </div>
       ) : null}
-      {message ? <p role="status">{message}</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
+      {message ? (
+        <Notice
+          identity="settings:unarchive:done"
+          severity="info"
+          message={message}
+          progress
+        />
+      ) : null}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Notice } from "../../ui/Notice";
 
 import { BrowserClearData } from "../../features/browser/BrowserClearData";
 import { BrowserDeveloperModeSetting } from "../../features/browser/BrowserDeveloperModeSetting";
@@ -48,18 +49,16 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
           >
             <h3 id="browser-general-heading">General</h3>
             {error ? (
-              <div className="settings-surface__error" role="alert">
-                <span>{error}</span>
-                {!ready ? (
-                  <button
-                    className="button button--compact"
-                    type="button"
-                    onClick={() => void restore()}
-                  >
-                    Retry
-                  </button>
-                ) : null}
-              </div>
+              <Notice
+                identity="settings:browser-preferences"
+                severity="warning"
+                message={error}
+                action={
+                  ready
+                    ? undefined
+                    : { label: "Retry", onClick: () => void restore() }
+                }
+              />
             ) : null}
             <div className="settings-surface__rows">
               {visible.has("browser.showFullUrl") ? (

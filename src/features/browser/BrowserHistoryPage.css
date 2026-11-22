@@ -150,13 +150,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browser-history__status,
-.browser-history__error {
+.browser-history__status {
   margin: 8px;
   color: var(--browser-muted-text);
 }
-.browser-history__error {
-  color: var(--color-danger);
+.browser-history__notice {
+  margin: 8px;
 }
 .browser-history__more {
   margin: 12px 0 0 4px;

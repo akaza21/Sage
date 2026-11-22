@@ -5,6 +5,7 @@ import {
   nativeNotificationPort,
   type NotificationPreference,
 } from "../../ports/nativeNotificationPort";
+import { Notice } from "../../ui/Notice";
 import { SettingsRow } from "./SettingsRow";
 
 const PREFERENCES: readonly {
@@ -54,6 +55,15 @@ export default function AgentNotificationSettings() {
         <SettingsRow
           title="Turn notifications"
           description="Show a system notification when a turn completes, fails or needs approval in a chat you aren't viewing."
+          notice={
+            error ? (
+              <Notice
+                identity="settings:turn-notifications"
+                severity="warning"
+                message={error}
+              />
+            ) : null
+          }
         >
           <select
             aria-label="Turn notifications"
@@ -80,7 +90,6 @@ export default function AgentNotificationSettings() {
           </select>
         </SettingsRow>
       </div>
-      {error ? <p role="alert">{error}</p> : null}
     </>
   );
 }

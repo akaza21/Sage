@@ -5,7 +5,9 @@ import { browserHistory } from "../../ports/nativeBrowserHistoryPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { errorMessage } from "../../domain/errors";
 import { BrowserClearData } from "../browser/BrowserClearData";
+import { useClearProgress } from "../browser/browserClearProgress";
 import { useBrowserDownloads } from "../browser/useBrowserDownloads";
+import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { BrowserSitePermissions } from "../browser/BrowserSitePermissions";
 import { BrowserSitePermissionsGroup } from "../browser/BrowserSiteSettings";
@@ -50,9 +52,18 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
     <section aria-label="Browsing history">
       <p>Recent pages visited by this live tab.</p>
       {error ? (
-        <p role="alert">{error}</p>
+        <Notice
+          identity={`settings:browser-history:${tabId}`}
+          severity="warning"
+          message={error}
+        />
       ) : entries === null ? (
-        <p role="status">Loading browsing history...</p>
+        <Notice
+          identity={`settings:browser-history:${tabId}:loading`}
+          severity="info"
+          message="Loading browsing history..."
+          progress
+        />
       ) : entries.length ? (
         <ul>
           {entries.map((url, index) => (
@@ -135,7 +146,8 @@ function LiveTabSitePermissions({
 
 export function AgentBrowserSettings() {
   const tabs = useWorkbenchStore((state) => state.tabs);
-  const clearNotice = useWorkbenchStore((state) => state.browserClearNotice);
+  // A finished clear closes every browser tab, so the live list is re-read.
+  const cleared = useClearProgress((state) => state.success);
   const showSitePermissions = useAgentSettingsState(
     (state) => state.showSitePermissions,
   );
@@ -166,7 +178,7 @@ export function AgentBrowserSettings() {
     return () => {
       current = false;
     };
-  }, [native, revision, clearNotice]);
+  }, [native, revision, cleared]);
   if (!native)
     return (
       <p role="status">
@@ -216,7 +228,25 @@ export function AgentBrowserSettings() {
         </button>
       </div>
       <div className="agent-settings__card">
-        <SettingsRow title="Browser tab">
+        <SettingsRow
+          title="Browser tab"
+          notice={
+            error ? (
+              <Notice
+                identity="settings:browser-live-tabs"
+                severity="warning"
+                message={error}
+              />
+            ) : loading ? (
+              <Notice
+                identity="settings:browser-live-tabs:loading"
+                severity="info"
+                message="Loading browser tabs..."
+                progress
+              />
+            ) : null
+          }
+        >
           <select
             className="select"
             aria-label="Browser tab"
@@ -236,10 +266,7 @@ export function AgentBrowserSettings() {
         </SettingsRow>
         {live ? <LiveTabRows key={live} tabId={live} /> : null}
       </div>
-      {error ? <p role="alert">{error}</p> : null}
-      {loading ? (
-        <p role="status">Loading browser tabs...</p>
-      ) : tabId ? null : (
+      {loading || tabId || error ? null : (
         <p role="status">
           Open a browser tab in Files and preview to manage its history, site
           permissions and downloads.

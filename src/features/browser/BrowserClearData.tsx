@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { useClearProgress } from "./browserClearProgress";
+import { Notice } from "../../ui/Notice";
+import {
+  clearControlMounted,
+  mountClearControl,
+  useClearProgress,
+} from "./browserClearProgress";
 import { reconcileNativeClosedBrowserTabs } from "../../app/tabClosing";
 import {
   browserClearData,
@@ -10,7 +15,13 @@ import {
 } from "../../ports/nativeBrowserPort";
 
 const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
-const setError = (error: string | null) => useClearProgress.setState({ error });
+/** One place explains a failure: its control, or the workbench when none is mounted. */
+const setError = (error: string | null) => {
+  if (error && !clearControlMounted()) {
+    useClearProgress.setState({ error: null });
+    useWorkbenchStore.setState({ error });
+  } else useClearProgress.setState({ error });
+};
 const setSuccess = (success: string | null) =>
   useClearProgress.setState({ success });
 
@@ -23,16 +34,18 @@ export function BrowserClearData({
   buttonClassName?: string;
   describedBy?: string;
 }) {
-  const { busy, error, success } = useClearProgress();
+  const { busy, error, success, owner } = useClearProgress();
   const [confirming, setConfirming] = useState(false);
+  const id = useId();
+  useEffect(() => mountClearControl(id), [id]);
 
   async function clear() {
     if (useClearProgress.getState().busy) return;
     setConfirming(false);
+    useClearProgress.setState({ owner: id });
     setBusy(true);
     setError(null);
     setSuccess(null);
-    useWorkbenchStore.setState({ browserClearNotice: null });
     let unlisten: (() => void) | undefined;
     let pending = false;
     let completion: BrowserClearDataCompletion | null = null;
@@ -41,12 +54,7 @@ export function BrowserClearData({
       unlisten = undefined;
       setBusy(false);
       setError(outcome.error);
-      const notice = outcome.cleared ? "Browsing data cleared." : null;
-      setSuccess(notice);
-      useWorkbenchStore.setState({
-        error: outcome.error,
-        browserClearNotice: notice,
-      });
+      setSuccess(outcome.cleared ? "Browsing data cleared." : null);
     };
     try {
       const { listen } = await import("@tauri-apps/api/event");
@@ -65,32 +73,24 @@ export function BrowserClearData({
       );
       if (result.pending) {
         pending = true;
-        setError(result.error);
-        useWorkbenchStore.setState({ error: result.error });
+        useClearProgress.setState({ error: result.error });
         if (completion) finish(completion);
         return;
       }
       unlisten();
       unlisten = undefined;
-      if (!result.cleared) {
-        const message = result.error ?? "Browser data could not be cleared.";
-        setError(message);
-        useWorkbenchStore.setState({ error: message });
-      } else {
-        const notice = "Browsing data cleared.";
-        setSuccess(notice);
-        useWorkbenchStore.setState({ browserClearNotice: notice });
-      }
+      if (!result.cleared)
+        setError(result.error ?? "Browser data could not be cleared.");
+      else setSuccess("Browsing data cleared.");
     } catch (cause) {
       unlisten?.();
-      const message = String(cause).slice(0, 512);
-      setError(message);
-      useWorkbenchStore.setState({ error: message });
+      setError(String(cause).slice(0, 512));
     } finally {
       if (!pending) setBusy(false);
     }
   }
 
+  const message = error ?? success;
   return (
     <div
       className={
@@ -109,8 +109,14 @@ export function BrowserClearData({
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}
       </button>
-      {error ? <span role="alert">{error}</span> : null}
-      {success ? <span role="status">{success}</span> : null}
+      {owner === id && message ? (
+        <Notice
+          identity={`browser-clear-data:${busy ? "pending" : error ? "failed" : "cleared"}`}
+          severity={error && !busy ? "warning" : "info"}
+          message={message}
+          progress={busy || !error}
+        />
+      ) : null}
       {confirming ? (
         <ConfirmDialog
           title="Clear browsing data?"

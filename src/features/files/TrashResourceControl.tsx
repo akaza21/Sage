@@ -5,6 +5,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { sameOrDescendantResource } from "../../domain/resourceIdentity";
 import type { ResourceRef, TrashResourceKind } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { Notice } from "../../ui/Notice";
 import { trashName } from "../../ui/trashName";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
@@ -107,9 +108,13 @@ export function TrashResourceControl({
               from there.
             </p>
             <p className="new-file-dialog__preview">Path: {path}</p>
-            <p className="new-file-dialog__error" role="alert">
-              {nativeError ?? ""}
-            </p>
+            {nativeError ? (
+              <Notice
+                identity="trash-resource:move"
+                severity="warning"
+                message={nativeError}
+              />
+            ) : null}
             <div className="dirty-dialog__actions">
               <button
                 className="button"

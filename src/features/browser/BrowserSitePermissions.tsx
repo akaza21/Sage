@@ -8,6 +8,7 @@ import {
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { Notice } from "../../ui/Notice";
 import { subscribeBrowserTab } from "./browserTabEvents";
 
 const labels: Record<BrowserPermissionKind, string> = {
@@ -156,9 +157,19 @@ export function BrowserSitePermissions({
         <p>No site permissions saved for this tab.</p>
       ) : null}
       {snapshot?.staleAccess ? (
-        <p role="alert">Reload this page to end revoked access.</p>
+        <Notice
+          identity={`site-permissions:${tabId}:stale`}
+          severity="warning"
+          message="Reload this page to end revoked access."
+        />
       ) : null}
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <Notice
+          identity={`site-permissions:${tabId}:action`}
+          severity="warning"
+          message={error}
+        />
+      ) : null}
     </aside>
   );
 }

@@ -97,9 +97,9 @@ describe("HarnessBrowserSurface", () => {
     });
     fireEvent.submit(address.closest("form")!);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Only loopback HTTP(S) with a port",
-    );
+    expect(
+      screen.getByText("Only loopback HTTP(S) with a port").closest(".notice"),
+    ).toHaveClass("notice--warning");
 
     fireEvent.change(address, {
       target: { value: "http://127.0.0.1:4173/preview" },

@@ -107,7 +107,6 @@ export interface WorkbenchState
     FileNavigationSlice {
   phase: "booting" | "ready" | "error";
   error: string | null;
-  browserClearNotice: string | null;
   projects: ProjectListItem[];
   unscopedChats: ProjectListItem[];
   project: ProjectSummary | null;
@@ -152,7 +151,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
   return {
     phase: "booting",
     error: null,
-    browserClearNotice: null,
     projects: [],
     unscopedChats: [],
     project: null,

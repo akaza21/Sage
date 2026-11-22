@@ -117,11 +117,6 @@
   color: var(--color-text-secondary);
 }
 
-.new-file-dialog .new-file-dialog__error {
-  min-height: 16px;
-  color: var(--color-danger);
-}
-
 .handoff-control {
   position: relative;
   display: flex;

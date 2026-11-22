@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Notice } from "../../ui/Notice";
 import "./browser-download-folder.css";
 
 import {
@@ -111,9 +112,11 @@ export function BrowserDownloadFolder() {
           </small>
         ) : null}
         {error !== null ? (
-          <small className="settings-surface__row-error" role="alert">
-            {error}
-          </small>
+          <Notice
+            identity="settings:download-folder"
+            severity="warning"
+            message={error}
+          />
         ) : null}
       </div>
       <div className="settings-surface__actions">

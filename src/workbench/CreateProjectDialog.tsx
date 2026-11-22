@@ -9,6 +9,7 @@ import {
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { ModalDialog } from "../ui/ModalDialog";
+import { Notice } from "../ui/Notice";
 import { MenuPopover } from "../ui/MenuPopover";
 import {
   Check,
@@ -244,9 +245,13 @@ export function CreateProjectDialog({
           )}
         </section>
         {error ? (
-          <p className="create-project-dialog__error" id={errorId} role="alert">
-            {error}
-          </p>
+          <div id={errorId}>
+            <Notice
+              identity="create-project:submit"
+              severity="warning"
+              message={error}
+            />
+          </div>
         ) : null}
         <footer className="create-project-dialog__actions">
           <button

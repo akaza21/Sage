@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Notice } from "../../ui/Notice";
 
 import {
   browserDeveloperMode,
@@ -61,9 +62,11 @@ export function BrowserDeveloperModeSetting() {
             </p>
             <small id={`${TOGGLE}-default`}>Default: Off</small>
             {error ? (
-              <span className="settings-surface__error" role="alert">
-                {error}
-              </span>
+              <Notice
+                identity="settings:developer-mode"
+                severity="warning"
+                message={error}
+              />
             ) : null}
           </div>
           <div className="settings-surface__toggle">
@@ -80,9 +83,11 @@ export function BrowserDeveloperModeSetting() {
           </div>
         </div>
       ) : (
-        <p className="settings-surface__error" role="alert">
-          {error}
-        </p>
+        <Notice
+          identity="settings:developer-mode"
+          severity="warning"
+          message={error}
+        />
       )}
     </section>
   );

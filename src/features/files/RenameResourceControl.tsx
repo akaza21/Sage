@@ -9,6 +9,7 @@ import {
 import type { ResourceRef } from "../../domain/workbench";
 import { FilePenLine } from "../../ui/leanIcons";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { Notice } from "../../ui/Notice";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { renameTargetResource } from "./fileRenameContract";
@@ -55,6 +56,7 @@ export function RenameResourceControl({
   );
   const [basename, setBasename] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const fieldError = localError ?? nativeError;
   const dialog = useExplorerActionDialog({
     clearError,
     inFlight,
@@ -140,7 +142,10 @@ export function RenameResourceControl({
               <span>{kind} name</span>
               <input
                 autoFocus
-                aria-describedby={`${id}-preview ${id}-error`}
+                aria-describedby={
+                  fieldError ? `${id}-preview ${id}-error` : `${id}-preview`
+                }
+                aria-invalid={fieldError ? true : undefined}
                 disabled={inFlight}
                 maxLength={255}
                 value={basename}
@@ -151,15 +156,17 @@ export function RenameResourceControl({
                 }}
               />
             </label>
+            {fieldError ? (
+              <div id={`${id}-error`}>
+                <Notice
+                  identity={`${id}:name`}
+                  severity="warning"
+                  message={fieldError}
+                />
+              </div>
+            ) : null}
             <p id={`${id}-preview`} className="new-file-dialog__preview">
               Path: {previewParent}/{basename}
-            </p>
-            <p
-              id={`${id}-error`}
-              className="new-file-dialog__error"
-              role="alert"
-            >
-              {localError ?? nativeError ?? ""}
             </p>
             <div className="dirty-dialog__actions">
               <button
