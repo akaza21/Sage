@@ -2,24 +2,33 @@ import { useId, useState, type RefObject } from "react";
 import { useStore } from "zustand";
 import "../../styles/composer-command-panel.css";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
-import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { currentSession } from "./acp/acpTurnState";
+import { currentChatUsage } from "./acp/chatUsage";
 import { currentContext } from "./acp/useAcpChatActions";
+import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
+import { confirmedComposerModel } from "./inheritedComposerModel";
 import { ComposerMcpServers } from "./ComposerMcpServers";
-import { lazyParts } from "./lazyParts";
+import type * as LimitsChunk from "./ComposerUsageLimits";
 import type * as ExtensionsChunk from "./ComposerExtensions";
+import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
+import { lazyParts } from "./lazyParts";
+
+const Usage = lazyParts<typeof LimitsChunk>(
+  () => import("./ComposerUsageLimits"),
+);
 const Extensions = lazyParts<typeof ExtensionsChunk>(
   () => import("./ComposerExtensions"),
 );
 
-import type * as StatusChunk from "./ComposerSessionStatus";
-const Status = lazyParts<typeof StatusChunk>(
-  () => import("./ComposerSessionStatus"),
-);
+/** Command panels, plus the views only the + menu opens. */
+export type ComposerPanelKind = AcpCommandPanel | "managedMcp" | "extensions";
 
 function liveRequest(
   boundChatId: string | undefined,
@@ -36,9 +45,6 @@ function liveRequest(
     runtimeEpoch: session.runtimeEpoch,
   };
 }
-
-/** Command panels, plus the views only the + menu opens. */
-export type ComposerPanelKind = AcpCommandPanel | "managedMcp" | "extensions";
 
 export function ComposerCommandPanel({
   kind,
@@ -93,8 +99,77 @@ export function ComposerCommandPanel({
       ) : kind === "mcp" ? (
         <ComposerMcpServers request={request} />
       ) : (
-        <Status part="SessionStatus" page={page} request={request} />
+        <SessionStatus page={page} request={request} />
       )}
     </MenuPopover>
+  );
+}
+
+function useAccessLabel(page: AcpChatPage | null): string | null {
+  const session = page ? currentSession(page) : null;
+  const config = page?.sessionConfig;
+  const capabilities = useWorkbenchStore(
+    (state) =>
+      state.harnesses.find(
+        (harness) => harness.bindingId === session?.bindingId,
+      )?.accessModes,
+  );
+  const stored = useSessionAccessModeStore((state) =>
+    session ? state.modes[session.bindingId] : undefined,
+  );
+  const chat = useChatAccessStore((state) =>
+    config ? state.modes[config.sageAgentSessionId] : undefined,
+  );
+  const candidates = chatAccessCandidates(
+    capabilities,
+    config?.modes?.availableModes.map((mode) => mode.id) ?? null,
+  );
+  const effective = chatAccessEffective(stored, candidates, chat);
+  return candidates.find(({ id }) => id === effective)?.label ?? null;
+}
+
+function SessionStatus({
+  page,
+  request,
+}: {
+  page: AcpChatPage | null;
+  request: AcpUsageRequest | null;
+}) {
+  const model = confirmedComposerModel(page?.sessionConfig);
+  const access = useAccessLabel(page);
+  const context = currentChatUsage(page);
+  const rows = (
+    [
+      ["Model", model?.model],
+      ["Effort", model?.effort],
+      ["Access", access],
+      [
+        "Context",
+        context?.contextWindow
+          ? `${context.totalTokens.toLocaleString()} / ${context.contextWindow.toLocaleString()} tokens`
+          : null,
+      ],
+    ] satisfies [string, string | null | undefined][]
+  ).filter((row): row is [string, string] => Boolean(row[1]));
+  return (
+    <>
+      {rows.length ? (
+        <dl className="composer-command-panel__status">
+          {rows.map(([term, value]) => (
+            <div key={term}>
+              <dt>{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p role="status">Status appears once the session is running.</p>
+      )}
+      {request && page?.usage ? (
+        <div className="composer-usage">
+          <Usage part="UsageReport" request={request} />
+        </div>
+      ) : null}
+    </>
   );
 }
