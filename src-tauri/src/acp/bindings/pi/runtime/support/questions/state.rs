@@ -21,7 +21,10 @@ pub(in crate::acp::bindings::pi::runtime) struct Questions {
     pub(in crate::acp::bindings::pi::runtime) visible: Option<String>,
     pub(in crate::acp::bindings::pi::runtime) settling: Option<String>,
     pub(super) cancelled: VecDeque<String>,
+    /// Refusal notices posted in the current turn.
     pub(super) notices: u8,
+    /// Waiting questions cancelled by a stop, reported once as a count.
+    pub(super) waiting_cancelled: u8,
 }
 
 impl Questions {
@@ -45,6 +48,7 @@ impl Questions {
     }
     pub(super) fn finish(&mut self) {
         self.phase = Phase::InTurn;
+        self.notices = 0;
     }
     pub(in crate::acp::bindings::pi::runtime) fn cancel(&mut self) {
         self.phase = Phase::Cancelling {

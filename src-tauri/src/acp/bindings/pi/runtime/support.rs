@@ -355,6 +355,10 @@ impl PiRuntime {
             }
             AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
             AdapterOutput::DialogRefused { external_id } => self.refuse_dialog(external_id)?,
+            AdapterOutput::QuestionCancelled { external_id } => (
+                Some(AdapterEvent::Absorbed),
+                Some(self.cancel_waiting_question(external_id)?),
+            ),
             AdapterOutput::Image { media_type, data } => {
                 (Some(self.image_event(media_type, data)?), None)
             }

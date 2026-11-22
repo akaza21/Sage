@@ -46,17 +46,12 @@ impl PiRuntime {
                 .any(|recent| recent == id)
     }
 
+    /// Cancels a dialog Sage cannot show, with an "unsupported" transcript item.
     pub(super) fn cancel_dialog(
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        let bytes = serde_json::to_vec(&serde_json::json!({
-            "type":"extension_ui_response", "id":id, "cancelled":true,
-        }))
-        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        let frame =
-            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        let reply = self.cancel_dialog_response(id, frame)?;
+        let reply = self.cancel_dialog_reply(id)?;
         let event = match self.active_turn.as_mut() {
             None => AdapterEvent::IgnoredLate,
             Some(turn) if turn.dialog_notices >= DIALOG_NOTICES_PER_TURN => AdapterEvent::Absorbed,
@@ -76,6 +71,20 @@ impl PiRuntime {
             }
         };
         Ok((Some(event), Some(reply)))
+    }
+
+    /// Writes only the cancellation reply; callers own any user-facing notice.
+    pub(super) fn cancel_dialog_reply(
+        &mut self,
+        id: String,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "type":"extension_ui_response", "id":id, "cancelled":true,
+        }))
+        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        let frame =
+            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        self.cancel_dialog_response(id, frame)
     }
 
     /// Correlates a cancellation response until its bytes reach Pi, including

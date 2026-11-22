@@ -35,7 +35,7 @@ impl PiRuntime {
                     .queued
                     .remove(index)
                     .ok_or(AdapterRuntimeError::Operation)?;
-                replies.extend(self.cancel_dialog(pending.id)?.1);
+                replies.push(self.cancel_dialog_reply(pending.id)?);
             } else {
                 index += 1;
             }
@@ -55,7 +55,7 @@ impl PiRuntime {
         {
             let id = crate::acp::bindings::pi::decode::external_id(value.get("id"))?
                 .ok_or(AdapterError::Malformed)?;
-            return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
+            return Ok(vec![AdapterOutput::QuestionCancelled { external_id: id }]);
         }
         let previous = self.translator.take_pending_ui();
         let outputs = self.translator.ingest_record(record);
@@ -137,7 +137,10 @@ impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn advance_questions(
         &mut self,
     ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
-        if !self.questions.reply_pending || self.questions.settling.is_some() {
+        if !self.questions.reply_pending
+            || self.questions.settling.is_some()
+            || self.translator.pending_ui().is_some()
+        {
             return Ok(None);
         }
         self.questions.reply_pending = false;
@@ -146,20 +149,20 @@ impl PiRuntime {
         let mut egress = Vec::new();
         while let Some(next) = self.questions.queued.pop_front() {
             if self.questions.cancelling() {
-                let (event, reply) = self.cancel_dialog(next.id)?;
-                events.extend(event);
-                egress.extend(reply);
+                egress.push(self.cancel_waiting_question(next.id)?);
                 continue;
             }
             if next.remaining_ms(self.translator.question_now()) == Some(0) {
-                egress.extend(self.cancel_dialog(next.id)?.1);
+                egress.push(self.cancel_dialog_reply(next.id)?);
                 continue;
             }
             let (id, digest) = (next.id.clone(), next.digest);
             self.translator.remember_pending_ui(next);
+            events.extend(self.waiting_cancelled_notice()?);
             events.push(self.permission_event(id, digest)?);
             return AdapterBatch::new(events, egress).map(Some);
         }
+        events.extend(self.waiting_cancelled_notice()?);
         if self.questions.idle_turn() {
             let cancelled = self.questions.cancelling();
             self.questions.finish();
@@ -194,7 +197,7 @@ impl PiRuntime {
         self.questions.cancel();
         self.questions.reply_pending = true;
         self.questions.settling = Some(pending.id.clone());
-        Ok(self.cancel_dialog(pending.id)?.1)
+        self.cancel_dialog_reply(pending.id).map(Some)
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn cancel_pending_question(
@@ -211,9 +214,7 @@ impl PiRuntime {
         self.questions.cancel();
         self.questions.reply_pending = true;
         self.questions.settling = Some(id.to_owned());
-        self.cancel_dialog(id.to_owned())?
-            .1
-            .ok_or(AdapterRuntimeError::Operation)
+        self.cancel_dialog_reply(id.to_owned())
     }
 
     pub(super) fn finish_questions(&mut self) {
@@ -248,10 +249,16 @@ impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn cancelled_questions(
         &mut self,
     ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
-        if self.questions.cancelled.is_empty() {
+        // A stop reports its count once the queue drains; only a count left
+        // after the stop's turn has ended is flushed here.
+        let late_count = !self.questions.cancelling() && self.questions.waiting_cancelled > 0;
+        if self.questions.cancelled.is_empty() && !late_count {
             return Ok(None);
         }
         let mut events = Vec::new();
+        if late_count {
+            events.extend(self.waiting_cancelled_notice()?);
+        }
         let mut egress = Vec::new();
         while let Some(id) = self.questions.cancelled.pop_front() {
             let (event, reply) = self.cancel_dialog(id)?;
@@ -265,21 +272,54 @@ impl PiRuntime {
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        let (_, reply) = self.cancel_dialog(id)?;
+        let reply = self.cancel_dialog_reply(id)?;
         let event = if self.questions.notices < 8 {
             self.questions.notices += 1;
-            Some(self.session_event(sage_acp_protocol::intent::session_event::SessionScopedEvent::Notice(
-                sage_acp_protocol::intent::session_event::SessionNotice {
-                    identity: None, diagnostic: false,
-                    level: sage_acp_protocol::intent::session_event::SessionNoticeLevel::Warning,
-                    text: RequiredText::new("noticeText", "Pi dialog cancelled: at most 50 options of 256 bytes and four waiting questions are supported.").map_err(|_| AdapterRuntimeError::Frame)?,
-                    source: Some(RequiredText::new("noticeSource", "Pi").map_err(|_| AdapterRuntimeError::Frame)?),
-                }
-            )))
+            self.question_notice(
+                "Pi dialog cancelled: at most 50 options of 256 bytes and four waiting questions are supported.".to_owned(),
+            )?
         } else {
-            Some(AdapterEvent::Absorbed)
+            AdapterEvent::Absorbed
         };
-        Ok((event, reply))
+        Ok((Some(event), Some(reply)))
+    }
+
+    /// Cancels a supported waiting question without a transcript item; the
+    /// stop reports all of them in one counted notice.
+    pub(super) fn cancel_waiting_question(
+        &mut self,
+        id: String,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.questions.waiting_cancelled = self.questions.waiting_cancelled.saturating_add(1);
+        self.cancel_dialog_reply(id)
+    }
+
+    fn waiting_cancelled_notice(&mut self) -> Result<Option<AdapterEvent>, AdapterRuntimeError> {
+        let text = match std::mem::take(&mut self.questions.waiting_cancelled) {
+            0 => return Ok(None),
+            1 => "Pi: 1 waiting question cancelled.".to_owned(),
+            count => format!("Pi: {count} waiting questions cancelled."),
+        };
+        self.question_notice(text).map(Some)
+    }
+
+    fn question_notice(&self, text: String) -> Result<AdapterEvent, AdapterRuntimeError> {
+        use sage_acp_protocol::intent::session_event::{
+            SessionNotice, SessionNoticeLevel, SessionScopedEvent,
+        };
+        Ok(
+            self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                identity: None,
+                diagnostic: false,
+                level: SessionNoticeLevel::Warning,
+                text: RequiredText::new("noticeText", text)
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                source: Some(
+                    RequiredText::new("noticeSource", "Pi")
+                        .map_err(|_| AdapterRuntimeError::Frame)?,
+                ),
+            })),
+        )
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn decline_questions(
@@ -291,10 +331,10 @@ impl PiRuntime {
         self.questions.finish();
         let mut replies = Vec::new();
         if let Some(pending) = self.translator.take_pending_ui() {
-            replies.extend(self.cancel_dialog(pending.id)?.1);
+            replies.push(self.cancel_dialog_reply(pending.id)?);
         }
         while let Some(pending) = self.questions.queued.pop_front() {
-            replies.extend(self.cancel_dialog(pending.id)?.1);
+            replies.push(self.cancel_dialog_reply(pending.id)?);
         }
         Ok(replies)
     }

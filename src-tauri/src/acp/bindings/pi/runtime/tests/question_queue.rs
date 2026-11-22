@@ -153,11 +153,90 @@ fn cancelling_an_idle_question_cancels_parallel_arrivals_before_the_reply_is_wri
     let ended = runtime.answers_delivered(&Mapper).unwrap().unwrap();
     assert!(matches!(
         ended.events(),
-        [AdapterEvent::Turn {
-            state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
-            ..
-        }]
+        [
+            AdapterEvent::Session { .. },
+            AdapterEvent::Turn {
+                state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
+                ..
+            }
+        ]
     ));
+    assert!(format!("{:?}", ended.events()).contains("Pi: 1 waiting question cancelled."));
+}
+
+#[test]
+fn stopping_an_idle_question_turn_reports_its_waiting_questions_in_one_notice() {
+    let mut runtime = fixture_runtime(94);
+    ready(&mut runtime);
+    runtime.ingest(&frame(dialog("visible")), &Mapper).unwrap();
+    runtime
+        .adopt_turn(RequiredText::new("client", "idle-stop-3").unwrap(), &Mapper)
+        .unwrap();
+    for id in ["one", "two", "three"] {
+        runtime.ingest(&frame(dialog(id)), &Mapper).unwrap();
+    }
+    let stop = runtime.command(AdapterCommand::Cancel).unwrap();
+    runtime.commit_mandatory_egress(stop.token()).unwrap();
+    assert_eq!(
+        deliver(&mut runtime, stop),
+        json!({"type":"extension_ui_response","id":"visible","cancelled":true})
+    );
+    let ended = runtime.answers_delivered(&Mapper).unwrap().unwrap();
+    let transcript = format!("{:?}", ended.events());
+    assert!(matches!(
+        ended.events(),
+        [
+            AdapterEvent::Session { .. },
+            AdapterEvent::Turn {
+                state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
+                ..
+            }
+        ]
+    ));
+    assert!(transcript.contains("Pi: 3 waiting questions cancelled."));
+    assert!(!transcript.contains("not supported"));
+    let (_, replies) = ended.into_parts();
+    let mut cancelled = Vec::new();
+    for reply in replies {
+        runtime.commit_mandatory_egress(reply.token()).unwrap();
+        cancelled.push(deliver(&mut runtime, reply));
+    }
+    assert_eq!(
+        cancelled,
+        ["one", "two", "three"]
+            .map(|id| json!({"type":"extension_ui_response","id":id,"cancelled":true}))
+    );
+}
+
+#[test]
+fn refusal_notices_are_budgeted_per_turn_not_per_runtime() {
+    let mut runtime = fixture_runtime(95);
+    ready(&mut runtime);
+    let over_cap = |id: &str| {
+        frame(
+            json!({"type":"extension_ui_request","id":id,"method":"select","title":"Pick","options":["\u{e9}".repeat(129)]}),
+        )
+    };
+    let refuse = |runtime: &mut PiRuntime, id: &str| {
+        let batch = runtime.ingest(&over_cap(id), &Mapper).unwrap();
+        let noticed = matches!(batch.events(), [AdapterEvent::Session { .. }]);
+        let reply = batch.into_parts().1.remove(0);
+        runtime.commit_mandatory_egress(reply.token()).unwrap();
+        assert_eq!(deliver(runtime, reply)["cancelled"], true);
+        noticed
+    };
+    running(&mut runtime);
+    for at in 0..8 {
+        assert!(refuse(&mut runtime, &format!("first-{at}")));
+    }
+    assert!(!refuse(&mut runtime, "first-over"));
+    for event in ["agent_end", "agent_settled"] {
+        runtime
+            .ingest(&frame(json!({"type":event,"messages":[]})), &Mapper)
+            .unwrap();
+    }
+    running(&mut runtime);
+    assert!(refuse(&mut runtime, "second-turn"));
 }
 
 #[test]

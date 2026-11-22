@@ -329,6 +329,10 @@ pub enum AdapterOutput {
     DialogRefused {
         external_id: String,
     },
+    /// A supported question that arrived while its question turn was stopping.
+    QuestionCancelled {
+        external_id: String,
+    },
     AuthorityBlocked {
         external_id: String,
         tool: String,
