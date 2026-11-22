@@ -23,7 +23,6 @@ import {
 import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
-import type { AcpCommandPanel } from "../../domain/acpCommand";
 import { lazyParts } from "./lazyParts";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
@@ -49,7 +48,7 @@ function ComposerOptionsBrowser({
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<AcpCommandPanel | "extensions" | null>(
+  const [panel, setPanel] = useState<PanelChunk.ComposerPanelKind | null>(
     null,
   );
   const fieldRef = useMemo(
@@ -117,6 +116,7 @@ function ComposerOptionsBrowser({
         boundChatId={owner ?? undefined}
         fieldRef={fieldRef}
         onClose={onDismiss}
+        onRunCommand={(command) => pickCommand(command, "")}
       />
     );
   return (
@@ -139,11 +139,9 @@ function ComposerOptionsBrowser({
         onOpenMcp={() =>
           setPanel(
             load?.kind === "ready" &&
-              load.list.commands.some(
-                (command) => command.panel === "managedMcp",
-              )
-              ? "managedMcp"
-              : "mcp",
+              load.list.commands.some((command) => command.panel === "mcp")
+              ? "mcp"
+              : "managedMcp",
           )
         }
         onOpenExtensions={() => setPanel("extensions")}
@@ -175,8 +173,11 @@ export function ComposerSectionRows({
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:
       load?.kind === "ready" &&
+      // A Sage MCP panel, or the harness's own MCP command placed on the row.
       load.list.commands.some(
-        (command) => command.panel === "mcp" || command.panel === "managedMcp",
+        (command) =>
+          command.panel === "mcp" ||
+          command.placement?.control === "mcpPanel",
       )
         ? props.onOpenMcp
         : undefined,

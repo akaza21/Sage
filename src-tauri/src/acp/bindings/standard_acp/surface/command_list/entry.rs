@@ -70,7 +70,6 @@ pub(crate) enum CommandDispatch {
 pub(crate) enum CommandPanel {
     Status,
     Mcp,
-    ManagedMcp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

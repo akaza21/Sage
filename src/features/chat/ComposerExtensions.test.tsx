@@ -18,10 +18,29 @@ it("shows get_commands provenance without attributing unrelated resources and se
   // Pi 1.5.0 get_commands response, with the fixture root substituted for privacy.
   const list = decodeCommandList({
     revision: 1,
-    commands: frame.data.commands.map((command) => ({
-      ...command,
-      inputHint: null,
-    })),
+    commands: [
+      ...frame.data.commands.map((command) => ({
+        ...command,
+        inputHint: null,
+      })),
+      // Pi 1.5.0's `builtin:mcp` /mcp entry as the host lists it: shipped
+      // with Pi, placed on the MCP row, still run as Pi's command.
+      {
+        name: "mcp",
+        description: "Manage MCP servers",
+        inputHint: null,
+        source: "builtin",
+        sourceLabel: "builtin:mcp",
+        sourceInfo: {
+          path: "builtin:mcp",
+          source: "builtin",
+          scope: "temporary",
+          origin: "top-level",
+          baseDir: null,
+        },
+        placement: { section: "connections", control: "mcpPanel" },
+      },
+    ],
   });
   expect(list).not.toBeNull();
   const catalog = [
@@ -41,6 +60,11 @@ it("shows get_commands provenance without attributing unrelated resources and se
       /\/fixture\/profile\/extensions\/render.js · user · top-level · auto/,
     ),
   ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("region", { name: "Extensions and packages" }),
+    ).getByText("builtin:mcp · temporary · top-level · builtin"),
+  ).toBeVisible();
   expect(screen.getAllByRole("listitem")).toHaveLength(100);
   expect(
     screen.getByText("Showing 100 rows. Refine your search to see more."),
@@ -52,6 +76,14 @@ it("shows get_commands provenance without attributing unrelated resources and se
   expect(
     within(screen.getByRole("region", { name: "From harness" })).getByText(
       "/command-109",
+    ),
+  ).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "managed" },
+  });
+  expect(
+    within(screen.getByRole("region", { name: "From harness" })).getByText(
+      /^Managed by harness · \/mcp · server inventory/,
     ),
   ).toBeVisible();
 });

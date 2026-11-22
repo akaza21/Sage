@@ -5,6 +5,7 @@ import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import type { AcpChatPage } from "../../domain/acp";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
+import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { currentSession } from "./acp/acpTurnState";
 import { currentContext } from "./acp/useAcpChatActions";
@@ -36,16 +37,21 @@ function liveRequest(
   };
 }
 
+/** Command panels, plus the views only the + menu opens. */
+export type ComposerPanelKind = AcpCommandPanel | "managedMcp" | "extensions";
+
 export function ComposerCommandPanel({
   kind,
   boundChatId,
   fieldRef,
   onClose,
+  onRunCommand,
 }: {
-  kind: AcpCommandPanel | "extensions";
+  kind: ComposerPanelKind;
   boundChatId?: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   onClose: () => void;
+  onRunCommand?: (command: AvailableAcpCommand) => void;
 }) {
   const id = useId();
   const page = useStore(
@@ -78,7 +84,12 @@ export function ComposerCommandPanel({
           page={page}
         />
       ) : kind === "managedMcp" ? (
-        <Extensions part="ManagedMcpPanel" boundChatId={boundChatId} />
+        <Extensions
+          part="ManagedMcpPanel"
+          boundChatId={boundChatId}
+          page={page}
+          onRunCommand={onRunCommand}
+        />
       ) : kind === "mcp" ? (
         <ComposerMcpServers request={request} />
       ) : (

@@ -26,22 +26,62 @@ export function ExtensionsPanel({
   );
 }
 
-export function ManagedMcpPanel({ boundChatId }: { boundChatId?: string }) {
+/** The harness's own MCP command: placed on the MCP row, with no Sage panel. */
+const managedMcp = (catalog: readonly AvailableAcpCommand[]) =>
+  catalog.find(
+    (command) => !command.panel && command.placement?.control === "mcpPanel",
+  );
+
+function useHarnessName(page: AcpChatPage | null): string | undefined {
+  const binding = page?.sessions.find(
+    (session) => session.id === page.currentSessionId,
+  )?.bindingId;
+  return useWorkbenchStore(
+    (state) =>
+      state.harnesses.find((entry) => entry.bindingId === binding)?.name,
+  );
+}
+
+/** The harness reports no MCP inventory over its protocol; its command does. */
+export function ManagedMcpPanel({
+  boundChatId,
+  page,
+  onRunCommand,
+}: {
+  boundChatId?: string;
+  page: AcpChatPage | null;
+  onRunCommand?: (command: AvailableAcpCommand) => void;
+}) {
   const load = useSessionCommands(boundChatId);
-  const managed =
-    load?.kind === "ready"
-      ? load.list.commands.find((command) => command.panel === "managedMcp")
-      : null;
-  return managed ? (
-    <p role="status">
-      Managed by {managed.sourceLabel ?? "the harness"}. Use{" "}
-      <code>/{managed.name}</code> in this chat to inspect servers. MCP tools
-      appear as ordinary tools.
-    </p>
-  ) : (
-    <p role="status">
-      {load?.kind === "error" ? load.message : "Loading MCP management…"}
-    </p>
+  const harness = useHarnessName(page) ?? "the harness";
+  const managed = load?.kind === "ready" ? managedMcp(load.list.commands) : null;
+  if (!managed)
+    return (
+      <p role="status">
+        {load?.kind === "error"
+          ? load.message
+          : load?.kind === "ready"
+            ? "MCP servers are unavailable in this session."
+            : "Loading MCP management…"}
+      </p>
+    );
+  return (
+    <section aria-label="MCP servers">
+      <strong>MCP servers</strong>
+      <p role="status">
+        Managed by {harness}. Run <code>/{managed.name}</code> in this chat to
+        print server status. MCP tools appear as ordinary tools.
+      </p>
+      {onRunCommand ? (
+        <button
+          type="button"
+          className="menu-item"
+          onClick={() => onRunCommand(managed)}
+        >
+          Insert /{managed.name}
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -63,14 +103,7 @@ export function ComposerExtensions({
   omitted?: number;
 }) {
   const [query, setQuery] = useState("");
-  const binding = page?.sessions.find(
-    (session) => session.id === page.currentSessionId,
-  )?.bindingId;
-  const harness =
-    useWorkbenchStore(
-      (state) =>
-        state.harnesses.find((entry) => entry.bindingId === binding)?.name,
-    ) ?? "harness";
+  const harness = useHarnessName(page) ?? "harness";
   const search = query.trim().toLocaleLowerCase();
   const rows: Row[] = [];
   const seen = new Set<string>();
@@ -92,9 +125,11 @@ export function ComposerExtensions({
     const info = command.sourceInfo;
     if (
       info &&
+      // Extension commands, package resources, and extensions the harness
+      // ships itself (listed as built in, with their own provenance).
       (command.source === "extension" ||
-        info.origin === "package" ||
-        command.panel === "managedMcp")
+        command.source === "builtin" ||
+        info.origin === "package")
     ) {
       const key = info.path ?? info.baseDir ?? command.name;
       offer({
@@ -142,12 +177,12 @@ export function ComposerExtensions({
           attributed: false,
         });
     }
-  const managed = catalog.find((command) => command.panel === "managedMcp");
+  const managed = managedMcp(catalog);
   if (managed)
     offer({
       key: "mcp",
       label: "MCP servers",
-      detail: `Managed by ${managed.sourceLabel ?? harness} · /${managed.name} · server inventory and extension attribution unavailable`,
+      detail: `Managed by ${harness} · /${managed.name} · server inventory and extension attribution unavailable`,
       attributed: false,
     });
   return (

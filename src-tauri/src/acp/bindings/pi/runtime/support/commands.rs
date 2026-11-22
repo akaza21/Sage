@@ -22,12 +22,21 @@ const COMPACT: &str = "compact";
 const SESSION: &str = "session";
 
 /// One entry of Pi's `get_commands`. Its `source` says what the command
-/// is; only extension commands run as command turns.
+/// is; only extension commands run as command turns. An extension Pi ships
+/// itself (`sourceInfo.source: "builtin"`, such as `builtin:mcp`) is listed as
+/// built in, so curated placement may give it a native control, while it still
+/// runs as Pi's own command turn.
 fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
-    let source = CommandSource::from_wire(value["source"].as_str());
-    let dispatch = match source {
+    let wire = CommandSource::from_wire(value["source"].as_str());
+    let dispatch = match wire {
         CommandSource::Extension => CommandDispatch::CommandTurn,
         _ => CommandDispatch::Prompt,
+    };
+    let source = if wire == CommandSource::Extension && value["sourceInfo"]["source"] == "builtin"
+    {
+        CommandSource::Builtin
+    } else {
+        wire
     };
     let description = match value.get("description") {
         None => "",
@@ -67,7 +76,7 @@ fn source_label(value: &Value) -> Option<&str> {
 
 /// A catalog larger than Sage's list keeps its first commands, leaving room for the built-ins.
 fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    let mut builtins = [
+    let builtins = [
         AvailableCommand::new(
             SESSION,
             "Show session info and stats",
@@ -82,21 +91,8 @@ fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeE
             CommandSource::Builtin,
             CommandDispatch::Builtin,
         )?,
-        AvailableCommand::new(
-            "mcp",
-            "Managed by Pi; use /mcp to inspect servers",
-            None,
-            CommandSource::Builtin,
-            CommandDispatch::Panel(CommandPanel::ManagedMcp),
-        )?
-        .with_source_label(Some("Pi")),
     ];
     let listed = value.as_array().ok_or(AdapterRuntimeError::Frame)?;
-    builtins[2].source_info = listed
-        .iter()
-        .find(|command| command["name"] == "mcp")
-        .and_then(|command| CommandSourceInfo::from_wire(&command["sourceInfo"]))
-        .map(Box::new);
     let commands = builtins
         .into_iter()
         .map(Ok)

@@ -13,13 +13,12 @@ fn oversized_pi_catalog_reaches_shared_admission_through_wire_ingress() {
     crate::acp::transport::validate_structure(&incoming).unwrap();
     runtime.ingest(&incoming, &Mapper).unwrap();
     let list = runtime.available_commands().snapshot();
-    assert_eq!((list.commands.len(), list.omitted), (512, 91));
+    assert_eq!((list.commands.len(), list.omitted), (512, 90));
     assert_eq!(list.commands[0].name, "session");
     assert_eq!(list.commands[1].name, "compact");
-    assert_eq!(list.commands[2].name, "mcp");
-    assert_eq!(list.commands.last().unwrap().name, "cmd508");
-    assert!(list.validate(list.revision, "/cmd508").is_ok());
-    assert!(list.validate(list.revision, "/cmd509").is_err());
+    assert_eq!(list.commands.last().unwrap().name, "cmd509");
+    assert!(list.validate(list.revision, "/cmd509").is_ok());
+    assert!(list.validate(list.revision, "/cmd510").is_err());
 }
 
 fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
@@ -109,7 +108,7 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     assert!(batch.egress().is_empty());
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
-    assert_eq!(names(&catalog.commands), ["session", "compact", "mcp"]);
+    assert_eq!(names(&catalog.commands), ["session", "compact"]);
     let refresh = runtime.discover_commands().unwrap().unwrap();
     let refresh = deliver(&mut runtime, refresh);
     assert_eq!(refresh["type"], "get_state");
@@ -360,6 +359,10 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
                     {"name":"fix","description":"Fix it","source":"prompt","location":"project",
                         "sourceInfo":{"path":"/prompts/fix.md","source":"local","scope":"project"}},
                     {"name":"skill:lint","description":"Lint","source":"skill","path":"/s/SKILL.md"},
+                    // Pi 1.5.0 lists its built-in MCP extension so; `--no-mcp` omits it.
+                    {"name":"mcp","description":"Manage MCP servers: sign in, reconnect, enable or disable, and change exposure",
+                        "source":"extension","sourceInfo":{"path":"builtin:mcp","source":"builtin",
+                            "scope":"temporary","origin":"top-level"}},
                 ]}),
             ),
             &Mapper,
@@ -376,13 +379,25 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         [
             ("session", CommandSource::Builtin),
             ("compact", CommandSource::Builtin),
-            ("mcp", CommandSource::Builtin),
             ("review", CommandSource::Extension),
             ("fix", CommandSource::Prompt),
             ("skill:lint", CommandSource::Skill),
+            ("mcp", CommandSource::Builtin),
         ]
     );
-    let review = &listed.commands[3];
+    // Pi's own MCP command keeps its route, so /mcp still prints server
+    // status, and gains the native MCP row only as a shipped extension.
+    let mcp = &listed.commands[5];
+    assert_eq!(
+        mcp.dispatch,
+        crate::acp::slash_commands::CommandDispatch::CommandTurn
+    );
+    assert_eq!(
+        mcp.placement.control,
+        Some(crate::acp::command_placement::NativeControl::McpPanel)
+    );
+    assert_eq!(listed.commands[2].placement.control, None);
+    let review = &listed.commands[2];
     assert_eq!(review.source_label.as_deref(), Some("review-tools"));
     let info = review.source_info.as_ref().unwrap();
     assert_eq!(info.path.as_deref(), Some("/extensions/review.ts"));
@@ -390,7 +405,7 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
     assert_eq!(info.scope.as_deref(), Some("user"));
     assert_eq!(info.origin.as_deref(), Some("package"));
     assert_eq!(info.base_dir.as_deref(), Some("/packages/review-tools"));
-    assert_eq!(listed.commands[4].source_label.as_deref(), Some("fix"));
+    assert_eq!(listed.commands[3].source_label.as_deref(), Some("fix"));
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime
@@ -431,7 +446,7 @@ fn a_full_pi_catalog_that_lists_compact_keeps_it_as_the_builtin() {
         .unwrap();
     let listed = runtime.available_commands().snapshot().commands;
     assert_eq!(listed.len(), crate::acp::slash_commands::MAX_COMMANDS);
-    assert_eq!(listed[6].name, "t3");
+    assert_eq!(listed[5].name, "t3");
     let compact = &listed[1];
     assert_eq!(
         (compact.name.as_str(), compact.source),
