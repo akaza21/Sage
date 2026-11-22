@@ -61,6 +61,7 @@ export async function runSetChatProject(
         });
       // Effort/access drafts stay keyed by this unchanged Chat id in their
       // existing bounded stores throughout the project transition.
+      return chatId;
     }
   }
 }

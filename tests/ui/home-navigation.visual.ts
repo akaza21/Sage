@@ -196,8 +196,10 @@ for (const owner of ["single", "parent", "side"] as const) {
           ...state.harnesses,
           {
             ...state.harnesses[0]!,
-            id: "fixture-unavailable",
-            installState: "unavailable",
+            // Detection keeps the composer mounted but disabled. An
+            // unavailable harness intentionally replaces it with a notice.
+            id: "fixture-detecting",
+            installState: "detecting",
           },
         ],
         chatUiById: {
@@ -209,7 +211,7 @@ for (const owner of ["single", "parent", "side"] as const) {
           [focusedId]: {
             ...state.chatUiById[focusedId],
             composerText: "Focused draft",
-            harnessId: "fixture-unavailable",
+            harnessId: "fixture-detecting",
           },
         },
       }));
