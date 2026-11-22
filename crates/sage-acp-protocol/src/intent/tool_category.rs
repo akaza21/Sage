@@ -15,6 +15,7 @@ pub enum ToolCategory {
     Think,
     SwitchMode,
     Mcp,
+    Extension,
     Subagent,
     Other,
 }
@@ -34,6 +35,7 @@ impl ToolCategory {
             "think" => Self::Think,
             "switchMode" | "switch_mode" => Self::SwitchMode,
             "mcp" => Self::Mcp,
+            "extension" => Self::Extension,
             "subagent" => Self::Subagent,
             _ => Self::Other,
         }
@@ -95,6 +97,7 @@ mod tests {
             "think",
             "switchMode",
             "mcp",
+            "extension",
             "subagent",
             "other",
         ] {

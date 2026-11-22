@@ -13,6 +13,7 @@ pub(super) fn redact<'a>(
     mode: Mode,
     path_display: super::prose::ProsePaths,
     field: &'static str,
+    require_complete: bool,
 ) -> Result<Cow<'a, str>, ContractError> {
     let bytes = input.as_bytes();
     let mut cursor = 0;
@@ -42,7 +43,9 @@ pub(super) fn redact<'a>(
         if !escaped && bytes.get(start) != Some(&b'"') {
             continue;
         }
-        let Some(end) = quote_end(input, start + delimiter, escaped) else {
+        let end = if let Some(end) = quote_end(input, start + delimiter, escaped) {
+            end
+        } else {
             let Some(end) = super::spans::quote_end(
                 input,
                 start + delimiter,
@@ -53,8 +56,13 @@ pub(super) fn redact<'a>(
             ) else {
                 break;
             };
-            cursor = end;
-            continue;
+            // Complete approval summaries scan the already-bounded argument
+            // string too, so a long value cannot swallow subsequent fields.
+            if !require_complete {
+                cursor = end;
+                continue;
+            }
+            end
         };
         let decoded = decode_key(&input[start + delimiter..end - delimiter], escaped);
         if mode == Mode::Permission
@@ -67,7 +75,14 @@ pub(super) fn redact<'a>(
             });
         }
         let sanitized = match mode {
-            Mode::Prose => super::prose::redact_prose(field, &decoded, maximum, path_display)?,
+            Mode::Prose => {
+                let redacted =
+                    super::prose::redact_prose_settling(field, &decoded, maximum, path_display)?;
+                if require_complete && redacted.truncated {
+                    return Err(ContractError::ForbiddenContent { field });
+                }
+                redacted.text
+            }
             _ => super::command::redact(field, &decoded, maximum, mode)?,
         };
         if sanitized != decoded {

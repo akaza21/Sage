@@ -23,8 +23,8 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<NativeRuntime, AdapterRuntimeError> {
-        // Pi has no MCP surface: an offered browser MCP descriptor is not
-        // forwarded, and no browser tools are advertised to the model.
+        // Pi loads its configured MCP extension. Sage's browser MCP descriptor
+        // is not forwarded until this binding supports that admission surface.
         drop(self.mcp);
         self.binding
             .revalidate()
@@ -34,9 +34,9 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
             runtime_epoch,
             session_id,
         );
-        if super::bridge::install::installed(self.binding.harness_version()).is_ok() {
-            adapter.enable_bridge_for_root(&self.root)?;
-        }
+        super::bridge::install::installed(self.binding.harness_version())
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        adapter.enable_bridge_for_root(&self.root)?;
         Ok(NativeRuntime::new(adapter.with_launch(InstalledPi {
             binding: self.binding,
             root: Some(self.root),

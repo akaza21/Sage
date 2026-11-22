@@ -4,8 +4,51 @@ use sage_acp_protocol::lifecycle::{ItemLifecycle, ToolState};
 use super::super::PiRuntime;
 use super::identity::{self, external};
 use crate::acp::bindings::pi::ToolOutcome;
+use crate::acp::bindings::pi::bridge::files::Prepared;
+use sage_acp_protocol::intent::{NormalizedPayload, ToolCategory};
 
 impl PiRuntime {
+    /// The bridge's source metadata supersedes name-based presentation hints.
+    pub(super) fn extension_tool_started(
+        &mut self,
+    ) -> Result<Option<AdapterEvent>, AdapterRuntimeError> {
+        let Some(Prepared::Extension(extension)) = self
+            .bridge
+            .as_ref()
+            .and_then(|bridge| bridge.pending.as_ref())
+            .map(|pending| &pending.prepared)
+        else {
+            return Ok(None);
+        };
+        let tool_id = extension.tool_id.clone();
+        let label = extension.label.clone();
+        let mut payload = self
+            .active_turn
+            .as_ref()
+            .and_then(|turn| turn.tools.get(&tool_id))
+            .cloned()
+            .ok_or(AdapterRuntimeError::Operation)?;
+        if let NormalizedPayload::ToolCall {
+            category,
+            label: shown,
+            locations,
+            ..
+        } = &mut payload
+        {
+            *category = ToolCategory::Extension;
+            *shown = label;
+            *locations = Default::default();
+        }
+        self.cache_tool(tool_id.clone(), payload.clone(), false)?;
+        self.item(
+            external("piItemId", tool_id)?,
+            ItemLifecycle::Streaming,
+            Some(ToolState::InProgress),
+            payload,
+        )
+        .map(Some)
+    }
+
     pub(super) fn tool_started(
         &mut self,
         external_id: String,

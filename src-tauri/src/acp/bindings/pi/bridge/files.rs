@@ -5,6 +5,13 @@ use std::{io::Read, path::Path};
 
 pub(crate) const MAX_BYTES: usize = 262_144;
 pub(crate) const MAX_COMMAND_BYTES: usize = 16_384;
+#[derive(Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum RequestKind {
+    #[default]
+    Managed,
+    Extension,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Request {
@@ -12,6 +19,16 @@ pub(crate) struct Request {
     pub tool_call_id: String,
     pub tool: String,
     pub args: serde_json::Value,
+    #[serde(default)]
+    pub kind: RequestKind,
+    pub label: Option<String>,
+}
+
+impl Request {
+    pub(crate) fn is_extension(&self) -> bool {
+        self.kind == RequestKind::Extension
+            || !matches!(self.tool.as_str(), "write" | "edit" | "bash")
+    }
 }
 
 pub(crate) struct Edit {
@@ -32,6 +49,7 @@ pub(crate) struct Shell {
 pub(crate) enum Prepared {
     Edit(Edit),
     Shell(Shell),
+    Extension(super::extension::Extension),
 }
 
 impl Prepared {
@@ -39,6 +57,7 @@ impl Prepared {
         match self {
             Self::Edit(edit) => &edit.tool_id,
             Self::Shell(shell) => &shell.tool_id,
+            Self::Extension(extension) => &extension.tool_id,
         }
     }
 }
@@ -46,6 +65,9 @@ impl Prepared {
 pub(crate) fn prepare(workspace: &Workspace, request: Request) -> Result<Prepared, Refusal> {
     if request.version != 1 || request.tool_call_id.is_empty() || request.tool_call_id.len() > 500 {
         return Err(Refusal::Unsupported);
+    }
+    if request.is_extension() {
+        return super::extension::prepare(request).map(Prepared::Extension);
     }
     if request.tool == "bash" {
         return shell(request).map(Prepared::Shell);

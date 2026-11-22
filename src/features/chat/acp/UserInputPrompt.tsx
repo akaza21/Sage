@@ -15,7 +15,7 @@ import {
   parkFocus,
   useCardKeyGuard,
 } from "./approvalCard";
-import { ToolKindIcon } from "./ToolItem";
+import { ToolKindIcon } from "./ToolKindIcon";
 import {
   type FieldState,
   UserInputField,

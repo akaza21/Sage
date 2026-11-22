@@ -61,6 +61,7 @@ pub(crate) fn category_label(category: ToolCategory) -> &'static str {
         ToolCategory::Think => "Thinking tool",
         ToolCategory::SwitchMode => "Mode switch",
         ToolCategory::Mcp => "MCP tool",
+        ToolCategory::Extension => "Extension tool",
         ToolCategory::Subagent => "Subagent activity",
         ToolCategory::Other => "OMP tool",
     }
