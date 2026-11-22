@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
+import { useColdOpen } from "../../ui/coldOpen";
 import { GitBranch } from "../../ui/leanIcons";
 import type * as BranchChunk from "../../workbench/StatusBarDetails";
 import { lazyParts } from "./lazyParts";
@@ -46,6 +47,38 @@ export function ComposerBranchChip({
     "idle",
   );
   const [open, setOpen] = useState(false);
+  // The branch menu module is imported on first open. Until it resolves, the
+  // pending menu dismisses like a loaded one and does not pull focus back from
+  // wherever the user moved it.
+  const [ready, setReady] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const cold = loadState === "requested" && !ready;
+  const coldOpen = useColdOpen({
+    dismiss: () => setOpen(false),
+    loaded: !cold,
+    open,
+    triggerRef: trigger,
+  });
+  const { focusMoved } = coldOpen;
+  useEffect(() => {
+    if (!cold) return;
+    let live = true;
+    BranchPart.preload().then(
+      () => {
+        if (!live) return;
+        if (focusMoved()) setOpen(false);
+        setReady(true);
+      },
+      () => {
+        if (!live) return;
+        setOpen(false);
+        setLoadState("failed");
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [cold, focusMoved]);
   if (repository?.state !== "repository" || !root) return null;
   const disabled = submissionBusy || activeTurn || busy;
   const title = activeTurn
@@ -61,8 +94,13 @@ export function ComposerBranchChip({
       </span>
     </>
   );
+  const request = () => {
+    setLoadState("requested");
+    setOpen(true);
+  };
   const fallback = (
     <button
+      ref={trigger}
       type="button"
       className="searchable-picker__trigger searchable-picker__trigger--plain"
       aria-label={`${loadState === "failed" ? "Retry loading branches" : "Switch branch"} in ${root.name}`}
@@ -70,15 +108,13 @@ export function ComposerBranchChip({
       aria-expanded={open && !disabled}
       title={title}
       disabled={disabled}
-      onClick={() => {
-        setLoadState("requested");
-        setOpen(true);
-      }}
+      onClick={() => (open ? setOpen(false) : request())}
+      onKeyUp={coldOpen.onKeyUp}
       onKeyDown={(event) => {
+        if (coldOpen.onKeyDown(event)) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          setLoadState("requested");
-          setOpen(true);
+          request();
         }
       }}
     >
@@ -87,7 +123,7 @@ export function ComposerBranchChip({
   );
   return (
     <div className="composer-branch" title={title}>
-      {loadState === "requested" ? (
+      {loadState === "requested" && ready ? (
         <BranchPart
           part="SourceBranchList"
           key={`${project?.id}:${root.id}`}

@@ -34,14 +34,9 @@
       },
       {
         "entry": "src/features/chat/ComposerLocationStrip.tsx",
-        "maxGzipBytes": 1250,
+        "maxGzipBytes": 1750,
         "maxCssGzipBytes": 850,
-        "reason": "Local execution target picker and project location strip load only for a new chat; no remote execution plumbing or retained closed-menu DOM."
-      },
-      {
-        "entry": "src/features/chat/ComposerBranchChip.tsx",
-        "maxGzipBytes": 1600,
-        "reason": "Loaded-project Git branch trigger mounts only with the new-chat location strip. The shared bounded branch menu loads on first open; startup and core caps stay unchanged."
+        "reason": "Execution target, project and Git branch chips load only for a new chat; the branch menu loads on first open. No remote execution plumbing or retained closed-menu DOM."
       },
       {
         "entry": "src/workbench/CollapsedProjectStatus.tsx",
