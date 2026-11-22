@@ -202,6 +202,27 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
   ).toHaveValue(prompt);
 });
 
+test("T22: a cold session's completed turns carry no ellipsis actions row", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "cold");
+  });
+  const turns = page.locator('.acp-turn[data-turn-state="completed"]');
+  await expect(turns).toHaveCount(2);
+  await expect(page.getByRole("group", { name: "Prompt actions" })).toHaveCount(
+    0,
+  );
+  // Between each prompt and its "Worked" heading nothing but the prompt renders.
+  for (const turn of await turns.all())
+    await expect(
+      turn.locator(".acp-turn__items > .chat-transcript-actions"),
+    ).toHaveCount(0);
+});
+
 test("T11a: a fork-only offer has no in-place rewind and explains the shared folder", async ({
   page,
 }) => {

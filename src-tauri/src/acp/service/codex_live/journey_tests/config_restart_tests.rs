@@ -413,3 +413,62 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         fs::remove_dir_all(&profile.directory).unwrap();
     });
 }
+
+/// Regression: a Claude Code chat whose project folder was deleted said its
+/// session identity was stale or foreign; it is a launch that cannot be
+/// prepared.
+#[test]
+fn claude_sdk_activation_without_its_project_folder_is_a_launch_failure() {
+    let _serial = sage_test_support::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        let profile = profile("claude-sdk-turn-completed");
+        let registry =
+            Arc::new(BindingRegistry::desktop_claude_fixture(profile.selection.clone()).unwrap());
+        let setup = FixtureSetup::open_with_registry_at_root(
+            &profile.database_path,
+            Some(profile.database_path.clone()),
+            registry,
+            &profile.selection.project_root,
+        )
+        .await;
+        let revision = setup
+            .service
+            .load_chat_page(setup.project_id.clone(), setup.chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let mut start = setup.start_command_for(&setup.chat_id, revision);
+        start.binding_id = BindingId::new("bindingId", "claude-code-sdk").unwrap();
+        let registry = setup.service.binding_registry();
+        let started = setup
+            .service
+            .start_session(
+                registry.resolve("claude-code-sdk").unwrap(),
+                &claude_root(&setup),
+                start,
+            )
+            .await
+            .unwrap();
+        let owner = RuntimeOwner {
+            project_id: setup.project_id.clone(),
+            chat_id: setup.chat_id.clone(),
+            session_id: started.session_id,
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let root = claude_root(&setup);
+        let admitted = registry.resolve("claude-code-sdk").unwrap();
+        fs::remove_dir_all(&profile.selection.project_root).unwrap();
+        let refused = setup
+            .service
+            .activate_session(admitted, setup.activate_command(&owner), root)
+            .await
+            .expect_err("a missing project folder must not launch");
+        assert!(
+            matches!(refused, CodexSessionError::LaunchSetup(_)),
+            "{refused:?}"
+        );
+        setup.service.shutdown_blocking().unwrap();
+        setup.wait_for_job_zero();
+        drop(setup);
+        fs::remove_dir_all(&profile.directory).unwrap();
+    });
+}
