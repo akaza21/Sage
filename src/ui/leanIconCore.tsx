@@ -1,56 +1,55 @@
-import { createElement, forwardRef, memo } from "react";
+import { createElement, memo } from "react";
 import type { LucideProps } from "lucide-react";
 
 type IconNode = string | readonly [string, Record<string, string>];
 
 export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
-  const Component = forwardRef<SVGSVGElement, LucideProps>(
-    (
-      {
-        color = "currentColor",
-        size = 24,
-        strokeWidth = 2,
-        absoluteStrokeWidth = false,
-        className,
-        children,
-        ...rest
-      },
-      ref,
-    ) => {
-      const hasA11yProp = Object.keys(rest).some(
+  return memo(function Icon({
+    color = "currentColor",
+    size = 24,
+    strokeWidth = 2,
+    absoluteStrokeWidth = false,
+    className,
+    children,
+    ref,
+    ...rest
+  }: LucideProps) {
+    const hasA11yContent =
+      !!children ||
+      Object.keys(rest).some(
         (key) => key.startsWith("aria-") || key === "role" || key === "title",
       );
-      return (
-        <svg
-          ref={ref}
-          xmlns="http://www.w3.org/2000/svg"
-          width={size}
-          height={size}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth={
-            absoluteStrokeWidth
-              ? (Number(strokeWidth) * 24) / Number(size)
-              : strokeWidth
-          }
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`${cssClass}${className ? ` ${className}` : ""}`}
-          aria-hidden={!children && !hasA11yProp ? true : undefined}
-          {...rest}
-        >
-          {nodes.map((node, index) =>
-            typeof node === "string"
-              ? createElement("path", { d: node, key: index })
-              : createElement(node[0], { ...node[1], key: index }),
-          )}
-          {children}
-        </svg>
-      );
-    },
-  );
-  return memo(Component);
+    return (
+      <svg
+        ref={ref}
+        xmlns="http://www.w3.org/2000/svg"
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={color}
+        strokeWidth={
+          absoluteStrokeWidth
+            ? (Number(strokeWidth) * 24) / Number(size)
+            : strokeWidth
+        }
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`${cssClass}${className ? ` ${className}` : ""}`}
+        aria-hidden={hasA11yContent ? undefined : true}
+        {...rest}
+      >
+        {nodes.map((node, index) =>
+          typeof node === "string" ? (
+            <path d={node} key={index} />
+          ) : (
+            createElement(node[0], { ...node[1], key: index })
+          ),
+        )}
+        {children}
+      </svg>
+    );
+  });
 }
 
 export function lucideIcon(name: string, nodes: readonly IconNode[]) {

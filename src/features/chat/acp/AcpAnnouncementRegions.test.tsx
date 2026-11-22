@@ -407,7 +407,7 @@ describe("AcpAnnouncementRegions", () => {
     ["completed", undefined, "Completed"],
     ["failed", "timeout", "Failed"],
   ] as const)(
-    "announces the rendered header label once for %s with reason %s",
+    "announces each terminal transition once for %s with reason %s",
     async (state, kind, label) => {
       const initial = page("1", "running");
       const settled = page("2", state);
@@ -418,7 +418,11 @@ describe("AcpAnnouncementRegions", () => {
           <AcpAnnouncementRegions page={initial} />
         </>,
       );
-      const observation = observeNames(regions(container).polite);
+      const region =
+        state === "failed"
+          ? regions(container).assertive
+          : regions(container).polite;
+      const observation = observeNames(region);
       const content = (
         <>
           <TurnHeader turn={settled.turns[0]} />
@@ -432,10 +436,8 @@ describe("AcpAnnouncementRegions", () => {
       expect(
         container.querySelector("[data-turn-status]"),
       ).toHaveAccessibleName(label);
-      await waitFor(() =>
-        expect(regions(container).polite).toHaveAccessibleName(label),
-      );
-      expect(regions(container).polite).toHaveTextContent(label);
+      await waitFor(() => expect(region).toHaveAccessibleName(label));
+      expect(region).toHaveTextContent(label);
       rerender(
         <>
           <TurnHeader turn={settled.turns[0]} />
@@ -532,6 +534,100 @@ describe("AcpAnnouncementRegions", () => {
       ]),
     );
     observation.stop();
+  });
+
+  it("announces distinct tool completions even when their copy is identical", async () => {
+    const { container, rerender } = render(
+      <AcpAnnouncementRegions
+        page={page("1", "running", [
+          tool("inProgress"),
+          tool("inProgress", "tool-b"),
+        ])}
+      />,
+    );
+    const observation = observeNames(regions(container).polite);
+    rerender(
+      <AcpAnnouncementRegions
+        page={page("2", "completed", [
+          tool("completed"),
+          tool("completed", "tool-b"),
+        ])}
+      />,
+    );
+    await waitFor(() =>
+      expect(observation.names).toEqual([
+        "Completed",
+        "Read source: Completed",
+        "Read source: Completed",
+      ]),
+    );
+    observation.stop();
+  });
+
+  it("announces coalesced appended turns while keeping prepended history silent", async () => {
+    const initial = page("1", "running");
+    const { container, rerender } = render(
+      <AcpAnnouncementRegions page={initial} />,
+    );
+    const observation = observeNames(regions(container).polite);
+    const template = initial.turns[0];
+    rerender(
+      <AcpAnnouncementRegions
+        page={{
+          ...initial,
+          projectionRevision: "2" as never,
+          turns: [
+            {
+              ...template,
+              id: "history" as never,
+              ordinal: 0,
+              state: "failed",
+            },
+            template,
+            {
+              ...template,
+              id: "appended-a" as never,
+              ordinal: 2,
+              state: "completed",
+            },
+            {
+              ...template,
+              id: "appended-b" as never,
+              ordinal: 3,
+              state: "cancelled",
+            },
+          ],
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(observation.names).toEqual(["Completed", "Cancelled"]),
+    );
+    expect(regions(container).assertive).toBeEmptyDOMElement();
+    observation.stop();
+  });
+
+  it("announces a newer session's turn when the retained windows no longer overlap", async () => {
+    const initial = page("1", "completed");
+    initial.sessions = [{ id: "session-a", ordinal: 1 }] as never;
+    initial.turns = [{ ...initial.turns[0], ordinal: 99 }];
+    const { container, rerender } = render(
+      <AcpAnnouncementRegions page={initial} />,
+    );
+    const next = page("2", "failed");
+    next.sessions = [{ id: "session-b", ordinal: 2 }] as never;
+    next.turns = [
+      {
+        ...next.turns[0],
+        id: "new-session-turn" as never,
+        sessionId: "session-b" as never,
+      },
+    ];
+    rerender(<AcpAnnouncementRegions page={next} />);
+    await waitFor(() =>
+      expect(regions(container).assertive).toHaveAccessibleName("Failed"),
+    );
+    expect(regions(container).polite).toBeEmptyDOMElement();
   });
 
   it("preserves a coalesced drain across a newer projection", async () => {

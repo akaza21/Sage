@@ -45,6 +45,10 @@ impl ClaudeRuntime {
              doesn't allow. Sage stopped the turn. Your next message runs in the chat's own access mode."
         );
         let notice = SessionNotice {
+            identity: Some(
+                RequiredText::new("noticeIdentity", "access-mode-guard")
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+            ),
             diagnostic: false,
             level: SessionNoticeLevel::Error,
             text: RequiredText::new("notice", text).map_err(|_| AdapterRuntimeError::Frame)?,

@@ -5,6 +5,29 @@ fn notice(text: &str) -> SessionScopedEvent {
     super::fixtures::notice(SessionNoticeLevel::Warning, text)
 }
 
+#[test]
+fn one_problem_keeps_its_highest_severity_without_merging_different_problems() {
+    let parse = |json: &str| serde_json::from_str::<SessionScopedEvent>(json).unwrap();
+    let warning = parse(
+        r#"{"kind":"notice","identity":"mcp-start:calendar","level":"warning","text":"Tools unavailable.","source":"runtime"}"#,
+    );
+    let failure = parse(
+        r#"{"kind":"notice","identity":"mcp-start:calendar","level":"error","text":"Sign in to calendar.","source":"adapter"}"#,
+    );
+    let other = parse(
+        r#"{"kind":"notice","identity":"mcp-start:mail","level":"warning","text":"Tools unavailable.","source":"runtime"}"#,
+    );
+    let mut surface = SessionSurface::default();
+    surface.apply(1, &warning);
+    surface.apply(1, &other);
+    surface.apply(1, &failure);
+    assert_eq!(surface.notices.len(), 2);
+    assert_eq!(surface.notices[0].level, SessionNoticeLevel::Error);
+    assert_eq!(surface.notices[0].text.as_str(), "Sign in to calendar.");
+    assert_eq!(surface.apply(1, &warning), None);
+    assert_eq!(surface.notices[1].text.as_str(), "Tools unavailable.");
+}
+
 fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionScopedEvent {
     SessionScopedEvent::Activity(super::fixtures::activity(id, state, progress))
 }

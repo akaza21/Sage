@@ -22,6 +22,7 @@ mod command_turn_tests;
 mod harness_title_tests;
 mod lifecycle_tests;
 mod mcp_progress_tests;
+mod notice_failure_tests;
 mod session_surface_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;

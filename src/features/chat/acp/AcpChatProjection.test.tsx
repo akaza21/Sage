@@ -1746,6 +1746,8 @@ describe("AcpChatProjection", () => {
     fireEvent.click(
       within(summary).getByRole("button", { name: /Showing 1 changed file/ }),
     );
+    expect(screen.getByText(/Some chat history was discarded/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(
       screen.getByText(/discarded to stay within memory limits/i),
     ).toBeVisible();

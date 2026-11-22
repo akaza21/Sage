@@ -6,7 +6,7 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use sage_acp_protocol::{
-    contract::EntityRevision,
+    contract::{EntityRevision, RequiredText},
     intent::{
         ExternalId,
         session_event::{
@@ -53,7 +53,30 @@ pub(super) fn apply_in(
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
-    let change = match surface.apply(owner.runtime_epoch.get(), &command.event) {
+    let mut event = command.event.clone();
+    if let SessionScopedEvent::Notice(notice) = &mut event
+        && notice.identity.is_none()
+    {
+        // An exact replay reuses the record, without treating its copy as a
+        // semantic problem identity. New unclassified events stay distinct.
+        let existing = surface.notices.iter().find(|stored| {
+            stored.level == notice.level
+                && stored.diagnostic == notice.diagnostic
+                && stored.text == notice.text
+                && stored.source == notice.source
+        });
+        notice.identity = match existing {
+            Some(stored) => stored.identity.clone(),
+            None => Some(
+                RequiredText::new(
+                    "noticeIdentity",
+                    format!("session-notice:{session}:{}", projection.get()),
+                )
+                .map_err(|_| StoreError::Corrupt("notice identity"))?,
+            ),
+        };
+    }
+    let change = match surface.apply(owner.runtime_epoch.get(), &event) {
         Some(change) => change,
         None if recorded => {
             facts::publish_send_neutral_projection(
@@ -200,7 +223,7 @@ pub(super) fn read(
     else {
         return Ok(None);
     };
-    let surface = serde_json::from_str::<SessionSurface>(&json)
+    let mut surface = serde_json::from_str::<SessionSurface>(&json)
         .ok()
         .filter(SessionSurface::is_bounded)
         .ok_or(StoreError::Corrupt("session surface"))?;
@@ -208,6 +231,19 @@ pub(super) fn read(
         .ok()
         .and_then(|revision| EntityRevision::new(revision).ok())
         .ok_or(StoreError::Corrupt("session surface revision"))?;
+    // Historical records have no problem metadata. Give each its own stable
+    // record identity; the next write persists these before the list can move.
+    for (index, notice) in surface.notices.iter_mut().enumerate() {
+        if notice.identity.is_none() {
+            notice.identity = Some(
+                RequiredText::new(
+                    "noticeIdentity",
+                    format!("legacy-notice:{session}:{}:{index}", revision.get()),
+                )
+                .map_err(|_| StoreError::Corrupt("notice identity"))?,
+            );
+        }
+    }
     Ok(Some((surface, revision)))
 }
 

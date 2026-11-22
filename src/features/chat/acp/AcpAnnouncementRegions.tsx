@@ -1,11 +1,11 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { compareDecimalRevision } from "../../../app/acpProjectionMerge";
 import {
   MAX_RETAINED_ITEMS,
   MAX_RETAINED_TURNS,
 } from "../../../app/acpProjectionStore";
-import type { AcpChatPage, AcpItem } from "../../../domain/acp";
+import type { AcpChatPage } from "../../../domain/acp";
 import { isEditingFiles } from "./editingFiles";
 import { itemOwnershipMatches } from "./agentEditSummary";
 import {
@@ -13,6 +13,7 @@ import {
   getTurnStatusLabel,
   terminalToolStates,
   terminalTurnStates,
+  turnReasonMessage,
   toolStateLabels,
 } from "./statusSemantics";
 
@@ -21,30 +22,15 @@ export interface Announcement {
   text: string;
 }
 
-interface AnnouncementSnapshot {
-  assertive: Announcement[];
-  polite: Announcement[];
-}
+type Announce = (
+  announcement: Announcement,
+  priority?: "polite" | "assertive",
+) => void;
 
-function turnOrder(page: AcpChatPage, turn: AcpChatPage["turns"][number]) {
-  return [
-    page.sessions.find((session) => session.id === turn.sessionId)?.ordinal ??
-      0,
-    turn.ordinal,
-    turn.createdAt,
-    turn.id,
-  ] as const;
-}
-
-function compareTurnOrder(
-  left: ReturnType<typeof turnOrder>,
-  right: ReturnType<typeof turnOrder>,
-) {
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] === right[index]) continue;
-    return left[index] < right[index] ? -1 : 1;
-  }
-  return 0;
+function sessionOrdinal(page: AcpChatPage, turn: AcpChatPage["turns"][number]) {
+  return (
+    page.sessions.find((session) => session.id === turn.sessionId)?.ordinal ?? 0
+  );
 }
 
 function isNewLatestTurn(
@@ -52,34 +38,25 @@ function isNewLatestTurn(
   page: AcpChatPage,
   turn: AcpChatPage["turns"][number],
 ) {
-  const currentOrder = turnOrder(page, turn);
-  return previous.turns.every(
-    (prior) => compareTurnOrder(currentOrder, turnOrder(previous, prior)) > 0,
-  );
-}
-
-function terminalToolAnnouncement(item: AcpItem): string | null {
-  if (item.kind !== "toolCall" || !terminalToolStates.has(item.toolState)) {
-    return null;
-  }
-  return `${item.payload.presentation.label}: ${toolStateLabels[item.toolState]}`;
+  // Projection pages are chronological; native session/turn ordinals are unique.
+  const prior = previous.turns.at(-1);
+  if (!prior) return true;
+  const session = sessionOrdinal(page, turn) - sessionOrdinal(previous, prior);
+  return session > 0 || (session === 0 && turn.ordinal > prior.ordinal);
 }
 
 function deriveAnnouncements(
   previous: AcpChatPage,
   page: AcpChatPage,
-): AnnouncementSnapshot {
-  const polite: Announcement[] = [];
-  const assertive: Announcement[] = [];
-  const sameScope =
-    previous.projectId === page.projectId && previous.chatId === page.chatId;
+  announce: Announce,
+) {
   const revisionAdvanced =
     compareDecimalRevision(
       page.projectionRevision,
       previous.projectionRevision,
     ) === 1;
 
-  if (sameScope && revisionAdvanced) {
+  if (revisionAdvanced) {
     const previousTurns = new Map(
       previous.turns.map((turn) => [turn.id, turn]),
     );
@@ -93,7 +70,7 @@ function deriveAnnouncements(
         ? isEditingFiles(previous, previousTurn)
         : false;
       if (editing !== wasEditing) {
-        polite.push({
+        announce({
           id: `editing:${turn.id}:${page.projectionRevision}`,
           text: editing ? "Editing files" : "Finished editing files",
         });
@@ -102,20 +79,29 @@ function deriveAnnouncements(
         terminalTurnStates.has(turn.state) &&
         previousTurn?.state !== turn.state
       ) {
-        polite.push({
+        const announcement = {
           id: `turn:${turn.id}:${turn.state}`,
-          text: getTurnStatusLabel(turn),
-        });
+          text:
+            (turn.state === "failed" && turnReasonMessage(turn)) ||
+            getTurnStatusLabel(turn),
+        };
+        announce(
+          announcement,
+          turn.state === "failed" ? "assertive" : "polite",
+        );
       }
       for (const item of turn.items) {
         const prior = previousTurn?.items.find(
           (previousItem) => previousItem.id === item.id,
         );
-        const toolAnnouncement = terminalToolAnnouncement(item);
-        if (toolAnnouncement && prior?.toolState !== item.toolState) {
-          polite.push({
+        if (
+          item.kind === "toolCall" &&
+          terminalToolStates.has(item.toolState) &&
+          prior?.toolState !== item.toolState
+        ) {
+          announce({
             id: `tool:${item.id}:${item.toolState}`,
-            text: toolAnnouncement,
+            text: `${item.payload.presentation.label}: ${toolStateLabels[item.toolState]}`,
           });
         }
         if (item.kind === "permissionRequest") {
@@ -128,16 +114,18 @@ function deriveAnnouncements(
             currentStatus.terminal &&
             currentStatus.accessible !== priorStatus?.accessible
           ) {
-            assertive.push({
-              id: `permission:${item.id}:${currentStatus.accessible}`,
-              text: currentStatus.accessible,
-            });
+            announce(
+              {
+                id: `permission:${item.id}:${currentStatus.accessible}`,
+                text: currentStatus.accessible,
+              },
+              "assertive",
+            );
           }
         }
       }
     }
   }
-  return { assertive, polite };
 }
 
 function clearRegion(region: HTMLElement) {
@@ -148,12 +136,12 @@ function clearRegion(region: HTMLElement) {
 function currentAnnouncements(
   page: AcpChatPage,
   resumed: boolean,
-): Announcement[] {
+  announce: Announce,
+) {
   const turns = page.turns.filter(
     (turn) => turn.sessionId === page.currentSessionId,
   );
   const editing = turns.find((turn) => isEditingFiles(page, turn));
-  const announcements: Announcement[] = [];
   if (
     editing ||
     (resumed &&
@@ -165,32 +153,26 @@ function currentAnnouncements(
         ),
       ))
   ) {
-    announcements.push({
+    announce({
       id: `editing:current:${page.projectionRevision}`,
       text: editing ? "Editing files" : "Finished editing files",
     });
   }
   const terminal = resumed
-    ? turns
-        .filter((turn) => terminalTurnStates.has(turn.state))
-        .sort((left, right) =>
-          compareTurnOrder(turnOrder(page, right), turnOrder(page, left)),
-        )[0]
+    ? turns.filter((turn) => terminalTurnStates.has(turn.state)).at(-1)
     : undefined;
   if (terminal)
-    announcements.push({
+    announce({
       id: `turn:${terminal.id}:${terminal.state}`,
       text: getTurnStatusLabel(terminal),
     });
-  return announcements;
 }
 
 interface AnnouncementDrain {
   currentId: string | null;
   frame: number;
-  pending: Announcement[];
-  pendingIds: Set<string>;
-  region: HTMLElement | null;
+  pending: Map<string, string>;
+  ref: { current: HTMLDivElement | null };
 }
 
 const MAX_PENDING_ANNOUNCEMENTS = MAX_RETAINED_TURNS + MAX_RETAINED_ITEMS;
@@ -199,72 +181,51 @@ function createDrain(): AnnouncementDrain {
   return {
     currentId: null,
     frame: 0,
-    pending: [],
-    pendingIds: new Set(),
-    region: null,
+    pending: new Map(),
+    ref: { current: null },
   };
 }
 
-function showNext(drain: AnnouncementDrain) {
-  drain.frame = 0;
-  const announcement = drain.pending.shift();
-  const region = drain.region;
-  if (!announcement || !region) return;
-  drain.pendingIds.delete(announcement.id);
-  drain.currentId = announcement.id;
-  region.setAttribute("aria-label", announcement.text);
-  region.textContent = announcement.text;
-  if (drain.pending.length > 0) scheduleDrain(drain);
-}
-
 function scheduleDrain(drain: AnnouncementDrain) {
-  const region = drain.region;
-  if (drain.frame || !region || drain.pending.length === 0) return;
-  if (drain.currentId) {
-    drain.frame = requestAnimationFrame(() => {
-      drain.frame = 0;
+  const region = drain.ref.current;
+  if (drain.frame || !region || drain.pending.size === 0) return;
+  drain.frame = requestAnimationFrame(() => {
+    drain.frame = 0;
+    if (drain.currentId) {
       clearRegion(region);
       drain.currentId = null;
-      drain.frame = requestAnimationFrame(() => showNext(drain));
-    });
-    return;
-  }
-  drain.frame = requestAnimationFrame(() => showNext(drain));
+    } else {
+      const [id, text] = drain.pending.entries().next().value!;
+      drain.pending.delete(id);
+      drain.currentId = id;
+      region.setAttribute("aria-label", text);
+      region.textContent = text;
+    }
+    scheduleDrain(drain);
+  });
 }
 
-function enqueueAnnouncements(
+function enqueueAnnouncement(
   drain: AnnouncementDrain,
-  region: HTMLElement | null,
-  announcements: readonly Announcement[],
+  announcement: Announcement,
 ) {
-  if (!region) {
-    if (drain.frame) cancelAnimationFrame(drain.frame);
-    drain.frame = 0;
-    if (drain.region) clearRegion(drain.region);
+  if (
+    drain.pending.size >= MAX_PENDING_ANNOUNCEMENTS ||
+    drain.currentId === announcement.id ||
+    drain.pending.has(announcement.id)
+  ) {
+    return;
   }
-  drain.region = region;
-  for (const announcement of announcements) {
-    if (
-      drain.pending.length >= MAX_PENDING_ANNOUNCEMENTS ||
-      drain.currentId === announcement.id ||
-      drain.pendingIds.has(announcement.id)
-    ) {
-      continue;
-    }
-    drain.pending.push(announcement);
-    drain.pendingIds.add(announcement.id);
-  }
+  drain.pending.set(announcement.id, announcement.text);
   scheduleDrain(drain);
 }
 
 function resetDrain(drain: AnnouncementDrain) {
   if (drain.frame) cancelAnimationFrame(drain.frame);
-  if (drain.region) clearRegion(drain.region);
+  if (drain.ref.current) clearRegion(drain.ref.current);
   drain.currentId = null;
   drain.frame = 0;
-  drain.pending = [];
-  drain.pendingIds.clear();
-  drain.region = null;
+  drain.pending.clear();
 }
 
 export function AcpAnnouncementRegions({
@@ -278,18 +239,21 @@ export function AcpAnnouncementRegions({
   feedback?: Announcement | null;
   onFeedbackQueued?: (id: string) => void;
 }) {
-  const previousRef = useRef<AcpChatPage | null>(null);
-  const enabledRef = useRef(enabled);
-  const politeRef = useRef<HTMLDivElement>(null);
-  const assertiveRef = useRef<HTMLDivElement>(null);
-  const politeDrainRef = useRef<AnnouncementDrain>(createDrain());
-  const assertiveDrainRef = useRef<AnnouncementDrain>(createDrain());
+  const announcerRef = useRef({
+    previous: null as AcpChatPage | null,
+    enabled,
+  });
+  const [drains] = useState(() => ({
+    polite: createDrain(),
+    assertive: createDrain(),
+  }));
 
   useLayoutEffect(() => {
-    const previous = previousRef.current;
-    previousRef.current = page;
-    const resumed = enabled && !enabledRef.current;
-    enabledRef.current = enabled;
+    const announcer = announcerRef.current;
+    const previous = announcer.previous;
+    announcer.previous = page;
+    const resumed = enabled && !announcer.enabled;
+    announcer.enabled = enabled;
     const scopeChanged =
       previous &&
       (!page ||
@@ -298,69 +262,41 @@ export function AcpAnnouncementRegions({
         (previous.currentSessionId !== null &&
           previous.currentSessionId !== page.currentSessionId));
     if (scopeChanged || !enabled || resumed) {
-      resetDrain(politeDrainRef.current);
-      resetDrain(assertiveDrainRef.current);
+      Object.values(drains).forEach(resetDrain);
     }
     if (!enabled) return;
-    const announcements =
-      previous && page && !scopeChanged && !resumed
-        ? deriveAnnouncements(previous, page)
-        : {
-            assertive: [],
-            polite: page
-              ? currentAnnouncements(page, resumed && !scopeChanged)
-              : [],
-          };
-    enqueueAnnouncements(
-      politeDrainRef.current,
-      politeRef.current,
-      announcements.polite,
-    );
-    enqueueAnnouncements(
-      assertiveDrainRef.current,
-      assertiveRef.current,
-      announcements.assertive,
-    );
-  }, [enabled, page]);
+    const announce: Announce = (announcement, priority = "polite") =>
+      enqueueAnnouncement(drains[priority], announcement);
+    if (previous && page && !scopeChanged && !resumed)
+      deriveAnnouncements(previous, page, announce);
+    else if (page)
+      currentAnnouncements(page, resumed && !scopeChanged, announce);
+  }, [enabled, page, drains]);
 
   useLayoutEffect(() => {
     if (feedback) {
-      if (enabled)
-        enqueueAnnouncements(politeDrainRef.current, politeRef.current, [
-          feedback,
-        ]);
+      if (enabled) enqueueAnnouncement(drains.polite, feedback);
       onFeedbackQueued?.(feedback.id);
     }
-  }, [enabled, feedback, onFeedbackQueued]);
+  }, [enabled, feedback, onFeedbackQueued, drains]);
 
   useLayoutEffect(() => {
-    const politeDrain = politeDrainRef.current;
-    const assertiveDrain = assertiveDrainRef.current;
+    const announcer = announcerRef.current;
     return () => {
-      previousRef.current = null;
-      resetDrain(politeDrain);
-      resetDrain(assertiveDrain);
+      announcer.previous = null;
+      Object.values(drains).forEach(resetDrain);
     };
-  }, []);
+  }, [drains]);
 
-  return (
-    <>
-      <div
-        ref={politeRef}
-        className="sr-only"
-        role={enabled ? "status" : undefined}
-        aria-live={enabled ? "polite" : "off"}
-        aria-atomic="true"
-        data-acp-announcement="polite"
-      />
-      <div
-        ref={assertiveRef}
-        className="sr-only"
-        role={enabled ? "status" : undefined}
-        aria-live={enabled ? "assertive" : "off"}
-        aria-atomic="true"
-        data-acp-announcement="assertive"
-      />
-    </>
-  );
+  return (["polite", "assertive"] as const).map((level) => (
+    <div
+      key={level}
+      ref={drains[level].ref}
+      className="sr-only"
+      role={enabled ? "status" : undefined}
+      aria-live={enabled ? level : "off"}
+      aria-atomic="true"
+      data-acp-announcement={level}
+    />
+  ));
 }
