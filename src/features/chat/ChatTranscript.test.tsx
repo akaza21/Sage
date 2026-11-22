@@ -16,6 +16,8 @@ import { page, textItem } from "./acp/acpProjection.fixture";
 import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import nativeTurnFailure from "../../test/fixtures/nativeTurnFailure.json";
+import { safeAcpMutationResponse } from "../../services/acpDesktopResponses";
 import { snapshotPage } from "../../app/agentDiff.fixture";
 
 afterEach(() => {
@@ -25,6 +27,26 @@ afterEach(() => {
     .forEach((slot) => slot.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it("decodes a native failure with its ownership metadata, explains it once and preserves diagnostics", async () => {
+  const decoded = safeAcpMutationResponse({ projection: nativeTurnFailure });
+  expect(decoded).not.toBeNull();
+  const failed = decoded!.projection;
+  await renderTranscript(failed);
+  expect(document.querySelector(".chat-transcript-work__toggle")).toBeNull();
+  expect(screen.getAllByText("The harness exited unexpectedly.")).toHaveLength(
+    1,
+  );
+  expect(screen.queryByRole("region", { name: "Session notices" })).toBeNull();
+  const owner = screen.getByRole("group", { name: "Turn failed" });
+  expect(screen.queryByText("Turn failed")).toBeNull();
+  expect(screen.queryByText("Turn failure")).toBeNull();
+  expect(screen.queryByText(/"code": "harnessExited"/)).toBeNull();
+  fireEvent.click(within(owner).getByRole("button", { name: "Details" }));
+  expect(
+    await within(owner).findByText(/"code": "harnessExited"/),
+  ).toBeVisible();
 });
 
 async function renderTranscript(
@@ -73,12 +95,44 @@ async function renderTranscript(
       result.rerender(transcript(acpPage, focused));
       await settleLazyModules();
     },
-    async rerenderTranscript(next: AcpChatPage) {
-      result.rerender(transcript(next));
+    async rerenderTranscript(next: AcpChatPage, focused = true) {
+      result.rerender(transcript(next, focused));
       await settleLazyModules();
     },
   };
 }
+
+it.each([true, false])(
+  "routes a live failure through the pane focus gate (focused: %s)",
+  async (focused) => {
+    const running = page("running");
+    const view = await renderTranscript(running);
+    await view.setFocused(focused);
+    const failed = page("failed", {
+      kind: "timeout",
+      message: "The request timed out.",
+    });
+    failed.projectionRevision = "13" as never;
+    await view.rerenderTranscript(failed, focused);
+    expect(
+      within(screen.getByRole("group", { name: "Turn failed" })).getByText(
+        "The request timed out.",
+      ),
+    ).toBeVisible();
+    expect(view.container.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    const region = view.container.querySelector(
+      '[data-acp-announcement="assertive"]',
+    );
+    if (focused)
+      await waitFor(() =>
+        expect(region).toHaveTextContent("The request timed out."),
+      );
+    else {
+      expect(region).toHaveAttribute("aria-live", "off");
+      expect(region).toBeEmptyDOMElement();
+    }
+  },
+);
 
 it("offers an icon-only, named jump button that follows the latest turn", async () => {
   const { onJumpToLatest } = await renderTranscript(
