@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from "react";
 
+import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import {
   commitIdentityChatResult,
@@ -15,84 +16,16 @@ import {
 } from "../../app/chatTransitions";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { useWorkbenchStore } from "../../app/store";
-import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
+import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { getGoalChatPage } from "../../services/acpGoalDesktop";
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
+import { Copy, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId } from "../../workbench/sideChatState";
-import { AnswerActionButton } from "./AnswerActions";
+import { UserMessageActions } from "./UserMessageActions";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
-import {
-  ForkChatRequestContext,
-  turnSessionForkState,
-} from "./forkChatRequest";
-
-export function AnswerMoreMenu({
-  onCopy,
-  onBranch,
-  trigger,
-}: {
-  onCopy: () => void;
-  onBranch?: (keyboard: boolean) => void;
-  trigger: RefObject<HTMLButtonElement | null>;
-}) {
-  const menuId = useId();
-  const [open, setOpen] = useState(false);
-  const keyed = useRef(false);
-  const [Icon, label] = onBranch
-    ? [GitBranch, "Branch in new chat"]
-    : [Copy, "Copy"];
-  return (
-    <>
-      <AnswerActionButton
-        ref={trigger}
-        label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        data-fork-trigger={onBranch ? true : undefined}
-        onClick={() => setOpen(!open)}
-      >
-        <Ellipsis size={14} aria-hidden="true" />
-      </AnswerActionButton>
-      <MenuPopover
-        id={menuId}
-        open={open}
-        ariaLabel="Answer actions"
-        className="answer-more-menu"
-        gap={2}
-        placement="above-start"
-        triggerRef={trigger}
-        onDismiss={() => setOpen(false)}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          className="button--compact answer-more-menu__item"
-          onKeyDown={(event) => {
-            keyed.current = event.key === "Enter" || event.key === " ";
-          }}
-          onClick={() => {
-            setOpen(false);
-            if (onBranch) onBranch(keyed.current);
-            else {
-              trigger.current?.focus();
-              onCopy();
-            }
-            keyed.current = false;
-          }}
-        >
-          <Icon size={14} aria-hidden="true" />
-          <span>{label}</span>
-        </button>
-      </MenuPopover>
-    </>
-  );
-}
+import { ConversationRequestContext } from "./forkChatRequest";
 
 export interface ForkTarget {
   chatId: string;
@@ -112,6 +45,17 @@ export async function forkChat({
   const context = createChatTransitionContext(set, get);
   const parentConfig =
     acpProjectionStoreFor(chatId).getState().page?.sessionConfig;
+  const parentPage = acpProjectionStoreFor(chatId).getState().page;
+  const sourceTurn = parentPage?.turns.find((turn) => turn.id === turnId);
+  const targets = parentPage?.sessions.find(
+    (session) => session.id === sourceTurn?.sessionId,
+  )?.capabilities?.rewind?.targets;
+  const before = targets !== undefined && targets !== "latestTurn";
+  const prompt = before
+    ? sourceTurn?.items.find(
+        (item) => item.kind === "text" && item.payload.role === "user",
+      )
+    : undefined;
   set({ projectTransitioning: true, error: null });
   const committed = await commitIdentityChatResult({
     set,
@@ -134,6 +78,9 @@ export async function forkChat({
     const fork = get().activeTabId;
     if (fork && fork !== chatId) {
       inheritComposerModel(fork, parentConfig);
+      const owner = get().captureChatOwnership(fork);
+      if (owner && prompt?.kind === "text")
+        get().setChatComposer(owner, prompt.payload.text);
     }
     return null;
   }
@@ -143,35 +90,93 @@ export async function forkChat({
 }
 
 export function AnswerMoreActions({
-  page,
+  page: passedPage,
   onCopy,
   forkable,
+  turn: prompt,
+  text,
+  trigger,
+  menuId,
+  onDismiss,
 }: {
   page: AcpChatPage;
-  onCopy: () => void;
+  onCopy?: () => void;
   forkable?: boolean;
+  turn?: TurnProjection;
+  text?: string;
+  trigger: RefObject<HTMLButtonElement | null>;
+  menuId: string;
+  onDismiss: () => void;
 }) {
-  const trigger = useRef<HTMLButtonElement>(null);
-  const requestFork = useContext(ForkChatRequestContext);
+  const keyed = useRef(false);
+  const requestFork = useContext(ConversationRequestContext);
+  const page =
+    useStore(acpProjectionStoreFor(passedPage.chatId), (state) => state.page) ??
+    passedPage;
   const turn = page.turns.at(-1);
+  const session = page.sessions.find(
+    (session) => session.id === turn?.sessionId,
+  );
   const canFork =
     requestFork &&
     forkable &&
     turn?.state === "completed" &&
     turn.sessionId === page.currentSessionId &&
+    session?.capabilities?.rewind?.targets === "latestTurn" &&
     !isSideChatId(page.chatId) &&
-    turnSessionForkState(page, turn.sessionId) === "forkable";
+    session.residency === "hot" &&
+    session.capabilities.rewind.forkAt;
+  const [Icon, label] = canFork
+    ? [GitBranch, "Branch in new chat"]
+    : [Copy, "Copy"];
   return (
-    <AnswerMoreMenu
-      onCopy={onCopy}
-      trigger={trigger}
-      onBranch={
-        canFork
-          ? (keyboard) =>
-              requestFork({ chatId: page.chatId, turnId: turn.id, keyboard })
-          : undefined
-      }
-    />
+    <MenuPopover
+      id={menuId}
+      open
+      ariaLabel={prompt ? "Prompt actions" : "Answer actions"}
+      className="answer-more-menu"
+      gap={2}
+      placement="above-start"
+      triggerRef={trigger}
+      onDismiss={onDismiss}
+    >
+      {prompt ? (
+        <UserMessageActions
+          page={page}
+          turn={prompt}
+          text={text ?? ""}
+          onDismiss={() => {
+            trigger.current?.focus();
+            onDismiss();
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          className="button--compact answer-more-menu__item"
+          onKeyDown={(event) => {
+            keyed.current = event.key === "Enter" || event.key === " ";
+          }}
+          onClick={() => {
+            onDismiss();
+            if (canFork)
+              requestFork({
+                chatId: page.chatId,
+                turnId: turn.id,
+                keyboard: keyed.current,
+              });
+            else {
+              trigger.current?.focus();
+              onCopy?.();
+            }
+          }}
+        >
+          <Icon size={14} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      )}
+    </MenuPopover>
   );
 }
 
@@ -211,6 +216,20 @@ export function ForkChatDialog({
   const dismiss = () => {
     if (!busyRef.current) close();
   };
+  const runFork = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setResult(undefined);
+    let reason: string | null;
+    try {
+      reason = await fork({ chatId, turnId });
+    } catch {
+      reason = "Try again.";
+    }
+    busyRef.current = false;
+    setResult(reason);
+    if (reason === null) close();
+  };
   useEffect(() => {
     const dialog = option.current?.closest("dialog");
     if (!dialog) return;
@@ -235,6 +254,7 @@ export function ForkChatDialog({
       onDismiss={dismiss}
     >
       <h2 id={title}>Fork chat from here</h2>
+      <p>This chat shares the project folder.</p>
       <div
         role="group"
         aria-labelledby={title}
@@ -248,14 +268,7 @@ export function ForkChatDialog({
           type="button"
           data-fresh={fresh || undefined}
           disabled={busy}
-          onClick={async () => {
-            busyRef.current = true;
-            setResult(undefined);
-            const reason = await fork({ chatId, turnId });
-            busyRef.current = false;
-            setResult(reason);
-            if (reason === null) close();
-          }}
+          onClick={() => void runFork()}
         >
           <GitBranch size={14} />
           <span>
@@ -264,117 +277,14 @@ export function ForkChatDialog({
           </span>
         </button>
       </div>
-      {result && <p role="alert">Couldn&apos;t fork this chat. {result}</p>}
+      {result && (
+        <p role="alert">
+          Couldn&apos;t fork this chat. {result}{" "}
+          <button type="button" onClick={() => void runFork()}>
+            Retry
+          </button>
+        </p>
+      )}
     </ModalDialog>
   );
-}
-
-export function ForkDivider({
-  parentChatId,
-  forkTurnId,
-}: {
-  parentChatId: string;
-  forkTurnId?: string;
-}) {
-  const open = useWorkbenchStore((state) =>
-    state.tabs.some((tab) => tab.kind === "chat" && tab.id === parentChatId),
-  );
-  const activateTab = useWorkbenchStore((state) => state.activateTab);
-  const inherited = useInheritedHistory(parentChatId, forkTurnId);
-  return (
-    <>
-      {inherited ? (
-        <InheritedHistory
-          page={inherited}
-          earlier={inherited.earlier}
-          label="History from the parent chat"
-        />
-      ) : null}
-      <div className="chat-fork-divider">
-        <GitBranch size={14} />
-        {open ? (
-          <button
-            type="button"
-            className="chat-fork-divider__link"
-            onClick={() => void activateTab(parentChatId)}
-          >
-            Continued from chat
-          </button>
-        ) : (
-          <span>Continued from an archived chat</span>
-        )}
-      </div>
-    </>
-  );
-}
-
-export function InheritedHistory({
-  page,
-  earlier,
-  label,
-}: {
-  page: AcpChatPage;
-  earlier: boolean;
-  label: string;
-}) {
-  return (
-    <div className="chat-fork-inherited" aria-label={label} role="group">
-      {earlier ? (
-        <p className="acp-history-notice">Earlier history isn&apos;t shown.</p>
-      ) : null}
-      <LazyModuleBoundary
-        label="Inherited history"
-        load={loadInheritedTurns}
-        render={(InheritedTurns) => <InheritedTurns page={page} />}
-      />
-    </div>
-  );
-}
-
-const MAX_INHERITED_TURNS = 20;
-
-const loadInheritedTurns = () =>
-  import("./acp/AcpChatPresentation").then(({ InheritedTurns }) => ({
-    default: InheritedTurns,
-  }));
-
-type Inherited = AcpChatPage & {
-  forkTurnId: string;
-  earlier: boolean;
-};
-
-function useInheritedHistory(parentChatId: string, forkTurnId?: string) {
-  const projectId = useWorkbenchStore((state) => state.project?.id);
-  const generation = useWorkbenchStore((state) => state.nativeTransitionEpoch);
-  const [inherited, setInherited] = useState<Inherited | null>(null);
-  useEffect(() => {
-    if (!projectId || !forkTurnId) return;
-    let live = true;
-    void getGoalChatPage({
-      projectId: projectId as AcpChatPage["projectId"],
-      projectGeneration: String(generation) as ProjectGeneration,
-      chatId: parentChatId as AcpChatPage["chatId"],
-      cursor: null,
-    })
-      .then((page) => {
-        if (!live || page.chatId !== parentChatId) return;
-        const end = page.turns.findIndex((turn) => turn.id === forkTurnId) + 1;
-        if (!end) return setInherited(null);
-        const start = Math.max(0, end - MAX_INHERITED_TURNS);
-        setInherited({
-          ...page,
-          forkTurnId,
-          earlier: start > 0 || page.nextCursor !== null,
-          turns: page.turns.slice(start, end),
-        });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [projectId, generation, parentChatId, forkTurnId]);
-  return inherited?.chatId === parentChatId &&
-    inherited.forkTurnId === forkTurnId
-    ? inherited
-    : null;
 }

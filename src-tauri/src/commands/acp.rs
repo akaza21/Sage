@@ -79,6 +79,16 @@ pub(crate) async fn get_acp_chat_page_inner(
     let _transition =
         lock_acp_context(state, &request.project_id, request.project_generation).await?;
     let authoritative_bootstrap = request.cursor.is_none();
+    if let Some(child) = request.fork_history_for {
+        return crate::acp::store::load_fork_history(
+            &state.database.connection(),
+            request.project_id,
+            request.chat_id,
+            child,
+            request.cursor,
+        )
+        .map_err(store_error);
+    }
     let page = state
         .acp
         .load_chat_page(request.project_id, request.chat_id, request.cursor)

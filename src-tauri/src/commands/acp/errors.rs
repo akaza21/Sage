@@ -263,6 +263,9 @@ pub(super) fn internal_error() -> AcpIpcError {
 
 pub(super) fn store_error(error: StoreError) -> AcpIpcError {
     match error {
+        StoreError::RewindUnavailable { reason } => AcpIpcError::Rejected {
+            message: safe_message(reason),
+        },
         StoreError::Capacity { limit, .. } => AcpIpcError::Capacity {
             resource: AcpCapacityResource::History,
             limit,

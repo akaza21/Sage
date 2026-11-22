@@ -73,7 +73,13 @@ export function snapshotPage(): AcpChatPage {
     title: "Chat",
     projectionRevision: "1",
     currentSessionId: snapshotRef.sessionId,
-    sessions: [{ id: snapshotRef.sessionId, ordinal: 1 }],
+    sessions: [
+      {
+        id: snapshotRef.sessionId,
+        ordinal: 1,
+        runtimeEpoch: snapshotRef.runtimeEpoch,
+      },
+    ],
     turns: [turn],
     nextCursor: null,
   } as unknown as AcpChatPage;

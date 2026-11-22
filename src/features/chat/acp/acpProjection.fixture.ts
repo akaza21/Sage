@@ -24,6 +24,7 @@ export function page(
     nextCursor: null,
     turns: [
       {
+        conversationTarget: true,
         id: "turn-1",
         sessionId: "session-1",
         runtimeEpoch: "2",

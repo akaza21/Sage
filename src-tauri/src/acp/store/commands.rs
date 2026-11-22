@@ -191,7 +191,10 @@ pub(super) fn prepare_turn_in(
         "global usage",
     )?;
     let fact_payload = serde_json::to_string(&serde_json::json!({
-        "kind":"sendIntent", "entityId":turn_id.as_str(), "state":"queued"
+        "kind":"sendIntent", "entityId":turn_id.as_str(), "state":"queued",
+        // Display text excludes some attached context. Preserve the native
+        // inline text's identity atomically, without changing prompt replay keys.
+        "nativePromptDigest": command.prompt.resources.inline_digest(command.prompt.as_str())
     }))
     .map_err(|_| StoreError::Corrupt("send intent serialization"))?;
     append_fact_payload(

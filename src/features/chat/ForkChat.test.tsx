@@ -15,7 +15,8 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { AnswerActions } from "./AnswerActions";
-import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
+import { ForkChatDialog, forkChat } from "./ForkChat";
+import { ForkDivider } from "./ForkHistory";
 import { ForkChatDialogHost } from "./ForkChatDialogHost";
 
 const getGoalChatPage = vi.hoisted(() => vi.fn());
@@ -43,16 +44,10 @@ vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   getGoalChatPage,
 }));
-// Only InheritedTurns is loaded from this module here. Spreading the real
-// module in would resolve it through an RPC that vi.dynamicImportSettled does
-// not track, so settleLazyModules could return before the history renders.
+// Keep the inherited-page fetch tests focused on which bounded turns render.
 vi.mock("./acp/AcpChatPresentation", () => ({
-  InheritedTurns: ({ page }: { page: AcpChatPage }) => (
-    <ol>
-      {page.turns.map((turn) => (
-        <li key={turn.id}>{turn.id}</li>
-      ))}
-    </ol>
+  Turn: ({ turn }: { turn: AcpChatPage["turns"][number] }) => (
+    <li>{turn.id}</li>
   ),
 }));
 
@@ -80,7 +75,14 @@ function forkablePage(
         id: "session-1",
         runtimeEpoch: "2",
         residency: overrides.residency ?? "hot",
-        capabilities: { nativeSessionFork: overrides.fork ?? true },
+        capabilities: {
+          rewind: {
+            effects: { conversation: false, files: false },
+            targets: "latestTurn",
+            forkAt: overrides.fork ?? true,
+            onResume: false,
+          },
+        },
       },
     ] as never,
   };

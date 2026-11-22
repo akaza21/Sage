@@ -80,9 +80,13 @@ fn event_bytes(
     event: &DurableAdapterEvent,
 ) -> Result<usize, PumpJournalError> {
     match event {
-        DurableAdapterEvent::Turn { scope, .. } => {
+        DurableAdapterEvent::Turn {
+            scope,
+            native_turn_id,
+            ..
+        } => {
             verify_scope(intent, scope)?;
-            Ok(0)
+            Ok(native_turn_id.as_ref().map_or(0, |id| id.as_str().len()))
         }
         DurableAdapterEvent::Item {
             scope,
@@ -237,8 +241,15 @@ fn event_bytes(
 fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJournalError> {
     Ok(match event {
         DurableAdapterEvent::Turn {
-            state, now_millis, ..
-        } => AdapterInboundEvent::Turn { state, now_millis },
+            state,
+            native_turn_id,
+            now_millis,
+            ..
+        } => AdapterInboundEvent::Turn {
+            native_turn_id,
+            state,
+            now_millis,
+        },
         DurableAdapterEvent::Item {
             scope,
             external_item_id,

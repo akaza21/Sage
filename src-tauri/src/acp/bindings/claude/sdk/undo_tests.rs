@@ -22,6 +22,58 @@ const LAST: &str = "turn-00000000-0000-4000-8000-000000000003";
 const REPLY: &str = "00000000-0000-4000-8000-000000000002";
 const DIGEST: &str = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
+#[test]
+fn an_earlier_prompt_in_a_recorded_transcript_keeps_the_last_chain_entry_on_resume() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../testdata/acp/claude/recorded-rewind-transcript.json"
+    ))
+    .unwrap();
+    let chat = Chat::new(true);
+    let lines = fixture["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&chat.transcript, lines).unwrap();
+    let cut = transcript::resolve_undo(
+        &chat.config,
+        SESSION,
+        "turn-a24b87aa-d7a0-4e45-80ff-f57ed1377010",
+    )
+    .unwrap();
+    assert_eq!(cut.as_deref(), Some("f65902cb-f4a2-4e85-9820-80b55b1d3e04"));
+    let args = SessionLaunch {
+        session_id: SESSION.into(),
+        resume: true,
+        model: None,
+        rewind_at: cut,
+    }
+    .session_args(Some(&chat.config))
+    .unwrap();
+    assert_eq!(
+        args,
+        [
+            "--resume",
+            SESSION,
+            "--resume-session-at",
+            "f65902cb-f4a2-4e85-9820-80b55b1d3e04"
+        ]
+    );
+    assert!(
+        matches!(
+            transcript::resolve_undo(
+                &chat.config,
+                SESSION,
+                "turn-818588ad-3849-48fe-a546-573163768e04"
+            ),
+            Err(TranscriptError::ParentChain)
+        ),
+        "a missing parent chain is never guessed"
+    );
+}
+
 struct Chat {
     fixture: Fixture,
     config: PathBuf,
@@ -68,6 +120,7 @@ impl Chat {
             &self.fixture.database,
             &owner,
             SageTurnId::parse(turn).unwrap(),
+            false,
             false,
             || transcript::resolve_undo(&self.config, SESSION, turn),
         )

@@ -71,6 +71,19 @@ it("shows Editing files only while a genuinely active owned edit is in flight", 
   rerender(<AcpChatPresentation {...props} />);
   expect(liveRow()).not.toBe(announcement);
   rerender(
+    <AcpChatPresentation
+      {...props}
+      page={{
+        ...projection,
+        sessions: projection.sessions.map((session) => ({
+          ...session,
+          runtimeEpoch: "3" as typeof session.runtimeEpoch,
+        })),
+      }}
+    />,
+  );
+  expect(screen.queryByText("Editing files")).toBeNull();
+  rerender(
     <AcpChatPresentation {...props} page={{ ...projection, sessions: [] }} />,
   );
   expect(screen.queryByText("Editing files")).toBeNull();

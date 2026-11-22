@@ -317,7 +317,7 @@ fn capabilities_intersect_with_the_conservative_h3_ceiling() {
     assert!(negotiated.cancel);
     assert!(!negotiated.resume_session);
     assert!(!negotiated.close_session);
-    assert!(!negotiated.native_session_fork);
+    assert!(!negotiated.rewind.fork_at);
     assert!(negotiated.multi_root_extension_schema_id.is_none());
     assert_eq!(negotiated.model_count, 1);
 }

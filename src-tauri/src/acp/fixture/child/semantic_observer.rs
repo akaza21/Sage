@@ -228,7 +228,7 @@ fn canonical_legacy_deny_all(value: &CapabilitySnapshotV1) -> bool {
         && !value.close_session
         && !value.prompt
         && !value.cancel
-        && !value.native_session_fork
+        && !value.rewind.fork_at
         && !value.active_turn_steer
         && !value.child_conversation_projection
         && !value.child_transcript_read

@@ -376,7 +376,7 @@ fn is_deny_all(capabilities: &CapabilitySnapshotV1) -> bool {
         && !capabilities.close_session
         && !capabilities.prompt
         && !capabilities.cancel
-        && !capabilities.native_session_fork
+        && !capabilities.rewind.fork_at
         && !capabilities.active_turn_steer
         && !capabilities.child_conversation_projection
         && !capabilities.child_transcript_read
