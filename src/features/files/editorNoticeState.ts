@@ -11,6 +11,8 @@ import {
 } from "../../domain/workbench";
 import { isDeletedOnDisk } from "./editorDisk";
 import {
+  changedOnDisk,
+  DISK_MISMATCH,
   getFileEditorController,
   type ActiveEditorState,
   type EditorStateBridge,
@@ -42,8 +44,7 @@ export function markDeleted(bridge: EditorStateBridge): void {
       {
         ...active,
         document: { ...active.document, conflict: DELETION_CONFLICT },
-        message: DELETION_CONFLICT.message,
-        messageKind: undefined,
+        message: null,
       },
       { tabStatus: "failed" },
     );
@@ -78,8 +79,7 @@ export function reread(
   const active = currentReady(bridge);
   bridge.setActiveEditor(
     {
-      ...(getFileEditorController().ready(document) as ReadyEditorState),
-      message: document.conflict?.message ?? null,
+      ...getFileEditorController().ready(document),
       unstored: document.dirty ? active?.unstored : undefined,
     },
     {
@@ -98,8 +98,7 @@ export function setExternalChangeConflict(
   bridge.setActiveEditor(
     {
       ...active,
-      message: active.unstored ?? null,
-      messageKind: active.unstored ? "recovery" : undefined,
+      message: null,
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -129,10 +128,7 @@ const REASONS: [RegExp, string][] = [
     /buffer recovery limit|-buffer limit|MiB project limit/i,
     "too many files have unsaved changes. Save or close some, then try again.",
   ],
-  [
-    /no longer matches disk/i,
-    "the file changed on disk. Keep your version or reload it.",
-  ],
+  [DISK_MISMATCH, "the file changed on disk. Keep your version or reload it."],
 ];
 
 export function failureMessage(
@@ -163,8 +159,11 @@ export function actionFailed(
     bridge.setActiveEditor({
       ...active,
       saving: false,
-      message,
-      messageKind: active.messageKind === "recovery" ? "recovery" : "operation",
+      // The conflict already explains a failure that disk moving on caused.
+      message:
+        active.document.conflict && changedOnDisk(error)
+          ? active.message
+          : message,
     });
   }
   return message;
@@ -193,7 +192,7 @@ export async function applyWatchNotice(
         }
       : null;
   // Reading the File drops a durable buffer that matches disk, so unsaved edits
-  // are persisted first.
+  // are persisted first. The controller records a refused copy itself.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&
@@ -201,7 +200,7 @@ export async function applyWatchNotice(
   )
     await getFileEditorController()
       .flush(bridge)
-      .catch((error: unknown) => actionFailed(bridge, error));
+      .catch(() => undefined);
   const document = await editor
     .openEditorDocument(notice.resource)
     .catch(() => null);

@@ -29,8 +29,17 @@
   font-weight: 600;
 }
 
+.resource-state--error {
+  color: var(--color-danger);
+}
+
 .resource-state--idle {
   color: var(--color-text-muted);
+}
+
+.resource-state--error .resource-state__icon,
+.resource-state--error .resource-state__title {
+  color: var(--color-danger);
 }
 
 .resource-state__detail {
@@ -90,6 +99,11 @@
     border-color: CanvasText;
     color: CanvasText;
     background: Canvas;
+  }
+
+  .resource-state--error .resource-state__icon,
+  .resource-state--error .resource-state__title {
+    color: LinkText;
   }
 }
 

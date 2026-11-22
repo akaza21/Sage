@@ -8,21 +8,22 @@ import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 
 const loadConflictNotice = () => import("./FileConflictNotice");
 
+/**
+ * One notice per problem with this File: its disk conflict, a recovery copy
+ * that could not be stored, and a failed save or keep. Each owns its identity.
+ */
 export function FileEditorNotices({
   document,
   message,
-  editable,
   unstored,
-  messageKind,
-  keptLocal,
+  editable,
 }: {
   document: EditorDocument;
   message: string | null;
-  editable: boolean;
   unstored?: string;
-  messageKind?: "operation" | "recovery";
-  keptLocal?: boolean;
+  editable: boolean;
 }) {
+  const key = resourceKey(document.resource);
   return (
     <>
       {document.conflict || document.base.fingerprint === ABSENT_FINGERPRINT ? (
@@ -30,33 +31,22 @@ export function FileEditorNotices({
           load={loadConflictNotice}
           label="Conflict"
           fallback={null}
-          render={(Notice) => (
-            <Notice document={document} editable={editable} />
+          render={(ConflictNotice) => (
+            <ConflictNotice document={document} editable={editable} />
           )}
-        />
-      ) : null}
-      {keptLocal &&
-      !document.conflict &&
-      document.base.fingerprint !== ABSENT_FINGERPRINT ? (
-        <Notice
-          identity={`file-kept:${resourceKey(document.resource)}`}
-          severity="info"
-          message="Your local version is kept; saving will replace the file on disk."
         />
       ) : null}
       {unstored ? (
         <Notice
-          identity={`file-recovery:${resourceKey(document.resource)}`}
+          identity={`file-recovery:${key}`}
           severity="blocking"
           message="Your unsaved changes could not be stored for recovery."
           details={unstored}
         />
       ) : null}
-      {message &&
-      messageKind !== "recovery" &&
-      (messageKind === "operation" || (!document.conflict && !unstored)) ? (
+      {message ? (
         <Notice
-          identity={`file-operation:${resourceKey(document.resource)}`}
+          identity={`file-operation:${key}`}
           severity="blocking"
           message={message}
         />

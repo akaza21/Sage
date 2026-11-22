@@ -244,6 +244,7 @@ describe("DiffSurface resource states", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Could not load this diff",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Diff unavailable.");
 
     act(() => {

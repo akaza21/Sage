@@ -63,12 +63,7 @@ export async function keepActiveEditorBuffer(
       ) {
         return false;
       }
-      bridge.setActiveEditor({
-        ...active,
-        saving: true,
-        message: null,
-        messageKind: undefined,
-      });
+      bridge.setActiveEditor({ ...active, saving: true, message: null });
       const result = await getWorkbenchPorts().editor.rebaseEditorBuffer({
         resource: active.resource,
         expectedDisk:
@@ -100,16 +95,10 @@ export async function keepActiveEditorBuffer(
         );
         return false;
       }
-      bridge.setActiveEditor(
-        {
-          ...controller.ready(result.document),
-          keptLocal: result.document.dirty,
-        },
-        {
-          dirty: result.document.dirty,
-          tabStatus: null,
-        },
-      );
+      bridge.setActiveEditor(controller.ready(result.document), {
+        dirty: result.document.dirty,
+        tabStatus: null,
+      });
       return true;
     });
   } catch (error) {

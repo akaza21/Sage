@@ -1,12 +1,15 @@
 import { FileCode2 } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
+import type { RepositoryMutationError } from "../app/repositoryMutationSlice";
+import { isRootRepository } from "../domain/repositoryInventory";
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
-import { Notice } from "../ui/Notice";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import { Notice } from "../ui/Notice";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
+import "./active-editor-canvas.css";
 
 const loadSettingsSurface = () =>
   import("./SettingsSurface").then(({ SettingsSurface }) => ({
@@ -19,6 +22,37 @@ const loadSaveAllNotice = () =>
   }));
 
 export default ActiveEditorCanvas;
+
+/** Source Control owns the explanation; the editor only points there. */
+function RepositoryMutationLink({ error }: { error: RepositoryMutationError }) {
+  return (
+    <Notice
+      identity={`repository-mutation-link:${resourceKey(error.resource)}:${error.action}`}
+      severity="warning"
+      message="Source Control has a problem with this file."
+      action={{
+        label: "Show in Source Control",
+        onClick: () => {
+          const state = useWorkbenchStore.getState();
+          state.setSidebarView("sourceControl");
+          const selected = state.selectedRepository;
+          if (
+            selected &&
+            !(
+              selected.rootId === error.resource.rootId &&
+              isRootRepository(selected)
+            )
+          ) {
+            void state.selectRepository({
+              rootId: error.resource.rootId,
+              relativePath: "",
+            });
+          }
+        },
+      }}
+    />
+  );
+}
 
 function PlaceholderSurface({ tab }: { tab: WorkbenchTab }) {
   return (
@@ -43,6 +77,9 @@ export function ActiveEditorCanvas({
   const repositoryMutationError = useWorkbenchStore(
     (state) => state.repositoryMutationError,
   );
+  const sourceControlOpen = useWorkbenchStore(
+    (state) => state.sidebarOpen && state.sidebarView === "sourceControl",
+  );
   const saveAllFailed = useWorkbenchStore(
     (state) =>
       !!state.saveAllReport &&
@@ -54,6 +91,7 @@ export function ActiveEditorCanvas({
   const contextualMutationError =
     editorTab?.resource &&
     repositoryMutationError &&
+    !sourceControlOpen &&
     sameResource(editorTab.resource, repositoryMutationError.resource)
       ? repositoryMutationError
       : null;
@@ -63,28 +101,12 @@ export function ActiveEditorCanvas({
     (!activeTab || activeTab.kind === "chat" || activeTab.kind === "browser");
 
   return (
-    <div className="active-canvas" role="tabpanel">
+    <div
+      className={`active-canvas${contextualMutationError || saveAllFailed ? " active-canvas--noticed" : ""}`}
+      role="tabpanel"
+    >
       {contextualMutationError ? (
-        <Notice
-          identity={`repository-mutation-link:${resourceKey(contextualMutationError.resource)}:${contextualMutationError.action}`}
-          severity="info"
-          message={
-            <button
-              type="button"
-              className="notice__text-link"
-              onClick={() => {
-                const state = useWorkbenchStore.getState();
-                state.setSidebarView("sourceControl");
-                void state.selectRepository({
-                  rootId: contextualMutationError.resource.rootId,
-                  relativePath: "",
-                });
-              }}
-            >
-              Source Control issue
-            </button>
-          }
-        />
+        <RepositoryMutationLink error={contextualMutationError} />
       ) : null}
       {saveAllFailed ? (
         <LazyModuleBoundary

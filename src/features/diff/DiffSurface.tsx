@@ -11,6 +11,7 @@ import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { CanvasSurfaceOptions } from "../../workbench/surfaceRegistry";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { DiffHunks } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
@@ -236,21 +237,21 @@ function DiffDocument({
         <ResourceStateNotice state="loading" title="Loading diff…" />
       ) : null}
       {diff?.phase === "error" ? (
-        <>
-          <ResourceStateNotice
-            state="error"
-            title="Could not load this diff"
-            detail={diff.message}
-          />
-          {tab.diffRef && tabResource && !unavailable ? (
-            <button
-              type="button"
-              onClick={() => void loadDiff(tabResource, undefined, tab.diffRef)}
-            >
-              Retry saved diff
-            </button>
-          ) : null}
-        </>
+        <Notice
+          identity={`diff-load:${tab.id}`}
+          severity="blocking"
+          message="Could not load this diff."
+          details={diff.message}
+          action={
+            tab.diffRef && tabResource && !unavailable
+              ? {
+                  label: "Retry saved diff",
+                  onClick: () =>
+                    void loadDiff(tabResource, undefined, tab.diffRef),
+                }
+              : undefined
+          }
+        />
       ) : null}
       {diff?.phase === "ready" ? (
         <>

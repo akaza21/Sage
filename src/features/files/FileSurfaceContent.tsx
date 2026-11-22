@@ -3,6 +3,7 @@ import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
 import type { EditorView } from "@codemirror/view";
 
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import { ABSENT_FINGERPRINT } from "../../domain/workbench";
@@ -43,11 +44,11 @@ export function FileSurfaceResourceState({
       {error === undefined ? (
         <ResourceStateNotice state="loading" title={`Loading ${path}…`} />
       ) : (
-        <ResourceStateNotice
+        <Notice
           identity={`file-load:${identity}`}
-          state="error"
-          title={`Could not open ${path}`}
-          detail={error}
+          severity="blocking"
+          message={`Could not open ${path}.`}
+          details={error}
         />
       )}
     </section>
@@ -131,8 +132,9 @@ export function FileSurfaceContent({
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
         deleted={
-          editor.document.conflict?.kind === "deleted" ||
-          editor.document.base.fingerprint === ABSENT_FINGERPRINT
+          editor.document.conflict
+            ? editor.document.conflict.kind === "deleted"
+            : editor.document.base.fingerprint === ABSENT_FINGERPRINT
         }
         unwatched={editor.unwatched}
         persisting={editor.persisting}
@@ -147,9 +149,7 @@ export function FileSurfaceContent({
       <FileEditorNotices
         document={editor.document}
         message={editor.message}
-        messageKind={editor.messageKind}
         unstored={editor.unstored}
-        keptLocal={editor.keptLocal}
         editable={!readOnly}
       />
       {languageNavigationStatus ? (

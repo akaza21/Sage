@@ -311,6 +311,10 @@
   min-height: 0;
 }
 
+.editor-input > .notice {
+  margin: var(--space-2) var(--space-3);
+}
+
 .editor-loading {
   position: absolute;
   z-index: var(--z-raised);

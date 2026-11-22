@@ -10,7 +10,8 @@ import type {
 } from "../../domain/workbench";
 import { Notice } from "../../ui/Notice";
 
-const VISIBLE_FAILURES = 5;
+/** Files named in the sentence; Details lists each, bounded by open resource tabs. */
+const NAMED_FAILURES = 5;
 
 function saveAllPath(
   resource: ResourceRef,
@@ -33,14 +34,12 @@ function unsaved(
     const key = resourceKey(resource);
     if (seen.has(key)) return false;
     seen.add(key);
-    return (
-    tabs.some(
+    return tabs.some(
       (tab) =>
         tab.kind === "file" &&
         tab.dirty &&
         !!tab.resource &&
         sameResource(tab.resource, resource),
-    ),
     );
   });
 }
@@ -51,7 +50,7 @@ export function SaveAllNotice() {
       ? state.saveAllReport
       : null,
   );
-  const roots = useWorkbenchStore((state) => state.project?.roots);
+  const roots = useWorkbenchStore((state) => state.project?.roots) ?? [];
   const tabs = useWorkbenchStore((state) => state.tabs);
   const failures = report ? unsaved(report.failures, tabs) : [];
   const stale = !!report && failures.length < report.failures.length;
@@ -70,22 +69,40 @@ export function SaveAllNotice() {
     });
   }, [stale]);
   const count = failures.length;
-  if (!count) return null;
+  if (!report || !count) return null;
+  const named = failures
+    .slice(0, NAMED_FAILURES)
+    .map(({ resource }) => saveAllPath(resource, roots))
+    .join(", ");
+  const more =
+    count > NAMED_FAILURES ? `, and ${count - NAMED_FAILURES} more` : "";
   return (
     <Notice
-      identity={`save-all:${report!.projectId}`}
+      identity={`save-all:${report.projectId}`}
       severity="blocking"
-      message={<>Save All could not save {count} {count === 1 ? "file" : "files"}: {failures.slice(0, VISIBLE_FAILURES).map(({resource}) => saveAllPath(resource, roots ?? [])).join(", ")}{count > VISIBLE_FAILURES ? `, and ${count - VISIBLE_FAILURES} more` : ""}.</>}
+      message={`Save All could not save ${count} ${count === 1 ? "file" : "files"}: ${named}${more}.`}
+      action={{
+        label: "Dismiss",
+        onClick: () => useWorkbenchStore.setState({ saveAllReport: null }),
+      }}
       details={
         <ul>
-          {failures.slice(0, 300).map(({ resource, message }) => (
+          {failures.map(({ resource, message }) => (
             <li key={resourceKey(resource)}>
-              <button type="button" className="notice__text-link" onClick={() => void useWorkbenchStore.getState().openFile(resource)}>{saveAllPath(resource, roots ?? [])}</button>: {message}
+              <button
+                type="button"
+                className="notice__text-link"
+                onClick={() =>
+                  void useWorkbenchStore.getState().openFile(resource)
+                }
+              >
+                {saveAllPath(resource, roots)}
+              </button>
+              : {message}
             </li>
           ))}
         </ul>
       }
-      action={{label: "Dismiss", onClick: () => useWorkbenchStore.setState({ saveAllReport: null })}}
     />
   );
 }

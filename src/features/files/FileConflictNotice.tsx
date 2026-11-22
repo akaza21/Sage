@@ -46,8 +46,10 @@ function useConflictAction() {
   return { pending, run };
 }
 
+const CHANGED_FILE = "This file changed outside Sage.";
+const DELETED_FILE = "This file was deleted outside Sage.";
 const KEPT_DELETED_FILE =
-  "Your local version is kept; saving will create the deleted file again.";
+  "This file was deleted outside Sage; saving creates it again.";
 
 /**
  * Keyed by the File as it is on disk, so Compare ends by itself once disk
@@ -93,15 +95,22 @@ export default function FileConflictNotice({
     // Once per deletion of this File.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletedKey]);
+  const key = resourceKey(document.resource);
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     return (
-      <Notice
-        identity={`file-kept:${resourceKey(document.resource)}`}
-        severity="info"
-        message={KEPT_DELETED_FILE}
-        details={editable ? <CloseButton busy={off} run={run} /> : undefined}
-      />
+      <div className="file-conflict" role="group" aria-label="Kept version">
+        <Notice
+          identity={`file-kept:${key}`}
+          severity="info"
+          message={KEPT_DELETED_FILE}
+        />
+        {editable ? (
+          <span className="file-conflict__actions">
+            <CloseButton busy={off} run={run} />
+          </span>
+        ) : null}
+      </div>
     );
   }
   const ready =
@@ -109,88 +118,88 @@ export default function FileConflictNotice({
     sameResource(editor.resource, document.resource)
       ? editor
       : null;
-  const key = ready && conflictCompareKey(ready);
+  const compare = ready && conflictCompareKey(ready);
   const comparing =
-    editable && conflict.kind === "external-change" && compareKey === key;
+    editable && conflict.kind === "external-change" && compareKey === compare;
   const deleted = conflict.kind === "deleted";
   const button = "button button--compact";
   return (
     <>
-      <Notice
-        identity={`file-conflict:${resourceKey(document.resource)}:${conflict.kind}`}
-        severity={ready?.unstored ? "blocking" : "warning"}
-        message={
-          deleted
-            ? "This file was deleted outside Sage."
-            : "This file changed outside Sage."
-        }
-        action={
-          editable && ready
-            ? {
-                label: "Keep mine",
-                disabled: off,
-                onClick: () => {
+      <div
+        className="file-conflict"
+        role="group"
+        aria-label={deleted ? "Deleted file" : "External change"}
+      >
+        <Notice
+          identity={`file-conflict:${key}:${conflict.kind}`}
+          severity={ready?.unstored ? "blocking" : "warning"}
+          message={deleted ? DELETED_FILE : CHANGED_FILE}
+        />
+        {editable && ready ? (
+          <span className="file-conflict__actions">
+            {deleted ? null : (
+              <button
+                className={button}
+                type="button"
+                disabled={off}
+                title="Revert file: drop your changes and load the file from disk"
+                onClick={() => {
                   useWorkbenchStore.setState({ editorCompareKey: null });
                   run(
-                    (a) => a.keepActiveEditorBuffer(ready.resource),
+                    (a) => a.reloadActiveEditor(ready.resource),
                     ready.resource,
                   );
-                },
+                }}
+              >
+                Reload
+              </button>
+            )}
+            <button
+              className={`${button} button--primary`}
+              type="button"
+              disabled={off}
+              title={
+                deleted
+                  ? "Keep your version; saving creates the file again"
+                  : "Keep your version; saving writes it over the file on disk"
               }
-            : undefined
-        }
-        details={
-          editable && ready ? (
-            <div
-              className="file-conflict-actions"
-              role="group"
-              aria-label={deleted ? "Deleted file" : "External change"}
+              onClick={() => {
+                useWorkbenchStore.setState({ editorCompareKey: null });
+                run(
+                  (a) => a.keepActiveEditorBuffer(ready.resource),
+                  ready.resource,
+                );
+              }}
             >
-              {deleted ? null : (
-                <button
-                  className={button}
-                  type="button"
-                  disabled={off}
-                  title="Revert file: drop your changes and load the file from disk"
-                  onClick={() => {
-                    useWorkbenchStore.setState({ editorCompareKey: null });
-                    run(
-                      (a) => a.reloadActiveEditor(ready.resource),
-                      ready.resource,
-                    );
-                  }}
-                >
-                  Reload
-                </button>
-              )}
-              {deleted ? (
-                <CloseButton busy={off} run={run} />
-              ) : (
-                <button
-                  className={button}
-                  type="button"
-                  aria-pressed={comparing}
-                  title="Compare the file on disk with your version"
-                  onClick={() =>
-                    useWorkbenchStore.setState({
-                      editorCompareKey: comparing ? null : key,
-                    })
-                  }
-                >
-                  Compare
-                </button>
-              )}
-            </div>
-          ) : undefined
-        }
-      />
+              Keep mine
+            </button>
+            {deleted ? (
+              <CloseButton busy={off} run={run} />
+            ) : (
+              <button
+                className={button}
+                type="button"
+                aria-pressed={comparing}
+                title="Compare the file on disk with your version"
+                onClick={() =>
+                  useWorkbenchStore.setState({
+                    editorCompareKey: comparing ? null : compare,
+                  })
+                }
+              >
+                Compare
+              </button>
+            )}
+          </span>
+        ) : null}
+      </div>
       {comparing && ready ? (
         <LazyModuleBoundary
           load={loadConflictCompare}
           label="Compare"
           render={(FileConflictCompare) => (
             <FileConflictCompare
-              key={`${key}\0${ready.revision}`}
+              key={`${compare}\0${ready.revision}`}
               resource={ready.resource}
               text={contentText(ready.content)}
             />

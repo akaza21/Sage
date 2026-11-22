@@ -53,7 +53,6 @@ function FileConflictNotice({
     document,
     editable,
     message: ready?.message ?? null,
-    messageKind: ready?.messageKind,
     unstored: ready?.unstored,
   });
 }
@@ -210,9 +209,12 @@ describe("a File that changed on disk under unsaved edits", () => {
       snapshot.mockRestore();
     }
 
-    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(readyEditor()).toMatchObject({
+      content: "mine\n",
+      message: null,
+      unstored: "the disk is full",
+    });
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(readyEditor().message).toBe("Couldn't save: the disk is full.");
     expect(readyEditor().revision).toBeGreaterThan(
       readyEditor().persistedRevision,
     );
@@ -222,13 +224,19 @@ describe("a File that changed on disk under unsaved edits", () => {
         editable: true,
       }),
     );
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Your unsaved changes are not yet stored. Couldn't save: the disk is full.",
+    // Two problems, each said once: the disk change and the lost copy.
+    await screen.findByRole("group", { name: "External change" });
+    const [conflict, recovery, ...rest] = screen.getAllByRole("alert");
+    expect(rest).toEqual([]);
+    expect(conflict).toHaveTextContent("This file changed outside Sage.");
+    expect(recovery).toHaveTextContent(
+      "Your unsaved changes could not be stored for recovery.",
     );
+    expect(screen.queryByText(/the disk is full/)).toBeNull();
     cleanup();
   });
 
-  it("names a refused save plainly and says so when disk then changes", async () => {
+  it("names a refused save plainly, then lets the disk change explain itself", async () => {
     const file = nextFile();
     openTabs(file);
     await edit(file, "mine\n");
@@ -249,21 +257,35 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(readyEditor().message).toBe(refused);
     expect(store().error).toBe(refused);
     expect(tabOf(file).dirty).toBe(true);
-
-    store().updateEditorContent("mine, more\n");
-    await changeOnDisk(file, "theirs\n");
-
-    expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(readyEditor()).toMatchObject({ content: "mine, more\n" });
     render(
       createElement(FileConflictNotice, {
         document: readyEditor().document,
         editable: true,
       }),
     );
-    expect(screen.getByRole("alert").textContent).toContain(
-      `Your unsaved changes are not yet stored. ${refused}`,
+    expect(screen.getByRole("alert")).toHaveTextContent(refused);
+    cleanup();
+
+    store().updateEditorContent("mine, more\n");
+    await changeOnDisk(file, "theirs\n");
+
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(readyEditor()).toMatchObject({
+      content: "mine, more\n",
+      message: null,
+    });
+    expect(readyEditor().unstored).toBeUndefined();
+    const { container } = render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
     );
+    await screen.findByRole("group", { name: "External change" });
+    expect(container.querySelectorAll("[data-notice-identity]")).toHaveLength(
+      1,
+    );
+    expect(screen.queryByText(refused)).toBeNull();
     cleanup();
     expect(await diskText(file)).toBe("theirs\n");
   });
@@ -343,7 +365,6 @@ describe("a File that changed on disk under unsaved edits", () => {
       expect(
         await screen.findByText("This file was deleted outside Sage."),
       ).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Details" }));
       expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
       cleanup();
@@ -491,8 +512,7 @@ describe("a File that changed on disk under unsaved edits", () => {
       }),
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Details" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
       expect(readyEditor().document.conflict?.kind).toBe("deleted"),
@@ -543,10 +563,7 @@ describe("a File that changed on disk under unsaved edits", () => {
           editable: true,
         }),
       );
-      await screen.findByRole("button", { name: "Keep mine" });
-      if (name === "Reload")
-        fireEvent.click(screen.getByRole("button", { name: "Details" }));
-      const button = screen.getByRole("button", { name });
+      const button = await screen.findByRole("button", { name });
 
       fireEvent.click(button);
       expect(button).toBeDisabled();

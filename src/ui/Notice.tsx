@@ -9,7 +9,7 @@ export interface NoticeProps {
   identity: string;
   severity: NoticeSeverity;
   message: ReactNode;
-  action?: { label: string; onClick: () => void; disabled?: boolean };
+  action?: { label: string; onClick: () => void };
   details?: ReactNode;
   progress?: boolean;
   /** Historical failures are readable without replaying a live announcement. */
@@ -63,7 +63,6 @@ function NoticeContent({
             type="button"
             className="notice__action"
             onClick={action.onClick}
-            disabled={action.disabled}
           >
             {action.label}
           </button>

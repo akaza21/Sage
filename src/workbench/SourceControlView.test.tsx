@@ -836,6 +836,52 @@ it("distinguishes repository errors from loading and informational states", () =
   expect(screen.getByText("Checkout failed.")).toHaveClass("sidebar__error");
 });
 
+it("explains a failed Git file action once, inside its repository", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    repositoryMutationError: {
+      resource: { rootId: "root-a", relativePath: "src/file.txt" },
+      action: "stage",
+      kind: "effectUnknown",
+      message: "Git exited before reporting",
+    },
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  const { container } = render(<SourceControlView />);
+
+  const failure = screen.getByRole("alert");
+  expect(failure).toHaveTextContent(
+    "Source Control could not confirm stage for src/file.txt.",
+  );
+  expect(failure.closest(".source-root")).not.toBeNull();
+  expect(
+    container.querySelectorAll(
+      "[data-notice-identity^='repository-mutation:']",
+    ),
+  ).toHaveLength(1);
+  fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
+  expect(screen.getAllByText("Git exited before reporting")).toHaveLength(1);
+});
+
 it("lists conflicted files under a Conflicts heading with a Conflict chip", () => {
   useWorkbenchStore.setState({
     project: {

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { errorMessage } from "../../domain/errors";
+import { resourceKey } from "../../domain/resourceIdentity";
 import type { FileDiff, ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { DiffHunks } from "../diff/DiffHunks";
 import {
@@ -61,10 +63,11 @@ export function FileConflictCompare({
         <ResourceStateNotice state="loading" title="Comparing…" />
       ) : null}
       {state.phase === "error" ? (
-        <ResourceStateNotice
-          state="error"
-          title="Could not compare this file"
-          detail={state.message}
+        <Notice
+          identity={`file-compare:${resourceKey(resource)}`}
+          severity="blocking"
+          message="Could not compare this file."
+          details={state.message}
         />
       ) : null}
       {state.phase === "ready" && state.diff.hunks.length === 0 ? (

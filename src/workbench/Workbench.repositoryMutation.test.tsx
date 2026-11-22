@@ -88,7 +88,6 @@ describe("Workbench repository mutation errors", () => {
     );
     fireEvent.click(sidebar.getByRole("button", { name: "Details" }));
     expect(screen.getAllByText("Git index is locked")).toHaveLength(1);
-    expect(container.querySelector(".repository-mutation-alert")).toBeNull();
     expect(container.querySelector(".active-canvas [role=alert]")).toBeNull();
   });
   it.each(["file", "diff"] as const)(
@@ -113,12 +112,16 @@ describe("Workbench repository mutation errors", () => {
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.queryByText("Git index is locked")).toBeNull();
       fireEvent.click(
-        screen.getByRole("button", { name: "Source Control issue" }),
+        screen.getByRole("button", { name: "Show in Source Control" }),
       );
       expect(useWorkbenchStore.getState()).toMatchObject({
         sidebarView: "sourceControl",
         sidebarOpen: true,
       });
+      // With Source Control showing, the editor no longer points at it.
+      expect(
+        screen.queryByRole("button", { name: "Show in Source Control" }),
+      ).toBeNull();
     },
   );
 
@@ -160,7 +163,7 @@ describe("Workbench repository mutation errors", () => {
     await settleLazyModules();
 
     expect(
-      screen.getByRole("button", { name: "Source Control issue" }),
+      screen.getByRole("button", { name: "Show in Source Control" }),
     ).toBeVisible();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(

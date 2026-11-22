@@ -179,7 +179,11 @@ export const EditorAdapter = forwardRef<
 
   return (
     <div className="editor-input">
-      <div ref={mountRef} className="editor-input__mount" />
+      <div
+        ref={mountRef}
+        className="editor-input__mount"
+        hidden={loadState === "error"}
+      />
       {loadState === "loading" ? (
         <div className="editor-loading" role="status">
           Loading editor…

@@ -956,12 +956,17 @@ test.describe("V6a Agent right-resource state shell", () => {
     });
     await setResourceState(page, "file-error");
     await expect(loading).toHaveCount(0);
-    await expect(
-      page.getByRole("alert").filter({ hasText: "Could not open" }),
-    ).toContainText("The file is temporarily unavailable.");
+    const fileError = page
+      .getByRole("alert")
+      .filter({ hasText: "Could not open" });
+    await expect(fileError).toBeVisible();
     // The pane change reflows the transcript; capture it settled at its end.
     await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-file-error.png");
+    await fileError.getByRole("button", { name: "Details" }).click();
+    await expect(fileError).toContainText(
+      "The file is temporarily unavailable.",
+    );
     await expectNoViewportOverflow(page);
   });
 
@@ -987,9 +992,13 @@ test.describe("V6a Agent right-resource state shell", () => {
     await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-diff-loading.png");
     await setResourceState(page, "diff-error");
-    await expect(
-      page.getByRole("alert").filter({ hasText: "Could not load this diff" }),
-    ).toContainText("The comparison is temporarily unavailable.");
+    const diffError = page
+      .getByRole("alert")
+      .filter({ hasText: "Could not load this diff" });
+    await diffError.getByRole("button", { name: "Details" }).click();
+    await expect(diffError).toContainText(
+      "The comparison is temporarily unavailable.",
+    );
     await expectNoViewportOverflow(page);
   });
 

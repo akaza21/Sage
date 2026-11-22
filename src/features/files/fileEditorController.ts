@@ -17,6 +17,13 @@ export const EDITOR_SNAPSHOT_DELAY_MS = 750;
 
 const MAX_SNAPSHOTS_PER_FLUSH = 8;
 
+/** Matches the native refusal of a recovery copy whose base the disk has left. */
+export const DISK_MISMATCH = /no longer matches disk/i;
+
+export function changedOnDisk(error: unknown): boolean {
+  return DISK_MISMATCH.test(errorMessage(error));
+}
+
 export type ActiveEditorState =
   | { phase: "loading"; resource: ResourceRef }
   | {
@@ -34,10 +41,9 @@ export type ActiveEditorState =
       persistedRevision: number;
       persisting: boolean;
       saving: boolean;
+      /** A failed save, keep, or revert; the disk conflict explains itself. */
       message: string | null;
-      messageKind?: "operation" | "recovery";
-      keptLocal?: boolean;
-      /** Persistence failure retained through edits until save, reload, or Keep mine. */
+      /** Why the recovery copy could not be stored, kept until a copy, save, reload, or Keep mine succeeds. */
       unstored?: string;
       unwatched?: string;
     };
@@ -143,12 +149,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         content: String(active.content),
         revision: active.revision,
       };
-      bridge.setActiveEditor({
-        ...active,
-        persisting: true,
-        message: null,
-        messageKind: undefined,
-      });
+      bridge.setActiveEditor({ ...active, persisting: true, message: null });
       try {
         const ack = await editor.snapshotEditorBuffer(request);
         const current = currentReady(bridge);
@@ -165,7 +166,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
             ),
             persisting: false,
             ...(current.revision <= ack.revision
-              ? { unstored: undefined, messageKind: undefined }
+              ? { unstored: undefined }
               : {}),
           },
           { dirty },
@@ -175,15 +176,20 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         if (!current || !sameResource(current.resource, request.resource)) {
           return;
         }
+        // A copy refused because disk moved on is that change, which its
+        // conflict explains; any other refusal leaves the edits unprotected.
         bridge.setActiveEditor({
           ...current,
           persisting: false,
-          unstored: errorMessage(error),
-          messageKind: "recovery",
-          message:
-            current.revision === request.revision
-              ? errorMessage(error)
-              : current.message,
+          ...(changedOnDisk(error)
+            ? {
+                message:
+                  current.revision === request.revision &&
+                  !current.document.conflict
+                    ? errorMessage(error)
+                    : current.message,
+              }
+            : { unstored: errorMessage(error) }),
         });
         throw error;
       }
@@ -240,7 +246,6 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           content,
           revision: active.revision + 1,
           message: null,
-          messageKind: undefined,
         },
         { dirty },
       );
@@ -261,12 +266,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       if (!active || !canCommit(active.resource)) {
         return null;
       }
-      bridge.setActiveEditor({
-        ...active,
-        saving: true,
-        message: null,
-        messageKind: undefined,
-      });
+      bridge.setActiveEditor({ ...active, saving: true, message: null });
       await persistLatestEditor(bridge);
       const current = currentReady(bridge);
       if (!current || !canCommit(current.resource)) {
@@ -310,7 +310,6 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           ...active,
           saving: false,
           message: errorMessage(error),
-          messageKind: "operation",
         });
       }
     },

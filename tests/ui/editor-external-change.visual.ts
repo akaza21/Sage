@@ -60,9 +60,7 @@ for (const width of [1280, 720]) {
   test(`resolves a File changed on disk at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openFile(page);
-    const banner = page.getByRole("alert").filter({
-      hasText: "External change detected.",
-    });
+    const banner = page.getByRole("group", { name: "External change" });
 
     // Compare, then Keep mine: the save writes the buffer over the change.
     await typeAtEnd(page, "// mine");
@@ -105,7 +103,7 @@ for (const width of [1280, 720]) {
   test(`resolves a File deleted on disk at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openFile(page);
-    const banner = page.getByRole("alert").filter({ hasText: "File deleted." });
+    const banner = page.getByRole("group", { name: "Deleted file" });
 
     // Keep mine, then save: the File comes back with the buffer.
     await typeAtEnd(page, "// kept");
@@ -122,9 +120,8 @@ for (const width of [1280, 720]) {
     await expect(page.locator(".file-header__disk")).toBeHidden();
     await banner.getByRole("button", { name: "Keep mine" }).click();
     await expect(banner).toBeHidden();
-    const pending = page
-      .getByRole("status")
-      .filter({ hasText: "Save to create it again, or close it." });
+    const pending = page.getByRole("group", { name: "Kept version" });
+    await expect(pending).toContainText("saving creates it again");
     await expect(pending).toBeVisible();
     await expect(pending.getByRole("button", { name: "Close" })).toBeVisible();
     await shot(page, "deleted-kept");
@@ -161,7 +158,7 @@ for (const width of [1280, 720]) {
     await typeAtEnd(page, "// kept");
     await changeOnDisk(page, null);
     await expect(
-      page.getByRole("alert").filter({ hasText: "File deleted." }),
+      page.getByRole("group", { name: "Deleted file" }),
     ).toBeVisible();
     // The size goes with the File; why it is unwatched stays in view.
     await expect(page.locator(".file-header__disk")).toBeHidden();

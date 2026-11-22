@@ -1,6 +1,15 @@
-.file-conflict-actions {
+/* The disk conflict's one explanation, with its resolutions beside it. */
+.file-conflict {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) var(--space-3);
+}
+
+.file-conflict__actions {
+  display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
 }
@@ -10,7 +19,7 @@
   display: none;
 }
 
-.file-conflict-actions [aria-pressed="true"] {
+.file-conflict__actions [aria-pressed="true"] {
   color: var(--color-text-primary);
   background: var(--color-surface-active);
   box-shadow: inset 0 -1px 0 var(--color-accent);

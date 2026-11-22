@@ -191,7 +191,9 @@ describe("FileSurface durability cadence", () => {
       revision: 1,
     });
     expect(activeEditorText()).toBe("edited\n");
-    expect(await screen.findByText("This file changed outside Sage.")).toBeVisible();
+    expect(
+      await screen.findByText("This file changed outside Sage."),
+    ).toBeVisible();
     expect(screen.queryByText("Disk content changed")).toBeNull();
 
     fireEvent.keyDown(

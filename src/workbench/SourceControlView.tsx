@@ -10,9 +10,9 @@ import {
   mutateSourceGroup,
   type SourceGroupAction,
 } from "../features/git/sourceControlActions";
-import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 import { Notice } from "../ui/Notice";
-import { resourceKey } from "../domain/resourceIdentity";
+import { ResourceStateNotice } from "../ui/ResourceStateNotice";
+import { RepositoryMutationNotice } from "./RepositoryMutationNotice";
 
 function disambiguatedRootLabel(
   rootName: string,
@@ -178,11 +178,11 @@ export function SourceControlView() {
           </div>
         ) : null}
         {inventoryError || statusError ? (
-          <ResourceStateNotice
-            identity={`repository-status:${project?.id}:${selectedRepository ? repositoryKey(selectedRepository) : "all"}`}
-            detail={inventoryError ?? statusError ?? undefined}
-            state="error"
-            title="Repository status is unavailable"
+          <Notice
+            identity={`repository-status:${selectedRepository ? repositoryKey(selectedRepository) : "all"}`}
+            severity="blocking"
+            message="Repository status is unavailable."
+            details={inventoryError ?? statusError}
           />
         ) : inventoryPhase === "loading" || statusPhase === "loading" ? (
           <ResourceStateNotice
@@ -200,19 +200,12 @@ export function SourceControlView() {
             Nested repository status is read-only in this beta.
           </p>
         ) : null}
-        {mutationError ? (
-          <Notice
-            identity={`repository-mutation:${resourceKey(mutationError.resource)}:${mutationError.action}:${mutationError.kind}`}
-            severity="blocking"
-            message={
-              mutationError.kind === "containment"
-                ? `Source Control containment blocked ${mutationError.action} for ${mutationError.resource.relativePath}.`
-                : mutationError.kind === "effectUnknown"
-                  ? `Source Control could not confirm ${mutationError.action} for ${mutationError.resource.relativePath}.`
-                  : `Source Control could not ${mutationError.action} ${mutationError.resource.relativePath}.`
-            }
-            details={mutationError.message}
-          />
+        {mutationError &&
+        !selectedRepositories.some(
+          (repository) => repository.rootId === mutationError.resource.rootId,
+        ) ? (
+          // Its repository is not listed, so the failure is said here instead.
+          <RepositoryMutationNotice error={mutationError} />
         ) : null}
         {selectedRepositories.map((repository) => {
           const projectRoot = projectRoots.get(repository.rootId);
@@ -255,6 +248,9 @@ export function SourceControlView() {
                 <p className="sidebar__error" role="alert">
                   {remoteError.message}
                 </p>
+              ) : null}
+              {mutationError?.resource.rootId === repository.rootId ? (
+                <RepositoryMutationNotice error={mutationError} />
               ) : null}
               {repository.message ? (
                 <p
