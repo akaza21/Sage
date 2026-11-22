@@ -245,6 +245,40 @@ fn pi_bridge_resource_ships_at_the_path_sage_resolves() {
     );
 }
 
+/// Regression: a lone release binary has no resource directory beside it, so
+/// every Pi launch was refused. It must load the compiled bytes from its profile.
+#[test]
+fn pi_bridge_without_bundled_resource_loads_an_exact_profile_copy() {
+    use install::Unavailable::{Missing, Modified};
+    let lone_binary = Fixture::new();
+    let profile = Fixture::new();
+    let copies = profile.path.join("pi-bridge");
+    let resources = Some(lone_binary.path.clone());
+    assert_eq!(install::locate(resources.clone(), None), Err(Missing));
+
+    let copy = install::locate(resources.clone(), Some(&copies)).unwrap();
+    assert_eq!(copy, copies.join("extension.mjs"));
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    std::fs::write(&copy, "tampered").unwrap();
+    assert_eq!(install::locate(resources, Some(&copies)), Ok(copy.clone()));
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+
+    // The bundled resource wins, and an altered one is never replaced.
+    let bundled = lone_binary.path.join(install::RESOURCE);
+    std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+    std::fs::write(&bundled, include_bytes!("extension.mjs")).unwrap();
+    assert_eq!(
+        install::locate(Some(lone_binary.path.clone()), Some(&copies)),
+        Ok(bundled.clone())
+    );
+    std::fs::write(&bundled, "outdated").unwrap();
+    assert_eq!(
+        install::locate(Some(lone_binary.path.clone()), Some(&copies)),
+        Err(Modified)
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn pi_bridge_memory_peak_and_settled() {

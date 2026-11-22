@@ -5,8 +5,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         self.turn_started
     }
 
-    pub(crate) fn harness_turn_mode(&self) -> Option<&'static str> {
-        self.adapter.harness_turn_mode()
+    pub(crate) fn harness_turn_authority(
+        &self,
+    ) -> Option<crate::acp::bindings::adapter::HarnessTurnAuthority> {
+        self.adapter.harness_turn_authority()
     }
 
     /// Refuses the Turn the harness started, then reads on through the
@@ -38,7 +40,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         self,
         active_turn: ActiveTurnIntent,
     ) -> PumpHandoff<AdapterPump<A, J, R>, Self> {
-        if !self.turn_started || self.adapter.config_pending() {
+        if !self.turn_started
+            || (self.adapter.config_pending()
+                && self.adapter.harness_turn_authority()
+                    != Some(crate::acp::bindings::adapter::HarnessTurnAuthority::Questions))
+        {
             return Err(Box::new((self, AdapterPumpError::Intent)));
         }
         self.rebind(active_turn)

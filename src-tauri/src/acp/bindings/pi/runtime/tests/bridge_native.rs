@@ -141,8 +141,13 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                     &launch,
                     &j.root,
                     &profile,
-                    crate::acp::bindings::pi::bridge::install::installed(&launch.package_version)
-                        .unwrap(),
+                    // As a lone release binary does: no bundled resource, so
+                    // Pi loads the profile copy of the compiled bridge bytes.
+                    crate::acp::bindings::pi::bridge::install::locate(
+                        Some(profile.clone()),
+                        Some(&profile.join("sage-bridge")),
+                    )
+                    .unwrap(),
                     scenario,
                 );
                 pi.send(json!({"type":"get_commands","id":"commands"}));
@@ -408,3 +413,5 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
 
 #[path = "bridge_native_failure.rs"]
 mod load_failure;
+#[path = "questions_native.rs"]
+mod questions;

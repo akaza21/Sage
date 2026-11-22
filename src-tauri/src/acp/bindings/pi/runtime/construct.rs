@@ -64,6 +64,7 @@ impl PiRuntime {
             deny: None,
             cancelled_dialogs: BTreeMap::new(),
             recent_cancelled_dialogs: VecDeque::new(),
+            questions: support::Questions::default(),
             staged_initialize: None,
             reservations: BTreeMap::new(),
             next_egress: 0,
