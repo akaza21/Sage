@@ -195,6 +195,7 @@ impl PiRuntime {
                     {
                         Some(Prepared::Edit(_)) => ToolCategory::Edit,
                         Some(Prepared::Shell(_)) => ToolCategory::Execute,
+                        Some(Prepared::Extension(_)) => ToolCategory::Extension,
                         None => ToolCategory::Other,
                     },
                     // Prepare admits only paths and commands that fit and show exactly.
@@ -211,6 +212,9 @@ impl PiRuntime {
                             }
                             Some(Prepared::Shell(shell)) => {
                                 format!("Allow Pi to run this command?\n{}", shell.shown)
+                            }
+                            Some(Prepared::Extension(extension)) => {
+                                extension.summary.as_str().to_owned()
                             }
                             None => "Pi extension gate is awaiting your decision".into(),
                         },

@@ -24,12 +24,20 @@ impl PiRuntime {
             if Some(&response.id) == self.thinking_request_command.as_ref() && response.command == "get_available_thinking_levels");
         if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
             && kind == "extension_ui_request"
+            && value.get("method").and_then(serde_json::Value::as_str) == Some("setStatus")
+            && value.get("statusKey").and_then(serde_json::Value::as_str)
+                == Some("sage.pi.ready.v1")
+        {
+            return self.bridge_ready(value);
+        }
+        if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
+            && kind == "extension_ui_request"
             && value
                 .get("title")
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|title| title.starts_with("sage.pi."))
         {
-            return self.ingest_bridge(value, frame, resources);
+            return self.ingest_bridge(value, frame);
         }
         let outputs = match record.and_then(|record| self.ingest_record(record)) {
             Ok(outputs) => outputs,
@@ -109,6 +117,7 @@ impl PiRuntime {
             self.staged_initialize = None;
         }
         let staged = if advance {
+            self.require_bridge_ready()?;
             let outbound = self
                 .staged_initialize
                 .take()

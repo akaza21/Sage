@@ -10,7 +10,7 @@ import {
   parkFocus,
   useCardKeyGuard,
 } from "./approvalCard";
-import { ToolKindIcon } from "./ToolItem";
+import { ToolKindIcon } from "./ToolKindIcon";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -18,6 +18,7 @@ const nouns: Record<string, string> = {
   execute: "Terminal",
   edit: "Edit",
   mcp: "MCP",
+  extension: "Extension tool",
 };
 
 export function PermissionPrompt({
@@ -103,7 +104,7 @@ export function PermissionPrompt({
     setSent([item.id, true]);
     void resolveApproval(item, decision).catch(() => setSent([item.id, false]));
   };
-  const Detail = execute ? "pre" : "p";
+  const Detail = execute || item.payload.category === "extension" ? "pre" : "p";
   return (
     <section
       ref={sectionRef}

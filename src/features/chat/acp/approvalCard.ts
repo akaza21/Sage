@@ -31,6 +31,7 @@ export function logCardArrival(
   item: { id: string; payload: { requestId: string } },
   card: HTMLElement | null,
 ) {
+  if (!import.meta.env.DEV) return;
   const { requestId } = item.payload;
   const previous = cardsByRequest.get(requestId);
   const arrival =

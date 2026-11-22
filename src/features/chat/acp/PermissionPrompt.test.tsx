@@ -76,6 +76,32 @@ function accepted(decision: string) {
 }
 
 describe("PermissionPrompt", () => {
+  it("shows an extension tool's complete request as text with the offered decisions", () => {
+    const summary =
+      'Allow extension tool fixture_echo (Fixture echo)?\n{"text":"<script>hello</script>"}';
+    render(
+      <PermissionPrompt
+        items={[
+          permission(["allow_once", "reject_once"], {
+            category: "extension",
+            summary,
+            reason: null,
+          }),
+        ]}
+      />,
+    );
+    const card = screen.getByRole("group", { name: "Permission request" });
+    expect(within(card).getByText("Extension tool")).toBeInTheDocument();
+    expect(card.querySelector("pre")?.textContent).toBe(summary);
+    expect(card.querySelector("script")).toBeNull();
+    expect(
+      within(card).getByRole("button", { name: /Allow once/ }),
+    ).toBeEnabled();
+    expect(within(card).getByRole("button", { name: /Deny/ })).toBeEnabled();
+    expect(
+      within(card).queryByRole("button", { name: /Always allow/ }),
+    ).toBeNull();
+  });
   it("shares the fallback's exact approval identity for every decision (R3-09)", async () => {
     const resolve = accepted("allowAlways");
     const item = permission();

@@ -38,14 +38,13 @@ export function toolCommandContent(
   item: Extract<AcpItem, { kind: "toolCall" }>,
 ) {
   const { inputSummary, outputSummary, presentation } = item.payload;
+  const execute = presentation.kind === "execute";
   return {
     commandLine: inputSummary?.trim()
       ? inputSummary
-      : presentation.kind === "execute"
+      : execute
         ? presentation.summary?.trim() || null
         : null,
-    output:
-      outputSummary ??
-      (presentation.kind === "execute" ? presentation.outputTail : null),
+    output: outputSummary ?? (execute ? presentation.outputTail : null),
   };
 }

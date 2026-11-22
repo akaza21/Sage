@@ -307,6 +307,7 @@ impl HarnessAdapter for PiRuntime {
                 client_message_id,
                 access_mode,
             } => {
+                self.require_bridge_ready()?;
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
                 }

@@ -60,13 +60,39 @@ pub(crate) fn redact_reply(
     Ok(redact_reply_settling(field, input, maximum)?.text)
 }
 
+/// Approval arguments must keep every nonsecret operation visible. Reuse the
+/// same credential scanner as shell approvals, refusing any exhausted scan
+/// (including inside embedded strings) instead of approving a partial display.
+pub(crate) fn redact_complete_arguments(
+    field: &'static str,
+    input: &str,
+    maximum: usize,
+) -> Result<String, ContractError> {
+    if input.len() > maximum {
+        return Err(ContractError::ForbiddenContent { field });
+    }
+    let embedded = embedded::redact(input, maximum, Mode::Prose, ProsePaths::Shown, field, true)?;
+    let redacted = prose::redact_prose_settling(field, &embedded, maximum, ProsePaths::Shown)?;
+    if redacted.truncated {
+        return Err(ContractError::ForbiddenContent { field });
+    }
+    Ok(redacted.text)
+}
+
 fn redact_reply_settling(
     field: &'static str,
     input: &str,
     maximum: usize,
 ) -> Result<prose::RedactedProse, ContractError> {
     let input = neutralized(input, false);
-    let embedded = embedded::redact(&input, maximum, Mode::Prose, ProsePaths::Shown, field)?;
+    let embedded = embedded::redact(
+        &input,
+        maximum,
+        Mode::Prose,
+        ProsePaths::Shown,
+        field,
+        false,
+    )?;
     prose::redact_prose_settling(field, &embedded, maximum, ProsePaths::Shown)
 }
 
@@ -86,6 +112,7 @@ pub(crate) fn reply_text_settling(input: &str) -> prose::RedactedProse {
     redact_reply_settling("text", input, maximum).unwrap_or_else(|_| prose::RedactedProse {
         text: REDACTED.to_owned(),
         settled: false,
+        truncated: true,
     })
 }
 
@@ -122,7 +149,7 @@ fn redact_with(
     let embedded = if mode == Mode::Diagnostic {
         std::borrow::Cow::Borrowed(input)
     } else {
-        embedded::redact(input, maximum, mode, path_display, field)?
+        embedded::redact(input, maximum, mode, path_display, field, false)?
     };
     let input = embedded.as_ref();
     match mode {
