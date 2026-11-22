@@ -13,9 +13,22 @@ export const goalMutations = {
     return invokeAcpMutation("pause_existing_goal", request, decodeAcpGoal);
   },
   setGoal(
-    request: AcpSessionMutationIntent & { objective: string },
+    request: AcpSessionMutationIntent & {
+      objective: string;
+      tokenBudget?: number;
+    },
   ): Promise<AcpMutationResult> {
     return invokeAcpMutation("set_goal", request, decodeAcpGoal);
+  },
+  resumeExistingGoal(
+    request: AcpSessionMutationIntent,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("resume_existing_goal", request, decodeAcpGoal);
+  },
+  setGoalBudget(
+    request: AcpSessionMutationIntent & { tokenBudget: number },
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("set_goal_budget", request, decodeAcpGoal);
   },
   clearExistingGoal(
     request: AcpSessionMutationIntent,

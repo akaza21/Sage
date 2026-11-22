@@ -1,8 +1,9 @@
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
-import { Pause, Target } from "../../ui/leanIconNodesLazy";
+import { Pause, RotateCw, Target } from "../../ui/leanIconNodesLazy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
+  AcpGoalSnapshot,
   AcpGoalState,
   GoalMutationAction,
 } from "../../domain/acpGoal";
@@ -18,6 +19,15 @@ import type { GoalControls } from "./useBoundGoalDetails";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
+
+const goalStatusLabels: Record<AcpGoalSnapshot["status"], string> = {
+  active: "Pursuing goal",
+  paused: "Goal paused",
+  blocked: "Goal blocked",
+  usageLimited: "Goal usage limit reached",
+  budgetLimited: "Goal token budget reached",
+  complete: "Goal complete",
+};
 
 function availability(state: Exclude<AcpGoalState, { kind: "goal" }>): string {
   switch (state.kind) {
@@ -52,6 +62,7 @@ export function ChatGoalControl({
   onMutation?: (
     action: GoalMutationAction,
     objective?: string,
+    tokenBudget?: number,
   ) => Promise<GoalMutationOutcome>;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -68,14 +79,16 @@ export function ChatGoalControl({
     async (
       action: GoalMutationAction,
       objective?: string,
+      tokenBudget?: number,
     ): Promise<boolean> => {
       if (!controls || locked || !capabilities?.[action]) return false;
       setMutation({ kind: "pending" });
       try {
-        const outcome = await controls(
-          action,
-          ...(action === "set" ? [objective] : []),
-        );
+        const outcome = await (action === "set" || action === "tokenBudget"
+          ? tokenBudget === undefined
+            ? controls(action, objective)
+            : controls(action, objective, tokenBudget)
+          : controls(action));
         setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
         return outcome.kind === "applied";
       } catch {
@@ -116,12 +129,24 @@ export function ChatGoalControl({
     onEditorClose?.();
   };
   const editor =
-    controls && capabilities?.set && (editing || editorOpen) ? (
+    controls &&
+    (capabilities?.set ||
+      (capabilities?.tokenBudget && state.kind === "goal")) &&
+    (editing || editorOpen) ? (
       <GoalContent
         part="GoalEditor"
         objective={state.kind === "goal" ? state.snapshot.objective : ""}
+        canSetObjective={!!capabilities?.set}
+        canSetBudget={!!capabilities?.tokenBudget}
+        tokenBudget={state.kind === "goal" ? state.snapshot.tokenBudget : null}
         disabled={locked}
-        onSave={(objective) => run("set", objective)}
+        onSave={(objective, budget) => {
+          if (state.kind !== "goal" || objective !== state.snapshot.objective)
+            return run("set", objective, budget);
+          if (budget !== undefined && budget !== state.snapshot.tokenBudget)
+            return run("tokenBudget", undefined, budget);
+          return Promise.resolve(true);
+        }}
         onClose={closeEditor}
       />
     ) : null;
@@ -156,7 +181,7 @@ export function ChatGoalControl({
   }
   const { snapshot } = state;
   const actionButton = (
-    action: "pause" | "clear",
+    action: "pause" | "resume" | "clear",
     label: string,
     Icon: typeof Pause,
   ) => (
@@ -184,9 +209,7 @@ export function ChatGoalControl({
       >
         <summary className="chat-goal-strip__row" aria-label="Goal details">
           <Target size={13} aria-hidden="true" />
-          <strong>
-            {snapshot.status === "active" ? "Pursuing goal" : "Goal"}
-          </strong>
+          <strong>{goalStatusLabels[snapshot.status]}</strong>
           <span
             className="chat-goal-strip__objective"
             title={snapshot.objective}
@@ -201,11 +224,13 @@ export function ChatGoalControl({
             <time>{formatElapsedSeconds(snapshot.timeUsedSeconds)}</time>
           )}
           <span className="chat-goal-strip__icons">
-            {controls && capabilities?.set && (
+            {controls && (capabilities?.set || capabilities?.tokenBudget) && (
               <button
                 type="button"
                 className="chat-goal-strip__icon"
-                aria-label="Edit goal"
+                aria-label={
+                  capabilities?.set ? "Edit goal" : "Edit goal budget"
+                }
                 disabled={locked}
                 onClick={(event) => {
                   event.preventDefault();
@@ -220,6 +245,12 @@ export function ChatGoalControl({
               capabilities?.pause &&
               snapshot.status === "active" &&
               actionButton("pause", "Pause goal", Pause)}
+            {controls &&
+              capabilities?.resume &&
+              ["paused", "usageLimited", "budgetLimited"].includes(
+                snapshot.status,
+              ) &&
+              actionButton("resume", "Resume goal", RotateCw)}
             {controls &&
               capabilities?.clear &&
               actionButton("clear", "Delete goal", Trash2)}
@@ -243,6 +274,7 @@ export function ChatGoalControl({
           <GoalContent
             part="GoalDetails"
             snapshot={snapshot}
+            statusLabel={goalStatusLabels[snapshot.status]}
             canMutate={canMutate}
           />
         )}

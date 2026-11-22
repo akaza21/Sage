@@ -155,9 +155,11 @@ pub(crate) fn projected_capabilities(
         goal: if optional.goals {
             sage_acp_protocol::intent::GoalCapabilities {
                 observes: true,
+                set: true,
+                resume: true,
+                token_budget: true,
                 pause: true,
                 clear: true,
-                ..Default::default()
             }
         } else {
             Default::default()

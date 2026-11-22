@@ -18,6 +18,8 @@ export function canMutateGoal(
     );
   return (
     page?.goal?.kind === "goal" &&
-    (action ? goal[action] : goal.set || goal.pause || goal.clear)
+    (action
+      ? goal[action]
+      : goal.set || goal.pause || goal.resume || goal.tokenBudget || goal.clear)
   );
 }

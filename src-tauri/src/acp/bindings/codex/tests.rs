@@ -256,6 +256,87 @@ fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() 
 }
 
 #[test]
+fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
+    use crate::acp::goal::{GoalAction, MAX_GOAL_TOKEN_BUDGET};
+    for (action, params) in [
+        (
+            GoalAction::Set {
+                objective: "Ship safely".into(),
+                token_budget: None,
+            },
+            json!({"objective":"Ship safely"}),
+        ),
+        (
+            GoalAction::Set {
+                objective: "Ship safely".into(),
+                token_budget: Some(40000),
+            },
+            json!({"objective":"Ship safely","tokenBudget":40000}),
+        ),
+        (GoalAction::ResumeExisting, json!({"status":"active"})),
+        (
+            GoalAction::SetBudget { token_budget: 1 },
+            json!({"tokenBudget":1}),
+        ),
+        (
+            GoalAction::SetBudget {
+                token_budget: MAX_GOAL_TOKEN_BUDGET,
+            },
+            json!({"tokenBudget":MAX_GOAL_TOKEN_BUDGET}),
+        ),
+    ] {
+        let mut adapter = adapter();
+        observed_goal_ready(&mut adapter);
+        if matches!(action, GoalAction::Set { .. }) {
+            adapter.goal_cleared();
+        } else {
+            adapter.goal_updated(&json!({"objective":"Ship safely","status":"paused","tokensUsed":3,"timeUsedSeconds":5}));
+        }
+        let before = adapter.goal_state().clone();
+        let request = adapter.goal_set(80, &action).unwrap();
+        let mut expected = params;
+        expected["threadId"] = json!("thread-1");
+        let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+        assert_eq!(
+            wire,
+            json!({"id":80,"method":"thread/goal/set","params":expected})
+        );
+        assert_eq!(adapter.goal_state(), &before);
+        assert!(adapter.goal_set(81, &action).is_err());
+        let reply = json!({"id":80,"result":{"goal":{"objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5}}});
+        assert_eq!(
+            adapter
+                .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
+                .unwrap(),
+            IngressDisposition::GoalMutationApplied
+        );
+        assert!(adapter.active_observed_goal());
+        assert!(!adapter.has_active_turn());
+    }
+    let thread = RequiredText::new("thread", "thread-1").unwrap();
+    for action in [
+        GoalAction::Set {
+            objective: "x".repeat(4001),
+            token_budget: None,
+        },
+        GoalAction::Set {
+            objective: " ".into(),
+            token_budget: None,
+        },
+        GoalAction::Set {
+            objective: "Ship".into(),
+            token_budget: Some(0),
+        },
+        GoalAction::SetBudget { token_budget: 0 },
+        GoalAction::SetBudget {
+            token_budget: MAX_GOAL_TOKEN_BUDGET + 1,
+        },
+    ] {
+        assert!(request::OutgoingRequest::goal_set(80, &thread, &action).is_err());
+    }
+}
+
+#[test]
 fn newer_goal_notification_wins_over_late_pause_reply_and_refusal_is_nonfatal() {
     let mut adapter = adapter();
     observed_goal_ready(&mut adapter);

@@ -491,6 +491,52 @@ test("known context and Goal fit the reference composer without invented native 
   expect(goalBox!.width).toBeCloseTo(composerBox!.width - insets, 1);
   expect(goalBox!.x - composerBox!.x).toBeGreaterThanOrEqual(8);
   expect(goalBox!.x - composerBox!.x).toBeLessThanOrEqual(16);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const chat = useWorkbenchStore
+      .getState()
+      .tabs.find((tab) => tab.kind === "chat")!;
+    const projection = acpProjectionStoreFor(chat.id).getState();
+    const current = projection.page!;
+    if (current.goal?.kind !== "goal") throw new Error("Goal fixture required");
+    projection.applyAuthoritativePage(projection.scope!, {
+      ...current,
+      goal: {
+        kind: "goal",
+        snapshot: { ...current.goal.snapshot, status: "budgetLimited" },
+      },
+      sessions: current.sessions.map((session) => ({
+        ...session,
+        capabilities: {
+          ...session.capabilities,
+          goal: {
+            observes: true,
+            set: true,
+            pause: true,
+            resume: true,
+            tokenBudget: true,
+            clear: true,
+          },
+        },
+      })),
+    });
+  });
+  await expect(
+    composer.getByRole("button", { name: "Resume goal" }),
+  ).toBeVisible();
+  await composer
+    .getByRole("button", { name: "Edit goal", exact: true })
+    .click();
+  const budget = composer.getByLabel("Token budget (optional)");
+  await expect(budget).toBeVisible();
+  await budget.fill("40000");
+  await expect(
+    composer.getByRole("button", { name: "Save goal" }),
+  ).toBeEnabled();
+  await composer.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(budget).toHaveCount(0);
 });
 
 for (const forcedColors of ["none", "active"] as const) {

@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import type { AcpGoalSnapshot } from "../../domain/acpGoal";
 import { ChatGoalControl } from "./ChatGoalControl";
 
 afterEach(cleanup);
@@ -142,7 +143,12 @@ it("does not offer native mutation buttons without an advertised mutation capabi
 });
 
 it.each([
-  { capability: undefined, actions: [] },
+  {
+    capability: undefined,
+    actions: [],
+    status: "active" as const,
+    budget: false,
+  },
   {
     capability: {
       observes: true,
@@ -152,6 +158,8 @@ it.each([
       tokenBudget: false,
       clear: true,
     },
+    status: "active" as const,
+    budget: false,
     actions: ["Pause goal", "Delete goal"],
   },
   {
@@ -163,6 +171,8 @@ it.each([
       tokenBudget: false,
       clear: true,
     },
+    status: "active" as const,
+    budget: false,
     actions: ["Edit goal", "Delete goal"],
   },
   {
@@ -174,18 +184,65 @@ it.each([
       tokenBudget: false,
       clear: false,
     },
+    status: "active" as const,
+    budget: false,
     actions: ["Edit goal"],
+  },
+  ...(
+    [
+      "active",
+      "paused",
+      "blocked",
+      "usageLimited",
+      "budgetLimited",
+      "complete",
+    ] as const
+  ).flatMap((status) =>
+    [true, false].map((enabled) => ({
+      capability: {
+        observes: true,
+        set: true,
+        pause: true,
+        resume: enabled,
+        tokenBudget: enabled,
+        clear: true,
+      },
+      status,
+      budget: enabled,
+      actions: [
+        "Edit goal",
+        "Delete goal",
+        ...(status === "active" ? ["Pause goal"] : []),
+        ...(enabled &&
+        ["paused", "usageLimited", "budgetLimited"].includes(status)
+          ? ["Resume goal"]
+          : []),
+      ],
+    })),
+  ),
+  {
+    capability: {
+      observes: true,
+      set: false,
+      pause: false,
+      resume: false,
+      tokenBudget: true,
+      clear: false,
+    },
+    status: "paused" as const,
+    budget: true,
+    actions: ["Edit goal budget"],
   },
 ])(
   "renders only the advertised goal operations: $actions",
-  ({ capability, actions }) => {
+  async ({ capability, actions, status, budget }) => {
     render(
       <ChatGoalControl
         state={{
           kind: "goal",
           snapshot: {
             objective: "Ship",
-            status: "active",
+            status,
             tokenBudget: null,
             tokensUsed: 0,
             timeUsedSeconds: 0,
@@ -198,12 +255,34 @@ it.each([
         onMutation={async () => ({ kind: "applied" })}
       />,
     );
-    for (const label of ["Edit goal", "Pause goal", "Delete goal"]) {
+    for (const label of [
+      "Edit goal",
+      "Edit goal budget",
+      "Pause goal",
+      "Resume goal",
+      "Delete goal",
+    ]) {
       expect(screen.queryByRole("button", { name: label }) !== null).toBe(
         new Set<string>(actions).has(label),
       );
     }
-    expect(screen.queryByRole("button", { name: /resume|budget/i })).toBeNull();
+    const labels: Record<AcpGoalSnapshot["status"], string> = {
+      active: "Pursuing goal",
+      paused: "Goal paused",
+      blocked: "Goal blocked",
+      usageLimited: "Goal usage limit reached",
+      budgetLimited: "Goal token budget reached",
+      complete: "Goal complete",
+    };
+    expect(screen.getByText(labels[status])).toBeVisible();
+    const edit = screen.queryByRole("button", { name: /^Edit goal/ });
+    if (edit) {
+      fireEvent.click(edit);
+      await screen.findByLabelText("Goal objective");
+      expect(screen.queryByLabelText("Token budget (optional)") !== null).toBe(
+        budget,
+      );
+    }
   },
 );
 
@@ -235,4 +314,58 @@ it("sets a goal from the shared editor without inventing observed goal state", a
     "set: Ship safely",
   );
   expect(screen.queryByText("Pursuing goal")).toBeNull();
+});
+
+it("edits only the budget when the objective is unchanged and rejects invalid budgets", async () => {
+  render(
+    <ChatGoalControl
+      state={{
+        kind: "goal",
+        snapshot: {
+          objective: "Ship safely",
+          status: "budgetLimited",
+          tokenBudget: 1000,
+          tokensUsed: 1000,
+          timeUsedSeconds: 10,
+          createdAt: null,
+          updatedAt: null,
+        },
+      }}
+      capabilities={{
+        observes: true,
+        set: true,
+        pause: true,
+        resume: true,
+        tokenBudget: true,
+        clear: true,
+      }}
+      canMutate
+      editorOpen
+      onMutation={async (action, objective, tokenBudget) => ({
+        kind: "refused",
+        message: `${action}: ${objective ?? "unchanged"}: ${tokenBudget}`,
+      })}
+    />,
+  );
+  const input = await screen.findByLabelText("Token budget (optional)");
+  for (const value of ["0", "-1", "1.5", "9007199254740992"]) {
+    fireEvent.change(input, { target: { value } });
+    expect(screen.getByRole("button", { name: "Save goal" })).toBeDisabled();
+  }
+  fireEvent.change(input, { target: { value: "9007199254740991" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save goal" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "tokenBudget: unchanged: 9007199254740991",
+  );
+  fireEvent.change(await screen.findByLabelText("Goal objective"), {
+    target: { value: "New objective" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save goal" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "set: New objective: 9007199254740991",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Resume goal" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "resume: unchanged: undefined",
+  );
 });

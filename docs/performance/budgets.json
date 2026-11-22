@@ -11,7 +11,7 @@
       "editorSearch": 193112,
       "editorFile": 289989
     },
-    "webTotalJsGzipBytes": 460850,
+    "webTotalJsGzipBytes": 461000,
     "webTerminalLazyJsGzipBytes": 89516,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
@@ -308,9 +308,9 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 2600,
+        "maxGzipBytes": 3100,
         "maxCssGzipBytes": 850,
-        "reason": "Capability-driven native Goal actions, mutations and progress: 2305 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
+        "reason": "Capability-driven goal set, pause, resume, budget and clear controls and mutations. Includes six status labels; editor and details remain demand-loaded. Reserves at least 250 B headroom."
       },
       {
         "entry": "src/services/acpGoalSubscription.ts",
@@ -319,7 +319,7 @@
       },
       {
         "entry": "src/features/chat/GoalDetails.tsx",
-        "maxGzipBytes": 1100,
+        "maxGzipBytes": 1200,
         "maxCssGzipBytes": 650,
         "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip and content have separate caps."
       },

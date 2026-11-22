@@ -19,7 +19,14 @@ type Action = GoalMutationAction;
 export function createGoalMutationController(deps: {
   getContext: () => AcpActionContext | null;
   set?: (
-    request: AcpSessionMutationIntent & { objective: string },
+    request: AcpSessionMutationIntent & {
+      objective: string;
+      tokenBudget?: number;
+    },
+  ) => Promise<AcpMutationResult>;
+  resume?: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
+  tokenBudget?: (
+    request: AcpSessionMutationIntent & { tokenBudget: number },
   ) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
@@ -38,6 +45,7 @@ export function createGoalMutationController(deps: {
   return async (
     action: Action,
     objective?: string,
+    tokenBudget?: number,
   ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
@@ -61,6 +69,15 @@ export function createGoalMutationController(deps: {
       captured.page.goal.snapshot.status !== "active"
     ) {
       return { kind: "refused", message: "This Goal is not active." };
+    }
+    if (
+      action === "resume" &&
+      (captured.page.goal?.kind !== "goal" ||
+        !["paused", "usageLimited", "budgetLimited"].includes(
+          captured.page.goal.snapshot.status,
+        ))
+    ) {
+      return { kind: "refused", message: "This Goal cannot be resumed." };
     }
     pending = true;
     try {
@@ -97,11 +114,35 @@ export function createGoalMutationController(deps: {
           message: "Enter a goal of 1 to 4,000 characters.",
         };
       }
-      const result = await (action === "set"
-        ? deps.set!({ ...request, objective: objective! })
-        : action === "pause"
-          ? deps.pause(request)
-          : deps.clear(request));
+      if (
+        (tokenBudget !== undefined &&
+          (!session.capabilities.goal?.tokenBudget ||
+            !Number.isSafeInteger(tokenBudget) ||
+            tokenBudget <= 0)) ||
+        (action === "tokenBudget" &&
+          (tokenBudget === undefined || !deps.tokenBudget)) ||
+        (action === "resume" && !deps.resume)
+      ) {
+        return {
+          kind: "refused",
+          message:
+            "Enter a positive integer token budget within the supported range.",
+        };
+      }
+      const operations = {
+        set: () =>
+          deps.set!({
+            ...request,
+            objective: objective!,
+            ...(tokenBudget === undefined ? {} : { tokenBudget }),
+          }),
+        pause: () => deps.pause(request),
+        resume: () => deps.resume!(request),
+        tokenBudget: () =>
+          deps.tokenBudget!({ ...request, tokenBudget: tokenBudget! }),
+        clear: () => deps.clear(request),
+      };
+      const result = await operations[action]();
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }
@@ -131,6 +172,8 @@ export function useGoalMutation(boundChatId?: string | null) {
         getContext: () => currentContext(boundChatId),
         set: goalMutations.setGoal,
         pause: goalMutations.pauseExistingGoal,
+        resume: goalMutations.resumeExistingGoal,
+        tokenBudget: goalMutations.setGoalBudget,
         clear: goalMutations.clearExistingGoal,
         apply: (captured, result) => {
           const current = currentContext(boundChatId);

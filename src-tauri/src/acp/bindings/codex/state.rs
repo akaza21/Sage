@@ -285,7 +285,7 @@ impl CodexAdapter {
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);
         }
-        if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
+        if kind.is_goal_mutation() {
             self.goal_mutation_fence = None;
         }
         if kind.is_native_read() {

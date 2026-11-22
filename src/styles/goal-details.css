@@ -42,6 +42,13 @@
   background: var(--color-plane-raised);
   color: var(--color-text-primary);
 }
+.chat-goal-editor input {
+  display: block;
+  max-width: 100%;
+  margin: var(--space-2) 0;
+  background: var(--color-plane-raised);
+  color: var(--color-text-primary);
+}
 .chat-goal-editor button {
   margin-left: var(--space-2);
 }

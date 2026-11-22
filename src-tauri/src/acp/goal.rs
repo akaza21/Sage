@@ -9,12 +9,23 @@ use sage_acp_protocol::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GoalAction {
-    Set { objective: String },
+    Set {
+        objective: String,
+        token_budget: Option<u64>,
+    },
     PauseExisting,
+    ResumeExisting,
+    SetBudget {
+        token_budget: u64,
+    },
     ClearExisting,
 }
 
 pub(crate) const MAX_GOAL_OBJECTIVE_CHARS: usize = 4_000;
+pub(crate) const MAX_GOAL_TOKEN_BUDGET: u64 = 9_007_199_254_740_991;
+pub(crate) fn valid_token_budget(value: u64) -> bool {
+    (1..=MAX_GOAL_TOKEN_BUDGET).contains(&value)
+}
 pub(crate) fn valid_objective(text: &str) -> bool {
     !text.is_empty() && !text.contains('\0') && text.chars().count() <= MAX_GOAL_OBJECTIVE_CHARS
 }
@@ -180,7 +191,8 @@ impl NativeRpcIntent {
             + self.owner.session_id.as_str().len()
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
-                NativeRpcRequest::Goal(GoalAction::Set { objective }) => objective.len() + 1,
+                NativeRpcRequest::Goal(GoalAction::Set { objective, .. }) => objective.len() + 9,
+                NativeRpcRequest::Goal(GoalAction::SetBudget { .. }) => 9,
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,

@@ -65,22 +65,37 @@ impl CodexAdapter {
     }
 
     pub(crate) fn goal_pause(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.goal_mutation(id, OutgoingRequest::goal_pause)
+        self.goal_mutation(id, false, OutgoingRequest::goal_pause)
     }
 
     pub(crate) fn goal_clear(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.goal_mutation(id, OutgoingRequest::goal_clear)
+        self.goal_mutation(id, false, OutgoingRequest::goal_clear)
+    }
+
+    pub(crate) fn goal_set(
+        &mut self,
+        id: u64,
+        action: &crate::acp::goal::GoalAction,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        let creates = matches!(action, crate::acp::goal::GoalAction::Set { .. });
+        self.goal_mutation(id, creates, |id, thread| {
+            OutgoingRequest::goal_set(id, thread, action)
+        })
     }
 
     fn goal_mutation(
         &mut self,
         id: u64,
-        build: fn(
+        creates: bool,
+        build: impl FnOnce(
             u64,
             &sage_acp_protocol::contract::RequiredText<512>,
         ) -> Result<OutgoingRequest, super::super::request::RequestError>,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if !self.goal_supported() || !matches!(self.goal_state, GoalState::Goal { .. }) {
+        if !self.goal_supported()
+            || !(matches!(self.goal_state, GoalState::Goal { .. })
+                || creates && matches!(self.goal_state, GoalState::NoGoal))
+        {
             return Err(AdapterError::CapabilityUnavailable);
         }
         if self.goal_mutation_fence.is_some() {
@@ -127,6 +142,10 @@ impl CodexAdapter {
             return false;
         }
         let next = match kind {
+            super::super::request::RequestKind::GoalSet => result
+                .and_then(|value| value.get("goal"))
+                .and_then(|value| GoalSnapshot::from_wire(value).ok())
+                .map(|snapshot| GoalState::Goal { snapshot }),
             super::super::request::RequestKind::GoalPause => result
                 .and_then(|value| value.get("goal"))
                 .and_then(|value| GoalSnapshot::from_wire(value).ok())

@@ -89,10 +89,7 @@ pub(super) fn response<M: ResourceMapper>(
         ));
     }
     if let Some(error) = object.get("error") {
-        if matches!(
-            kind,
-            RequestKind::GoalGet | RequestKind::GoalPause | RequestKind::GoalClear
-        ) {
+        if kind == RequestKind::GoalGet || kind.is_goal_mutation() {
             let _ = error;
             if kind == RequestKind::GoalGet {
                 adapter.goal_get_failed(id);
@@ -164,7 +161,7 @@ pub(super) fn response<M: ResourceMapper>(
         debug_assert_eq!(removed, Some(kind));
         return Ok(IngressDisposition::IgnoredLate);
     }
-    if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
+    if kind.is_goal_mutation() {
         let accepted = adapter.goal_mutation_result(id, kind, object.get("result"));
         let removed = adapter.take_pending(id);
         debug_assert_eq!(removed, Some(kind));
@@ -271,6 +268,7 @@ pub(super) fn response<M: ResourceMapper>(
         }
         RequestKind::Models
         | RequestKind::GoalGet
+        | RequestKind::GoalSet
         | RequestKind::GoalPause
         | RequestKind::GoalClear
         | RequestKind::TurnsList

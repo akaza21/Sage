@@ -4,9 +4,11 @@ export { GoalEditor } from "./GoalEditor";
 
 export function GoalDetails({
   snapshot,
+  statusLabel,
   canMutate,
 }: {
   snapshot: AcpGoalSnapshot;
+  statusLabel: string;
   canMutate: boolean;
 }) {
   return (
@@ -22,7 +24,7 @@ export function GoalDetails({
       <dl>
         <div>
           <dt>Status</dt>
-          <dd>{snapshot.status}</dd>
+          <dd>{statusLabel}</dd>
         </div>
         {!snapshot.progress && (
           <div>
