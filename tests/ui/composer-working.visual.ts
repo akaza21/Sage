@@ -15,6 +15,16 @@ async function openComposer(page: Page, working = false) {
   return page.locator(".chat-dock");
 }
 
+async function setDocumentVisibility(page: Page, value: "hidden" | "visible") {
+  await page.evaluate((visibilityState) => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: visibilityState,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, value);
+}
+
 async function border(dock: Locator) {
   return dock.evaluate((element) => {
     const style = getComputedStyle(element, "::after");
@@ -224,6 +234,67 @@ test("ending dictation leaves focus where it was when the control was not focuse
   await expect(prompt).toBeFocused();
 });
 
+test("holding Enter on Stop dictation never repeats onto Send", async ({
+  page,
+}) => {
+  const { prompt, stop, send, submits } = await dictateDraft(page, true);
+  await expect(stop).toBeFocused();
+  await page.keyboard.down("Enter");
+  await expect(send).toBeFocused();
+  // Further keydowns while the key stays down are auto-repeats.
+  await page.keyboard.down("Enter");
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await expect(prompt).toHaveValue("Review the composer");
+  expect(await submits()).toBe(0);
+});
+
+test("a control focused before the document hid does not take focus back", async ({
+  page,
+}) => {
+  const dock = await openComposer(page);
+  await dock
+    .getByRole("combobox", { name: "Message agent" })
+    .fill("Review the composer");
+  const send = dock.getByRole("button", { name: "Send message", exact: true });
+  await send.focus();
+  await setDocumentVisibility(page, "hidden");
+  await expect(dock).toBeHidden();
+  const editor = page.getByRole("radio", { name: "Editor", exact: true });
+  await editor.focus();
+  await setDocumentVisibility(page, "visible");
+  await expect(send).toBeVisible();
+  await expect(editor).toBeFocused();
+});
+
+test("keyboard focus on Cancel returns to the prompt when the turn ends", async ({
+  page,
+}) => {
+  const dock = await openComposer(page, true);
+  const cancel = dock.getByRole("button", { name: "Cancel turn" });
+  await cancel.focus();
+  await expect(cancel).toBeFocused();
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const id = useWorkbenchStore.getState().activeTabId!;
+    const projection = acpProjectionStoreFor(id).getState();
+    projection.applyAuthoritativePage(projection.scope!, {
+      ...projection.page!,
+      turns: projection.page!.turns.map((turn) => ({
+        ...turn,
+        state: "cancelled" as const,
+        terminalAt: turn.updatedAt,
+      })),
+    });
+  });
+  await expect(cancel).toBeHidden();
+  await expect(
+    dock.getByRole("combobox", { name: "Message agent" }),
+  ).toBeFocused();
+});
+
 test("Send submits the typed draft exactly once", async ({ page }) => {
   await page.addInitScript(() => {
     let submits = 0;
@@ -261,13 +332,7 @@ test("working border sleeps with the document and wakes on return", async ({
           ).length,
     );
   await expect.poll(running).toBe(1);
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "hidden",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
+  await setDocumentVisibility(page, "hidden");
   await expect(dock).toBeHidden();
   expect(await running()).toBe(0);
   // Two more rendered frames: nothing may restart the border while hidden.
@@ -278,13 +343,7 @@ test("working border sleeps with the document and wakes on return", async ({
       ),
   );
   expect(await running()).toBe(0);
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "visible",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
+  await setDocumentVisibility(page, "visible");
   await expect(dock).toBeVisible();
   await expect.poll(running).toBe(1);
 });

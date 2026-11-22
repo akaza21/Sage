@@ -69,20 +69,26 @@ export function ComposerTurnControl({
             title: reason,
             "aria-describedby": reason && disabledReasonId,
             disabled: sendDisabled,
+            // Held Enter that stopped dictation must not repeat onto Send.
+            onKeyDown: (event) =>
+              event.repeat && event.key === "Enter" && event.preventDefault(),
           },
         ];
   return (
     <>
       {/* Each action remounts under its own key: a click needs press and
           release on one element, so a press on Stop cannot send. Keyboard
-          focus follows the control across that remount, except out of
-          Cancel: when a turn ends, useTerminalTurnFocus returns focus to the
-          prompt. */}
+          focus lost in that remount returns to the new control, except out
+          of Cancel: when a turn ends, useTerminalTurnFocus returns focus to
+          the prompt. */}
       <button
         key={name}
         type="button"
         ref={(button) => {
-          if (hadFocus.current) button?.focus();
+          const active = document.activeElement;
+          if (hadFocus.current && (!active || active === document.body))
+            button?.focus();
+          hadFocus.current = false;
           return () => {
             hadFocus.current =
               name !== "cancel" && document.activeElement === button;

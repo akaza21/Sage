@@ -117,10 +117,7 @@ it("keeps dictation on one control until stopped and disables it during the turn
   expect(control).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(control);
   expect(input).toHaveValue("Review the composer");
-  // Send is a new element: a press that began on Stop cannot release on it.
-  const send = screen.getByRole("button", { name: "Send message" });
-  expect(send).not.toBe(control);
-  fireEvent.click(send);
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   control = screen.getByRole("button", { name: "Cancel turn" });
   expect(dictation.disabled).toBe(true);
   expect(screen.getAllByRole("button")).toHaveLength(1);
@@ -188,7 +185,6 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
     screen.getByRole("status", { name: "Sent prompt" }),
   ).toBeEmptyDOMElement();
   const send = screen.getByRole("button", { name: "Send message" });
-  expect(send).not.toBe(control);
   expect(send).not.toHaveAttribute("aria-pressed");
   fireEvent.click(send);
   expect(screen.getByRole("status", { name: "Sent prompt" })).toHaveTextContent(
