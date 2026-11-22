@@ -1,7 +1,4 @@
-use super::{
-    file_rewind::{self, FileRewindFailure},
-    *,
-};
+use super::{file_rewind, *};
 use crate::acp::{ipc::ProjectionChangedV1, store::UndoneThread, turn_undo::stage_turn_undo};
 use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
@@ -148,34 +145,13 @@ impl AcpService {
                 return Err(SessionControlError::Unavailable);
             }
             let target = self.rewind_target(owner, &turn_id)?;
-            let planned = file_rewind::plan(&target, &mut |control| {
-                self.session_control_reply(owner.clone(), control)
-            })?;
-            let preview = self.check_files(owner, planned.clone()).await?;
-            match file_rewind::restore_then_cut(
+            self.rewind_files_then_cut(
+                owner,
                 &target,
-                &planned,
-                preview,
                 &mut |control| self.session_control_reply(owner.clone(), control),
                 || self.prepare_rewind(owner, turn_id.clone(), undo, true, resolve_cut),
-            ) {
-                Ok(done) => done,
-                Err(FileRewindFailure::Before(error)) => return Err(error),
-                Err(FileRewindFailure::Conflicts(preview)) => {
-                    return Err(file_rewind::refusal(&format!(
-                        "{} of the files changed since the agent wrote them. Rewind the conversation only.",
-                        preview.conflict_count
-                    )));
-                }
-                Err(FileRewindFailure::Staged {
-                    staged,
-                    restored,
-                    error,
-                }) => {
-                    let error = self.abandon_staged(owner, &staged, error);
-                    return Err(file_rewind::staged_error(restored, error));
-                }
-            }
+            )
+            .await?
         } else {
             let (command, control) =
                 self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
@@ -269,7 +245,7 @@ impl AcpService {
 
     /// A staged cut whose native effect was refused is rolled back; any
     /// other failure leaves the outcome unknown, for recovery to settle.
-    fn abandon_staged(
+    pub(super) fn abandon_staged(
         &self,
         owner: &RuntimeOwner,
         command: &crate::acp::store::TurnUndoneCommand,

@@ -13,7 +13,7 @@ import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures
 export function installConversationRewindFixture(
   inPlace = true,
   residency: "hot" | "cold" = "hot",
-  files?: { files: string[]; conflicts: string[] },
+  files?: { files: string[]; conflicts: string[]; unverified?: string[] },
 ) {
   installTranscriptSelectionFixture(false, true);
   const chat = useWorkbenchStore.getState().activeTabId!;
@@ -93,8 +93,10 @@ export function installConversationRewindFixture(
             ? {
                 preview: {
                   ...files,
+                  unverified: files.unverified ?? [],
                   fileCount: files.files.length,
                   conflictCount: files.conflicts.length,
+                  unverifiedCount: files.unverified?.length ?? 0,
                 },
               }
             : {};

@@ -25,6 +25,8 @@ const NAME_BYTES: usize = 255;
 const CHECK_HASH_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) const RESTORED_NOT_CUT: &str =
     "Files were restored, but the conversation was not rewound.";
+pub(crate) const RESTORED_RECOVERING: &str =
+    "Files were restored; this chat is recovering and the rewind did not finish.";
 
 /// What a file rewind would restore, as root-relative paths. Absolute paths
 /// never leave the native side.
@@ -33,24 +35,57 @@ pub(crate) const RESTORED_NOT_CUT: &str =
 pub(crate) struct FileRewindPreview {
     pub files: Vec<String>,
     pub file_count: u32,
-    /// Files changed since the agent last wrote them, or that Sage cannot
-    /// check. Any of them refuses the file rewind.
+    /// Files changed since the agent last wrote them.
     pub conflicts: Vec<String>,
     pub conflict_count: u32,
+    /// Files with no write Sage can check them against: never recorded, or
+    /// recorded unread, from a cut turn, or unreadable now.
+    pub unverified: Vec<String>,
+    pub unverified_count: u32,
+}
+
+/// How one listed file stands against the agent's last write to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Standing {
+    Unchanged,
+    Changed,
+    Unverified,
 }
 
 impl FileRewindPreview {
-    fn add(&mut self, path: String, conflict: bool) {
-        if self.files.len() < PREVIEW_PATHS {
-            self.files.push(path.clone());
-        }
-        self.file_count = self.file_count.saturating_add(1);
-        if conflict {
-            if self.conflicts.len() < PREVIEW_PATHS {
-                self.conflicts.push(path);
+    fn add(&mut self, path: String, standing: Standing) {
+        fn push(list: &mut Vec<String>, count: &mut u32, path: String) {
+            if list.len() < PREVIEW_PATHS {
+                list.push(path);
             }
-            self.conflict_count = self.conflict_count.saturating_add(1);
+            *count = count.saturating_add(1);
         }
+        match standing {
+            Standing::Unchanged => {}
+            Standing::Changed => push(&mut self.conflicts, &mut self.conflict_count, path.clone()),
+            Standing::Unverified => push(
+                &mut self.unverified,
+                &mut self.unverified_count,
+                path.clone(),
+            ),
+        }
+        push(&mut self.files, &mut self.file_count, path);
+    }
+
+    /// Any changed or unverified file keeps every file as it is.
+    pub(crate) fn refusal(&self) -> Option<SessionControlError> {
+        if self.conflict_count > 0 {
+            return Some(refusal(&format!(
+                "{} of the files changed since the agent wrote them. Rewind the conversation only.",
+                self.conflict_count
+            )));
+        }
+        (self.unverified_count > 0).then(|| {
+            refusal(&format!(
+                "Sage can't verify {} of the files in this chat. Rewind the conversation only.",
+                self.unverified_count
+            ))
+        })
     }
 }
 
@@ -62,14 +97,14 @@ pub(crate) fn offers_file_rewind(rewind: RewindCapability) -> bool {
 }
 
 pub(crate) type Control<'a> =
-    &'a mut dyn FnMut(SessionControl) -> Result<NativeRpcReply, SessionControlError>;
+    &'a mut (dyn FnMut(SessionControl) -> Result<NativeRpcReply, SessionControlError> + Send);
 
 /// Why a files-and-conversation rewind stopped after its check.
 #[derive(Debug)]
 pub(crate) enum FileRewindFailure<S> {
     /// Nothing was staged or restored.
     Before(SessionControlError),
-    /// Listed files changed since the agent wrote them; none was restored.
+    /// Listed files changed or cannot be verified; none was restored.
     Conflicts(FileRewindPreview),
     /// The cut was staged; `restored` says whether files were restored first.
     Staged {
@@ -79,14 +114,16 @@ pub(crate) enum FileRewindFailure<S> {
     },
 }
 
-/// What a failure after staging tells the user: once files were restored,
-/// that is what happened, whatever failed next. Retry then has nothing to
-/// restore and only cuts the conversation.
+/// What a failure after staging tells the user, once the staged cut was
+/// rolled back (`Refused`/`Unavailable` kept) or left to recovery
+/// (`RecoveryRequired`): with files restored, it says so either way.
 pub(crate) fn staged_error(restored: bool, error: SessionControlError) -> SessionControlError {
-    if restored {
-        refusal(RESTORED_NOT_CUT)
-    } else {
-        error
+    match (restored, error) {
+        (false, error) => error,
+        (true, SessionControlError::Refused(_) | SessionControlError::Unavailable) => {
+            refusal(RESTORED_NOT_CUT)
+        }
+        (true, _) => refusal(RESTORED_RECOVERING),
     }
 }
 
@@ -115,7 +152,7 @@ pub(crate) fn restore_then_cut<S>(
     control: Control<'_>,
     stage: impl FnOnce() -> Result<(S, SessionControl), SessionControlError>,
 ) -> Result<(S, Option<SafeText<512>>, bool), FileRewindFailure<S>> {
-    if preview.conflict_count > 0 {
+    if preview.refusal().is_some() {
         return Err(FileRewindFailure::Conflicts(preview));
     }
     let (staged, cut) = stage().map_err(FileRewindFailure::Before)?;
@@ -223,19 +260,24 @@ pub(crate) fn probe(mapper: &NativeResourceMapper, files: &[PathBuf]) -> Vec<Pro
         .collect()
 }
 
-/// A file conflicts unless its bytes now are the agent's recorded last write.
-pub(crate) fn compare(probed: Vec<Probed>, writes: Option<&LastWrites>) -> FileRewindPreview {
+/// A file is unchanged while its bytes are the agent's recorded last write,
+/// changed once they differ or it is gone, and unverified without a write to
+/// compare or bytes to read.
+pub(crate) fn compare(probed: Vec<Probed>, writes: &LastWrites) -> FileRewindPreview {
     let mut preview = FileRewindPreview::default();
     for file in probed {
         let recorded = file
             .key
             .as_ref()
-            .and_then(|key| writes?.get(key).copied().flatten());
-        let conflict = !matches!(
-            (recorded, file.state),
-            (Some(recorded), ContentState::Present(current)) if recorded == current
-        );
-        preview.add(file.shown, conflict);
+            .and_then(|key| writes.get(key).copied().flatten());
+        let standing = match (recorded, file.state) {
+            (Some(recorded), ContentState::Present(current)) if recorded == current => {
+                Standing::Unchanged
+            }
+            (Some(_), ContentState::Present(_) | ContentState::Missing) => Standing::Changed,
+            _ => Standing::Unverified,
+        };
+        preview.add(file.shown, standing);
     }
     preview
 }
@@ -286,7 +328,46 @@ impl AcpService {
         let writes =
             agent_writes::last_writes(&self.database.connection(), owner.session_id.as_str())
                 .map_err(|_| SessionControlError::RecoveryRequired)?;
-        Ok(compare(probed, writes.as_ref()))
+        Ok(compare(probed, &writes))
+    }
+
+    /// Dry run, check, then stage, restore and cut, each control through
+    /// `control`. A failure after staging rolls the cut back or leaves it to
+    /// recovery, and says whether files were restored.
+    pub(super) async fn rewind_files_then_cut(
+        &self,
+        owner: &RuntimeOwner,
+        target: &ConversationTarget,
+        control: Control<'_>,
+        stage: impl FnOnce() -> Result<
+            (crate::acp::store::TurnUndoneCommand, SessionControl),
+            SessionControlError,
+        >,
+    ) -> Result<
+        (
+            crate::acp::store::TurnUndoneCommand,
+            Option<SafeText<512>>,
+            bool,
+        ),
+        SessionControlError,
+    > {
+        let planned = plan(target, control)?;
+        let preview = self.check_files(owner, planned.clone()).await?;
+        match restore_then_cut(target, &planned, preview, control, stage) {
+            Ok(done) => Ok(done),
+            Err(FileRewindFailure::Before(error)) => Err(error),
+            Err(FileRewindFailure::Conflicts(preview)) => Err(preview
+                .refusal()
+                .unwrap_or(SessionControlError::Unavailable)),
+            Err(FileRewindFailure::Staged {
+                staged,
+                restored,
+                error,
+            }) => Err(staged_error(
+                restored,
+                self.abandon_staged(owner, &staged, error),
+            )),
+        }
     }
 
     /// The preview the confirm shows, or `None` when the session cannot

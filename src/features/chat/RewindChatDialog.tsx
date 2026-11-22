@@ -16,7 +16,12 @@ type Preview = {
   fileCount: number;
   conflicts: string[];
   conflictCount: number;
+  unverified: string[];
+  unverifiedCount: number;
 };
+
+/** After this failure the files are already back: only the conversation is left. */
+const RESTORED = "Files were restored";
 
 const list = (value: unknown) =>
   Array.isArray(value) &&
@@ -45,8 +50,10 @@ async function preview(chatId: string, before: string) {
     !isRecord(found) ||
     !list(found.files) ||
     !list(found.conflicts) ||
+    !list(found.unverified) ||
     !Number.isSafeInteger(found.fileCount) ||
-    !Number.isSafeInteger(found.conflictCount)
+    !Number.isSafeInteger(found.conflictCount) ||
+    !Number.isSafeInteger(found.unverifiedCount)
   )
     throw new Error();
   return found as Preview;
@@ -128,7 +135,13 @@ export function RewindChatDialog({
     }
   };
   const busy = status.kind === "pending";
-  const restorable = !!files?.fileCount && !files.conflictCount;
+  const restored =
+    status.kind === "failed" && status.message.startsWith(RESTORED);
+  const restorable =
+    !restored &&
+    !!files?.fileCount &&
+    !files.conflictCount &&
+    !files.unverifiedCount;
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -147,6 +160,15 @@ export function RewindChatDialog({
             Files changed since the agent last wrote them, so they stay:
           </p>
           <Paths paths={files.conflicts} count={files.conflictCount} />
+        </>
+      ) : null}
+      {files?.unverifiedCount ? (
+        <>
+          <p role="alert">
+            Sage can&apos;t verify these files in this chat, so they stay as
+            they are:
+          </p>
+          <Paths paths={files.unverified} count={files.unverifiedCount} />
         </>
       ) : null}
       {restorable ? (
@@ -181,7 +203,7 @@ export function RewindChatDialog({
       {status.kind === "failed" ? (
         <p role="status">
           {status.message}{" "}
-          <button type="button" onClick={() => void rewind(last)}>
+          <button type="button" onClick={() => void rewind(last && !restored)}>
             Retry
           </button>
         </p>

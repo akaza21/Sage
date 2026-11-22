@@ -1,6 +1,6 @@
 //! Rewind here with files, replayed through the real bridge: Claude Code's
 //! `rewind_files` control frames out, its recorded replies in.
-use std::{cell::RefCell, path::PathBuf};
+use std::{path::PathBuf, sync::Mutex};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -106,7 +106,7 @@ struct Replies {
 fn rewind(
     case: &mut Rewind,
     replies: &Replies,
-    log: &RefCell<Vec<String>>,
+    log: &Mutex<Vec<String>>,
 ) -> Result<bool, FileRewindFailure<()>> {
     let target = ConversationTarget {
         turn_id: SageTurnId::parse(TURN).unwrap(),
@@ -118,7 +118,7 @@ fn rewind(
     let mut control = |control: SessionControl| -> Result<NativeRpcReply, SessionControlError> {
         let sdk = bridge.session_control(&control).unwrap();
         let request = &sdk["request"];
-        log.borrow_mut().push(match &request["dry_run"] {
+        log.lock().unwrap().push(match &request["dry_run"] {
             Value::Bool(true) => "rewind_files dry_run".to_owned(),
             _ => request["subtype"].as_str().unwrap().to_owned(),
         });
@@ -147,7 +147,7 @@ fn rewind(
         tauri::async_runtime::block_on(case.service.check_files(&case.owner, planned.clone()))
             .map_err(FileRewindFailure::Before)?;
     restore_then_cut(&target, &planned, preview, &mut control, || {
-        log.borrow_mut().push("stage".into());
+        log.lock().unwrap().push("stage".into());
         Ok((
             (),
             SessionControl::RewindConversation {
@@ -169,7 +169,7 @@ fn changed(case: &Rewind) -> Replies {
 fn a_file_changed_since_the_agent_wrote_it_refuses_before_any_restore() {
     let mut case = agent_wrote_a_file();
     std::fs::write(&case.file, "fn agent() {}\n// mine\n").unwrap();
-    let log = RefCell::new(Vec::new());
+    let log = Mutex::new(Vec::new());
     let replies = changed(&case);
     let refused = rewind(&mut case, &replies, &log);
     assert!(matches!(
@@ -177,18 +177,18 @@ fn a_file_changed_since_the_agent_wrote_it_refuses_before_any_restore() {
         Err(FileRewindFailure::Conflicts(preview))
             if preview.conflicts == ["a.rs"] && preview.file_count == 1
     ));
-    assert_eq!(*log.borrow(), ["rewind_files dry_run"]);
+    assert_eq!(*log.lock().unwrap(), ["rewind_files dry_run"]);
     assert!(!case.bridge.controlling());
 }
 
 #[test]
 fn files_rewind_after_a_dry_run_and_before_the_conversation_is_cut() {
     let mut case = agent_wrote_a_file();
-    let log = RefCell::new(Vec::new());
+    let log = Mutex::new(Vec::new());
     let replies = changed(&case);
     assert!(matches!(rewind(&mut case, &replies, &log), Ok(true)));
     assert_eq!(
-        *log.borrow(),
+        *log.lock().unwrap(),
         [
             "rewind_files dry_run",
             "stage",
@@ -201,14 +201,14 @@ fn files_rewind_after_a_dry_run_and_before_the_conversation_is_cut() {
 #[test]
 fn an_empty_dry_run_restores_nothing_and_only_cuts() {
     let mut case = agent_wrote_a_file();
-    let log = RefCell::new(Vec::new());
+    let log = Mutex::new(Vec::new());
     let replies = Replies {
         changed: Vec::new(),
         cut_refused: false,
     };
     assert!(matches!(rewind(&mut case, &replies, &log), Ok(false)));
     assert_eq!(
-        *log.borrow(),
+        *log.lock().unwrap(),
         ["rewind_files dry_run", "stage", "get_settings"]
     );
 }
@@ -216,7 +216,7 @@ fn an_empty_dry_run_restores_nothing_and_only_cuts() {
 #[test]
 fn a_cut_refused_after_the_restore_says_the_files_were_restored() {
     let mut case = agent_wrote_a_file();
-    let log = RefCell::new(Vec::new());
+    let log = Mutex::new(Vec::new());
     let mut replies = changed(&case);
     replies.cut_refused = true;
     let Err(FileRewindFailure::Staged {
@@ -231,7 +231,7 @@ fn a_cut_refused_after_the_restore_says_the_files_were_restored() {
         SessionControlError::Refused(Some(text)) if text.as_str() == RESTORED_NOT_CUT
     ));
     assert_eq!(
-        *log.borrow(),
+        *log.lock().unwrap(),
         [
             "rewind_files dry_run",
             "stage",
