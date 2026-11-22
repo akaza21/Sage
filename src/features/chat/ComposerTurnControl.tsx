@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import { useRef, type ButtonHTMLAttributes } from "react";
 import type { useComposerDictation } from "./composerChrome";
 import { ArrowUp, Square, Mic } from "../../ui/leanIcons";
 
@@ -21,51 +21,75 @@ export function ComposerTurnControl({
   disabledReason?: string | null;
   disabledReasonId?: string;
 }) {
+  const hadFocus = useRef(false);
   const reason = (sendDisabled && disabledReason) || undefined;
-  const microphone = dictation.listening || !hasContent;
-  const Icon = activeTurn ? Square : microphone ? Mic : ArrowUp;
-  const action: ButtonHTMLAttributes<HTMLButtonElement> = activeTurn
-    ? {
-        className: "send-button send-button--cancel",
-        "aria-label": "Cancel turn",
-        title: "Voice input unavailable during a turn",
-        disabled: cancelDisabled || !onCancelTurn,
-        onClick: onCancelTurn ?? undefined,
-      }
-    : microphone
-      ? {
-          className: "composer__mic",
-          "aria-label": dictation.listening
-            ? "Stop dictation"
-            : dictation.supported
-              ? "Start dictation"
-              : "Voice input unavailable",
-          title: dictation.supported
-            ? "May use an online service"
-            : "Voice input is unavailable in this WebView",
-          disabled: dictation.disabled,
-          "aria-pressed": dictation.listening,
-          onMouseDown: (event) => event.preventDefault(),
-          onClick: (event) => {
-            // Stop must never activate a submit, whatever renders next.
-            event.preventDefault();
-            if (dictation.listening) dictation.stop();
-            else void dictation.start();
+  const [name, Icon, action]: [
+    "cancel" | "dictate" | "send",
+    typeof Square,
+    ButtonHTMLAttributes<HTMLButtonElement>,
+  ] = activeTurn
+    ? [
+        "cancel",
+        Square,
+        {
+          className: "send-button send-button--cancel",
+          "aria-label": "Cancel turn",
+          disabled: cancelDisabled || !onCancelTurn,
+          onClick: onCancelTurn ?? undefined,
+        },
+      ]
+    : dictation.listening || !hasContent
+      ? [
+          "dictate",
+          Mic,
+          {
+            className: "composer__mic",
+            "aria-label": dictation.listening
+              ? "Stop dictation"
+              : dictation.supported
+                ? "Start dictation"
+                : "Voice input unavailable",
+            title: dictation.supported
+              ? "May use an online service"
+              : "Voice input is unavailable in this WebView",
+            disabled: dictation.disabled,
+            "aria-pressed": dictation.listening,
+            onMouseDown: (event) => event.preventDefault(),
+            onClick: () =>
+              dictation.listening ? dictation.stop() : void dictation.start(),
           },
-        }
-      : {
-          className: "send-button",
-          type: "submit",
-          "aria-label": "Send message",
-          title: reason,
-          "aria-describedby": reason && disabledReasonId,
-          disabled: sendDisabled,
-        };
+        ]
+      : [
+          "send",
+          ArrowUp,
+          {
+            className: "send-button",
+            type: "submit",
+            "aria-label": "Send message",
+            title: reason,
+            "aria-describedby": reason && disabledReasonId,
+            disabled: sendDisabled,
+          },
+        ];
   return (
     <>
-      {/* Each control remounts under its own key (its class): a click needs
-          press and release on one element, so a press on Stop cannot send. */}
-      <button key={action.className} type="button" {...action}>
+      {/* Each action remounts under its own key: a click needs press and
+          release on one element, so a press on Stop cannot send. Keyboard
+          focus follows the control across that remount, except out of
+          Cancel: when a turn ends, useTerminalTurnFocus returns focus to the
+          prompt. */}
+      <button
+        key={name}
+        type="button"
+        ref={(button) => {
+          if (hadFocus.current) button?.focus();
+          return () => {
+            hadFocus.current =
+              name !== "cancel" && document.activeElement === button;
+          };
+        }}
+        {...action}
+      >
         <Icon aria-hidden="true" />
       </button>
       {dictation.error ? (

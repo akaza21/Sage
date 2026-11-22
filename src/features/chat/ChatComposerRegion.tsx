@@ -155,7 +155,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           disabled={actionDisabled || !!sessionId}
         />
       ) : null}
-      <div className="chat-dock surface surface--dock">
+      <div
+        className="chat-dock surface surface--dock"
+        data-working={(activeTurn && !hidden) || undefined}
+      >
         <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
         {approvalSlot}
         <form
@@ -235,11 +238,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                aria-description={
-                  queueing
-                    ? "Enter queues a message while this turn runs."
-                    : undefined
-                }
                 aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.describedBy}`}
                 value={text}
                 rows={2}

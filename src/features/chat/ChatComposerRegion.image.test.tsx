@@ -197,10 +197,6 @@ describe("composer image input", () => {
     renderComposer({ activeTurn: true, queueAvailable: true });
     const prompt = screen.getByRole("combobox", { name: "Message agent" });
     expect(prompt).toHaveAttribute("placeholder", "Do anything");
-    expect(prompt).toHaveAttribute(
-      "aria-description",
-      "Enter queues a message while this turn runs.",
-    );
     expect(prompt).toHaveAccessibleDescription(/Enter queues a message/);
   });
 

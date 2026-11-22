@@ -115,20 +115,17 @@ it("keeps dictation on one control until stopped and disables it during the turn
   expect(input).toHaveValue("Review the composer");
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveAttribute("aria-pressed", "true");
-  // Stop cancels click activation as well as replacing the button.
-  expect(fireEvent.click(control)).toBe(false);
-  expect(input).toHaveValue("Review the composer");
-  control = screen.getByRole("button", { name: "Send message" });
   fireEvent.click(control);
+  expect(input).toHaveValue("Review the composer");
+  // Send is a new element: a press that began on Stop cannot release on it.
+  const send = screen.getByRole("button", { name: "Send message" });
+  expect(send).not.toBe(control);
+  fireEvent.click(send);
   control = screen.getByRole("button", { name: "Cancel turn" });
   expect(dictation.disabled).toBe(true);
   expect(screen.getAllByRole("button")).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Start dictation" })).toBeNull();
   expect(control).not.toHaveAttribute("aria-pressed");
-  expect(control).toHaveAttribute(
-    "title",
-    "Voice input unavailable during a turn",
-  );
   await act(async () => {
     await dictation.start();
   });
@@ -185,13 +182,13 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveClass("composer__mic");
   expect(control).toHaveAttribute("aria-pressed", "true");
-  // Stop cancels click activation as well as replacing the button.
-  expect(fireEvent.click(control)).toBe(false);
+  fireEvent.click(control);
   expect(input).toHaveValue("Review the composer");
   expect(
     screen.getByRole("status", { name: "Sent prompt" }),
   ).toBeEmptyDOMElement();
   const send = screen.getByRole("button", { name: "Send message" });
+  expect(send).not.toBe(control);
   expect(send).not.toHaveAttribute("aria-pressed");
   fireEvent.click(send);
   expect(screen.getByRole("status", { name: "Sent prompt" })).toHaveTextContent(
