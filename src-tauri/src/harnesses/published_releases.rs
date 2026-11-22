@@ -24,18 +24,7 @@ impl PublishedReleases {
     /// `None` while a check started within the interval already covers them;
     /// otherwise the epoch `finish_check` must present.
     pub(super) fn begin_check(&self, harness_ids: &[&'static str]) -> Option<u64> {
-        let mut checked = self.0.write().unwrap_or_else(|    /// harness missing from `found` keeps its earlier result and is retried too.
-    /// A check from before the last `forget` is dropped.
-    pub(super) fn finish_check(&self, epoch: u64, found: Option<Vec<PublishedRelease>>) {
-        let mut checked = self.0.write().unwrap_or_else(|        let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
-        *checked = Checked {
-            epoch: checked.epoch.wrapping_add(1),
-            ..Checked::default()
-        };| error.into_inner());
-        if checked.epoch != epoch {
-            return;
-        }
-| error.into_inner());
+        let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
         let recent = checked
             .started
             .is_some_and(|started| started.elapsed() < CHECK_INTERVAL);
@@ -51,8 +40,12 @@ impl PublishedReleases {
 
     /// `None` (failed) keeps earlier results and lets the next refresh retry; a
     /// harness missing from `found` keeps its earlier result and is retried too.
-    pub(super) fn finish_check(&self, found: Option<Vec<PublishedRelease>>) {
+    /// A check begun before the last `forget` is dropped.
+    pub(super) fn finish_check(&self, epoch: u64, found: Option<Vec<PublishedRelease>>) {
         let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
+        if checked.epoch != epoch {
+            return;
+        }
         let Some(found) = found else {
             checked.started = None;
             return;
@@ -69,9 +62,14 @@ impl PublishedReleases {
     }
 
     /// Turning checks off drops what earlier checks found, so nothing stale
-    /// shows, and lets the next enabled refresh check at once.
+    /// shows, and lets the next enabled refresh check at once. A check still
+    /// running belongs to the old epoch and cannot write back.
     pub(super) fn forget(&self) {
-        *self.0.write().unwrap_or_else(|error| error.into_inner()) = Checked::default();
+        let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
+        *checked = Checked {
+            epoch: checked.epoch.wrapping_add(1),
+            ..Checked::default()
+        };
     }
 
     pub(super) fn latest_for(&self, harness_id: &str) -> Option<String> {
