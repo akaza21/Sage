@@ -7,12 +7,12 @@ import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { SettingsRow } from "./SettingsRow";
 import HarnessAccountDetails from "./HarnessAccountDetails";
+import { loadHarnessVersions } from "./loadHarnessVersions";
 import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
 
 // The user-defined agent editor loads only when Harnesses is open, below
 // the harness list, so it arrives without a loading notice.
 const loadCustomAgentSettings = () => import("./CustomAgentSettings");
-const loadUpdateCheckSetting = () => import("./HarnessVersions");
 
 export function AgentHarnessSettings({
   presentation,
@@ -71,7 +71,7 @@ export function AgentHarnessSettings({
       <LazyModuleBoundary
         label="Harness update check"
         fallback={null}
-        load={loadUpdateCheckSetting}
+        load={loadHarnessVersions}
         render={(UpdateCheck) => <UpdateCheck />}
       />
       <div className="agent-settings__card">

@@ -8,8 +8,20 @@ import {
 } from "../../ports/nativeHarnessUpdateCheckPort";
 import { SettingsRow } from "./SettingsRow";
 
-/** Loaded with Settings › Harnesses only; see `AgentHarnessSettings`. */
-export default function HarnessUpdateCheckSetting() {
+/** Settings › Harnesses: one harness's versions, or with no harness the npm switch. */
+export default function HarnessVersions({
+  harness,
+}: {
+  harness?: HarnessDefinition;
+}) {
+  return harness ? (
+    <HarnessVersionDetails harness={harness} />
+  ) : (
+    <HarnessUpdateCheckSetting />
+  );
+}
+
+function HarnessUpdateCheckSetting() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
