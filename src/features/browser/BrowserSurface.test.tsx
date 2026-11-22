@@ -157,7 +157,7 @@ it("shows a restored page creation failure locally and clears it on the next att
       name: "Open new browser",
     });
     fireEvent.click(open);
-    expect(await findWarning()).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not open the browser tab. Try again.",
     );
     expect(useWorkbenchStore.getState().error).toBe(
@@ -167,7 +167,7 @@ it("shows a restored page creation failure locally and clears it on the next att
       useWorkbenchStore.setState({ openBrowser: async () => undefined }),
     );
     fireEvent.click(open);
-    await waitFor(() => expect(queryWarning()).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   } finally {
     useWorkbenchStore.setState(previous, true);
   }

@@ -156,11 +156,7 @@ export function RenameResourceControl({
             </label>
             {fieldError ? (
               <div id={`${id}-error`}>
-                <Notice
-                  identity={id}
-                  severity="warning"
-                  message={fieldError}
-                />
+                <Notice identity={id} severity="warning" message={fieldError} />
               </div>
             ) : null}
             <p id={`${id}-preview`} className="new-file-dialog__preview">
