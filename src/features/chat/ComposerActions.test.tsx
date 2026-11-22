@@ -98,7 +98,9 @@ it("lists every advertised mode, including one whose id is default", async () =>
     onSetSessionMode: setMode,
   });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
-  expect(within(menu).getByText("Add")).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("group", { name: "Model and access" }),
+  ).toBeVisible();
   expect(
     within(menu)
       .getAllByRole("menuitemradio")
@@ -262,7 +264,9 @@ it("keeps configuration choices on the same surface and project selection in Add
     }),
   });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Careful" }));
+  fireEvent.click(
+    within(menu).getByRole("menuitemradio", { name: "Speed: Careful" }),
+  );
   expect(setConfig).toHaveBeenCalledExactlyOnceWith("speed", { value: "slow" });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(trigger).toHaveFocus();
@@ -294,7 +298,7 @@ it.each([
       projectName: "A",
       addActions: { onAttachFiles: vi.fn(), onOpenGoal: vi.fn() },
     });
-    const project = screen.getByRole("menuitem", {
+    const project = await screen.findByRole("menuitem", {
       name: "Work in a project",
     });
     project.focus();
@@ -347,7 +351,10 @@ it("gives Add a header and icon rows with truthful one-line Plan and Goal descri
   const onOpenGoal = vi.fn();
   await renderActions(true, { addActions: { onOpenGoal } });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
-  expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
+  expect(within(menu).getByText("Session", { exact: true })).toBeVisible();
+  expect(
+    within(menu).getByText("Model and access", { exact: true }),
+  ).toBeVisible();
   expect(within(menu).queryByText("Session mode")).toBeNull();
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(plan).toHaveAccessibleDescription("Turn plan mode on");

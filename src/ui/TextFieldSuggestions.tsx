@@ -18,7 +18,7 @@ function sections(
     if (last && last.heading === item.group) last.rows.push(item);
     else out.push({ heading: item.group, rows: [item] });
   }
-  return out[1] ? out : [{ rows: items }];
+  return out;
 }
 
 /** The field's owner keeps a polite status region mounted beside the field, so
