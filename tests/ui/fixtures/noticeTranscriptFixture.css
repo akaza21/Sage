@@ -1,0 +1,9 @@
+.notice-fixture {
+  width: min(928px, 100%);
+  margin: 32px auto;
+  padding: 16px;
+}
+
+.notice-fixture .message-list {
+  height: 650px;
+}

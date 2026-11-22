@@ -74,6 +74,49 @@ fn intent(mutation: ConfigMutation) -> ConfigIntent {
     }
 }
 #[test]
+fn config_notifications_republish_control_placement_only_when_it_changes() {
+    use crate::acp::{bindings::runtime::NativeRuntime, slash_commands::CommandChannel};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let claude = ready_config(false);
+    let effort =
+        serde_json::to_value(claude.session_config().unwrap()).unwrap()["configOptions"].clone();
+    let owner = intent(ConfigMutation::Mode(ConfigId::new("mode", "ask").unwrap())).owner;
+    let channel = Arc::new(CommandChannel::default());
+    let announced = Arc::new(AtomicU64::new(0));
+    let sink = announced.clone();
+    channel.set_sink(Arc::new(move |notice| {
+        sink.store(notice.revision, Ordering::SeqCst);
+    }));
+    channel.reserve(owner.clone());
+    let mut runtime = NativeRuntime::new(claude);
+    runtime.attach_commands(owner, channel);
+    runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+        "sessionId":"external-a","update":{"sessionUpdate":"available_commands_update",
+        "availableCommands":[{"name":"effort","description":"Adjust effort"}]}}})),
+            &Mapper,
+        )
+        .unwrap();
+    let mut revision = runtime.available_commands().snapshot().revision;
+    for (options, control, changed) in [
+        (json!([]), None, true),
+        (effort.clone(), Some("effortPicker"), true),
+        (effort, Some("effortPicker"), false),
+    ] {
+        runtime.ingest(&frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+            "sessionId":"external-a","update":{"sessionUpdate":"config_option_update","configOptions":options}}})), &Mapper).unwrap();
+        let list = runtime.available_commands().snapshot();
+        revision += u64::from(changed);
+        assert_eq!(list.revision, revision);
+        assert_eq!(announced.load(Ordering::SeqCst), revision);
+        let placement = serde_json::to_value(&list.commands[0]).unwrap()["placement"].clone();
+        assert_eq!(placement["section"], "modelAndAccess");
+        assert_eq!(placement["control"].as_str(), control);
+        assert!(list.validate(revision, "/effort").is_ok());
+    }
+}
+#[test]
 fn new_and_resume_preserve_configuration_without_durable_capability_count() {
     for resume in [false, true] {
         let runtime = ready_config(resume);

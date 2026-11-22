@@ -316,6 +316,8 @@ export interface AgentSessionProjection {
 export const SESSION_NOTICES_MAX = 16;
 
 export interface SessionNotice {
+  /** Stable problem kind + scope when supplied by the native record. */
+  identity?: string;
   level: "info" | "warning" | "error";
   diagnostic?: boolean;
   text: string;

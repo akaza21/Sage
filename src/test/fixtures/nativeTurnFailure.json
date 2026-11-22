@@ -1,0 +1,113 @@
+{
+  "sessionConfig": null,
+  "goal": {
+    "kind": "unsupported"
+  },
+  "projectId": "project-one",
+  "chatId": "chat-one",
+  "title": "Chat",
+  "projectionRevision": "2",
+  "currentSessionId": "session-one",
+  "sessions": [
+    {
+      "id": "session-one",
+      "ordinal": 0,
+      "bindingId": "binding",
+      "modelId": null,
+      "state": "active",
+      "residency": "hot",
+      "runtimeEpoch": "1",
+      "nextRuntimeEpoch": null,
+      "capabilities": {
+        "schemaVersion": 1,
+        "protocolVersion": "fixture-v1",
+        "newSession": true,
+        "resumeSession": false,
+        "loadSession": false,
+        "closeSession": true,
+        "prompt": true,
+        "cancel": true,
+        "nativeSessionFork": false,
+        "activeTurnSteer": false,
+        "childConversationProjection": false,
+        "childTranscriptRead": false,
+        "collaborationEventProjection": false,
+        "multiRootExtensionSchemaId": null,
+        "modelCount": 1,
+        "configCount": 0
+      },
+      "permissionRequests": false,
+      "revision": "0",
+      "projectionRevision": "2",
+      "legacy": false
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn-one",
+      "sessionId": "session-one",
+      "runtimeEpoch": "1",
+      "ordinal": 0,
+      "state": "failed",
+      "revision": "1",
+      "createdAt": 1,
+      "updatedAt": 8,
+      "terminalAt": 8,
+      "terminalReason": {
+        "kind": "harnessExited",
+        "message": "The harness exited unexpectedly."
+      },
+      "items": [
+        {
+          "id": "item-one",
+          "projectId": "project-one",
+          "chatId": "chat-one",
+          "sessionId": "session-one",
+          "turnId": "turn-one",
+          "runtimeEpoch": "1",
+          "ordinal": 0,
+          "origin": "primary",
+          "activityId": null,
+          "lifecycle": "completed",
+          "revision": "0",
+          "createdAt": 1,
+          "updatedAt": 1,
+          "terminalAt": 1,
+          "toolState": null,
+          "kind": "text",
+          "payload": {
+            "role": "assistant",
+            "text": "prompt"
+          }
+        },
+        {
+          "id": "item-native-failure",
+          "projectId": "project-one",
+          "chatId": "chat-one",
+          "sessionId": "session-one",
+          "turnId": "turn-one",
+          "runtimeEpoch": "1",
+          "ordinal": 1,
+          "origin": "primary",
+          "activityId": null,
+          "lifecycle": "failed",
+          "revision": "0",
+          "createdAt": 7,
+          "updatedAt": 7,
+          "terminalAt": 7,
+          "toolState": null,
+          "kind": "error",
+          "payload": {
+            "code": "harnessExited",
+            "message": "The harness exited unexpectedly.",
+            "recoverable": true
+          }
+        }
+      ],
+      "activities": [],
+      "browserOperations": [],
+      "browserOperationsCollapsed": 0
+    }
+  ],
+  "nextCursor": null
+}

@@ -13,7 +13,7 @@ pub const SESSION_NOTICES_MAX: usize = 16;
 /// Live activity rows kept per session; terminal rows are evicted first.
 pub const SESSION_ACTIVITIES_MAX: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionNoticeLevel {
     Info,
@@ -24,6 +24,9 @@ pub enum SessionNoticeLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionNotice {
+    /// Optional semantic problem kind + scope. Older records remain readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<RequiredText<1024>>,
     pub level: SessionNoticeLevel,
     /// Non-blocking harness diagnostics belong in Settings, not the transcript.
     #[serde(default)]
@@ -224,6 +227,17 @@ impl SessionSurface {
     }
 
     fn push_notice(&mut self, notice: &SessionNotice) -> bool {
+        if let Some(existing) = self
+            .notices
+            .iter_mut()
+            .find(|stored| notice.identity.is_some() && stored.identity == notice.identity)
+        {
+            if existing == notice || existing.level > notice.level {
+                return false;
+            }
+            *existing = notice.clone();
+            return true;
+        }
         if self.notices.contains(notice) {
             return false;
         }

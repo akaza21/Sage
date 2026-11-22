@@ -13,15 +13,24 @@ it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
   (name) => {
     const Icon = Lean[name];
     const ref = createRef<SVGSVGElement>();
-    const { getByLabelText, unmount } = render(
+    const { getByLabelText, rerender, unmount } = render(
       <Icon ref={ref} aria-label={name}>
         <title>{name}</title>
       </Icon>,
     );
     expect(ref.current).toBe(getByLabelText(name));
     expect(ref.current?.querySelector("title")).toHaveTextContent(name);
+    const replacement = createRef<SVGSVGElement>();
+    rerender(
+      <Icon ref={replacement} aria-label={name}>
+        <title>{name}</title>
+      </Icon>,
+    );
+    expect(ref.current).toBeNull();
+    expect(replacement.current).toBe(getByLabelText(name));
     unmount();
     expect(ref.current).toBeNull();
+    expect(replacement.current).toBeNull();
   },
 );
 

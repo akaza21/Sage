@@ -1,4 +1,12 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
@@ -7,6 +15,8 @@ import type { AcpChatPage } from "../../../domain/acp";
 import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatHistory } from "./useAcpChatHistory";
+import { useAcpChatProjection } from "./useAcpChatProjection";
+import { ChatTranscript } from "../ChatTranscript";
 
 const page = {
   projectId: "project-1",
@@ -45,6 +55,51 @@ afterEach(() => {
 });
 
 describe("useAcpChatHistory", () => {
+  it("retries a failed first page through the real projection reload and displays the recovered history", async () => {
+    useAcpProjectionStore.getState().clear();
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => {},
+    );
+    vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockResolvedValue(
+      () => {},
+    );
+    vi.spyOn(acpDesktop, "getChatPage")
+      .mockRejectedValueOnce(new Error("Store unavailable"))
+      .mockResolvedValue({ ...page, nextCursor: null });
+    function Transcript() {
+      const projection = useAcpChatProjection();
+      const history = useAcpChatHistory();
+      return (
+        <ChatTranscript
+          transcriptRef={{ current: null }}
+          contentRef={{ current: null }}
+          endRef={{ current: null }}
+          onScroll={() => {}}
+          projectTransitioning={false}
+          useNativeAcp
+          page={projection}
+          focused
+          projectRoots={[]}
+          retentionIncomplete={false}
+          onOpenResource={() => {}}
+          {...history}
+          messages={[]}
+          developmentSimulator={false}
+          showJumpToLatest={false}
+          onJumpToLatest={() => {}}
+        />
+      );
+    }
+    render(<Transcript />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Chat history could not be loaded.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(
+      await screen.findByRole("region", { name: "Agent chat Durable chat" }),
+    ).toBeVisible();
+  });
   it("reports bootstrap loading separately from earlier-history loading", () => {
     const { result } = renderHook(() => useAcpChatHistory());
     expect(result.current.historyLoading).toBe(false);
@@ -111,6 +166,22 @@ describe("useAcpChatHistory", () => {
       decodeAcpGoal,
     );
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
+  });
+
+  it("loads a bound chat's continuation while another chat is active", async () => {
+    vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
+      ...page,
+      nextCursor: null,
+    });
+    useWorkbenchStore.setState({
+      activeTabId: "chat-2",
+      tabs: ["chat-1", "chat-2"].map((id) => ({ id, kind: "chat" })) as never,
+    });
+    const { result } = renderHook(() => useAcpChatHistory("chat-1"));
+    act(() => result.current.onLoadEarlier());
+    await waitFor(() => expect(result.current.hasEarlier).toBe(false));
+    expect(useWorkbenchStore.getState().activeTabId).toBe("chat-2");
+    expect(useAcpProjectionStore.getState().page?.chatId).toBe("chat-1");
   });
 
   it("expects a page only for a resolved chat in a settled project", () => {

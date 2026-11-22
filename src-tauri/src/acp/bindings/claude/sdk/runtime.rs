@@ -48,6 +48,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 self.binding.binding_digest(),
                 runtime_epoch,
                 session_id,
+                self.binding.harness_version(),
             ),
             bridge: None,
             children: Children::default(),

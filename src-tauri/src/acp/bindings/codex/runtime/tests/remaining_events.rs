@@ -42,6 +42,31 @@ fn running() -> CodexRuntime {
     runtime
 }
 
+#[test]
+fn mcp_problem_identity_preserves_long_and_distinct_native_server_ids() {
+    let mut runtime = running();
+    let mut read = |name: &str| {
+        one_notice(&notify(
+            &mut runtime,
+            "mcpServer/startupStatus/updated",
+            json!({"threadId":"thread-1", "name": name, "status":"failed", "failureReason":"reauthenticationRequired", "error":null}),
+        ))
+    };
+    let long = read(&"x".repeat(512));
+    assert!(
+        long.identity
+            .as_ref()
+            .unwrap()
+            .as_str()
+            .starts_with("mcp-start:")
+    );
+    let first = read("calendar-a");
+    let other = read("calendar-b");
+    let repeated = read("calendar-a");
+    assert_ne!(first.identity, other.identity);
+    assert_eq!(first.identity, repeated.identity);
+}
+
 fn compaction_items(events: &[AdapterEvent]) -> usize {
     events
         .iter()

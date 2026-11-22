@@ -17,7 +17,6 @@ import { TurnDaySeparator } from "./AcpTurnDates";
 import {
   chronologicalTurnItems,
   promptAttachmentItems,
-  rootActivities,
   turnBindingId,
   currentSession,
 } from "./acpTurnState";
@@ -26,10 +25,10 @@ import "./browser-operations.css";
 import { BrowserOperations } from "./BrowserOperations";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
 import { isEditingFiles } from "./editingFiles";
-import { HarnessActivity } from "./HarnessActivity";
+import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { terminalTurnStates } from "./statusSemantics";
+import { terminalTurnStates, turnReasonErrorItem } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
@@ -121,8 +120,11 @@ const Turn = memo(
     const liveThought = newestItems.find(
       (item) => item.kind === "thoughtSummary",
     );
+    const failureItem =
+      turn.state === "failed" ? turnReasonErrorItem(turn) : undefined;
     const workingItems = chronologicalItems.filter(
       (item) =>
+        item.id !== failureItem?.id &&
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" ||
           (!terminal && item.id === liveThought?.id)),
@@ -227,13 +229,10 @@ const Turn = memo(
                 fileReferenceOwner={fileReferenceOwner}
               />
             ) : null}
-            {rootActivities(turn).map((activity) => (
-              <HarnessActivity
-                key={activity.id}
-                activity={activity}
-                activities={turn.activities}
-                items={turn.items}
-                renderItem={(item) => (
+            <RootHarnessActivities
+              turn={turn}
+              renderItem={(item) =>
+                item.id === failureItem?.id ? null : (
                   <ItemView
                     item={item}
                     turnState={turn.state}
@@ -241,9 +240,9 @@ const Turn = memo(
                     fileReferenceOwner={fileReferenceOwner}
                     onOpenResource={openForTurn}
                   />
-                )}
-              />
-            ))}
+                )
+              }
+            />
             {isEditingFiles(page, turn) &&
             !turn.items.some(
               (item) =>
@@ -372,6 +371,7 @@ export function AcpChatPresentation({
       {hasEarlier || historyError || countIncomplete ? (
         <NavigationPart
           part="AcpHistoryNotices"
+          scope={JSON.stringify([page.chatId, page.currentSessionId])}
           hasEarlier={hasEarlier}
           loadingEarlier={loadingEarlier}
           historyError={historyError}

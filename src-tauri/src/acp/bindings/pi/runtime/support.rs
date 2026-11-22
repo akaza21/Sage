@@ -321,6 +321,7 @@ impl PiRuntime {
             } => (
                 Some(
                     self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                        identity: None,
                         diagnostic: false,
                         level,
                         text: RequiredText::new("noticeText", text)
