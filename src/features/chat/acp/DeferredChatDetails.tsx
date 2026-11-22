@@ -5,7 +5,10 @@ import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 
 const loadInlineSavedDiff = () => import("./InlineSavedDiff");
 
-const loadTurnFiles = () => import("./TurnFileActivity");
+const loadTurnFiles = () =>
+  import("./TurnFileActivity").then(({ TurnFileActivity }) => ({
+    default: TurnFileActivity,
+  }));
 export function DeferredTurnFileActivity(
   props: ComponentProps<typeof TurnFileActivity>,
 ) {
