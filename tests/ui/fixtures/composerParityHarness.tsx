@@ -39,7 +39,8 @@ export type ParityState =
   | "pre-turn"
   | "models"
   | "model-collisions"
-  | "access";
+  | "access"
+  | "menu-keyboard";
 const noop = async () => {};
 const project = {
   id: "project-a",
@@ -52,6 +53,7 @@ let config: AcpSessionConfig;
 let current: { name: string; state: ParityState };
 
 export function Host({ state }: { state: ParityState }) {
+  const [compactions, setCompactions] = useState(0);
   const layout = agentWorkbenchLayout({
     viewportWidth: window.innerWidth,
     artifactExpanded: false,
@@ -151,6 +153,11 @@ export function Host({ state }: { state: ParityState }) {
                 modePending={false}
                 modeError={null}
                 focused
+                onCompact={
+                  state === "menu-keyboard"
+                    ? () => setCompactions((count) => count + 1)
+                    : undefined
+                }
                 onSetSessionMode={async (id) => {
                   config = {
                     ...config,
@@ -183,6 +190,9 @@ export function Host({ state }: { state: ParityState }) {
                 onRemoveContext={() => {}}
                 onCancelTurn={state === "running" ? () => {} : null}
               />
+              {state === "menu-keyboard" ? (
+                <output aria-label="Compactions">{compactions}</output>
+              ) : null}
             </section>
           </div>
         </div>

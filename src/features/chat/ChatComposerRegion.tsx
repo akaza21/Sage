@@ -91,6 +91,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const sessionFeatures = !harnessControls.draftPickers;
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || projectTransitioning;
+  const actionDisabled = actionBusy || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
     availableBinding && sessionHarnessId === selectedHarnessId,
   );
@@ -151,7 +152,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
         <LocationPart
           part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
-          disabled={actionBusy || projectTransitioning || !!sessionId}
+          disabled={actionDisabled || !!sessionId}
         />
       ) : null}
       <div className="chat-dock surface surface--dock">
@@ -166,10 +167,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           onDrop={imageInput.onDrop}
           onPaste={imageInput.onPaste}
           onSubmit={(event) => {
-            if (dispatchBlocked) {
-              event.preventDefault();
-              return;
-            }
+            if (dispatchBlocked) return event.preventDefault();
             dictation.cancel();
             onSubmit(event, paste.revision);
             composerRef.current?.focus();
@@ -180,7 +178,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               <TranscriptPart
                 part="ComposerAnnotations"
                 contexts={attachedContext}
-                disabled={actionBusy || projectTransitioning}
+                disabled={actionDisabled}
                 onRemove={onRemoveContext}
                 chatId={dictationScope}
               />
@@ -189,7 +187,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               composerRef={composerRef}
               prompts={queuedPrompts}
               steerAvailable={steerAvailable}
-              disabled={actionBusy || projectTransitioning}
+              disabled={actionDisabled}
               onDelete={onDeleteQueuedPrompt}
               onRetry={onRetryQueuedPrompt}
               onSteer={onSteerQueuedPrompt}
@@ -303,7 +301,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 chatId={dictationScope}
                 session={pasteSession}
                 text={text}
-                disabled={actionBusy || projectTransitioning}
+                disabled={actionDisabled}
               />
             ) : null}
             <ComposerAvailabilityNotice
@@ -325,7 +323,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   part="ComposerAttachments"
                   contexts={otherContext}
                   imagePreviews={imagePreviews}
-                  disabled={actionBusy || projectTransitioning}
+                  disabled={actionDisabled}
                   onRemove={onRemoveContext}
                 />
               </div>
@@ -373,7 +371,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 contextUsage={usage}
                 onModeRemoved={() => composerRef.current?.focus()}
                 addActions={{
+                  boundChatId: commandChatId,
                   onAttachFiles: files.attach,
+                  imageAction: imageInput.action,
                   attachRefusalChatId: files.refusalChatId,
                   ...goalDetails.actions,
                   onCompact,
@@ -394,7 +394,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               disabledReasonId={disabledReasonId}
               dictation={dictation}
               onCancelTurn={onCancelTurn}
-              cancelDisabled={actionBusy || projectTransitioning}
+              cancelDisabled={actionDisabled}
               sendDisabled={dispatchBlocked || !hasContent}
             />
           </div>
