@@ -18,6 +18,10 @@ impl AcpService {
             &self.database.connection(),
             owner.session_id.as_str(),
             turn,
+            capabilities
+                .rewind
+                .runtime_checkpoint
+                .then_some(owner.runtime_epoch.get()),
         )?;
         Ok((!withheld).then_some(undo))
     }
@@ -79,7 +83,7 @@ impl AcpService {
         &self,
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
-        conversation_only: bool,
+        mut conversation_only: bool,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
         let claim = self.claim_undo_lane(owner)?;
         crate::acp::store::turn_undo::intent::ensure_settled(
@@ -101,20 +105,15 @@ impl AcpService {
                 .map_err(|_| SessionControlError::RecoveryRequired)?;
             let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
                 serde_json::from_str(&json).map_err(|_| SessionControlError::Unavailable)?;
-            if capabilities.rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn
-                && !crate::acp::store::session_surface::is_undoable_turn(
-                    &self.database.connection(),
-                    owner.project_id.as_str(),
-                    owner.chat_id.as_str(),
-                    owner.session_id.as_str(),
-                    turn_id.as_str(),
-                )
-                .map_err(|_| SessionControlError::Unavailable)?
-            {
-                return Err(SessionControlError::Unavailable);
+            if capabilities.rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
+                conversation_only = false;
+                self.undoable_turn(owner, &turn_id)
+                    .map_err(|_| SessionControlError::RecoveryRequired)?
+                    .ok_or(SessionControlError::Unavailable)?
+            } else {
+                TurnUndo::from_capability(capabilities.rewind)
+                    .ok_or(SessionControlError::Unavailable)?
             }
-            TurnUndo::from_capability(capabilities.rewind)
-                .ok_or(SessionControlError::Unavailable)?
         } else {
             self.undoable_turn(owner, &turn_id)
                 .map_err(|_| SessionControlError::RecoveryRequired)?

@@ -13,6 +13,12 @@ fn running(binding: &str) -> (Fixture, AcpService) {
     let mut caps: sage_acp_protocol::intent::CapabilitySnapshotV1 =
         serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
     caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability();
+    if binding == "checkpoint-fixture" {
+        caps.rewind.effects.files = false;
+        caps.rewind.targets = sage_acp_protocol::intent::RewindTargets::LatestTurn;
+        caps.rewind.on_resume = false;
+        caps.rewind.runtime_checkpoint = true;
+    }
     let fixture = Fixture::with_thread(binding, "thread-a", &serde_json::to_string(&caps).unwrap());
     let service = AcpService::new(fixture.database.clone()).unwrap();
     fixture.run();
@@ -22,14 +28,7 @@ fn running(binding: &str) -> (Fixture, AcpService) {
 /// The turn the page offers to undo, and whether the control would be let
 /// through for `turn`.
 fn offer((fixture, service): &(Fixture, AcpService), turn: &str) -> (Option<String>, bool) {
-    let mut page = crate::acp::store::load_chat_page(
-        &fixture.database.connection(),
-        fixture.project.clone(),
-        fixture.chat.clone(),
-        None,
-    )
-    .unwrap();
-    service.compose_session_surface(&mut page).unwrap();
+    let page = composed_page(fixture, service);
     let offered = page
         .session_surface
         .and_then(|surface| surface.undo_turn)
@@ -45,6 +44,18 @@ fn offer((fixture, service): &(Fixture, AcpService), turn: &str) -> (Option<Stri
         .unwrap()
         .is_some();
     (offered, allowed)
+}
+
+fn composed_page(fixture: &Fixture, service: &AcpService) -> crate::acp::projection::AcpChatPage {
+    let mut page = crate::acp::store::load_chat_page(
+        &fixture.database.connection(),
+        fixture.project.clone(),
+        fixture.chat.clone(),
+        None,
+    )
+    .unwrap();
+    service.compose_session_surface(&mut page).unwrap();
+    page
 }
 
 #[test]
@@ -140,4 +151,36 @@ fn a_pre_upgrade_claude_turn_with_an_attachment_keeps_its_uuid_checkpoint_undo()
         fixture.pending(),
         Some((command.turn_id.as_str().into(), store::UndoneThread::Cut))
     );
+}
+
+#[test]
+fn runtime_checkpoint_undo_is_unavailable_after_restart() {
+    let checkpoint = running("checkpoint-fixture");
+    checkpoint.0.turn("turn-1", 0);
+    assert_eq!(offer(&checkpoint, "turn-1"), (Some("turn-1".into()), true));
+    assert!(composed_page(&checkpoint.0, &checkpoint.1).turns.as_slice()[0].conversation_target);
+    checkpoint
+        .0
+        .database
+        .connection()
+        .execute(
+            "UPDATE session_runtime_epochs SET state='exited',terminal_at=20 WHERE state='running'",
+            [],
+        )
+        .unwrap();
+    checkpoint.0.run();
+    assert_eq!(offer(&checkpoint, "turn-1"), (None, false));
+    assert!(!composed_page(&checkpoint.0, &checkpoint.1).turns.as_slice()[0].conversation_target);
+}
+
+#[test]
+fn runtime_checkpoint_undo_cannot_undo_consecutively() {
+    let checkpoint = running("checkpoint-fixture");
+    checkpoint.0.turn("turn-1", 0);
+    checkpoint.0.turn("turn-2", 1);
+    assert_eq!(offer(&checkpoint, "turn-2"), (Some("turn-2".into()), true));
+    checkpoint.0.undo("turn-2", true);
+    assert_eq!(offer(&checkpoint, "turn-1"), (None, false));
+    checkpoint.0.turn("turn-3", 2);
+    assert_eq!(offer(&checkpoint, "turn-3"), (Some("turn-3".into()), true));
 }

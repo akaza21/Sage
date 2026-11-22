@@ -377,7 +377,12 @@ fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
 
 #[test]
 fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
-    let legacy = Fixture::with_identity(&forkable(), false);
+    let mut targeted: serde_json::Value = serde_json::from_str(&forkable()).unwrap();
+    targeted["rewind"] = serde_json::json!({
+        "effects": {"conversation": true, "files": false},
+        "targets": "anyUserMessage", "forkAt": true, "onResume": true
+    });
+    let legacy = Fixture::with_identity(&targeted.to_string(), false);
     assert!(matches!(
         legacy.source("turn-1"),
         Err(crate::acp::store::StoreError::RewindUnavailable { .. })
@@ -756,4 +761,20 @@ fn private_chat_forks_keep_their_workspace_and_appear_once_each() {
         1
     );
     assert_eq!(chats.iter().filter(|chat| chat.id == fork).count(), 1);
+}
+
+#[test]
+fn whole_chat_fork_without_a_message_receipt_still_creates_the_child_chat() {
+    let fixture = Fixture::with_identity(&forkable(), false);
+    assert!(fixture.source("turn-1").unwrap().target.is_none());
+    let child = fixture.fork("thread-whole-chat").unwrap();
+    assert_eq!(
+        fixture
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .as_deref(),
+        Some(child.as_str())
+    );
 }

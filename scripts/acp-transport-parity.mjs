@@ -33,7 +33,13 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "rewind",
     "schemaVersion",
   ],
-  AcpRewindCapability: ["effects", "forkAt", "onResume", "targets"],
+  AcpRewindCapability: [
+    "effects",
+    "forkAt",
+    "onResume",
+    "runtimeCheckpoint",
+    "targets",
+  ],
   AcpRewindEffects: ["conversation", "files"],
   AcpItemIdentity: [
     "activityId",

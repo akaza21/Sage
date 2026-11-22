@@ -48,7 +48,6 @@ mod notice_journey_tests;
 mod notice_tests;
 mod remaining_events;
 mod revert_tests;
-mod rewind_store_tests;
 mod saved_diff_tests;
 mod session_title_tests;
 mod skill_command_tests;

@@ -121,7 +121,6 @@ export function AnswerMoreActions({
     requestFork &&
     forkable &&
     turn?.state === "completed" &&
-    turn.conversationTarget === true &&
     turn.sessionId === page.currentSessionId &&
     session?.capabilities?.rewind?.targets === "latestTurn" &&
     !isSideChatId(page.chatId) &&

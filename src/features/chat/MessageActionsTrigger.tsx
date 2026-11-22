@@ -6,6 +6,7 @@ import { lazyParts } from "./lazyParts";
 import type { AnswerMoreActions } from "./ForkChat";
 import type * as ConversationChunk from "./ConversationActions";
 import type { AcpItem } from "../../domain/acp";
+import { currentSession } from "./acp/acpTurnState";
 
 const ConversationPart = lazyParts<typeof ConversationChunk>(
   () => import("./ConversationActions"),
@@ -35,7 +36,8 @@ export function PromptActions({
   item: Extract<AcpItem, { kind: "text" }>;
   interactive: boolean;
 }) {
-  return interactive &&
+  return currentSession(props.page)?.capabilities?.rewind &&
+    interactive &&
     props.turn?.terminalAt != null &&
     props.turn.conversationTarget ? (
     <MessageActionsTrigger {...props} text={item.payload.text} />

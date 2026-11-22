@@ -102,9 +102,10 @@ fn codex_rewind() -> sage_acp_protocol::intent::RewindCapability {
             conversation: true,
             files: false,
         },
-        targets: RewindTargets::AnyTurn,
+        targets: RewindTargets::LatestTurn,
         fork_at: true,
         on_resume: false,
+        runtime_checkpoint: true,
     }
 }
 

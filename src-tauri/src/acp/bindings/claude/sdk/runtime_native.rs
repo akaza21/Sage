@@ -143,5 +143,6 @@ pub(crate) fn rewind_capability() -> sage_acp_protocol::intent::RewindCapability
         targets: RewindTargets::AnyUserMessage,
         fork_at: true,
         on_resume: true,
+        runtime_checkpoint: false,
     }
 }

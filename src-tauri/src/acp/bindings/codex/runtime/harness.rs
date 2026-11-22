@@ -113,8 +113,7 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn native_rpc_pending(&self) -> bool {
-        self.target_read.is_some()
-            || self.inner.goal_mutation_pending()
+        self.inner.goal_mutation_pending()
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
@@ -150,9 +149,7 @@ impl HarnessAdapter for CodexRuntime {
     /// Each read whose reply may be past the frame bound keeps the decoder
     /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.target_read.is_some()
-            || self.inner.oversize_recoverable()
-            || self.may_receive_title_response()
+        self.inner.oversize_recoverable() || self.may_receive_title_response()
     }
 
     fn answered_control(
@@ -191,9 +188,6 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        if self.discard_target_read(id) {
-            return Ok(());
-        }
         if self.reject_title_response(id) {
             return Ok(());
         }
@@ -201,7 +195,6 @@ impl HarnessAdapter for CodexRuntime {
             return Ok(());
         }
         let native = if self.inner.fork_pending() == Some(id) {
-            self.fork_cut = None;
             // The native fork happened, but its new thread id is beyond the
             // frame bound; Sage creates no Chat for it.
             self.inner.complete_fork(id).map(|_| true)

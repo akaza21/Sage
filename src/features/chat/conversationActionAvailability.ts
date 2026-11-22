@@ -1,4 +1,5 @@
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
+import { decodeSessionSurface } from "../../services/acpSessionSurface";
 import { isSideChatId } from "../../workbench/sideChatState";
 
 /** Only an open menu folds the bounded page; closed rows retain no summary. */
@@ -24,6 +25,7 @@ export function conversationState(page: AcpChatPage) {
     sessionId: page.currentSessionId,
     busy: page.turns.some((row) => row.terminalAt == null),
     latest: page.turns.at(-1)?.id,
+    undoTurn: decodeSessionSurface(page.sessionSurface)?.undoTurn,
   };
 }
 
@@ -33,19 +35,25 @@ export function conversationActions(
   turn: TurnProjection,
   state = conversationState(page),
 ) {
-  const { offer, boundary, hot, sessionId, busy, latest } = state;
+  const { offer, boundary, hot, sessionId, busy, latest, undoTurn } = state;
+  const latestOnly = offer?.targets === "latestTurn";
   const available =
     offer &&
-    turn.conversationTarget === true &&
+    (latestOnly ? undoTurn === turn.id : turn.conversationTarget === true) &&
     turn.ordinal > boundary &&
     page.turns.some((row) => row.id === turn.id) &&
     sessionId === turn.sessionId &&
     hot &&
     turn.terminalAt != null &&
     !busy &&
-    (offer.targets !== "latestTurn" || turn.id === latest);
+    (!latestOnly || turn.id === latest);
   return {
     rewind: !!(available && offer.effects.conversation),
-    fork: !!(available && offer.forkAt && !isSideChatId(page.chatId)),
+    fork: !!(
+      available &&
+      !latestOnly &&
+      offer.forkAt &&
+      !isSideChatId(page.chatId)
+    ),
   };
 }

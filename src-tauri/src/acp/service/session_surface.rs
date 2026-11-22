@@ -13,6 +13,8 @@ impl AcpService {
         else {
             return Ok(());
         };
+        let latest_only = session.capabilities.rewind.targets
+            == sage_acp_protocol::intent::RewindTargets::LatestTurn;
         let mut view = crate::acp::store::session_surface::view(
             &self.database.connection(),
             page.project_id.as_str(),
@@ -43,13 +45,23 @@ impl AcpService {
             _ => None,
         };
         view.undo_keeps_files = undo.as_ref().is_some_and(|(_, keeps)| *keeps);
-        view.undo_turn = undo.map(|(turn, _)| turn);
+        view.undo_turn = undo.as_ref().map(|(turn, _)| turn.clone());
         page.session_surface = (view != Default::default()).then_some(view);
         let bytes = serde_json::to_vec(page)
             .map_err(|_| StoreError::Corrupt("chat page serialization"))?
             .len();
         if bytes > sage_core::limits::LIMITS.durable.history_page_bytes as usize {
             page.session_surface = None;
+        } else if latest_only
+            && let Some((id, _)) = undo
+            && let Some(turn) = page
+                .turns
+                .as_mut_slice()
+                .iter_mut()
+                .find(|turn| turn.id == id)
+        {
+            // A last-turn native checkpoint needs no durable message receipt.
+            turn.conversation_target = true;
         }
         Ok(())
     }

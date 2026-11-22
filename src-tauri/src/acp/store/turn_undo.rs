@@ -215,16 +215,28 @@ pub(super) fn record_turn_undone_in(
     })
 }
 
-/// A harness-initiated turn has no user prompt to restore to the composer.
+/// A harness-initiated turn has no prompt to restore. A runtime checkpoint
+/// admits only the latest turn that the current process completed.
 pub(crate) fn undo_withheld(
     connection: &Connection,
     session: &str,
     turn: &str,
+    checkpoint_epoch: Option<u64>,
 ) -> Result<bool, StoreError> {
+    let checkpoint_epoch = checkpoint_epoch
+        .map(|epoch| i64::try_from(epoch).map_err(|_| StoreError::Corrupt("undo epoch")))
+        .transpose()?;
     connection
         .query_row(
-            concat!("SELECT NOT ", super::prompted_turn!("?1", "?2")),
-            params![session, turn],
+            concat!(
+                "SELECT (?3 IS NOT NULL AND (u.runtime_epoch<>?3 OR EXISTS(
+                   SELECT 1 FROM turns later WHERE later.session_id=u.session_id
+                   AND later.runtime_epoch=u.runtime_epoch AND later.ordinal>u.ordinal)))
+                 OR NOT ",
+                super::prompted_turn!("?1", "?2"),
+                " FROM turns u WHERE u.session_id=?1 AND u.id=?2"
+            ),
+            params![session, turn, checkpoint_epoch],
             |row| row.get(0),
         )
         .map_err(Into::into)

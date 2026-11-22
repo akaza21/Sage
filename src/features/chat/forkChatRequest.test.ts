@@ -141,3 +141,38 @@ test.each([undefined, false])(
     });
   },
 );
+
+test("latest-turn rewind follows the native undo offer without a message target", () => {
+  const base = fixture("completed");
+  const first = { ...base.turns[0]!, conversationTarget: false };
+  const latest = {
+    ...first,
+    id: "turn-00000000-0000-4000-8000-000000000099" as typeof first.id,
+    ordinal: 2,
+  };
+  const page: AcpChatPage = {
+    ...base,
+    turns: [first, latest],
+    sessionSurface: { activities: [], undoTurn: latest.id },
+    sessions: [
+      agentSessionFixture({
+        id: latest.sessionId,
+        residency: "hot",
+        capabilities: capabilitySetFixture({
+          rewind: { ...all, targets: "latestTurn", runtimeCheckpoint: true },
+        }),
+      }),
+    ],
+  };
+  expect(conversationActions(page, latest)).toEqual({
+    rewind: true,
+    fork: false,
+  });
+  expect(conversationActions(page, first)).toEqual({
+    rewind: false,
+    fork: false,
+  });
+  expect(
+    conversationActions({ ...page, sessionSurface: null }, latest),
+  ).toEqual({ rewind: false, fork: false });
+});

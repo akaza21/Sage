@@ -158,7 +158,7 @@ fn undo_is_withheld_from_a_turn_the_harness_started_on_its_own() {
 }
 
 fn withheld(fixture: &Fixture, turn: &str) -> bool {
-    super::undo_withheld(&fixture.database.connection(), "session-a", turn).unwrap()
+    super::undo_withheld(&fixture.database.connection(), "session-a", turn, None).unwrap()
 }
 
 #[test]

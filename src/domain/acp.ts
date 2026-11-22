@@ -160,6 +160,7 @@ export interface AcpRewindCapability {
   targets: "latestTurn" | "anyTurn" | "anyUserMessage";
   forkAt: boolean;
   onResume: boolean;
+  runtimeCheckpoint?: boolean;
 }
 
 export interface AcpCapabilitySet {
