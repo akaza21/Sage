@@ -30,8 +30,7 @@ export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       draft.submission.status !== "released")
       ? draft
       : null;
-  const draftFocusRequest =
-    (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
+  const draftFocusRequest = state.draftFocusRequest;
   const preferred = preferredAvailableHarness(
     state.harnesses,
     retainedDraft ? retainedDraft.harnessId : state.selectedHarnessId,

@@ -22,7 +22,7 @@
   max-width: 100%;
   align-items: center;
   justify-content: var(--picker-trigger-justify, flex-start);
-  gap: var(--space-1);
+  gap: var(--picker-trigger-gap, var(--space-1));
   overflow: hidden;
   text-align: left;
 }

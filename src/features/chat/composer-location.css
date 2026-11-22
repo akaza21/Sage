@@ -19,6 +19,8 @@
 }
 
 .composer-location > .searchable-picker {
+  --picker-trigger-icon-size: var(--icon-size-sm);
+  --picker-trigger-gap: var(--composer-location-icon-gap);
   --picker-field-padding: 0 var(--space-1);
   --picker-trigger-hover-color: var(--color-text-emphasis);
   --picker-trigger-hover-fill: var(--composer-control-hover);
