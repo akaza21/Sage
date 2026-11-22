@@ -260,4 +260,17 @@ fn only_matching_answers_resolve_a_question_and_approvals_never_take_answers() {
     assert!(!super::admits(&unoffered, &question));
     assert!(!super::admits(&PermissionDecision::AllowOnce, &question));
     assert!(super::admits(&PermissionDecision::Deny, &question));
+    let confirmation = request(
+        vec![PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways, PermissionOptionKind::RejectOnce],
+        Some(Box::new(serde_json::from_value(json!({"questions":[{
+            "id":"confirm", "header":"Continue?", "question":"Apply this change?", "kind":"confirm"
+        }]})).unwrap())),
+    );
+    assert!(super::admits(&PermissionDecision::AllowOnce, &confirmation));
+    assert!(!super::admits(
+        &PermissionDecision::AllowAlways,
+        &confirmation
+    ));
+    assert!(!super::admits(&matching, &confirmation));
+    assert!(super::admits(&PermissionDecision::Deny, &confirmation));
 }

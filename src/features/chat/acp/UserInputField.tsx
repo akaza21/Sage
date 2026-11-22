@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { UserInputQuestion } from "../../../domain/acp";
 import { USER_INPUT_TEXT_BYTES } from "../../../domain/acpPermission";
 import { utf8ByteLength } from "../../../domain/text";
@@ -12,7 +13,8 @@ export interface FieldState {
 }
 
 export const admitsText = (question: UserInputQuestion) =>
-  !question.options || question.allowsOther || question.secret;
+  question.kind !== "confirm" &&
+  (!question.options || question.allowsOther || question.secret);
 
 const INTEGER = /^[+-]?\d+$/u;
 const NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/u;
@@ -129,6 +131,7 @@ export function UserInputField({
   textRef: (input: HTMLInputElement | HTMLTextAreaElement | null) => void;
   onChange: (next: FieldState) => void;
 }) {
+  const [filter, setFilter] = useState("");
   const problemId = `${name}-problem`;
   const limits = question.limits ?? {};
   const textIssue =
@@ -215,22 +218,45 @@ export function UserInputField({
         {question.optional ? <span> (optional)</span> : null}
       </legend>
       {question.question ? <p>{question.question}</p> : null}
+      {question.options && question.options.length > 8 ? (
+        <input
+          type="search"
+          className="acp-user-input__text"
+          aria-label={`Filter options: ${label}`}
+          placeholder="Type to filter"
+          maxLength={256}
+          value={filter}
+          onInput={(event) =>
+            setFilter(event.currentTarget.value.slice(0, 256))
+          }
+        />
+      ) : null}
       {question.options ? (
         <div className="acp-user-input__options">
-          {question.options.map((option, at) => (
-            <label key={option.label} className="acp-user-input__option">
-              <input
-                type={choiceType}
-                name={name}
-                checked={field.picked.includes(at)}
-                onChange={() => choose(at)}
-              />
-              <span>
-                <b>{option.label}</b>
-                {option.description ? <span>{option.description}</span> : null}
-              </span>
-            </label>
-          ))}
+          {question.options.map((option, at) =>
+            option.label
+              .toLocaleLowerCase()
+              .includes(filter.toLocaleLowerCase()) ? (
+              <label key={option.label} className="acp-user-input__option">
+                <input
+                  type={choiceType}
+                  name={name}
+                  checked={field.picked.includes(at)}
+                  onChange={() => choose(at)}
+                />
+                <span>
+                  <b title={option.label}>
+                    {option.label.length > 96
+                      ? `${option.label.slice(0, 95)}…`
+                      : option.label}
+                  </b>
+                  {option.description ? (
+                    <span>{option.description}</span>
+                  ) : null}
+                </span>
+              </label>
+            ) : null,
+          )}
           {textField ? (
             <>
               <label className="acp-user-input__option">

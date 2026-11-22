@@ -4,11 +4,7 @@ use crate::acp::{
     },
     transport::OutboundFrame,
 };
-use sage_acp_protocol::{
-    contract::SafeText,
-    intent::NormalizedPayload,
-    lifecycle::{ItemLifecycle, ServerRequestState},
-};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::super::{DenyStage, PiRuntime};
@@ -34,33 +30,28 @@ impl PiRuntime {
         {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
+        if matches!(&record, Record::Event { kind, value } if kind == "extension_ui_request" && matches!(value.get("method").and_then(serde_json::Value::as_str), Some("confirm" | "select" | "input" | "editor")))
+        {
+            return self.ingest_question(record);
+        }
         self.translator.ingest_record(record)
     }
 
     fn dialog_cancelled(&self, id: &str) -> bool {
-        self.cancelled_dialogs.contains_key(id)
+        self.questions.settling.as_deref() == Some(id)
+            || self.cancelled_dialogs.contains_key(id)
             || self
                 .recent_cancelled_dialogs
                 .iter()
                 .any(|recent| recent == id)
     }
 
+    /// Cancels a dialog Sage cannot show, with an "unsupported" transcript item.
     pub(super) fn cancel_dialog(
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
-            self.poison();
-            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-        }
-        let external = super::identity::external("piDialogId", id.clone())?;
-        let bytes = serde_json::to_vec(&serde_json::json!({
-            "type":"extension_ui_response", "id":id, "cancelled":true,
-        }))
-        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        let frame =
-            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        self.cancelled_dialogs.insert(id, DenyStage::Prepared);
+        let reply = self.cancel_dialog_reply(id)?;
         let event = match self.active_turn.as_mut() {
             None => AdapterEvent::IgnoredLate,
             Some(turn) if turn.dialog_notices >= DIALOG_NOTICES_PER_TURN => AdapterEvent::Absorbed,
@@ -79,32 +70,40 @@ impl PiRuntime {
                 self.item(item_id, ItemLifecycle::Cancelled, None, payload)?
             }
         };
-        Ok((
-            Some(event),
-            Some(AdapterEgress::new(
-                frame,
-                EgressToken::permission_cancel(external),
-            )),
-        ))
+        Ok((Some(event), Some(reply)))
     }
 
-    pub(super) fn expire_dialog(
+    /// Writes only the cancellation reply; callers own any user-facing notice.
+    pub(super) fn cancel_dialog_reply(
         &mut self,
         id: String,
-    ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self
-            .deny
-            .as_ref()
-            .is_some_and(|deny| deny.request_id.as_str() == id && deny.stage == DenyStage::Prepared)
-        {
-            self.deny = None;
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "type":"extension_ui_response", "id":id, "cancelled":true,
+        }))
+        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        let frame =
+            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        self.cancel_dialog_response(id, frame)
+    }
+
+    /// Correlates a cancellation response until its bytes reach Pi, including
+    /// bridge withdrawals whose reply goes to a separate extension request.
+    pub(super) fn cancel_dialog_response(
+        &mut self,
+        id: String,
+        frame: OutboundFrame,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
+            self.poison();
+            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
         }
-        let resolved = AdapterEvent::PermissionResolved {
-            turn_id: self.turn_identity()?,
-            external_request_id: super::identity::external("piPermissionId", id)?,
-            state: ServerRequestState::Cancelled,
-        };
-        Ok((Some(resolved), None))
+        let external = super::identity::external("piDialogId", id.clone())?;
+        self.cancelled_dialogs.insert(id, DenyStage::Prepared);
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
+        ))
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn commit_dialog_cancel(
@@ -148,6 +147,9 @@ impl PiRuntime {
         match (*stage, resolution) {
             (DenyStage::Committed, EgressResolution::Queued) => *stage = DenyStage::Queued,
             (DenyStage::Queued, EgressResolution::Written) => {
+                if self.questions.settling.as_deref() == Some(id) {
+                    self.questions.settling = None;
+                }
                 if self.recent_cancelled_dialogs.len()
                     == LIMITS.queues.outstanding_rpc_per_session as usize
                 {

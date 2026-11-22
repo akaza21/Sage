@@ -26,6 +26,29 @@ pub(super) struct ObservedPi {
 }
 
 impl HarnessAdapter for ObservedPi {
+    fn harness_turn_authority(
+        &self,
+    ) -> Option<crate::acp::bindings::adapter::HarnessTurnAuthority> {
+        self.inner.harness_turn_authority()
+    }
+    fn next_request_deadline(&self) -> Option<std::time::Instant> {
+        self.inner.next_request_deadline()
+    }
+    fn poll_request_deadlines(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.inner.poll_request_deadlines(resources)
+    }
+    fn cancel_permission(
+        &mut self,
+        request_id: &SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.inner.cancel_permission(request_id)
+    }
+    fn defer_cancel(&mut self) -> bool {
+        self.inner.defer_cancel()
+    }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.inner.capabilities()
     }

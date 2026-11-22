@@ -7,10 +7,7 @@ use super::super::{DenyIntent, DenyStage, PiRuntime};
 use super::identity::external;
 use crate::acp::bindings::adapter::AdapterEvent;
 use crate::acp::bindings::pi::bridge::files::Prepared;
-use crate::acp::bindings::pi::{
-    protocol::is_allow_option,
-    translator::{ANSWER_ID, PendingUiRequest},
-};
+use crate::acp::bindings::pi::translator::ANSWER_ID;
 use crate::acp::elicitation_form;
 use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
@@ -24,6 +21,8 @@ impl PiRuntime {
         decision: PermissionDecision,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         if let Some(reply) = self.bridge_permission(request_id, &decision)? {
+            self.questions.reply_pending = true;
+            self.questions.settling = Some(request_id.as_str().to_owned());
             return Ok(reply);
         }
         let pending = self
@@ -34,6 +33,9 @@ impl PiRuntime {
             return Err(AdapterRuntimeError::LaterPermissionMiss);
         }
         if let Some(reply) = self.answer_question(&decision)? {
+            self.questions.reply_pending = true;
+            self.questions.visible = None;
+            self.questions.settling = Some(request_id.as_str().to_owned());
             return crate::acp::runtime::later_permission::resolve_later_permission(
                 request_id,
                 &decision,
@@ -56,21 +58,6 @@ impl PiRuntime {
                     .take_pending_ui()
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
                 let body = match pending.method.as_str() {
-                    "select" => {
-                        let Some(value) = pending
-                            .options
-                            .iter()
-                            .find(|option| is_allow_option(option))
-                        else {
-                            self.translator.remember_pending_ui(pending);
-                            return Err(AdapterRuntimeError::LaterPermissionMiss);
-                        };
-                        serde_json::json!({
-                            "type": "extension_ui_response",
-                            "id": pending.id,
-                            "value": value,
-                        })
-                    }
                     "confirm" => serde_json::json!({
                         "type": "extension_ui_response",
                         "id": pending.id,
@@ -89,10 +76,32 @@ impl PiRuntime {
             PermissionDecision::AllowAlways | PermissionDecision::Answer(_) => {
                 return Err(AdapterRuntimeError::UnsupportedCommand);
             }
+            PermissionDecision::Deny
+                if self
+                    .translator
+                    .pending_ui()
+                    .is_some_and(|p| p.method == "confirm") =>
+            {
+                let pending = self
+                    .translator
+                    .take_pending_ui()
+                    .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
+                let frame = crate::acp::transport::OutboundFrame::new(
+                    serde_json::to_vec(
+                        &json!({"type":"extension_ui_response","id":pending.id,"cancelled":true}),
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                )
+                .map_err(|_| AdapterRuntimeError::Frame)?;
+                AdapterEgress::new(frame, EgressToken::protocol_notification())
+            }
             PermissionDecision::Deny => self
                 .mandatory_abort()?
                 .ok_or(AdapterRuntimeError::Operation)?,
         };
+        self.questions.reply_pending = true;
+        self.questions.visible = None;
+        self.questions.settling = Some(request_id.as_str().to_owned());
         crate::acp::runtime::later_permission::resolve_later_permission(
             request_id,
             &decision,
@@ -111,12 +120,20 @@ impl PiRuntime {
         let Some(pending) = self.translator.take_pending_ui() else {
             return Ok(None);
         };
-        let Some(form) = pending.form.as_deref() else {
+        let Some(form) = pending
+            .form
+            .as_deref()
+            .filter(|form| !form.is_confirmation())
+        else {
             self.translator.remember_pending_ui(pending);
             return Ok(None);
         };
         let body = match decision {
             PermissionDecision::Answer(answers) => {
+                if form.admit(answers).is_err() {
+                    self.translator.remember_pending_ui(pending);
+                    return Err(AdapterRuntimeError::UnsupportedCommand);
+                }
                 let mut content = form.content(answers);
                 let Some(value) = content.remove(ANSWER_ID) else {
                     self.translator.remember_pending_ui(pending);
@@ -155,16 +172,35 @@ impl PiRuntime {
             .filter(|pending| pending.id == id.as_str())
             .ok_or(AdapterRuntimeError::Operation)?;
         let offered = pending.offered_option_kinds();
+        let confirmation = pending
+            .form
+            .as_ref()
+            .is_some_and(|form| form.is_confirmation());
+        if pending.form.is_some() {
+            self.questions.visible = Some(pending.id.clone());
+        }
         let question = pending
             .form
             .as_deref()
             .map(|form| {
-                elicitation_form::question_payload(
-                    "Answer the Pi extension's question",
-                    None,
-                    form.clone(),
-                )
-                .ok_or(AdapterRuntimeError::Frame)
+                let mut form = form.clone();
+                form.auto_resolution_ms = pending.remaining_ms(self.translator.question_now());
+                elicitation_form::question_payload("Answer the Pi extension's question", None, form)
+                    .map(|mut payload| {
+                        if confirmation
+                            && let NormalizedPayload::PermissionRequest {
+                                offered_option_kinds,
+                                ..
+                            } = &mut payload
+                        {
+                            *offered_option_kinds = Some(
+                                BoundedVec::new("permissionOptionKinds", offered.clone())
+                                    .expect("two approval options"),
+                            );
+                        }
+                        payload
+                    })
+                    .ok_or(AdapterRuntimeError::Frame)
             })
             .transpose()?;
         let turn_id = self.turn_identity()?;

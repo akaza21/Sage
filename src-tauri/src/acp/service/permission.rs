@@ -53,7 +53,10 @@ fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
         return false;
     };
     let offered = |kind| {
-        user_input.is_none()
+        (user_input.is_none()
+            || user_input
+                .as_ref()
+                .is_some_and(|request| request.is_confirmation()))
             && offered_option_kinds
                 .as_ref()
                 .is_some_and(|kinds| kinds.as_slice().contains(&kind))
@@ -61,10 +64,12 @@ fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
     match decision {
         PermissionDecision::Ask | PermissionDecision::Deny => true,
         PermissionDecision::AllowOnce => offered(PermissionOptionKind::AllowOnce),
-        PermissionDecision::AllowAlways => offered(PermissionOptionKind::AllowAlways),
+        PermissionDecision::AllowAlways => {
+            user_input.is_none() && offered(PermissionOptionKind::AllowAlways)
+        }
         PermissionDecision::Answer(answers) => user_input
             .as_ref()
-            .is_some_and(|request| request.admit(answers).is_ok()),
+            .is_some_and(|request| !request.is_confirmation() && request.admit(answers).is_ok()),
     }
 }
 

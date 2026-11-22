@@ -426,8 +426,11 @@ for (const width of [720, 480]) {
 }
 
 /** A pending harness question (Codex requestUserInput) in the composer slot. */
-async function applyQuestion(page: Page) {
-  await page.evaluate(async () => {
+async function applyQuestion(
+  page: Page,
+  kind?: "choice" | "confirm" | "text" | "multiline",
+) {
+  await page.evaluate(async (kind) => {
     const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
       await Promise.all([
         import("/src/app/store.ts"),
@@ -489,8 +492,35 @@ async function applyQuestion(page: Page) {
         },
       },
     } as never);
+    if (kind) {
+      Object.assign(turn.items.at(-1)!.payload, {
+        userInput: {
+          questions: [
+            {
+              id: "answer",
+              header: "Extension question",
+              question: "Choose a target or enter an answer.",
+              kind,
+              allowsOther: false,
+              secret: false,
+              ...(kind === "choice"
+                ? {
+                    options: Array.from({ length: 50 }, (_, index) => ({
+                      label: `Target ${index}: ${"x".repeat(100)}`,
+                      description: "",
+                    })),
+                  }
+                : {}),
+              ...(kind === "multiline"
+                ? { initialText: "Line 1\nLine 2" }
+                : {}),
+            },
+          ],
+        },
+      });
+    }
     store.getState().applyAuthoritativePage(scope, chatPage);
-  });
+  }, kind);
 }
 
 test("a harness question replaces the composer with its questions, gated until answered", async ({
@@ -530,3 +560,50 @@ test("a harness question replaces the composer with its questions, gated until a
   await token.blur();
   await expect(card).toHaveScreenshot("cp46-user-input-question-1280.png");
 });
+
+for (const width of [480, 1280]) {
+  test(`extension question kinds stay usable in one bounded card at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    for (const kind of ["choice", "confirm", "text", "multiline"] as const) {
+      await openScenario(page, "waiting", "agent");
+      await settleChatProjections(page);
+      await applyQuestion(page, kind);
+      const card = page.getByRole("group", { name: "Agent question" });
+      await expect(card).toBeVisible();
+      const box = (await card.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      if (kind === "choice") {
+        await expect(card.getByRole("radio")).toHaveCount(50);
+        const scroll = card.locator(".acp-user-input__options");
+        expect(
+          await scroll.evaluate(
+            (element) => element.scrollHeight > element.clientHeight,
+          ),
+        ).toBe(true);
+        await card.getByRole("searchbox").fill("Target 49:");
+        await expect(card.getByRole("radio")).toHaveCount(1);
+        await card.getByRole("radio").check();
+        await expect(
+          card.getByRole("button", { name: /Submit/ }),
+        ).toBeEnabled();
+      } else if (kind === "confirm") {
+        await expect(
+          card.getByRole("button", { name: /Allow once/ }),
+        ).toBeEnabled();
+        await expect(card.getByRole("textbox")).toHaveCount(0);
+        await expect(card).not.toContainText("remember");
+      } else {
+        const field = card.getByRole("textbox");
+        if (kind === "multiline")
+          await expect(field).toHaveValue("Line 1\nLine 2");
+        else await field.fill("Answer");
+        await expect(
+          card.getByRole("button", { name: /Submit/ }),
+        ).toBeEnabled();
+      }
+    }
+  });
+}

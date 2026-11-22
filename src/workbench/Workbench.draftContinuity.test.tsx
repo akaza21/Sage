@@ -129,3 +129,91 @@ it("sends the first simulator prompt after switching to an empty project while N
   );
   expect(screen.getByText("Work in this project")).toBeVisible();
 });
+
+it.each([
+  { entry: "sidebar", text: "" },
+  { entry: "sidebar", text: "Keep my unsent prompt" },
+  { entry: "shortcut", text: "" },
+  { entry: "shortcut", text: "Keep my unsent prompt" },
+  { entry: "collapsed sidebar", text: "Keep my unsent prompt" },
+  { entry: "palette", text: "Keep my unsent prompt" },
+])(
+  "global New chat from $entry clears the startup project and preserves '$text'",
+  async ({ entry, text }) => {
+    actionsLoad.release();
+    const state = useWorkbenchStore.getState();
+    await state.createProject({ name: "Empty project", sourceTokens: [] });
+    const projectId = useWorkbenchStore.getState().project!.id;
+    render(<Workbench />);
+    await settleLazyModules();
+    expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
+      projectId,
+    );
+    const draft = screen.getByRole("region", { name: "New chat draft" });
+    const composer = within(draft).getByRole("combobox", {
+      name: "Message agent",
+    });
+    fireEvent.change(composer, { target: { value: text } });
+    if (entry === "collapsed sidebar") {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Hide projects and chats" }),
+      );
+      await settleLazyModules();
+    }
+    if (entry === "sidebar" || entry === "collapsed sidebar")
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    else if (entry === "shortcut")
+      fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    else {
+      fireEvent.click(
+        within(
+          screen.getByRole("complementary", { name: "Projects and chats" }),
+        ).getByRole("button", { name: "Search chats" }),
+      );
+      fireEvent.click(await screen.findByRole("option", { name: "New chat" }));
+    }
+    await settleLazyModules();
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      targetProjectId: null,
+      text,
+    });
+    expect(composer).toHaveValue(text);
+    expect(
+      within(draft).getByRole("button", { name: "Choose project" }),
+    ).toBeVisible();
+    expect(useWorkbenchStore.getState().tabs).toEqual([]);
+  },
+);
+
+it("returns the project-less draft to its project from the project row's New chat", async () => {
+  actionsLoad.release();
+  const state = useWorkbenchStore.getState();
+  await state.createProject({ name: "Empty project", sourceTokens: [] });
+  const projectId = useWorkbenchStore.getState().project!.id;
+  render(<Workbench />);
+  await settleLazyModules();
+  const draft = screen.getByRole("region", { name: "New chat draft" });
+  const composer = within(draft).getByRole("combobox", {
+    name: "Message agent",
+  });
+  fireEvent.change(composer, { target: { value: "Keep my unsent prompt" } });
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(null);
+  fireEvent.click(
+    screen.getByRole("button", { name: "New chat in Empty project" }),
+  );
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    targetProjectId: projectId,
+    text: "Keep my unsent prompt",
+  });
+  expect(composer).toHaveValue("Keep my unsent prompt");
+  expect(
+    within(draft).queryByRole("button", { name: "Choose project" }),
+  ).toBeNull();
+  for (const chip of within(draft).getAllByRole("button", {
+    name: "Project: Empty project",
+  }))
+    expect(chip).toBeVisible();
+});

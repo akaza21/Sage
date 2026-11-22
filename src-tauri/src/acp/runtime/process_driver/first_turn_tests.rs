@@ -68,6 +68,7 @@ mod cancel_handoff_tests;
 #[path = "first_turn_tests/sign_in_refusal_tests.rs"]
 mod sign_in_refusal_tests;
 
+mod pi_question_tests;
 mod write_observation_tests;
 
 struct Authority(IntentSnapshot);

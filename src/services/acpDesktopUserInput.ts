@@ -12,13 +12,15 @@ import {
 import { isRecord, safeText } from "./acpDesktopGuards";
 
 const MAX_AUTO_RESOLUTION_MS = 24 * 60 * 60 * 1000;
-const KINDS = new Set<UserInputKind>([
+const KINDS: readonly UserInputKind[] = [
   "text",
   "multiline",
   "number",
   "integer",
   "boolean",
-]);
+  "choice",
+  "confirm",
+];
 
 function safeOption(value: unknown): UserInputOption | null {
   if (!isRecord(value)) return null;
@@ -30,13 +32,13 @@ function safeOption(value: unknown): UserInputOption | null {
 function safeLimits(value: unknown): UserInputLimits | null | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) return null;
-  for (const [key, limit] of Object.entries(value)) {
-    const valid = /^m(in|ax)(Length|Items)$/u.test(key)
+  return Object.entries(value).every(([key, limit]) =>
+    /^m(in|ax)(Length|Items)$/u.test(key)
       ? Number.isSafeInteger(limit) && (limit as number) >= 0
-      : /^m(in|ax)imum$/u.test(key) && Number.isFinite(limit);
-    if (!valid) return null;
-  }
-  return value as UserInputLimits;
+      : /^m(in|ax)imum$/u.test(key) && Number.isFinite(limit),
+  )
+    ? (value as UserInputLimits)
+    : null;
 }
 
 const flag = (value: unknown) =>
@@ -63,7 +65,7 @@ function safeQuestion(value: unknown): UserInputQuestion | null {
     !id ||
     header === null ||
     question === null ||
-    !KINDS.has(kind) ||
+    !KINDS.includes(kind) ||
     flags.includes(null) ||
     initialText === null ||
     limits === null
@@ -91,7 +93,7 @@ function safeQuestion(value: unknown): UserInputQuestion | null {
     return null;
   }
   const options = value.options.map(safeOption);
-  return options.every((option) => option !== null)
+  return !options.includes(null)
     ? { ...base, options: options as UserInputOption[] }
     : null;
 }
@@ -127,7 +129,7 @@ export function safeUserInputRequest(
   if (url === undefined || (url === null) === (value.questions.length === 0))
     return undefined;
   const questions = value.questions.map(safeQuestion);
-  if (questions.some((question) => question === null)) return undefined;
+  if (questions.includes(null)) return undefined;
   const request: UserInputRequest = {
     questions: questions as UserInputQuestion[],
     ...(url ? { url } : {}),
