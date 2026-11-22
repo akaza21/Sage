@@ -151,12 +151,12 @@ export async function runNewChatDraftSend(
       harnessId: choice.harnessId,
       modelId: choice.modelId,
     });
-    if (choice.access)
+    if (choice.bindingId && choice.access)
       draftChatAccess(chatId, {
         bindingId: choice.bindingId,
         mode: choice.access,
       });
-    if (choice.modelId && choice.effort)
+    if (choice.bindingId && choice.modelId && choice.effort)
       useChatEffortDraft.setState({
         draft: {
           chatId,
