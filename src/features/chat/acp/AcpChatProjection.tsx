@@ -34,10 +34,7 @@ type AcpChatProjectionProps = {
   editSummaryContainer?: HTMLElement | null;
 };
 
-const loadAcpChatPresentation = () =>
-  import("./AcpChatPresentation").then(({ AcpChatPresentation }) => ({
-    default: AcpChatPresentation,
-  }));
+const loadAcpChatPresentation = () => import("./AcpChatPresentation");
 
 export function AcpChatProjection({
   page,

@@ -390,3 +390,5 @@ export function AcpChatPresentation({
     </>
   );
 }
+
+export default AcpChatPresentation;

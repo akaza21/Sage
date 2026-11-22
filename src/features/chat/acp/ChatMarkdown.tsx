@@ -220,3 +220,5 @@ export function ChatMarkdown({
     </div>
   );
 }
+
+export default ChatMarkdown;

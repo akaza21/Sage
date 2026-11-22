@@ -1,9 +1,6 @@
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 
-const loadMermaidFigure = () =>
-  import("./MermaidFigure").then(({ MermaidFigure }) => ({
-    default: MermaidFigure,
-  }));
+const loadMermaidFigure = () => import("./MermaidFigure");
 
 export function MermaidFigureBoundary(props: {
   source: string;

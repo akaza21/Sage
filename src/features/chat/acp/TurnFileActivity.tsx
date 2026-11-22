@@ -149,3 +149,5 @@ export function TurnFileActivity({
     </section>
   );
 }
+
+export default TurnFileActivity;

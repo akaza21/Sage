@@ -24,10 +24,7 @@ import { isWorkingTool, workingToolStatus } from "./workingTool";
 
 const loadExtensionMessage = () => import("./ExtensionMessage");
 
-const loadMarkdown = () =>
-  import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
-    default: ChatMarkdown,
-  }));
+const loadMarkdown = () => import("./ChatMarkdown");
 
 const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
   builtin: "Built-in",
