@@ -98,7 +98,7 @@ where
         match self {
             Self::Idle(idle) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
-                    idle.parts.write_goal(&mut idle.transport, *action)
+                    idle.parts.write_goal(&mut idle.transport, action.clone())
                 }
                 crate::acp::goal::NativeRpcRequest::Read(read) => {
                     if !idle.idle_decoder.is_frame_aligned() {
@@ -130,9 +130,9 @@ where
                 }
             },
             Self::Reusable(parts) => match &intent.request {
-                crate::acp::goal::NativeRpcRequest::Goal(action) => {
-                    parts.completed.write_goal(&mut parts.transport, *action)
-                }
+                crate::acp::goal::NativeRpcRequest::Goal(action) => parts
+                    .completed
+                    .write_goal(&mut parts.transport, action.clone()),
                 crate::acp::goal::NativeRpcRequest::Read(read) => {
                     parts.completed.write_child(&mut parts.transport, read)
                 }

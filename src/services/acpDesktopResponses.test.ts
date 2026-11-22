@@ -1,3 +1,4 @@
+import { decodeAcpGoalNotice } from "./acpGoalSubscription";
 import { describe, expect, it } from "vitest";
 
 import { decodeAcpGoal } from "../domain/acpGoal";
@@ -214,7 +215,7 @@ describe("safeAcpMutationResponse", () => {
         tokenBudget: 1000,
         tokensUsed: 42,
         timeUsedSeconds: 125,
-        createdAt: null,
+        createdAt: "2026-11-22T00:00:00Z",
         updatedAt: null,
       },
     };
@@ -222,6 +223,12 @@ describe("safeAcpMutationResponse", () => {
       safeAcpMutationResponse(mutation({ goal }), decodeAcpGoal)?.projection
         .goal,
     ).toEqual(goal);
+    expect(
+      decodeAcpGoal({
+        ...goal,
+        snapshot: { ...goal.snapshot, status: ["active"] },
+      }),
+    ).toBeNull();
     expect(
       safeAcpMutationResponse(
         mutation({
@@ -1261,4 +1268,18 @@ describe("safeAcpMutationResponse", () => {
       ),
     ).toBeNull();
   });
+});
+
+it("decodes a native Goal notice and rejects an out-of-range runtime epoch", () => {
+  const notice = {
+    schemaVersion: 1,
+    sageProjectId: "project-goal",
+    sageChatId: "chat-goal",
+    sageAgentSessionId: "session-goal",
+    runtimeEpoch: "1",
+  };
+  expect(decodeAcpGoalNotice(notice)).toEqual(notice);
+  expect(
+    decodeAcpGoalNotice({ ...notice, runtimeEpoch: "1".repeat(100) }),
+  ).toBeNull();
 });

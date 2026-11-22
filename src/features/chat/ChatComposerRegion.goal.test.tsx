@@ -87,6 +87,14 @@ function mutableGoalChat() {
           runtimeEpoch: "1" as never,
           capabilities: capabilitySetFixture({
             protocolVersion: "codex-app-server-observed-0.167.0",
+            goal: {
+              observes: true,
+              set: false,
+              pause: true,
+              resume: false,
+              tokenBudget: false,
+              clear: true,
+            },
           }),
         }),
       ],
@@ -129,6 +137,14 @@ const props: ComponentProps<typeof ChatComposerRegion> = {
   project: { name: "Project" },
   usage: null,
   goal,
+  goalCapabilities: {
+    observes: true,
+    set: false,
+    pause: true,
+    resume: false,
+    tokenBudget: false,
+    clear: true,
+  },
   onSubmit: vi.fn(),
   onTextChange: vi.fn(),
   onRemoveContext: vi.fn(),
@@ -158,4 +174,102 @@ it("offers the + menu's Goal only once the Goal control is there to open", async
   await openOptions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
   expect(screen.getByLabelText("Goal details")).toHaveFocus();
+});
+
+it("opens the shared editor from + Goal before any goal exists", async () => {
+  mutableGoalChat();
+  const store = acpProjectionStoreFor("chat-a");
+  const page = store.getState().page!;
+  store.setState({
+    page: {
+      ...page,
+      goal: { kind: "noGoal" },
+      sessions: page.sessions.map((session) => ({
+        ...session,
+        capabilities: {
+          ...session.capabilities,
+          goal: {
+            observes: true,
+            set: true,
+            pause: false,
+            resume: false,
+            tokenBudget: false,
+            clear: true,
+          },
+        },
+      })),
+    },
+  });
+  render(
+    <ChatComposerRegion
+      {...props}
+      goal={{ kind: "noGoal" }}
+      goalCapabilities={{
+        observes: true,
+        set: true,
+        pause: false,
+        resume: false,
+        tokenBudget: false,
+        clear: true,
+      }}
+    />,
+  );
+  await act(async () => chunk.release());
+  await openOptions();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Goal" }));
+  expect(await screen.findByLabelText("Goal objective")).toHaveFocus();
+  expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByLabelText("Goal objective")).toBeNull();
+});
+
+it("command-only goals expose set and clear without a strip, then render a real observation", async () => {
+  mutableGoalChat();
+  const store = acpProjectionStoreFor("chat-a");
+  const page = store.getState().page!;
+  const capabilities = {
+    observes: false,
+    set: true,
+    clear: true,
+    pause: false,
+    resume: false,
+    tokenBudget: false,
+  };
+  store.setState({
+    page: {
+      ...page,
+      goal: { kind: "unavailable" },
+      sessions: page.sessions.map((session) => ({
+        ...session,
+        capabilities: { ...session.capabilities, goal: capabilities },
+      })),
+    },
+  });
+  const view = render(
+    <ChatComposerRegion
+      {...props}
+      goal={{ kind: "unavailable" }}
+      goalCapabilities={capabilities}
+    />,
+  );
+  await act(async () => chunk.release());
+  await openOptions();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Set goal…" }));
+  expect(await screen.findByLabelText("Goal objective")).toHaveFocus();
+  expect(screen.queryByLabelText("Goal details")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await openOptions();
+  expect(screen.getByRole("menuitem", { name: "Clear goal" })).toBeEnabled();
+  expect(
+    screen.getByText("This harness doesn't report goal progress to Sage."),
+  ).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  view.rerender(
+    <ChatComposerRegion
+      {...props}
+      goal={goal}
+      goalCapabilities={capabilities}
+    />,
+  );
+  expect(await screen.findByLabelText("Goal details")).toBeVisible();
 });
