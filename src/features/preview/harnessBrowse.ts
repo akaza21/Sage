@@ -58,11 +58,8 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 function hasForbiddenControlChars(raw: string): boolean {
-  for (let index = 0; index < raw.length; index += 1) {
-    const code = raw.charCodeAt(index);
-    if (code < 32 || code === 127) return true;
-  }
-  return false;
+  // eslint-disable-next-line no-control-regex
+  return /[\0-\x1f\x7f]/.test(raw);
 }
 
 export function admitHarnessBrowseUrl(raw: string): HarnessBrowseUrl | null {

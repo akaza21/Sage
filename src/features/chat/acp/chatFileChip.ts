@@ -3,15 +3,8 @@ export const CHAT_FILE_CHIP_COUNT_CAP = 999;
 
 export function chatFileChipBasename(relativePath: string): string | null {
   const trimmed = relativePath.trim();
-  if (
-    !trimmed ||
-    trimmed.split("").some((character) => {
-      const code = character.charCodeAt(0);
-      return code < 32 || code === 127;
-    })
-  ) {
-    return null;
-  }
+  // eslint-disable-next-line no-control-regex
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(trimmed)) return null;
   const parts = trimmed.split(/[\\/]/u).filter(Boolean);
   const base = parts[parts.length - 1];
   if (!base) return null;
