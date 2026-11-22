@@ -109,9 +109,7 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
     assert_eq!(names(&catalog.commands), ["session", "compact"]);
-    let refresh = runtime.discover_commands().unwrap().unwrap();
-    let refresh = deliver(&mut runtime, refresh);
-    assert_eq!(refresh["type"], "get_state");
+    assert!(runtime.discover_commands().unwrap().is_none());
 
     running(&mut runtime);
     runtime
@@ -379,15 +377,15 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         [
             ("session", CommandSource::Builtin),
             ("compact", CommandSource::Builtin),
+            ("mcp", CommandSource::Builtin),
             ("review", CommandSource::Extension),
             ("fix", CommandSource::Prompt),
             ("skill:lint", CommandSource::Skill),
-            ("mcp", CommandSource::Builtin),
         ]
     );
     // Pi's own MCP command keeps its route, so /mcp still prints server
     // status, and gains the native MCP row only as a shipped extension.
-    let mcp = &listed.commands[5];
+    let mcp = &listed.commands[2];
     assert_eq!(
         mcp.dispatch,
         crate::acp::slash_commands::CommandDispatch::CommandTurn
@@ -396,8 +394,8 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         mcp.placement.control,
         Some(crate::acp::command_placement::NativeControl::McpPanel)
     );
-    assert_eq!(listed.commands[2].placement.control, None);
-    let review = &listed.commands[2];
+    assert_eq!(listed.commands[3].placement.control, None);
+    let review = &listed.commands[3];
     assert_eq!(review.source_label.as_deref(), Some("review-tools"));
     let info = review.source_info.as_ref().unwrap();
     assert_eq!(info.path.as_deref(), Some("/extensions/review.ts"));
@@ -405,7 +403,7 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
     assert_eq!(info.scope.as_deref(), Some("user"));
     assert_eq!(info.origin.as_deref(), Some("package"));
     assert_eq!(info.base_dir.as_deref(), Some("/packages/review-tools"));
-    assert_eq!(listed.commands[3].source_label.as_deref(), Some("fix"));
+    assert_eq!(listed.commands[4].source_label.as_deref(), Some("fix"));
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime

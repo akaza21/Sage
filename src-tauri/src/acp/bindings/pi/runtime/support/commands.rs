@@ -32,8 +32,7 @@ fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
         CommandSource::Extension => CommandDispatch::CommandTurn,
         _ => CommandDispatch::Prompt,
     };
-    let source = if wire == CommandSource::Extension && value["sourceInfo"]["source"] == "builtin"
-    {
+    let source = if wire == CommandSource::Extension && value["sourceInfo"]["source"] == "builtin" {
         CommandSource::Builtin
     } else {
         wire
@@ -107,9 +106,6 @@ impl PiRuntime {
         value: Value,
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         self.commands_pending = false;
-        // Session replacement rebinds extensions before get_commands. Read the
-        // model registry again after their session_start registrations.
-        self.configuration_dirty = true;
         let version = self
             .launch
             .as_ref()
@@ -180,6 +176,9 @@ impl PiRuntime {
         let egress = self.begin_one(operation, RequestKind::Prompt)?;
         if command_turn {
             self.translator.mark_command_turn().map_err(super::map_pi)?;
+            // An extension command may change the model without an event;
+            // the next prompt reads the configuration again.
+            self.configuration_dirty = true;
         }
         Ok(egress)
     }

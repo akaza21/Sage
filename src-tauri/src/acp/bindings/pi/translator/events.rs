@@ -23,7 +23,7 @@ impl PiTranslator {
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
         match kind {
-            "thinking_level_changed" => return Ok(vec![AdapterOutput::RefreshConfiguration]),
+            "thinking_level_changed" => return Ok(vec![AdapterOutput::ConfigurationChanged]),
             "queue_update" | "entry_appended" => {
                 return Ok(vec![AdapterOutput::LateIgnored]);
             }

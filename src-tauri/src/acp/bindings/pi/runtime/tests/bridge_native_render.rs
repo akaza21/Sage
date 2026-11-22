@@ -140,17 +140,20 @@ pub(super) fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
                 "unknown augmented roles must be disclosed"
             );
         }
-        if let Some(refresh) = j.runtime.discover_commands().unwrap() {
-            pi.send(deliver(&mut j.runtime, refresh));
-        }
-        receive(&mut j.runtime, &mut pi, |runtime, value| {
-            value["command"] == "get_available_thinking_levels"
-                && runtime.thinking_request_command.is_none()
-        });
-        assert_eq!(
-            j.runtime.current_model.as_deref(),
-            Some("sage-router:virtual")
-        );
-        assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
     }
+    // The render turn's setModel and setThinkingLevel are read with the next
+    // prompt: state, then the model registry, then the thinking levels.
+    let settled = |runtime: &PiRuntime| {
+        !runtime.configuration_dirty
+            && !runtime.translator.configuration_refresh_pending()
+            && runtime.thinking_request_command.is_none()
+    };
+    if !settled(&j.runtime) {
+        receive(&mut j.runtime, &mut pi, |runtime, _| settled(runtime));
+    }
+    assert_eq!(
+        j.runtime.current_model.as_deref(),
+        Some("sage-router:virtual")
+    );
+    assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
 }

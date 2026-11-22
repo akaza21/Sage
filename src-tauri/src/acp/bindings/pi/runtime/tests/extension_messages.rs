@@ -46,33 +46,52 @@ fn extension_message_roles_are_visible_hidden_or_unsupported_without_losing_the_
 }
 
 #[test]
-fn extension_thinking_event_refreshes_state_models_and_supported_levels() {
+fn extension_thinking_change_is_read_with_the_next_prompt() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
+    running(&mut runtime);
+    // Pi reports the change; reading it waits for a prompt, so idle and
+    // live notification handling stays as it was.
     let batch = runtime
         .ingest(
             &frame(json!({"type":"thinking_level_changed","level":"low"})),
             &Mapper,
         )
         .unwrap();
-    let (_, egress) = batch.into_parts();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(batch.egress().is_empty());
+    for end in [json!({"type":"agent_end","messages":[]}), json!({"type":"agent_settled"})] {
+        runtime.ingest(&frame(end), &Mapper).unwrap();
+    }
+    let prompt = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Next").unwrap(),
+            client_message_id: RequiredText::new("client", "client-pi-2").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let prompt = deliver(&mut runtime, prompt);
+    let (_, egress) = runtime
+        .ingest(&response(&prompt, Value::Null), &Mapper)
+        .unwrap()
+        .into_parts();
     let state = deliver(&mut runtime, egress.into_iter().next().unwrap());
     assert_eq!(state["type"], "get_state");
     let model =
         json!({"provider":"extension","id":"virtual","name":"Virtual model","contextWindow":12345});
-    let batch = runtime
+    let (_, egress) = runtime
         .ingest(
             &response(&state, json!({"model":model,"thinkingLevel":"low"})),
             &Mapper,
         )
-        .unwrap();
-    let (_, egress) = batch.into_parts();
+        .unwrap()
+        .into_parts();
     let models = deliver(&mut runtime, egress.into_iter().next().unwrap());
     assert_eq!(models["type"], "get_available_models");
-    let batch = runtime
+    let (_, egress) = runtime
         .ingest(&response(&models, json!({"models":[model]})), &Mapper)
-        .unwrap();
-    let (_, egress) = batch.into_parts();
+        .unwrap()
+        .into_parts();
     let levels = deliver(&mut runtime, egress.into_iter().next().unwrap());
     assert_eq!(levels["type"], "get_available_thinking_levels");
     runtime

@@ -110,9 +110,9 @@ impl PiRuntime {
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let pair = match output {
             AdapterOutput::Message(payload) => (Some(self.message_item(payload)?), None),
-            AdapterOutput::RefreshConfiguration => {
+            AdapterOutput::ConfigurationChanged => {
                 self.configuration_dirty = true;
-                (Some(AdapterEvent::Absorbed), self.refresh_configuration()?)
+                (Some(AdapterEvent::IgnoredLate), None)
             }
             AdapterOutput::Configuration(state) => self.configuration_reply(state)?,
             AdapterOutput::InitializationProgress => (None, None),
@@ -126,7 +126,11 @@ impl PiRuntime {
                 )
             }
             AdapterOutput::CommandAccepted { command } => {
-                let refresh = if command == "prompt"
+                let refresh = if command == "prompt" && self.configuration_dirty {
+                    // State, then models, then thinking levels, inside the
+                    // live turn; skipped when Pi's command capacity is full.
+                    self.refresh_configuration()
+                } else if command == "prompt"
                     && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
                     && self.thinking_request_command.is_none()
                 {
@@ -154,7 +158,9 @@ impl PiRuntime {
                         .map_err(|_| AdapterRuntimeError::BatchCount)?;
                 }
                 self.available_models = models;
+                // Within a turn, a configuration read continues to the levels.
                 let levels = if self.initialized
+                    && self.active_turn.is_some()
                     && self.refresh_thinking_after_model
                     && self.thinking_request_command.is_none()
                 {
@@ -215,7 +221,6 @@ impl PiRuntime {
                     bridge.used.clear();
                 }
                 self.active_turn = None;
-                self.configuration_dirty = true;
                 self.clear_thinking_request();
                 self.deny = None;
                 (Some(event), self.finish_steering())

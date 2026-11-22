@@ -14,6 +14,8 @@ use crate::acp::bindings::pi::{
 impl PiTranslator {
     pub(crate) fn mark_command_turn(&mut self) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+        // Pi runs an extension command without a user message of its own.
+        active.prompt_echo = false;
         active.lifecycle.mark_command()
     }
 
@@ -140,16 +142,11 @@ impl PiTranslator {
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
-        let echo = fields
-            .get("message")
-            .and_then(Value::as_str)
-            .map(super::events::message::user_digest);
+        let prompt_echo = fields.contains_key("message");
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
-            user_echoes: echo
-                .map(|digest| (outbound.command_id.clone(), digest))
-                .into_iter()
-                .collect(),
+            prompt_echo,
+            user_echoes: BTreeMap::new(),
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),

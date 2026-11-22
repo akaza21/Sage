@@ -236,7 +236,9 @@ pub enum ToolOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterOutput {
     Message(sage_acp_protocol::intent::NormalizedPayload),
-    RefreshConfiguration,
+    /// An extension changed the session configuration; Sage reads it again
+    /// with its next prompt.
+    ConfigurationChanged,
     Configuration(StateSnapshot),
     InitializationProgress,
     Initialized,

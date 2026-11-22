@@ -98,6 +98,9 @@ impl PendingKind {
 
 #[derive(Debug)]
 struct ActiveTurn {
+    /// The prompt's own user message is still to come.
+    prompt_echo: bool,
+    /// Steers Sage sent and Pi has not yet echoed, by command id (at most 128).
     user_echoes: BTreeMap<String, [u8; 32]>,
     turn_key: String,
     prompt_command_id: String,

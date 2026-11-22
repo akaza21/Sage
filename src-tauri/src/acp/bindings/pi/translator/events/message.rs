@@ -63,7 +63,13 @@ impl PiTranslator {
                 None => return self.unknown_event("custom_message_without_display"),
             }
         }
-        if role == "toolResult" {
+        // Pi 1.5.0 roles Sage renders elsewhere or that only carry Pi's own
+        // context: tool results, system prompt sections (`message-types.md`),
+        // RPC shell runs Sage never starts, and summary context messages.
+        if matches!(
+            role,
+            "toolResult" | "system" | "bashExecution" | "branchSummary" | "compactionSummary"
+        ) {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         if !matches!(role, "user" | "custom") {
@@ -93,6 +99,11 @@ impl PiTranslator {
         if role == "user" {
             let digest = user_digest(&text);
             let turn = self.live_turn_any_phase()?;
+            // Pi's first user message in a prompt turn is the prompt itself,
+            // possibly expanded from a template, so it is matched by place.
+            if std::mem::take(&mut turn.prompt_echo) {
+                return Ok(vec![AdapterOutput::Absorbed]);
+            }
             if let Some(id) = turn
                 .user_echoes
                 .iter()

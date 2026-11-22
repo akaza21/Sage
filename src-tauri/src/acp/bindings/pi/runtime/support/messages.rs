@@ -19,9 +19,11 @@ impl PiRuntime {
         self.current_model = state.model.as_ref().map(identity::model_key).transpose()?;
         self.current_thinking = state.thinking_level;
         self.auto_compaction = state.auto_compaction;
+        // Optional like the read that asked for it.
         Ok((
             Some(AdapterEvent::IgnoredDuplicate),
-            Some(self.begin_one(Operation::GetModels, super::super::RequestKind::Models)?),
+            self.begin_one(Operation::GetModels, super::super::RequestKind::Models)
+                .ok(),
         ))
     }
 }

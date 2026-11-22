@@ -197,9 +197,6 @@ impl HarnessAdapter for PiRuntime {
         std::sync::Arc::clone(&self.commands)
     }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        if self.configuration_dirty && self.active_turn.is_none() {
-            return self.refresh_configuration();
-        }
         if self.poisoned
             || self.external_session.is_none()
             || self.active_turn.is_some()
