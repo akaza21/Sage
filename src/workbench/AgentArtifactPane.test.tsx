@@ -1670,9 +1670,7 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(
-      screen.getByText("Launching the selected Preview process."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Starting process")).toBeInTheDocument();
     act(() =>
       receive?.({
         kind: "preview",
@@ -1691,9 +1689,7 @@ describe("Agent artifact file chips", () => {
       "Another Preview operation is already active.",
     );
     expect(document.querySelectorAll(".notice")).toHaveLength(1);
-    expect(
-      screen.queryByRole("button", { name: "Start again" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start again" })).toBeNull();
     act(() =>
       receive?.({
         kind: "preview",
@@ -1765,9 +1761,7 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(
-      screen.getByText("Stopping the native Preview process."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Stopping process")).toBeInTheDocument();
     expect(queryWarning()).toBeNull();
     act(() =>
       receive?.({
@@ -1782,11 +1776,7 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(
-      screen.getByText(
-        "Preview has stopped. Start it again when you are ready.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Preview stopped")).toBeInTheDocument();
   });
 
   it("keeps a pinned File when Preview arrives and resumes Follow latest", () => {

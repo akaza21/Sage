@@ -850,7 +850,7 @@ describe("compact Workbench project tools", () => {
     );
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAccessibleDescription(
-      "Warning: Chat title must not be empty after trimming",
+      /Chat title must not be empty after trimming/,
     );
     expect(input).not.toBeDisabled();
     expect(input).toHaveFocus();

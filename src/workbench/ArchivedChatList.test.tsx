@@ -78,9 +78,7 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
   );
   expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a", "row");
 
-  fireEvent.click(
-    screen.getByRole("button", { name: "Dismiss" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(document.querySelector(".chat-row-error")).toBeNull();
   expect(
     screen.getByRole("button", { name: "Delete chat Research" }),
@@ -103,9 +101,7 @@ it("returns focus to Restore after dismissing a refused restore", () => {
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Dismiss" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(
     screen.getByRole("button", { name: "Restore chat Research" }),
   ).toHaveFocus();

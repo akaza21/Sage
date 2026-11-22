@@ -887,9 +887,7 @@ describe("RightSidebar Explorer New File", () => {
       { rootId: "root-a", relativePath: "src" },
       "new.ts",
     );
-    expect(await findWarning()).toHaveTextContent(
-      "File already exists.",
-    );
+    expect(await findWarning()).toHaveTextContent("File already exists.");
     useWorkbenchStore.setState({ fileCreateInFlight: true });
     await vi.waitFor(() => expect(input).toBeDisabled());
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
@@ -979,9 +977,7 @@ describe("RightSidebar Explorer New Folder", () => {
       { rootId: "root-b", relativePath: "src" },
       "nested",
     );
-    expect(await findWarning()).toHaveTextContent(
-      "Folder already exists.",
-    );
+    expect(await findWarning()).toHaveTextContent("Folder already exists.");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await vi.waitFor(() => expect(trigger).toHaveFocus());
   });
@@ -1061,9 +1057,7 @@ describe("RightSidebar Explorer Rename File", () => {
     expect(screen.getByText("Path: Root A/src/new.ts")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(renameProjectFile).toHaveBeenLastCalledWith(source, "new.ts");
-    expect(await findWarning()).toHaveTextContent(
-      "Target already exists.",
-    );
+    expect(await findWarning()).toHaveTextContent("Target already exists.");
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     await vi.waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),

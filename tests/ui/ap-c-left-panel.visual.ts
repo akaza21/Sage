@@ -463,9 +463,7 @@ test("AP-C a refused archived-chat delete shows on that row, not in the open cha
   await expect(
     archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
   ).toHaveAccessibleDescription(refusal);
-  await archived
-    .getByRole("button", { name: "Dismiss" })
-    .click();
+  await archived.getByRole("button", { name: "Dismiss" }).click();
   await expect(archived.locator(".chat-row-error")).toHaveCount(0);
   await expect(
     archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
@@ -507,9 +505,7 @@ test("AP-C a refused archive from the rail shows on that chat's row", async ({
   await expect(notice).toContainText(refusal);
   await expect(page.getByText(refusal)).toHaveCount(1);
   await expect(archive).toHaveAccessibleDescription(refusal);
-  await projects
-    .getByRole("button", { name: "Dismiss" })
-    .click();
+  await projects.getByRole("button", { name: "Dismiss" }).click();
   await expect(projects.locator(".chat-row-error")).toHaveCount(0);
   await expect(
     projects.getByRole("button", {

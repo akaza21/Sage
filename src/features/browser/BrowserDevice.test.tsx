@@ -349,9 +349,7 @@ it("reopens a failed close on the device Rust confirmed is still held", async ()
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
-  expect(await findWarning()).toHaveTextContent(
-    "device reset was refused",
-  );
+  expect(await findWarning()).toHaveTextContent("device reset was refused");
   expect(
     await screen.findByRole("toolbar", { name: "Device toolbar" }),
   ).toBeVisible();
