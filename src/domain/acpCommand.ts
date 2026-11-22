@@ -16,7 +16,7 @@ export type AcpCommandSource = (typeof commandSources)[number];
 export const isCommandSource = (value: unknown): value is AcpCommandSource =>
   commandSources.includes(value as AcpCommandSource);
 
-export const commandPanels = ["status", "mcp"] as const;
+export const commandPanels = ["status", "mcp", "managedMcp"] as const;
 export type AcpCommandPanel = (typeof commandPanels)[number];
 
 export const isCommandPanel = (value: unknown): value is AcpCommandPanel =>

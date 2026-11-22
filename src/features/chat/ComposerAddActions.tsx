@@ -60,6 +60,7 @@ export type ComposerAddActionsProps = {
   onOpenEffort?: () => void;
   onOpenUsage?: () => void;
   onOpenMcp?: () => void;
+  onOpenExtensions?: () => void;
   onPickCommand?: (command: AvailableAcpCommand, input: string) => void;
   onClose: () => void;
   onSetSessionMode: (id: string) => Promise<unknown>;

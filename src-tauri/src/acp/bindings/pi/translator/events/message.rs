@@ -1,4 +1,12 @@
+use crate::acp::bindings::pi::decode::redact_structured_text;
+use crate::acp::redaction::text::{clip_display, neutralized};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+pub(in crate::acp::bindings::pi::translator) fn user_digest(text: &str) -> [u8; 32] {
+    Sha256::digest(text.as_bytes()).into()
+}
 
 use super::super::PiTranslator;
 use super::{assistant_message, message_id, turn::failure_detail};
@@ -12,9 +20,9 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        self.live_turn()?;
+        self.live_turn_any_phase()?;
         if !assistant_message(value) {
-            return Ok(Vec::new());
+            return self.other_message(&value["message"]);
         }
         let message = value.get("message");
         let kept = |key| message.and_then(|message| message.get(key)).cloned();
@@ -43,6 +51,86 @@ impl PiTranslator {
             external_id: message_id(value)?,
             outcome,
         });
+        Ok(output)
+    }
+
+    fn other_message(&mut self, message: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let role = message["role"].as_str().unwrap_or("");
+        if role == "custom" {
+            match message["display"].as_bool() {
+                Some(false) => return Ok(vec![AdapterOutput::Absorbed]),
+                Some(true) => {}
+                None => return self.unknown_event("custom_message_without_display"),
+            }
+        }
+        if role == "toolResult" {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        if !matches!(role, "user" | "custom") {
+            return self.unknown_event("message_role");
+        }
+        let mut unsupported = false;
+        let text = match &message["content"] {
+            Value::String(text) => text.clone(),
+            Value::Array(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    if part["type"] == "text"
+                        && let Some(value) = part["text"].as_str()
+                    {
+                        text.push_str(value);
+                    } else {
+                        unsupported = true;
+                    }
+                }
+                text
+            }
+            _ => {
+                unsupported = true;
+                String::new()
+            }
+        };
+        if role == "user" {
+            let digest = user_digest(&text);
+            let turn = self.live_turn_any_phase()?;
+            if let Some(id) = turn
+                .user_echoes
+                .iter()
+                .find_map(|(id, value)| (*value == digest).then(|| id.clone()))
+            {
+                turn.user_echoes.remove(&id);
+                return Ok(vec![AdapterOutput::Absorbed]);
+            }
+        }
+        let clean =
+            |text: &str, cap| clip_display(&redact_structured_text(&neutralized(text, true)), cap);
+        let payload = if role == "user" {
+            NormalizedPayload::UserPrompt {
+                text: SafeText::new("userText", clean(&text, 262144))
+                    .map_err(|_| AdapterError::Malformed)?,
+            }
+        } else {
+            let Some(label) = message["customType"].as_str() else {
+                return self.unknown_event("custom_message_without_type");
+            };
+            NormalizedPayload::ExtensionMessage {
+                label: SafeText::new("extensionLabel", clean(label, 128))
+                    .map_err(|_| AdapterError::Malformed)?,
+                text: SafeText::new("extensionText", clean(&text, 16384))
+                    .map_err(|_| AdapterError::Malformed)?,
+                details: message
+                    .get("details")
+                    .map(|details| {
+                        SafeText::new("extensionDetails", clean(&details.to_string(), 16384))
+                    })
+                    .transpose()
+                    .map_err(|_| AdapterError::Malformed)?,
+            }
+        };
+        let mut output = vec![AdapterOutput::Message(payload)];
+        if unsupported {
+            output.extend(self.unknown_event("message_content")?);
+        }
         Ok(output)
     }
 

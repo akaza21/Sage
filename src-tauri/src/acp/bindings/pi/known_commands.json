@@ -1,4 +1,5 @@
 [
+  { "name": "mcp", "section": "connections", "control": "mcpPanel" },
   { "name": "compact", "section": "session", "control": "compact" },
   { "name": "session", "section": "usage", "control": "usagePanel" },
   { "name": "settings", "section": "modelAndAccess", "terminalOnly": true },

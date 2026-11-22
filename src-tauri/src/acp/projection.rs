@@ -198,6 +198,11 @@ pub enum ItemContent {
     UserPrompt {
         text: SafeText<262144>,
     },
+    ExtensionMessage {
+        label: SafeText<128>,
+        text: SafeText<16384>,
+        details: Option<SafeText<16384>>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },

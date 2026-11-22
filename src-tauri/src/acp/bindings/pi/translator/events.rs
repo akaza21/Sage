@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-mod message;
+pub(super) mod message;
 mod permission;
 mod tool_result;
 mod turn;
@@ -23,7 +23,8 @@ impl PiTranslator {
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
         match kind {
-            "thinking_level_changed" | "queue_update" | "entry_appended" => {
+            "thinking_level_changed" => return Ok(vec![AdapterOutput::RefreshConfiguration]),
+            "queue_update" | "entry_appended" => {
                 return Ok(vec![AdapterOutput::LateIgnored]);
             }
             "session_info_changed" => {
@@ -74,10 +75,11 @@ impl PiTranslator {
             "auto_retry_start" => self.retry_start(value),
             "auto_retry_end" => self.retry_end(value),
             "message_start" => {
-                self.live_turn()?;
                 if !assistant_message(value) {
-                    return Ok(Vec::new());
+                    self.live_turn_any_phase()?;
+                    return Ok(vec![AdapterOutput::Absorbed]);
                 }
+                self.live_turn()?;
                 self.live_turn()?.reply_open = true;
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,

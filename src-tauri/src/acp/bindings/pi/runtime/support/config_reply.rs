@@ -4,6 +4,24 @@ use crate::acp::bindings::pi::{ModelSummary, StateSnapshot};
 type ConfigReply = (Option<AdapterEvent>, Option<AdapterEgress>);
 
 impl PiRuntime {
+    pub(in crate::acp::bindings::pi::runtime) fn refresh_configuration(
+        &mut self,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.poisoned
+            || !self.initialized
+            || self.external_session.is_none()
+            || self.translator.configuration_refresh_pending()
+            || self.fork.is_some()
+        {
+            return Ok(None);
+        }
+        let egress = self.begin_one(
+            crate::acp::bindings::pi::Operation::RefreshConfiguration,
+            super::super::RequestKind::RefreshState,
+        )?;
+        self.configuration_dirty = false;
+        Ok(Some(egress))
+    }
     pub(super) fn state_reply(
         &mut self,
         state: StateSnapshot,

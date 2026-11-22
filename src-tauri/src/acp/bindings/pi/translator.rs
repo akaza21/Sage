@@ -34,6 +34,7 @@ const SESSION_NAME_BYTES: usize = sage_acp_protocol::intent::session_event::SESS
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
+    Configuration,
     State,
     Models,
     SetModel,
@@ -71,6 +72,7 @@ impl PendingKind {
 
     const fn command(self) -> &'static str {
         match self {
+            Self::Configuration => "get_state",
             Self::State => "get_state",
             Self::Models => "get_available_models",
             Self::SetModel => "set_model",
@@ -96,6 +98,7 @@ impl PendingKind {
 
 #[derive(Debug)]
 struct ActiveTurn {
+    user_echoes: BTreeMap<String, [u8; 32]>,
     turn_key: String,
     prompt_command_id: String,
     lifecycle: TurnLifecycle,
@@ -187,6 +190,19 @@ pub(crate) const ANSWER_ID: &str = "answer";
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
+    pub(super) fn configuration_refresh_pending(&self) -> bool {
+        self.pending.values().any(|request| {
+            matches!(
+                request.kind,
+                PendingKind::Configuration
+                    | PendingKind::Models
+                    | PendingKind::ThinkingLevels
+                    | PendingKind::State
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+            )
+        })
+    }
     pub(crate) fn awaits_large_response(&self) -> bool {
         self.pending.values().any(|request| {
             !matches!(
@@ -269,6 +285,7 @@ impl PiTranslator {
 
     pub fn begin(&mut self, operation: Operation) -> Result<Vec<Outbound>, AdapterError> {
         match operation {
+            Operation::RefreshConfiguration => self.one(PendingKind::Configuration, Map::new()),
             Operation::Initialize => self.begin_initialize(),
             Operation::GetModels => self.one(PendingKind::Models, Map::new()),
             Operation::SetModel { provider, id } => {

@@ -48,6 +48,9 @@ impl PiTranslator {
             return Ok(());
         }
         self.pending.remove(command_id);
+        if let Some(active) = self.active.as_mut() {
+            active.user_echoes.remove(command_id);
+        }
         self.closed_config_requests.remove(command_id);
         self.clear_pending_setting(kind);
         match kind {
@@ -62,7 +65,8 @@ impl PiTranslator {
                     active.lifecycle.resolve_abort(false);
                 }
             }
-            PendingKind::State
+            PendingKind::Configuration
+            | PendingKind::State
             | PendingKind::Models
             | PendingKind::SetModel
             | PendingKind::Commands
@@ -136,8 +140,16 @@ impl PiTranslator {
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
+        let echo = fields
+            .get("message")
+            .and_then(Value::as_str)
+            .map(super::events::message::user_digest);
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
+            user_echoes: echo
+                .map(|digest| (outbound.command_id.clone(), digest))
+                .into_iter()
+                .collect(),
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),
@@ -176,7 +188,20 @@ impl PiTranslator {
         }
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
-        self.one(PendingKind::Steer, fields)
+        let active = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
+        if active.user_echoes.len() >= 128 {
+            return Err(AdapterError::Limit("user echoes"));
+        }
+        let digest = super::events::message::user_digest(
+            fields["message"].as_str().ok_or(AdapterError::Malformed)?,
+        );
+        let outbound = self.issue(PendingKind::Steer, fields)?;
+        self.active
+            .as_mut()
+            .ok_or(AdapterError::StaleIntent)?
+            .user_echoes
+            .insert(outbound.command_id.clone(), digest);
+        Ok(vec![outbound])
     }
 
     pub(super) fn one(

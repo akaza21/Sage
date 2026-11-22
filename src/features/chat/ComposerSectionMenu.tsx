@@ -49,7 +49,9 @@ function ComposerOptionsBrowser({
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
+  const [panel, setPanel] = useState<AcpCommandPanel | "extensions" | null>(
+    null,
+  );
   const fieldRef = useMemo(
     () => ({
       get current() {
@@ -134,7 +136,17 @@ function ComposerOptionsBrowser({
         {...actions}
         load={load}
         onOpenUsage={() => setPanel("status")}
-        onOpenMcp={() => setPanel("mcp")}
+        onOpenMcp={() =>
+          setPanel(
+            load?.kind === "ready" &&
+              load.list.commands.some(
+                (command) => command.panel === "managedMcp",
+              )
+              ? "managedMcp"
+              : "mcp",
+          )
+        }
+        onOpenExtensions={() => setPanel("extensions")}
         onPickCommand={pickCommand}
       />
     </MenuPopover>
@@ -163,9 +175,13 @@ export function ComposerSectionRows({
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:
       load?.kind === "ready" &&
-      load.list.commands.some((command) => command.panel === "mcp")
+      load.list.commands.some(
+        (command) => command.panel === "mcp" || command.panel === "managedMcp",
+      )
         ? props.onOpenMcp
         : undefined,
+    onOpenExtensions:
+      load?.kind === "ready" ? props.onOpenExtensions : undefined,
   });
   const sections = composerMenuSections(
     rows,

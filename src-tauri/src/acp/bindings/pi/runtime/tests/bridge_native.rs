@@ -90,6 +90,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
     else {
         panic!("Pi must be installed")
     };
+    render::check(&launch);
     load_failure::check(&launch);
     for scenario in [
         "echo",
@@ -408,3 +409,5 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
 
 #[path = "bridge_native_failure.rs"]
 mod load_failure;
+#[path = "bridge_native_render.rs"]
+mod render;

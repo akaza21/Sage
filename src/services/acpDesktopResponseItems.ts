@@ -85,6 +85,22 @@ export function safeItem(value: unknown): AcpItem | null {
   if (!identity) return null;
   const { payload } = value;
   switch (value.kind) {
+    case "extensionMessage": {
+      const label = safeText(payload.label, 128);
+      const text = safeText(payload.text, 16_384);
+      const details = safeNullableText(payload.details, 16_384);
+      return value.toolState === null &&
+        label !== null &&
+        text !== null &&
+        details !== undefined
+        ? {
+            ...identity,
+            kind: "extensionMessage",
+            toolState: null,
+            payload: { label, text, details },
+          }
+        : null;
+    }
     case "text":
     case "userPrompt": {
       const text = safeText(payload.text, 262_144);

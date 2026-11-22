@@ -10,6 +10,12 @@ impl PiTranslator {
             return self.classify_repeated_response(&response, fingerprint);
         };
         let kind = request.kind;
+        if kind == PendingKind::Steer
+            && !response.success
+            && let Some(active) = self.active.as_mut()
+        {
+            active.user_echoes.remove(&response.id);
+        }
         let closed = self.closed_config_requests.remove(&response.id)
             || (kind.is_config()
                 && self
@@ -87,6 +93,9 @@ impl PiTranslator {
             return Ok(output);
         }
         match kind {
+            PendingKind::Configuration => Ok(vec![AdapterOutput::Configuration(parse_state(
+                &response.data,
+            )?)]),
             PendingKind::State => {
                 let state = match parse_state(&response.data) {
                     Ok(state) => state,

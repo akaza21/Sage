@@ -5,6 +5,7 @@ mod bridge_ready;
 mod compact_command;
 mod config_delivery;
 mod extension_lifecycle;
+mod extension_messages;
 mod followups;
 mod fork;
 mod native_rpc;

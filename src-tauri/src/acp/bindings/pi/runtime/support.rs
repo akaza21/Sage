@@ -29,6 +29,7 @@ mod fork;
 pub(super) use fork::{Fork, ForkCopy};
 mod identity;
 mod image;
+mod messages;
 mod native;
 mod permission;
 mod requests;
@@ -108,6 +109,12 @@ impl PiRuntime {
         resources: &dyn crate::acp::bindings::adapter::ResourceMapper,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let pair = match output {
+            AdapterOutput::Message(payload) => (Some(self.message_item(payload)?), None),
+            AdapterOutput::RefreshConfiguration => {
+                self.configuration_dirty = true;
+                (Some(AdapterEvent::Absorbed), self.refresh_configuration()?)
+            }
+            AdapterOutput::Configuration(state) => self.configuration_reply(state)?,
             AdapterOutput::InitializationProgress => (None, None),
             AdapterOutput::Initialized => {
                 self.initialized = true;
@@ -147,7 +154,15 @@ impl PiRuntime {
                         .map_err(|_| AdapterRuntimeError::BatchCount)?;
                 }
                 self.available_models = models;
-                (Some(event), None)
+                let levels = if self.initialized
+                    && self.refresh_thinking_after_model
+                    && self.thinking_request_command.is_none()
+                {
+                    Some(self.begin_thinking_discovery()?)
+                } else {
+                    None
+                };
+                (Some(event), levels)
             }
             AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
@@ -200,6 +215,7 @@ impl PiRuntime {
                     bridge.used.clear();
                 }
                 self.active_turn = None;
+                self.configuration_dirty = true;
                 self.clear_thinking_request();
                 self.deny = None;
                 (Some(event), self.finish_steering())

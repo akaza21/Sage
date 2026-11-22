@@ -56,7 +56,9 @@ fn source_label(value: &Value) -> Option<&str> {
             .next()
             .filter(|name| !name.is_empty())
     }
-    if let Some(package) = info["baseDir"].as_str().and_then(leaf) {
+    if info["origin"] == "package"
+        && let Some(package) = info["baseDir"].as_str().and_then(leaf)
+    {
         return Some(package);
     }
     let file = info["path"].as_str().and_then(leaf)?;
@@ -65,7 +67,7 @@ fn source_label(value: &Value) -> Option<&str> {
 
 /// A catalog larger than Sage's list keeps its first commands, leaving room for the built-ins.
 fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    let builtins = [
+    let mut builtins = [
         AvailableCommand::new(
             SESSION,
             "Show session info and stats",
@@ -80,8 +82,21 @@ fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeE
             CommandSource::Builtin,
             CommandDispatch::Builtin,
         )?,
+        AvailableCommand::new(
+            "mcp",
+            "Managed by Pi; use /mcp to inspect servers",
+            None,
+            CommandSource::Builtin,
+            CommandDispatch::Panel(CommandPanel::ManagedMcp),
+        )?
+        .with_source_label(Some("Pi")),
     ];
     let listed = value.as_array().ok_or(AdapterRuntimeError::Frame)?;
+    builtins[2].source_info = listed
+        .iter()
+        .find(|command| command["name"] == "mcp")
+        .and_then(|command| CommandSourceInfo::from_wire(&command["sourceInfo"]))
+        .map(Box::new);
     let commands = builtins
         .into_iter()
         .map(Ok)
@@ -96,13 +111,18 @@ impl PiRuntime {
         value: Value,
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         self.commands_pending = false;
+        // Session replacement rebinds extensions before get_commands. Read the
+        // model registry again after their session_start registrations.
+        self.configuration_dirty = true;
         let version = self
             .launch
             .as_ref()
             .and_then(|launch| launch.harness_version())
             .and_then(crate::acp::bindings::release_version::ReleaseVersion::parse);
         let supports = |control| match control {
-            NativeControl::Compact | NativeControl::UsagePanel => self.initialized,
+            NativeControl::Compact | NativeControl::UsagePanel | NativeControl::McpPanel => {
+                self.initialized
+            }
             NativeControl::ModelPicker => self.initialized && !self.available_models.is_empty(),
             _ => false,
         };

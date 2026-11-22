@@ -77,6 +77,7 @@ impl PiRuntime {
             commands: std::sync::Arc::default(),
             commands_pending: false,
             commands_discovered: false,
+            configuration_dirty: false,
             thinking_request_session: None,
             thinking_request_owner: None,
             thinking_request_command: None,

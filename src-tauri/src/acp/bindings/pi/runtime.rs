@@ -110,6 +110,7 @@ pub(crate) struct PiRuntime {
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
     commands_discovered: bool,
+    configuration_dirty: bool,
     pub(super) thinking_request_session: Option<ExternalId>,
     pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
     pub(super) thinking_request_command: Option<String>,
@@ -196,6 +197,9 @@ impl HarnessAdapter for PiRuntime {
         std::sync::Arc::clone(&self.commands)
     }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.configuration_dirty && self.active_turn.is_none() {
+            return self.refresh_configuration();
+        }
         if self.poisoned
             || self.external_session.is_none()
             || self.active_turn.is_some()

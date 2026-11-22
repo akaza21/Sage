@@ -4,6 +4,7 @@ pub(super) fn is_allow_option(option: &str) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
+    RefreshConfiguration,
     Initialize,
     GetModels,
     SetModel {
@@ -234,6 +235,9 @@ pub enum ToolOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterOutput {
+    Message(sage_acp_protocol::intent::NormalizedPayload),
+    RefreshConfiguration,
+    Configuration(StateSnapshot),
     InitializationProgress,
     Initialized,
     CommandAccepted {

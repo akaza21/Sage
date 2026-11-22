@@ -16,6 +16,21 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chat/ComposerExtensions.tsx",
+        "maxGzipBytes": 2400,
+        "reason": "Bounded protocol provenance and managed MCP views load only when opened and unmount on close; no inventory cache."
+      },
+      {
+        "entry": "src/features/chat/acp/ExtensionMessage.tsx",
+        "maxGzipBytes": 650,
+        "reason": "Generic custom-message text and details load only for a displayed extension message; collapsed details have no DOM."
+      },
+      {
+        "entry": "src/features/chat/ComposerSessionStatus.tsx",
+        "maxGzipBytes": 1800,
+        "reason": "Existing session status content loads only when that panel opens, keeping extension and MCP panels independent."
+      },
+      {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
         "maxGzipBytes": 4200,
         "maxCssGzipBytes": 550,
