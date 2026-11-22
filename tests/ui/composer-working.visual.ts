@@ -184,6 +184,25 @@ for (const endWhilePressed of [false, true]) {
   });
 }
 
+test("Send submits the typed draft exactly once", async ({ page }) => {
+  await page.addInitScript(() => {
+    let submits = 0;
+    document.addEventListener("submit", () => (submits += 1), true);
+    Object.defineProperty(window, "submits", { get: () => submits });
+  });
+  const dock = await openComposer(page);
+  await dock
+    .getByRole("combobox", { name: "Message agent" })
+    .fill("Review the composer");
+  // The form submits synchronously within the click it activates.
+  await dock.getByRole("button", { name: "Send message", exact: true }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { submits: number }).submits,
+    ),
+  ).toBe(1);
+});
+
 test("working border sleeps with the document and wakes on return", async ({
   page,
 }) => {
