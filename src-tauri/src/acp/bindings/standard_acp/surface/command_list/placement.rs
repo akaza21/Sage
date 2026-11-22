@@ -104,14 +104,14 @@ impl KnownCommandTable {
     }
 }
 
-/// `None` means a curated minimum version excludes the command. Without a matching
-/// entry it stays in More. User skills/plugins cannot acquire native command authority.
+/// Minimum versions gate native controls, never the harness's advertised command.
+/// User skills/plugins cannot acquire native command authority.
 pub(crate) fn placement(
     command: &AvailableCommand,
     table: &KnownCommandTable,
     running: Option<&ReleaseVersion>,
     supports: &dyn Fn(NativeControl) -> bool,
-) -> Option<CommandPlacement> {
+) -> CommandPlacement {
     let known = matches!(
         command.source,
         CommandSource::Builtin | CommandSource::Harness
@@ -125,18 +125,37 @@ pub(crate) fn placement(
     })
     .flatten();
     let Some(known) = known else {
-        return Some(CommandPlacement::default());
+        return CommandPlacement::default();
     };
-    if let Some(minimum) = known.since.as_deref().and_then(ReleaseVersion::parse)
-        && running.is_none_or(|running| running < &minimum)
-    {
-        return None;
-    }
-    Some(CommandPlacement {
+    let version_supported = known
+        .since
+        .as_deref()
+        .and_then(ReleaseVersion::parse)
+        .is_none_or(|minimum| running.is_some_and(|running| running >= &minimum));
+    CommandPlacement {
         section: known.section,
-        control: known.control.filter(|control| supports(*control)),
+        control: known
+            .control
+            .filter(|control| version_supported && supports(*control)),
         known: true,
-    })
+    }
+}
+
+/// Shared by catalog admission and dependency changes. Works on the existing bounded
+/// catalog without retaining another copy; unchanged placement preserves its revision.
+pub(crate) fn recompute_placement(
+    commands: &mut [AvailableCommand],
+    table: &KnownCommandTable,
+    running: Option<&ReleaseVersion>,
+    supports: &dyn Fn(NativeControl) -> bool,
+) -> bool {
+    let mut changed = false;
+    for command in commands {
+        let next = placement(command, table, running, supports);
+        changed |= command.placement != next;
+        command.placement = next;
+    }
+    changed
 }
 
 pub(crate) fn place_commands(
@@ -145,15 +164,7 @@ pub(crate) fn place_commands(
     running: Option<&ReleaseVersion>,
     supports: &dyn Fn(NativeControl) -> bool,
 ) -> Vec<AvailableCommand> {
-    commands.retain_mut(
-        |command| match placement(command, table, running, supports) {
-            Some(placement) => {
-                command.placement = placement;
-                true
-            }
-            None => false,
-        },
-    );
+    recompute_placement(&mut commands, table, running, supports);
     commands
 }
 

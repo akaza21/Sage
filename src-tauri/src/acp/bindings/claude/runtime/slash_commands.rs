@@ -18,8 +18,37 @@ impl ClaudeRuntime {
         } else {
             Vec::new()
         };
-        let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
-        let supports = |control| match control {
+        let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+        update_commands_with(
+            value,
+            active.external_id.as_str(),
+            &active.commands,
+            &first,
+            |commands| {
+                place_commands(
+                    commands.into_iter().map(classify_command).collect(),
+                    super::super::manifest::known_commands(),
+                    self.command_version.as_ref(),
+                    &|control| self.supports_command_control(control),
+                )
+            },
+        )
+    }
+
+    pub(super) fn recompute_command_placement(&self) -> Result<(), AdapterRuntimeError> {
+        let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+        active.commands.recompute_placement(
+            super::super::manifest::known_commands(),
+            self.command_version.as_ref(),
+            &|control| self.supports_command_control(control),
+        )
+    }
+
+    fn supports_command_control(&self, control: NativeControl) -> bool {
+        let Some(active) = self.active.as_ref() else {
+            return false;
+        };
+        match control {
             NativeControl::Compact => {
                 self.opens_panels && self.capabilities.as_ref().is_some_and(|c| c.prompt)
             }
@@ -48,21 +77,7 @@ impl ClaudeRuntime {
                         .any(|o| o.category.as_ref().is_some_and(|c| c.as_str() == "mode"))
             }
             _ => false,
-        };
-        update_commands_with(
-            value,
-            active.external_id.as_str(),
-            &mut active.commands,
-            &first,
-            |commands| {
-                place_commands(
-                    commands.into_iter().map(classify_command).collect(),
-                    super::super::manifest::known_commands(),
-                    self.command_version.as_ref(),
-                    &supports,
-                )
-            },
-        )
+        }
     }
 }
 

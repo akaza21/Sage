@@ -21,7 +21,7 @@ pub(crate) fn update_commands(
 pub(crate) fn update_commands_with(
     value: &Value,
     session: &str,
-    commands: &mut Arc<CommandState>,
+    commands: &CommandState,
     first: &[AvailableCommand],
     decorate: impl Fn(Vec<AvailableCommand>) -> Vec<AvailableCommand>,
 ) -> Result<bool, AdapterRuntimeError> {

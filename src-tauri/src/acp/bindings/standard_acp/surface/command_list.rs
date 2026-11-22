@@ -149,6 +149,23 @@ impl CommandState {
             .clone()
             .unwrap_or_default()
     }
+    /// Refresh catalog-derived controls when their configuration or capabilities change.
+    pub(crate) fn recompute_placement(
+        &self,
+        table: &placement::KnownCommandTable,
+        running: Option<&crate::acp::bindings::release_version::ReleaseVersion>,
+        supports: &dyn Fn(placement::NativeControl) -> bool,
+    ) -> Result<(), AdapterRuntimeError> {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+        if placement::recompute_placement(&mut list.commands, table, running, supports) {
+            list.next_revision()?;
+        }
+        Ok(())
+    }
     fn revision(&self) -> Option<u64> {
         self.0
             .lock()

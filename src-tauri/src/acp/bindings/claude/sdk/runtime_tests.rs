@@ -149,6 +149,79 @@ fn ready() -> ClaudeSdkRuntime {
 }
 
 #[test]
+fn model_changes_refresh_effort_placement_without_command_readvertisement() {
+    use sage_acp_protocol::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
+    };
+    let mut runtime = runtime();
+    let initialize = send(&mut runtime, AdapterCommand::Initialize);
+    reply(
+        &mut runtime,
+        &initialize,
+        json!({
+            "commands":[{"name":"effort","description":"Adjust effort","builtin":true}],
+            "current_permission_mode":"default",
+            "models":[
+                {"value":"default","displayName":"Default","supportsEffort":true,"supportedEffortLevels":["low","high"]},
+                {"value":"haiku","displayName":"Haiku","supportsEffort":false}
+            ]
+        }),
+    );
+    let session = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    reply(&mut runtime, &session, json!({"applied":{}}));
+    let mut revision = runtime.available_commands().snapshot().revision;
+    for (model, control) in [("haiku", None), ("default", Some("effortPicker"))] {
+        let egress = runtime
+            .configure(&ConfigIntent {
+                owner: RuntimeOwner {
+                    project_id: SageProjectId::parse("project-a").unwrap(),
+                    chat_id: SageChatId::parse("chat-a").unwrap(),
+                    session_id: SageAgentSessionId::parse("session-claude-sdk").unwrap(),
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                },
+                expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+                mutation: ConfigMutation::Option {
+                    config_id: ConfigId::new("id", "model").unwrap(),
+                    value: ConfigValue::Select {
+                        value: ConfigId::new("model", model).unwrap(),
+                    },
+                },
+            })
+            .unwrap()
+            .unwrap();
+        let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        assert_eq!(
+            request["request"],
+            json!({"subtype":"set_model","model":model})
+        );
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        reply(&mut runtime, &request, json!({}));
+        let list = runtime.available_commands().snapshot();
+        revision += 1;
+        assert_eq!(list.revision, revision);
+        let effort = list
+            .commands
+            .iter()
+            .find(|command| command.name == "effort")
+            .unwrap();
+        let placement = serde_json::to_value(effort).unwrap()["placement"].clone();
+        assert_eq!(placement["section"], "modelAndAccess");
+        assert_eq!(placement["control"].as_str(), control);
+        assert!(list.validate(revision, "/effort").is_ok());
+    }
+}
+
+#[test]
 fn oversized_claude_sdk_catalog_reaches_shared_admission_through_wire_ingress() {
     let mut runtime = runtime();
     let initialize = send(&mut runtime, AdapterCommand::Initialize);

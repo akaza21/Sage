@@ -7,7 +7,7 @@ fn reported_commands_receive_versioned_capability_gated_placement() {
     let table = KnownCommandTable::parse(
         br#"[
         {"name":"compact","aliases":["summarize"],"section":"session","control":"compact"},
-        {"name":"future","section":"usage","since":"3.0.0"},
+        {"name":"future","section":"usage","control":"usagePanel","since":"3.0.0"},
         {"name":"settings","section":"modelAndAccess","terminalOnly":true}
     ]"#,
     )
@@ -19,55 +19,57 @@ fn reported_commands_receive_versioned_capability_gated_placement() {
             vec![],
             CommandSource::Builtin,
             true,
-            Some(json!({"section":"session","control":"compact"})),
+            json!({"section":"session","control":"compact"}),
         ),
         (
             "summarize",
             vec![],
             CommandSource::Harness,
             true,
-            Some(json!({"section":"session","control":"compact"})),
+            json!({"section":"session","control":"compact"}),
         ),
         (
             "shorten",
             vec!["compact"],
             CommandSource::Harness,
             true,
-            Some(json!({"section":"session","control":"compact"})),
+            json!({"section":"session","control":"compact"}),
         ),
         (
             "compact",
             vec![],
             CommandSource::Builtin,
             false,
-            Some(json!({"section":"session"})),
+            json!({"section":"session"}),
         ),
         (
             "custom",
             vec![],
             CommandSource::Harness,
             true,
-            Some(json!({"section":"more"})),
+            json!({"section":"more"}),
         ),
         (
             "compact",
             vec![],
             CommandSource::Skill,
             true,
-            Some(json!({"section":"more"})),
+            json!({"section":"more"}),
         ),
-        ("future", vec![], CommandSource::Builtin, true, None),
+        (
+            "future",
+            vec![],
+            CommandSource::Builtin,
+            true,
+            json!({"section":"usage"}),
+        ),
     ] {
         let command =
             AvailableCommand::new(name, "reported", None, source, CommandDispatch::Prompt)
                 .unwrap()
                 .with_aliases(aliases);
         let placed = placement(&command, &table, version.as_ref(), &|_| can_drive);
-        assert_eq!(
-            placed.map(|p| serde_json::to_value(p).unwrap()),
-            expected,
-            "{name}"
-        );
+        assert_eq!(serde_json::to_value(placed).unwrap(), expected, "{name}");
     }
     let command = AvailableCommand::new(
         "future",
@@ -77,7 +79,16 @@ fn reported_commands_receive_versioned_capability_gated_placement() {
         CommandDispatch::Prompt,
     )
     .unwrap();
-    assert!(placement(&command, &table, None, &|_| true).is_none());
+    assert_eq!(
+        serde_json::to_value(placement(
+            &command,
+            &table,
+            ReleaseVersion::parse("3.0.0").as_ref(),
+            &|_| true
+        ))
+        .unwrap(),
+        json!({"section":"usage","control":"usagePanel"})
+    );
     assert!(place_commands(Vec::new(), &table, version.as_ref(), &|_| true).is_empty());
 }
 
