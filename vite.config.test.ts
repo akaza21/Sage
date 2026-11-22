@@ -329,6 +329,11 @@ const ORDINARY_DYNAMIC_FACADES = [
 ].sort();
 
 const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
+  "chat-commands": [
+    "src/features/chat/slashCommandTurn.ts",
+    "src/services/acpCommandsDesktop.ts",
+    "src/domain/acpCommandPlacement.ts",
+  ],
   "chat-setup": [
     "src/app/sessionAccessActions.ts",
     "src/app/chatAccessDrafts.ts",
