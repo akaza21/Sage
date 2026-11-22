@@ -17,7 +17,10 @@ import {
   clearAgentChatOwner,
 } from "../../app/agentChatOwner";
 import * as workspaceNotify from "../../app/workspaceNotifyLifecycle";
-import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useChatAccessDrafts } from "../../app/chatAccessDrafts";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
@@ -26,6 +29,7 @@ import type {
   AcpChatPage,
   StartAcpSessionRequest,
   SendAcpTurnRequest,
+  AcpItem,
 } from "../../domain/acp";
 import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import type {
@@ -143,6 +147,178 @@ function mount(strict = false, compact = false) {
   );
   return render(strict ? <StrictMode>{content}</StrictMode> : content);
 }
+
+it.each([
+  ["unavailable", "Allow once", "allowPending", "permission"],
+  ["removed", "Deny", "declinePending", "permission"],
+  ["removed", "Stop turn", "cancelled", "permission"],
+  ["unavailable", "Cancel turn", "cancelled", "none"],
+  ["removed", "Submit", "allowPending", "question"],
+] as const)(
+  "keeps live controls after discovery reports the harness %s (%s)",
+  async (discovery, action, expected, pending) => {
+    const chatId = await existingSessionlessChat();
+    const state = useWorkbenchStore.getState();
+    const session = agentSessionFixture({
+      bindingId: harness.bindingId as never,
+      modelId: "model-a" as never,
+      runtimeEpoch: "1" as never,
+      state: "active",
+      residency: "hot",
+    });
+    const permission = {
+      id: "permission-a",
+      projectId: state.project!.id,
+      chatId,
+      sessionId: session.id,
+      turnId: "turn-a",
+      runtimeEpoch: "1",
+      ordinal: 0,
+      revision: "1",
+      origin: "primary",
+      activityId: null,
+      lifecycle: "streaming",
+      createdAt: 1,
+      updatedAt: 1,
+      terminalAt: null,
+      kind: "permissionRequest",
+      toolState: "waitingForApproval",
+      payload: {
+        requestId: "request-a",
+        state: "received",
+        label: "Permission request",
+        summary: "Run a command",
+        category: "execute",
+        offeredOptionKinds: ["allow_once", "reject_once"],
+        ...(pending === "question"
+          ? {
+              userInput: {
+                questions: [
+                  {
+                    id: "scope",
+                    header: "Scope",
+                    question: "Which files?",
+                    allowsOther: false,
+                    secret: false,
+                    kind: "text",
+                    multiSelect: false,
+                    optional: false,
+                  },
+                ],
+              },
+            }
+          : {}),
+      },
+    } as Extract<AcpItem, { kind: "permissionRequest" }>;
+    const page: AcpChatPage = {
+      ...emptyPage(state.project!.id, chatId),
+      currentSessionId: session.id,
+      sessions: [session],
+      turns: [
+        {
+          id: permission.turnId,
+          sessionId: session.id,
+          runtimeEpoch: permission.runtimeEpoch,
+          ordinal: 0,
+          state: "running",
+          revision: permission.revision,
+          createdAt: 1,
+          updatedAt: 1,
+          terminalAt: null,
+          items: pending === "none" ? [] : [permission],
+          activities: [],
+          browserOperations: [],
+          browserOperationsCollapsed: 0,
+        },
+      ],
+    };
+    pages.set(chatId, page);
+    const settle = (next: "allowPending" | "declinePending") => {
+      pages.set(chatId, {
+        ...page,
+        projectionRevision: "2" as never,
+        turns: page.turns.map((turn) => ({
+          ...turn,
+          items: [
+            { ...permission, payload: { ...permission.payload, state: next } },
+          ],
+        })),
+      });
+      acpProjectionStoreFor(chatId).getState().requestReload();
+    };
+    vi.spyOn(acpDesktop, "resolvePermissionDecision").mockImplementation(
+      async (request) => {
+        const next =
+          request.decision === "deny" ? "declinePending" : "allowPending";
+        settle(next);
+        return { ...request, state: next };
+      },
+    );
+    vi.spyOn(acpDesktop, "answerUserInput").mockImplementation(
+      async (request) => {
+        if (request.answers[0]?.text !== "Only tests")
+          throw new Error("Answer was lost.");
+        settle("allowPending");
+        return { ...request, decision: "answer", state: "allowPending" };
+      },
+    );
+    vi.spyOn(acpDesktop, "cancelTurn").mockImplementation(async () => ({
+      projection: {
+        ...page,
+        projectionRevision: "2" as never,
+        turns: page.turns.map((turn) => ({
+          ...turn,
+          state: "cancelled",
+          terminalAt: 2,
+        })),
+      },
+    }));
+    mount();
+    await settleLazyModules();
+    const stopLabel = pending === "none" ? "Cancel turn" : "Stop turn";
+    expect(
+      await screen.findByRole("button", { name: stopLabel }),
+    ).toBeEnabled();
+    await act(async () =>
+      state.applyHarnessDiscovery(
+        discovery === "removed"
+          ? []
+          : [{ ...harness, installState: "unavailable" }],
+      ),
+    );
+    expect(screen.getByRole("button", { name: stopLabel })).toBeEnabled();
+    if (pending === "question")
+      fireEvent.input(screen.getByRole("textbox", { name: "Answer: Scope" }), {
+        target: { value: "Only tests" },
+      });
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(action) }));
+    await waitFor(() => {
+      const dock = document.querySelector<HTMLElement>(".chat-dock");
+      expect(
+        dock &&
+          within(dock).queryByRole("group", { name: "Permission request" }),
+      ).toBeNull();
+      expect(
+        dock && within(dock).queryByRole("group", { name: "Agent question" }),
+      ).toBeNull();
+      if (expected === "cancelled")
+        expect(screen.queryByRole("button", { name: stopLabel })).toBeNull();
+    });
+    const result = acpProjectionStoreFor(chatId).getState().page!;
+    if (expected === "cancelled") {
+      expect(result.turns[0].state).toBe(expected);
+      expect(
+        screen.getByText("This chat used a harness that isn't available here."),
+      ).toBeVisible();
+    } else {
+      expect(result.turns[0].items[0].payload).toMatchObject({
+        state: expected,
+      });
+      expect(screen.getByRole("button", { name: "Cancel turn" })).toBeEnabled();
+      expect(composer()).toBeDisabled();
+    }
+  },
+);
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
 it("silently replaces an inherited unavailable harness in catalog order", async () => {
