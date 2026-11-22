@@ -561,10 +561,12 @@ fn a_new_codex_thread_reads_skills_without_force_reload() {
             &Mapper,
         )
         .unwrap();
-    assert!(batch.events().iter().any(|event| matches!(
-        event,
-        AdapterEvent::SessionReady { loaded: false, .. }
-    )));
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::SessionReady { loaded: false, .. }))
+    );
     let query = runtime.discover_commands().unwrap().expect("skills/list");
     let wire: Value = serde_json::from_slice(query.frame().payload()).unwrap();
     assert_eq!(wire["method"], "skills/list");
