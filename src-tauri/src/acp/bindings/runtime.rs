@@ -71,13 +71,6 @@ impl NativeRuntime {
         Self(Box::new(runtime), None, None, None, None, None)
     }
 
-    pub(crate) fn attach_commands(
-        &mut self,
-        owner: sage_acp_protocol::scheduler::RuntimeOwner,
-        channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
-    ) {
-        self.3 = Some((owner, channel));
-    }
     /// Lends the binding's usage cell to the lane once; a binding without
     /// one leaves the lane empty, which reads as unsupported.
     pub(crate) fn attach_usage(
@@ -253,9 +246,7 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         let reply = self.0.take_native_rpc_reply();
-        if matches!(reply, Some(crate::acp::goal::NativeRpcReply::Forked(_))) {
-            self.0.available_commands().request_refresh();
-        }
+        self.refresh_after_fork(reply.as_ref());
         reply
     }
     fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
@@ -348,14 +339,6 @@ impl HarnessAdapter for NativeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
-            &command
-            && let Some(revision) = prompt.command_revision
-        {
-            self.0
-                .available_commands()
-                .validate(revision, prompt.as_str())?;
-        }
         self.command_with_refresh(command)
     }
 
@@ -377,10 +360,8 @@ impl HarnessAdapter for NativeRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let result = self.0.ingest(frame, resources);
-        if result.is_err()
-            && let Some((owner, channel)) = &self.3
-        {
-            channel.update(owner, self.0.available_commands());
+        if result.is_err() {
+            self.publish_commands();
         }
         let batch = result?;
         self.follow_catalog_triggers(&batch);
