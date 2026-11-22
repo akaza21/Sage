@@ -158,8 +158,8 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
               ack.revision,
             ),
             persisting: false,
-            unstored:
-              current.revision > ack.revision ? current.unstored : undefined,
+            // Storage works again; a later edit gets its own copy.
+            unstored: undefined,
           },
           { dirty },
         );
