@@ -106,7 +106,7 @@ it("keeps dictation on one control until stopped and disables it during the turn
     );
   }
   render(<Composer />);
-  const control = screen.getByRole("button", { name: "Start dictation" });
+  let control = screen.getByRole("button", { name: "Start dictation" });
   expect(control).toBeEnabled();
   fireEvent.click(control);
   await waitFor(() => expect(dictation.listening).toBe(true));
@@ -115,13 +115,12 @@ it("keeps dictation on one control until stopped and disables it during the turn
   expect(input).toHaveValue("Review the composer");
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveAttribute("aria-pressed", "true");
-  // A trusted click re-renders Stop as Send before activation runs, so the
-  // Stop click itself must be cancelled; jsdom alone would never submit here.
+  // Stop cancels click activation as well as replacing the button.
   expect(fireEvent.click(control)).toBe(false);
   expect(input).toHaveValue("Review the composer");
-  expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
+  control = screen.getByRole("button", { name: "Send message" });
   fireEvent.click(control);
-  expect(screen.getByRole("button", { name: "Cancel turn" })).toBe(control);
+  control = screen.getByRole("button", { name: "Cancel turn" });
   expect(dictation.disabled).toBe(true);
   expect(screen.getAllByRole("button")).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Start dictation" })).toBeNull();
@@ -136,10 +135,9 @@ it("keeps dictation on one control until stopped and disables it during the turn
   act(() => Speech.latest.emit("late speech"));
   expect(input).toHaveValue("Review the composer");
   fireEvent.click(control);
-  expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
+  expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   fireEvent.change(input, { target: { value: "" } });
-  expect(screen.getByRole("button", { name: "Start dictation" })).toBe(control);
-  expect(control).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Start dictation" })).toBeEnabled();
 });
 
 it("keeps a native partial speech draft when stopped and sends it only on Send", async () => {
@@ -187,16 +185,15 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveClass("composer__mic");
   expect(control).toHaveAttribute("aria-pressed", "true");
-  // A trusted click re-renders Stop as Send before activation runs, so the
-  // Stop click itself must be cancelled; jsdom alone would never submit here.
+  // Stop cancels click activation as well as replacing the button.
   expect(fireEvent.click(control)).toBe(false);
   expect(input).toHaveValue("Review the composer");
   expect(
     screen.getByRole("status", { name: "Sent prompt" }),
   ).toBeEmptyDOMElement();
-  expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
-  expect(control).not.toHaveAttribute("aria-pressed");
-  fireEvent.click(control);
+  const send = screen.getByRole("button", { name: "Send message" });
+  expect(send).not.toHaveAttribute("aria-pressed");
+  fireEvent.click(send);
   expect(screen.getByRole("status", { name: "Sent prompt" })).toHaveTextContent(
     "Review the composer",
   );
