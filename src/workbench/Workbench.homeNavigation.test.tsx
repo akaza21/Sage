@@ -376,9 +376,8 @@ it.each(["approval", "disabled"] as const)(
       ).toBeNull();
     } else {
       expect(
-        screen.queryByRole("combobox", { name: "Message agent" }),
-      ).toBeNull();
-      expect(screen.getByText(/No harness is available here/)).toBeVisible();
+        screen.getByRole("combobox", { name: "Message agent" }),
+      ).toBeDisabled();
     }
     const pane = screen.getByRole("region", { name: /^Chat pane / });
     const home = screen.getByRole("button", { name: "Home" });
@@ -400,6 +399,16 @@ it.each(["approval", "disabled"] as const)(
     );
     expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
     expect(create).not.toHaveBeenCalled();
+    if (unavailable === "disabled") {
+      fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+      const picker = await screen.findByRole("dialog", { name: "Harness" });
+      expect(await within(picker).findByRole("alert")).toHaveTextContent(
+        "Choose a harness.",
+      );
+      expect(
+        within(picker).getByRole("button", { name: "Open Settings" }),
+      ).toBeEnabled();
+    }
   },
 );
 
@@ -452,11 +461,23 @@ it.each(["parent", "side"] as const)(
     const focused = panes.find((pane) => pane.dataset.chatId === focusedId)!;
     const other = panes.find((pane) => pane !== focused)!;
     expect(
-      within(focused).queryByRole("combobox", { name: "Message agent" }),
-    ).toBeNull();
+      within(focused).getByRole("combobox", { name: "Message agent" }),
+    ).toBeDisabled();
+    const harnessTrigger = within(focused).getByRole("button", {
+      name: "Harness",
+    });
+    fireEvent.click(harnessTrigger);
+    const picker = await screen.findByRole("dialog", { name: "Harness" });
+    expect(await within(picker).findByRole("alert")).toHaveTextContent(
+      /can't start yet/,
+    );
     expect(
-      within(focused).getByRole("button", { name: "Continue in a new chat" }),
+      within(picker).getByRole("button", { name: "Continue in a new chat" }),
     ).toBeEnabled();
+    expect(
+      within(picker).getByRole("button", { name: "Open Settings" }),
+    ).toBeEnabled();
+    fireEvent.keyDown(picker, { key: "Escape" });
     expect(
       within(other).getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();

@@ -1,4 +1,5 @@
 import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
+import type { ComposerProblem } from "./ComposerStatusNotices";
 import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalCapabilities, AcpGoalState } from "../../domain/acpGoal";
@@ -46,8 +47,8 @@ export interface ChatComposerRegionProps {
   queuedPrompts?: readonly QueuedChatPrompt[];
   steerAvailable?: boolean;
   projectTransitioning: boolean;
-  workbenchError: string | null;
-  chatError: ReactNode;
+  workbenchError: ComposerProblem | null;
+  chatError: ComposerProblem | null;
   chatAuth?: {
     page: AcpChatPage | null | undefined;
     errorKind: AcpCommandFailure["kind"] | null;

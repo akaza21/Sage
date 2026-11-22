@@ -172,20 +172,6 @@ const loadHarnessNotice = () =>
 export function LazyHarnessNotice(
   props: NonNullable<Parameters<typeof HarnessDiscoveryNotice>[0]>,
 ) {
-  const { harness, discoveryPhase } = props;
-  if (
-    harness !== undefined &&
-    !(
-      harness?.transport === "acp" &&
-      (harness.installState !== "available" ||
-        (harness.characterisation ?? "characterised") !== "characterised" ||
-        harness.update ||
-        (harness.accountModelDiscovery && discoveryPhase !== "ready") ||
-        // Any model-discovery failure is explained with a retry.
-        discoveryPhase === "error")
-    )
-  )
-    return null;
   return (
     <LazyModuleBoundary<
       NonNullable<Parameters<typeof HarnessDiscoveryNotice>[0]>

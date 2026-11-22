@@ -16,37 +16,31 @@ export type HarnessUnavailableReason =
   | "platformUnsupported"
   | "versionTooOld";
 
+const unavailableMessages: Record<HarnessUnavailableReason, string> = {
+  admissionIncomplete: "is still being checked.",
+  adapterAbsent: "isn't set up for Sage yet.",
+  adapterVersionUnreadable: "has a version Sage can't read.",
+  candidateInvalid: "didn't pass Sage's checks.",
+  capabilityProjectionUnavailable: "has features Sage couldn't check.",
+  developmentOnly: "needs a development build.",
+  driftDetected: "changed since Sage checked it.",
+  nodeAbsent: "needs Node.js installed.",
+  nodeEngineMismatch: "needs a newer Node.js version.",
+  nodeVersionUnreadable: "needs a Node.js version Sage can read.",
+  observationOnly: "can't be verified on this computer.",
+  platformUnsupported: "isn't supported on this computer.",
+  versionTooOld: "needs an update for Sage.",
+};
+
 export function harnessUnavailableReason(
   reason: HarnessUnavailableReason | null | undefined,
+  name: string,
 ): string {
-  switch (reason) {
-    case "admissionIncomplete":
-      return "Sage hasn't finished checking this harness, so it won't start it yet.";
-    case "adapterAbsent":
-      return "This harness's ACP adapter isn't installed.";
-    case "adapterVersionUnreadable":
-      return "Sage couldn't read the adapter's version, so it won't launch it.";
-    case "candidateInvalid":
-      return "The installed harness didn't pass Sage's safety checks.";
-    case "capabilityProjectionUnavailable":
-      return "Sage couldn't read which features this harness supports.";
-    case "developmentOnly":
-      return "This development-only harness isn't part of this build.";
-    case "driftDetected":
-      return "This harness changed on disk after Sage checked it, so Sage stopped using it.";
-    case "nodeAbsent":
-      return "This harness needs Node.js, which isn't installed.";
-    case "nodeEngineMismatch":
-      return "The installed Node.js is older than this harness requires.";
-    case "nodeVersionUnreadable":
-      return "Sage couldn't read the installed Node.js version.";
-    case "observationOnly":
-      return "Sage found this harness but can't verify it on this computer.";
-    case "platformUnsupported":
-      return "This harness isn't supported on this platform.";
-    default:
-      return "Sage can't start this harness.";
-  }
+  const message =
+    reason && Object.hasOwn(unavailableMessages, reason)
+      ? unavailableMessages[reason]
+      : "can't start yet.";
+  return `${name} ${message}`;
 }
 
 import type { SessionAccessModeCapability } from "./sessionAccessMode";

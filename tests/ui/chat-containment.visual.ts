@@ -1013,7 +1013,7 @@ test("a short pane caps the composer row at 60% and scrolls its upper content ab
   );
 });
 
-test("a harness notice takes its own row above the transcript and composer", async ({
+test("a harness notice stays in its picker without resizing the transcript or composer", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
@@ -1032,7 +1032,7 @@ test("a harness notice takes its own row above the transcript and composer", asy
   await expect(
     surface
       .getByRole("region", { name: "Composer notices" })
-      .getByRole("alert"),
+      .locator(".notice--info"),
   ).toBeVisible();
   const before = (await transcript.boundingBox())!;
   const composerBefore = (await composer.boundingBox())!;
@@ -1046,20 +1046,20 @@ test("a harness notice takes its own row above the transcript and composer", asy
       })),
     });
   });
-  const notice = surface.locator(":scope > .build-notice");
+  await expect(surface.locator(":scope > .build-notice")).toHaveCount(0);
+  await composer.getByRole("button", { name: "Harness", exact: true }).click();
+  const notice = page
+    .getByRole("dialog", { name: "Harness", exact: true })
+    .locator(".notice--warning");
   await expect(notice).toBeVisible();
-  const noticeBox = (await notice.boundingBox())!;
   const transcriptBox = (await transcript.boundingBox())!;
   const composerBox = (await composer.boundingBox())!;
-  expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(
-    transcriptBox.y + 0.5,
-  );
   expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(
     composerBox.y + 0.5,
   );
   expect(transcriptBox.height).toBeGreaterThanOrEqual(120);
-  // The notice row comes out of the transcript, never the composer.
-  expect(transcriptBox.height).toBeLessThan(before.height);
+  // Picker guidance overlays the workbench instead of taking reading space.
+  expect(transcriptBox).toEqual(before);
   expect(composerBox).toEqual(composerBefore);
 });
 

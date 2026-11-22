@@ -100,7 +100,7 @@ const FOCUSED_PANES =
 const CURRENT_RAIL_CHATS =
   '[...document.querySelectorAll(\'aside[aria-label="Projects and chats"] button[aria-current="page"][data-chat-id]\')]';
 const HARNESS_TRIGGERS =
-  '[...s.querySelectorAll(\'button[aria-label="Harness"][aria-haspopup="listbox"]\')]';
+  '[...s.querySelectorAll(\'button[aria-label="Harness"][aria-haspopup="dialog"]\')]';
 const MODEL_TRIGGERS =
   // A model picker, or the read-only label a single-model catalog renders.
   '[...s.querySelectorAll(\':is(button[aria-haspopup="listbox"],span)[aria-label="Model"]\')]';
@@ -108,7 +108,7 @@ const HARNESS_STATUS =
   "(()=>{const x=[...document.querySelectorAll('[aria-label^=\"Harness status: \"]')];return x.length===1?x[0].getAttribute('aria-label').slice(16).trim():''})()";
 const AGENT_MODE =
   '(()=>{const groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(groups.length!==1)return false;const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]:checked\')];return agent.length===1&&document.querySelectorAll(\'main.workbench.workbench--agent\').length===1})()';
-const CODEX_OPTIONS = `(harness=>{const controls=harness.getAttribute('aria-controls'),listbox=controls?document.getElementById(controls):null;if(!listbox||listbox.getAttribute('role')!=='listbox')return null;return [...listbox.querySelectorAll('[role="option"]')].filter(x=>x.dataset.optionId===${JSON.stringify(ACP04_CODEX_HARNESS_ID)}&&x.getAttribute('aria-disabled')!=='true'&&!x.disabled)})`;
+const CODEX_OPTIONS = `(harness=>{const controls=harness.getAttribute('aria-controls'),dialog=controls?document.getElementById(controls):null;if(!dialog||dialog.getAttribute('role')!=='dialog')return null;const lists=dialog.querySelectorAll('[role="listbox"][aria-label="Harness"]');if(lists.length!==1)return null;return [...lists[0].querySelectorAll('[role="option"]')].filter(x=>x.dataset.optionId===${JSON.stringify(ACP04_CODEX_HARNESS_ID)}&&x.getAttribute('aria-disabled')!=='true'&&!x.disabled)})`;
 const AGENT_SURFACES =
   "[...panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]')]";
 

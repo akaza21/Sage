@@ -82,7 +82,7 @@ for (const width of [480, 1280]) {
     });
     const notices = page.getByRole("region", { name: "Composer notices" });
     await expect(notices.getByRole("alert")).toHaveText(
-      "The harness could not reconnect.",
+      "Error: The harness could not reconnect.",
     );
     const noticeSize = await notices.evaluate((node) => ({
       height: node.clientHeight,

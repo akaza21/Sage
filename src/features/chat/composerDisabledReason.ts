@@ -1,5 +1,9 @@
 import type { AttachedContext } from "../../domain/attachedContext";
 import { utf8ByteLength } from "../../domain/text";
+import {
+  harnessUnavailableReason,
+  type HarnessDefinition,
+} from "../../domain/harness";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 
 interface ComposerAvailability {
@@ -11,7 +15,7 @@ interface ComposerAvailability {
   harnessAvailable: boolean;
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   projectTransitioning: boolean;
-  selectedHarness: boolean;
+  selectedHarness: Pick<HarnessDefinition, "name"> | null;
   useNativeAcp: boolean;
 }
 
@@ -36,9 +40,9 @@ export function composerDisabledReason({
     return "Wait while Sage checks the selected harness.";
   if (["signInRequired", "consent", "waiting"].includes(harnessDiscoveryPhase))
     return "Finish signing in before sending.";
-  if (!harnessAvailable) return "The selected harness is unavailable.";
+  if (!harnessAvailable) return `${selectedHarness.name} is unavailable.`;
   if (useNativeAcp && !availableBinding)
-    return "No reviewed local binding is available for this harness.";
+    return harnessUnavailableReason("adapterAbsent", selectedHarness.name);
   if (chatLoadFailed)
     return "This chat failed to load. Retry to send a prompt.";
   if (!canPrompt)
