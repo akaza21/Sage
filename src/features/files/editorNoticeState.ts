@@ -11,8 +11,6 @@ import {
 } from "../../domain/workbench";
 import { isDeletedOnDisk } from "./editorDisk";
 import {
-  changedOnDisk,
-  DISK_MISMATCH,
   getFileEditorController,
   type ActiveEditorState,
   type EditorStateBridge,
@@ -32,6 +30,18 @@ const DELETION_CONFLICT = {
   message: "This file was deleted outside Sage.",
 };
 
+/** Matches the native refusal of a recovery copy whose base the disk has left. */
+const DISK_MISMATCH = /no longer matches disk/i;
+
+function changedOnDisk(error: unknown): boolean {
+  return DISK_MISMATCH.test(errorMessage(error));
+}
+
+/** A copy refused because disk moved on is that change, which the conflict explains. */
+function unstoredBesideConflict(unstored: string | undefined) {
+  return unstored && !changedOnDisk(unstored) ? unstored : undefined;
+}
+
 function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   const editor = bridge.getActiveEditor();
   return editor?.phase === "ready" ? editor : null;
@@ -45,6 +55,7 @@ export function markDeleted(bridge: EditorStateBridge): void {
         ...active,
         document: { ...active.document, conflict: DELETION_CONFLICT },
         message: null,
+        unstored: unstoredBesideConflict(active.unstored),
       },
       { tabStatus: "failed" },
     );
@@ -80,7 +91,11 @@ export function reread(
   bridge.setActiveEditor(
     {
       ...(getFileEditorController().ready(document) as ReadyEditorState),
-      unstored: document.dirty ? active?.unstored : undefined,
+      unstored: document.dirty
+        ? document.conflict
+          ? unstoredBesideConflict(active?.unstored)
+          : active?.unstored
+        : undefined,
     },
     {
       dirty: document.dirty,
@@ -99,6 +114,7 @@ export function setExternalChangeConflict(
     {
       ...active,
       message: null,
+      unstored: unstoredBesideConflict(active.unstored),
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -192,7 +208,7 @@ export async function applyWatchNotice(
         }
       : null;
   // Reading the File drops a durable buffer that matches disk, so unsaved edits
-  // are persisted first. The controller records a refused copy itself.
+  // are persisted first. The controller records a refused copy as unstored.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&

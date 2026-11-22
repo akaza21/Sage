@@ -236,6 +236,41 @@ describe("a File that changed on disk under unsaved edits", () => {
     cleanup();
   });
 
+  it("lets the conflict explain a copy refused because disk moved on", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    const snapshot = vi
+      .spyOn(editor, "snapshotEditorBuffer")
+      .mockRejectedValue(
+        new Error(
+          "invalid request: snapshot base no longer matches disk and no durable buffer exists",
+        ),
+      );
+    try {
+      await changeOnDisk(file, "theirs\n");
+      expect(snapshot).toHaveBeenCalled();
+    } finally {
+      snapshot.mockRestore();
+    }
+
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(readyEditor()).toMatchObject({ content: "mine\n", message: null });
+    expect(readyEditor().unstored).toBeUndefined();
+    const { container } = render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    await screen.findByRole("group", { name: "External change" });
+    expect(container.querySelectorAll("[data-notice-identity]")).toHaveLength(
+      1,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
+  });
+
   it("names a refused save plainly, then lets the disk change explain itself", async () => {
     const file = nextFile();
     openTabs(file);

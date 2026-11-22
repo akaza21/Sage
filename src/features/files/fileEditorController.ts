@@ -17,13 +17,6 @@ export const EDITOR_SNAPSHOT_DELAY_MS = 750;
 
 const MAX_SNAPSHOTS_PER_FLUSH = 8;
 
-/** Matches the native refusal of a recovery copy whose base the disk has left. */
-export const DISK_MISMATCH = /no longer matches disk/i;
-
-export function changedOnDisk(error: unknown): boolean {
-  return DISK_MISMATCH.test(errorMessage(error));
-}
-
 export type ActiveEditorState =
   | { phase: "loading"; resource: ResourceRef }
   | {
@@ -176,20 +169,10 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         if (!current || !sameResource(current.resource, request.resource)) {
           return;
         }
-        // A copy refused because disk moved on is that change, which its
-        // conflict explains; any other refusal leaves the edits unprotected.
         bridge.setActiveEditor({
           ...current,
           persisting: false,
-          ...(changedOnDisk(error)
-            ? {
-                message:
-                  current.revision === request.revision &&
-                  !current.document.conflict
-                    ? errorMessage(error)
-                    : current.message,
-              }
-            : { unstored: errorMessage(error) }),
+          unstored: errorMessage(error),
         });
         throw error;
       }
