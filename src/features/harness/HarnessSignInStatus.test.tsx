@@ -1,3 +1,4 @@
+import { composerProblem } from "../chat/ComposerStatusNotices";
 import {
   act,
   cleanup,
@@ -112,15 +113,12 @@ function install(id: string) {
     harnessAccountReadStartedAt: ++nativeTime,
   });
 }
-function notice(id: string) {
+function notice(_id: string) {
   return (
     <ComposerStatusNotices
-      selectedHarnessId={id}
       workbenchError={null}
       chatError={null}
       imageStatus={null}
-      missingBindingNotice={false}
-      discoveryPhase="ready"
     />
   );
 }
@@ -337,13 +335,14 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
   reportHarnessSignInRequired("cli-fixture", ++nativeTime);
   const view = render(
     <ComposerStatusNotices
-      selectedHarnessId="cli-fixture"
       workbenchError={null}
-      chatError="Authentication required"
+      chatError={composerProblem(
+        "signInRequired",
+        "failed-turn",
+        "Authentication required",
+      )}
       signInHarness={harnesses[0]}
       imageStatus={null}
-      missingBindingNotice={false}
-      discoveryPhase="ready"
       authRecovery={{
         harnessId: "cli-fixture",
         scope: "failed-turn",
@@ -357,13 +356,14 @@ it("keeps a failed Claude turn's recovery visible after selecting signed-in Code
   });
   view.rerender(
     <ComposerStatusNotices
-      selectedHarnessId="account-fixture"
       workbenchError={null}
-      chatError="Authentication required"
+      chatError={composerProblem(
+        "signInRequired",
+        "failed-turn",
+        "Authentication required",
+      )}
       signInHarness={harnesses[0]}
       imageStatus={null}
-      missingBindingNotice={false}
-      discoveryPhase="ready"
       authRecovery={{
         harnessId: "cli-fixture",
         scope: "failed-turn",
@@ -400,7 +400,7 @@ it("requires selecting Codex before checking its retained recovery after externa
   reportHarnessSignInRequired("account-fixture", ++nativeTime);
   signedIn = false;
   function RecoveryComposer() {
-    const selected = useWorkbenchStore((state) => state.selectedHarnessId);
+    useWorkbenchStore((state) => state.selectedHarnessId);
     const [recovered, setRecovered] = useState(false);
     return (
       <>
@@ -408,13 +408,10 @@ it("requires selecting Codex before checking its retained recovery after externa
           <span>Ready to retry</span>
         ) : (
           <ComposerStatusNotices
-            selectedHarnessId={selected}
             workbenchError={null}
             chatError={null}
             signInHarness={harnesses[1]}
             imageStatus={null}
-            missingBindingNotice={false}
-            discoveryPhase="ready"
             authRecovery={{
               harnessId: "account-fixture",
               scope: "failed-turn",
@@ -503,12 +500,9 @@ it.each(harnesses)(
             <span>Ready to retry</span>
           ) : (
             <ComposerStatusNotices
-              selectedHarnessId={harness.id}
               workbenchError={null}
               chatError={null}
               imageStatus={null}
-              missingBindingNotice={false}
-              discoveryPhase="ready"
               authRecovery={{
                 harnessId: harness.id,
                 scope: "failed-turn",

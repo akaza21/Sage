@@ -1,3 +1,4 @@
+import { composerProblem } from "./ComposerStatusNotices";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -25,14 +26,10 @@ vi.mock("./ComposerAddActions", () => {
   return recoveryModule.load;
 });
 
-const guidance = "No reviewed local binding is available for this harness.";
 const props: ComposerStatusNoticeProps = {
-  selectedHarnessId: null,
   workbenchError: null,
   chatError: null,
   imageStatus: null,
-  missingBindingNotice: true,
-  discoveryPhase: "ready",
 };
 
 afterEach(() => {
@@ -44,34 +41,32 @@ it("shows a shared failure once while retaining a different image failure", () =
   render(
     <ComposerStatusNotices
       {...props}
-      missingBindingNotice={false}
-      workbenchError="Harness launch failed."
-      chatError="Harness launch failed."
-      imageStatus="Image upload failed."
+      workbenchError={composerProblem(
+        "launch",
+        "chat-a",
+        "Harness launch failed.",
+      )}
+      chatError={composerProblem("launch", "chat-a", "Harness launch failed.")}
+      imageStatus={composerProblem(
+        "image",
+        "chat-a",
+        "Image upload failed.",
+        "attachment",
+        "info",
+      )}
     />,
   );
   expect(
     screen.getAllByRole("alert").map((alert) => alert.textContent),
-  ).toEqual(["Harness launch failed.", "Image upload failed."]);
+  ).toEqual(["Error: Harness launch failed."]);
+  expect(
+    screen.getByText("Image upload failed.").closest(".notice"),
+  ).toHaveClass("notice--info");
+  expect(screen.getByRole("status")).toHaveTextContent("Image upload failed.");
+  expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
 });
 
-it.each([
-  ["idle", true],
-  ["ready", true],
-  ["checking", false],
-  ["signInRequired", false],
-  ["consent", false],
-  ["waiting", false],
-  ["error", false],
-] as const)(
-  "explains a missing binding in discovery phase %s: %s",
-  (phase, visible) => {
-    render(<ComposerStatusNotices {...props} discoveryPhase={phase} />);
-    expect(Boolean(screen.queryByText(guidance))).toBe(visible);
-  },
-);
-
-it("preserves binding guidance and unrelated errors while recovery loads and fails", async () => {
+it("preserves unrelated errors while recovery loads and fails", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(
     <ComposerStatusNotices
@@ -82,23 +77,38 @@ it("preserves binding guidance and unrelated errors while recovery loads and fai
         onSignedIn: () => undefined,
       }}
       signInHarness={{ name: "Harness", signIn: null }}
-      workbenchError="Workspace could not be refreshed."
-      chatError="The harness requires sign-in."
-      imageStatus="Image upload failed."
+      workbenchError={composerProblem(
+        "workspace",
+        "project-a",
+        "Workspace could not be refreshed.",
+      )}
+      chatError={composerProblem(
+        "signInRequired",
+        "chat-a",
+        "The harness requires sign-in.",
+      )}
+      imageStatus={composerProblem(
+        "image",
+        "chat-a",
+        "Image upload failed.",
+        "attachment",
+        "info",
+      )}
     />,
   );
   await act(async () => {
     await recoveryModule.requested;
   });
   const expectNoticesVisible = () => {
-    expect(screen.getByText(guidance)).toBeVisible();
     const alerts = screen.getAllByRole("alert");
     expect(alerts.map((alert) => alert.textContent)).toEqual([
-      "Workspace could not be refreshed.",
-      "The harness requires sign-in.",
-      "Image upload failed.",
+      "Error: Workspace could not be refreshed.",
+      "Error: The harness requires sign-in.",
     ]);
     for (const alert of alerts) expect(alert).toBeVisible();
+    expect(
+      screen.getByText("Image upload failed.").closest(".notice"),
+    ).toHaveClass("notice--info");
   };
   expectNoticesVisible();
   await act(async () => {

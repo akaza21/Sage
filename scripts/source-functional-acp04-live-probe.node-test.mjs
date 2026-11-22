@@ -639,7 +639,7 @@ test("snapshot probe propagates malformed observations instead of retrying them"
   }
 });
 
-// Markup below mirrors main: ChatHarnessControls/SearchablePicker (Harness),
+// Markup below mirrors the current workbench: ChatHarnessControls/SearchablePicker (Harness),
 // ComposerModelControls (Model), AgentTaskStatus (Harness status),
 // AcpChatPresentation/TurnHeader (Turns), LeftSidebar/AgentPrimaryNavigation
 // and ProjectChatNavigation (rail).
@@ -650,7 +650,7 @@ function composerControlsMarkup({
   modelId = "gpt-5.6",
   modelLabel = "gpt-5.6",
 } = {}) {
-  return `<div class="composer__controls"><button class="composer__plus" type="button" aria-label="Composer options" aria-haspopup="menu" aria-expanded="false"></button><label class="composer__control-trigger composer__harness"><div class="searchable-picker"><button type="button" class="searchable-picker__trigger composer__control-trigger composer__picker-trigger" aria-label="Harness" aria-haspopup="listbox" aria-controls="r1-listbox" aria-expanded="false" data-selected-id="${harnessId}"><img alt="" aria-hidden="true"><span class="searchable-picker__trigger-label">${harnessName}</span><svg aria-hidden="true"></svg></button></div></label><div class="composer__model-group"><button class="composer__control-trigger composer__picker-trigger composer__model-trigger" type="button" aria-label="Model"${modelDescription ? ` aria-description="${modelDescription}"` : ""}${modelId ? ` data-selected-id="${modelId}"` : ""} aria-controls="model-panel" aria-haspopup="listbox" aria-expanded="false"><svg aria-hidden="true"></svg><span class="composer__model-label">${modelLabel}</span><svg aria-hidden="true"></svg></button><button type="button" aria-label="Thinking level: High"></button></div></div>`;
+  return `<div class="composer__controls"><button class="composer__plus" type="button" aria-label="Composer options" aria-haspopup="menu" aria-expanded="false"></button><label class="composer__control-trigger composer__harness"><div class="searchable-picker"><button type="button" class="searchable-picker__trigger composer__control-trigger composer__picker-trigger" aria-label="Harness" aria-haspopup="dialog" aria-controls="r1-popover" aria-expanded="false" data-selected-id="${harnessId}"><img alt="" aria-hidden="true"><span class="searchable-picker__trigger-label">${harnessName}</span><svg aria-hidden="true"></svg></button></div></label><div class="composer__model-group"><button class="composer__control-trigger composer__picker-trigger composer__model-trigger" type="button" aria-label="Model"${modelDescription ? ` aria-description="${modelDescription}"` : ""}${modelId ? ` data-selected-id="${modelId}"` : ""} aria-controls="model-panel" aria-haspopup="listbox" aria-expanded="false"><svg aria-hidden="true"></svg><span class="composer__model-label">${modelLabel}</span><svg aria-hidden="true"></svg></button><button type="button" aria-label="Thinking level: High"></button></div></div>`;
 }
 
 function agentHeaderMarkup(harnessStatus = "Ready") {
@@ -1239,19 +1239,20 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
     }),
     (document) => {
       const harness = document.querySelector(
-        'button[aria-label="Harness"][aria-haspopup="listbox"]',
+        'button[aria-label="Harness"][aria-haspopup="dialog"]',
       );
       const model = document.querySelector('button[aria-label="Model"]');
       harness.addEventListener("click", () => {
         if (harness.getAttribute("aria-expanded") === "true") return;
         harness.setAttribute("aria-expanded", "true");
       });
-      // SearchablePicker portals a non-searchable listbox; options carry
+      // SearchablePicker portals a dialog containing a listbox; options carry
       // data-option-id and an accessible "name — availability" label.
-      const mountHarnessPicker = (listboxId = "r1-listbox") => {
+      const mountHarnessPicker = (popoverId = "r1-popover") => {
         const popover = document.createElement("div");
-        popover.setAttribute("role", "none");
-        popover.innerHTML = `<p class="searchable-picker__section-label">Harnesses</p><div id="${listboxId}" role="listbox" aria-label="Harness"><button type="button" role="option" aria-label="Codex — available" aria-selected="false" data-option-id="codex" tabindex="-1"><span class="searchable-picker__option-copy"><span>Codex</span></span></button><button type="button" role="option" aria-label="Simulator — test only" aria-selected="true" data-option-id="simulator" tabindex="-1"><span>Simulator</span></button><button type="button" role="option" aria-label="Pi — not installed" aria-disabled="true" data-option-id="pi" disabled tabindex="-1"><span>Pi</span></button></div>`;
+        popover.id = popoverId;
+        popover.setAttribute("role", "dialog");
+        popover.innerHTML = `<p class="searchable-picker__section-label">Harnesses</p><div id="${popoverId}-listbox" role="listbox" aria-label="Harness"><button type="button" role="option" aria-label="Codex — available" aria-selected="false" data-option-id="codex" tabindex="-1"><span class="searchable-picker__option-copy"><span>Codex</span></span></button><button type="button" role="option" aria-label="Simulator — test only" aria-selected="true" data-option-id="simulator" tabindex="-1"><span>Simulator</span></button><button type="button" role="option" aria-label="Pi — not installed" aria-disabled="true" data-option-id="pi" disabled tabindex="-1"><span>Pi</span></button></div>`;
         document.body.append(popover);
         popover
           .querySelector('[data-option-id="codex"]')
@@ -1286,6 +1287,14 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       decoy.remove();
       const picker = mountHarnessPicker();
       assert.equal(eval(ui.codexSelectable), true);
+      picker.setAttribute("role", "none");
+      assert.equal(eval(ui.selectCodex), false);
+      picker.setAttribute("role", "dialog");
+      const list = picker.querySelector('[role="listbox"]');
+      list.after(list.cloneNode(true));
+      assert.equal(eval(ui.codexSelectable), false);
+      assert.equal(eval(ui.selectCodex), false);
+      list.nextElementSibling.remove();
       const codexOption = picker.querySelector('[data-option-id="codex"]');
       codexOption.setAttribute("aria-disabled", "true");
       assert.equal(eval(ui.codexSelectable), false);

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
+import { SettingsHarnessNotices } from "../settings/SettingsHarnessNotices";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -12,6 +13,31 @@ afterEach(() => {
 });
 
 describe("HarnessDiscoveryNotice", () => {
+  it("keeps Settings compatibility and update copy in its existing presentation", () => {
+    const { container } = render(
+      <HarnessDiscoveryNotice
+        presentation={SettingsHarnessNotices}
+        harness={{
+          id: "fixture",
+          name: "Fixture",
+          description: "ACP",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "fixture-binding",
+          accountModelDiscovery: false,
+          characterisation: "newerThanTested",
+          boundVersion: "1.2.3",
+          update: { latestVersion: "1.3.0", command: "update fixture" },
+        }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Fixture 1.2.3 is newer than Sage has tested. Tested features stay on. Fixture 1.3.0 is available. Run update fixture, then refresh discovery in Settings.",
+    );
+    expect(container.querySelector(".build-notice")).not.toBeNull();
+    expect(container.querySelector(".notice")).toBeNull();
+  });
   it("explains that a present Codex harness remains blocked pending admission", () => {
     useWorkbenchStore.setState({
       harnesses: [
@@ -33,8 +59,8 @@ describe("HarnessDiscoveryNotice", () => {
 
     render(<HarnessDiscoveryNotice />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage can't start this harness.",
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Codex can't start yet.",
     );
   });
 
@@ -61,7 +87,7 @@ describe("HarnessDiscoveryNotice", () => {
 
     render(<HarnessDiscoveryNotice />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(screen.getByText(/Claude Code 0.99.0/)).toHaveTextContent(
       "Claude Code 0.99.0 hasn't been tested with Sage yet, so some features are off.",
     );
     expect(screen.getByText(/some features are off\./)).toBeVisible();
@@ -141,8 +167,8 @@ describe("HarnessDiscoveryNotice", () => {
 
     render(<HarnessDiscoveryNotice />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "The installed Node.js is older than this harness requires.",
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Claude Code needs a newer Node.js version.",
     );
   });
 
@@ -168,13 +194,13 @@ describe("HarnessDiscoveryNotice", () => {
 
     render(<HarnessDiscoveryNotice />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage can't start this harness.",
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Claude Code can't start yet.",
     );
     expect(screen.queryByText("someFutureReason")).toBeNull();
   });
 
-  it("uses one status region when an account-managed harness is unavailable", () => {
+  it("uses one blocking notice when an account-managed harness is unavailable", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -196,9 +222,9 @@ describe("HarnessDiscoveryNotice", () => {
 
     render(<HarnessDiscoveryNotice />);
 
-    expect(screen.getAllByRole("status")).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage hasn't finished checking this harness",
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Codex is still being checked.",
     );
   });
 });

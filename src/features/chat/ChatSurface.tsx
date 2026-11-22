@@ -5,10 +5,9 @@ import {
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
+import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
-import { HarnessUnavailableNotice } from "./ComposerStatusNotices";
-import { preferredAvailableHarness } from "../../domain/harness";
 import { useUsageRequest } from "./acp/useUsageRequest";
 import {
   latestRetryPrompt,
@@ -21,7 +20,7 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { LazyHarnessNotice, lazyParts } from "./lazyParts";
+import { lazyParts } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
@@ -54,7 +53,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     page: acpPage,
     selectedHarnessId,
     selectedModelId,
-    harnessDefinition: selectedHarnessDefinition,
     discoveryPhase,
     chooseHarness,
     chooseModel,
@@ -221,21 +219,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     acpPage?.sessions.find(
       (session) => session.id === acpPage.currentSessionId,
     ) ?? acpPage?.sessions.at(-1);
-  const unavailableChat = Boolean(
-    boundSession &&
-    (selectedHarnessDefinition?.installState === "unavailable" ||
-      selectedHarnessDefinition?.installState === "notInstalled"),
-  );
-  const unavailable =
-    unavailableChat ||
-    selectedHarnessDefinition?.installState === "unavailable" ||
-    selectedHarnessDefinition?.installState === "notInstalled" ||
-    (!preferredAvailableHarness(harnesses) &&
-      !harnesses.some(
-        (harness) =>
-          harness.installState === "detecting" ||
-          harness.installState === "installing",
-      ));
   return (
     <section
       ref={surfaceRef}
@@ -264,12 +247,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           endSession={endSession}
           harnessStatus={harnessStatus}
           onCommitted={() => queueMicrotask(() => composerRef.current?.focus())}
-        />
-      ) : null}
-      {!unavailable ? (
-        <LazyHarnessNotice
-          harness={selectedHarnessDefinition}
-          discoveryPhase={discoveryPhase}
         />
       ) : null}
 
@@ -305,101 +282,95 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {unavailable && !activeAcpTurn && !approval.awaiting ? (
-        <HarnessUnavailableNotice
-          onEditSummaryMount={setEditSummaryContainer}
-          existingChat={unavailableChat}
-          workbenchError={error}
-          chatError={
-            acpActions.errorUnavailableReason === "bindingUnavailable"
-              ? null
-              : foregroundError
-          }
-          onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        />
-      ) : (
-        <ChatComposerRegion
-          approvalSlot={approval.slot}
-          onEditSummaryMount={setEditSummaryContainer}
-          hidden={approval.awaiting}
-          composerRef={composerRef}
-          fieldId={composerFieldId}
-          dictationScope={chatId ?? activeTabId ?? ""}
-          commandChatId={chatId}
-          sessionId={acpPage?.currentSessionId ?? null}
-          descriptionId={`${composerFieldId}-description`}
-          disabledReasonId={`${composerFieldId}-disabled-reason`}
-          text={composerText}
-          attachedContext={attachedContext}
-          pasteSession={selectedSession}
-          imagePreviews={imagePreviews}
-          imageUploading={imageUploading}
-          imageInputAvailable={imageInput.available}
-          imageInputDisabledReason={imageInput.reason}
-          onAddImages={useNativeAcp ? addImages : undefined}
-          enabled={composerEnabled && !firstSendPending}
-          sendBlocked={sendBlocked}
-          actionBusy={actionBusy || firstSendPending}
-          activeTurn={Boolean(activeAcpTurn)}
-          queueAvailable={queueAvailable}
-          queuedPrompts={queuedPrompts}
-          steerAvailable={steerAvailable}
-          projectTransitioning={projectTransitioning}
-          workbenchError={error}
-          chatError={foregroundError}
-          chatAuth={{
-            page: acpPage,
-            errorKind: acpActions.errorKind,
-            boundChatId: chatId,
-          }}
-          accessTarget={accessTarget}
-          availableBinding={availableBinding}
-          canPrompt={canPrompt}
-          discoveryPhase={discoveryPhase}
-          sessionHarnessId={sessionHarnessId}
-          sessionModelId={sessionModelId}
-          selectedHarnessId={selectedHarnessId}
-          selectedModelId={selectedModelId}
-          sessionPromptUnavailable={sessionPromptUnavailable}
-          sessionConfig={withSessionConfigNotice(
-            acpPage?.sessionConfig ??
-              restoredSessionConfigView(
-                acpPage,
-                selectedHarness?.bindingId,
-                selectedModelId,
-              ),
-            acpPage?.sessionConfigNotice,
-          )}
-          modePending={modeChanging}
-          modeError={modeError}
-          focused={focused}
-          onSetSessionMode={acpActions.setSessionMode}
-          onSetSessionConfigOption={acpActions.setSessionConfigOption}
-          onCompact={sessionAction("compact")}
-          onSelectHarness={chooseHarness}
-          onSelectModel={chooseModel}
-          missingBindingNotice={useNativeAcp && !availableBinding}
-          disabledReason={disabledReason}
-          onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-          project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
-          newChat={newChat && !isSideChatId(acpPage?.chatId ?? chatId)}
-          usage={usage}
-          usageRequest={usageRequest}
-          goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
-          goalCapabilities={
-            boundSession?.runtimeEpoch
-              ? boundSession.capabilities.goal
-              : undefined
-          }
-          onSubmit={submit}
-          onTextChange={setComposerText}
-          onRemoveContext={removeAttachedContext}
-          onCancelTurn={cancelTurn}
-          onDeleteQueuedPrompt={(id) => updateQueuedPrompt(id, "deleted")}
-          onRetryQueuedPrompt={(id) => updateQueuedPrompt(id, "queued")}
-          onSteerQueuedPrompt={(id) => steerQueuedPrompt(id, acpActions.steer)}
-        />
-      )}
+      <ChatComposerRegion
+        approvalSlot={approval.slot}
+        onEditSummaryMount={setEditSummaryContainer}
+        hidden={approval.awaiting}
+        composerRef={composerRef}
+        fieldId={composerFieldId}
+        dictationScope={chatId ?? activeTabId ?? ""}
+        commandChatId={chatId}
+        sessionId={acpPage?.currentSessionId ?? null}
+        descriptionId={`${composerFieldId}-description`}
+        disabledReasonId={`${composerFieldId}-disabled-reason`}
+        text={composerText}
+        attachedContext={attachedContext}
+        pasteSession={selectedSession}
+        imagePreviews={imagePreviews}
+        imageUploading={imageUploading}
+        imageInputAvailable={imageInput.available}
+        imageInputDisabledReason={imageInput.reason}
+        onAddImages={useNativeAcp ? addImages : undefined}
+        enabled={composerEnabled && !firstSendPending}
+        sendBlocked={sendBlocked}
+        actionBusy={actionBusy || firstSendPending}
+        activeTurn={Boolean(activeAcpTurn)}
+        queueAvailable={queueAvailable}
+        queuedPrompts={queuedPrompts}
+        steerAvailable={steerAvailable}
+        projectTransitioning={projectTransitioning}
+        workbenchError={composerProblem(
+          "workspace",
+          [project?.id, epoch],
+          error,
+        )}
+        chatError={composerProblem(
+          acpActions.errorKind ?? "command",
+          [chatId ?? activeTabId, acpPage?.currentSessionId],
+          foregroundError,
+        )}
+        chatAuth={{
+          page: acpPage,
+          errorKind: acpActions.errorKind,
+          boundChatId: chatId,
+        }}
+        accessTarget={accessTarget}
+        availableBinding={availableBinding}
+        canPrompt={canPrompt}
+        discoveryPhase={discoveryPhase}
+        sessionHarnessId={sessionHarnessId}
+        sessionModelId={sessionModelId}
+        selectedHarnessId={selectedHarnessId}
+        selectedModelId={selectedModelId}
+        sessionPromptUnavailable={sessionPromptUnavailable}
+        sessionConfig={withSessionConfigNotice(
+          acpPage?.sessionConfig ??
+            restoredSessionConfigView(
+              acpPage,
+              selectedHarness?.bindingId,
+              selectedModelId,
+            ),
+          acpPage?.sessionConfigNotice,
+        )}
+        modePending={modeChanging}
+        modeError={modeError}
+        focused={focused}
+        onSetSessionMode={acpActions.setSessionMode}
+        onSetSessionConfigOption={acpActions.setSessionConfigOption}
+        onCompact={sessionAction("compact")}
+        onSelectHarness={chooseHarness}
+        onSelectModel={chooseModel}
+        missingBindingNotice={useNativeAcp && !availableBinding}
+        disabledReason={disabledReason}
+        onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
+        project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
+        newChat={newChat && !isSideChatId(acpPage?.chatId ?? chatId)}
+        usage={usage}
+        usageRequest={usageRequest}
+        goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
+        goalCapabilities={
+          boundSession?.runtimeEpoch
+            ? boundSession.capabilities.goal
+            : undefined
+        }
+        onSubmit={submit}
+        onTextChange={setComposerText}
+        onRemoveContext={removeAttachedContext}
+        onCancelTurn={cancelTurn}
+        onDeleteQueuedPrompt={(id) => updateQueuedPrompt(id, "deleted")}
+        onRetryQueuedPrompt={(id) => updateQueuedPrompt(id, "queued")}
+        onSteerQueuedPrompt={(id) => steerQueuedPrompt(id, acpActions.steer)}
+      />
     </section>
   );
 }

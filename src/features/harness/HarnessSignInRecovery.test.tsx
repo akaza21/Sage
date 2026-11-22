@@ -108,7 +108,7 @@ function sendDisabledReason() {
     harnessAvailable: true,
     harnessDiscoveryPhase: useWorkbenchStore.getState().harnessDiscoveryPhase,
     projectTransitioning: false,
-    selectedHarness: true,
+    selectedHarness: { name: "Codex" },
     useNativeAcp: true,
   });
 }
