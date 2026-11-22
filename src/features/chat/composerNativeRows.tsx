@@ -191,7 +191,10 @@ export function composerNativeRows(
         role="menuitemradio"
         className="menu-item composer__add-action"
         aria-label={label}
-        aria-description={description}
+        aria-description={
+          [description, sessionConfig?.restored].filter(Boolean).join(" ") ||
+          undefined
+        }
         aria-checked={selected}
         disabled={disabled || pending}
         tabIndex={-1}
@@ -244,6 +247,9 @@ export function composerNativeRows(
           role="menuitemcheckbox"
           className="menu-item"
           aria-label={label}
+          aria-description={sessionConfig?.restored}
+          title={sessionConfig?.restored}
+          data-restored={sessionConfig?.restored ? true : undefined}
           aria-checked={option.currentValue}
           disabled={disabled || pending}
           tabIndex={-1}
@@ -269,6 +275,9 @@ export function composerNativeRows(
             type="button"
             role="menuitemradio"
             className="menu-item"
+            aria-description={sessionConfig?.restored}
+            title={sessionConfig?.restored}
+            data-restored={sessionConfig?.restored ? true : undefined}
             aria-checked={choice.value === option.currentValue}
             disabled={disabled || pending}
             tabIndex={-1}
@@ -288,6 +297,15 @@ export function composerNativeRows(
           </button>,
         );
       }
+    } else {
+      add(
+        `config:${option.id}`,
+        "session",
+        option.name,
+        <span className="menu-empty" aria-disabled="true">
+          {option.name}
+        </span>,
+      );
     }
   }
   action(

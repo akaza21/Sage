@@ -4,8 +4,39 @@ import { composerMenuSections } from "./composerMenuSections";
 import { composerNativeRows } from "./composerNativeRows";
 import { ComposerMenuSections } from "./ComposerSectionList";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
+import { decodeCommandList } from "../../services/acpCommandsDesktop";
 
 afterEach(cleanup);
+it.each(["", "legacy", "More"])(
+  "keeps an older decoded catalog in More for search %j",
+  (query) => {
+    const list = decodeCommandList({
+      revision: 1,
+      commands: [
+        {
+          name: "legacy",
+          description: "Older command",
+          inputHint: null,
+          source: "harness",
+        },
+      ],
+    });
+    expect(list).not.toBeNull();
+    render(
+      <ComposerMenuSections
+        sections={composerMenuSections([], list!.commands, query)}
+        disabled={false}
+        onPick={() => {}}
+      />,
+    );
+    expect(
+      within(screen.getByRole("group", { name: "More" })).getByRole(
+        "menuitem",
+        { name: "/legacy" },
+      ),
+    ).toBeVisible();
+  },
+);
 const noop = () => {};
 const command = (
   name: string,

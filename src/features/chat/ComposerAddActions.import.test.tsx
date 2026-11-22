@@ -45,7 +45,7 @@ it("opens the owning chat's session picker when another chat is focused", () => 
     screen.getByRole("menuitem", { name: "Open a Codex CLI session" }),
   );
   expect(onClose).toHaveBeenCalled();
-  expect(launch).toHaveBeenCalledWith("sessionImport");
+  expect(launch).toHaveBeenCalledWith("sessionImport", "chat-import");
 });
 
 it("offers no picker where no Chat owns the launch", () => {

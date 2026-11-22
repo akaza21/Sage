@@ -86,9 +86,9 @@ export function composerMenuSections(
     );
     const commands = catalog.filter(
       (command) =>
-        command.placement?.section === id &&
+        (command.placement?.section ?? "more") === id &&
         // More is the complete escape hatch, even for native controls.
-        (id === "more" || !controls.has(command.placement.control)) &&
+        (id === "more" || !controls.has(command.placement?.control)) &&
         matchesCommand(command, id),
     );
     const groups: ComposerMenuSection["groups"] = [];

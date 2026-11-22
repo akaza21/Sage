@@ -221,6 +221,34 @@ for (const width of [1888, 720, 480]) {
       ).toBeVisible();
       await expectCompactComposerTargets(composer);
     });
+    test("Space and Enter activate Plan mode and Compact context", async ({
+      page,
+    }) => {
+      await render(page, "Claude Code", "menu-keyboard");
+      const trigger = page.getByRole("button", {
+        name: "Composer options",
+        exact: true,
+      });
+      const menu = page.getByRole("menu", { name: "Composer options menu" });
+      const plan = menu.getByRole("menuitemradio", { name: "Plan mode" });
+      for (const [index, key] of ["Space", "Enter"].entries()) {
+        await trigger.click();
+        await plan.press(key);
+        await expect(menu).toHaveCount(0);
+        await trigger.click();
+        await expect(plan).toHaveAttribute("aria-checked", "true");
+        await menu.getByRole("menuitemradio", { name: "Default" }).press(key);
+        await trigger.click();
+        await expect(plan).toHaveAttribute("aria-checked", "false");
+        await menu
+          .getByRole("menuitem", { name: "Compact context" })
+          .press(key);
+        await expect(menu).toHaveCount(0);
+        await expect(
+          page.getByLabel("Compactions", { exact: true }),
+        ).toHaveText(String(index + 1));
+      }
+    });
     test("Add descriptions are secondary lines and advertised modes are exclusive", async ({
       page,
     }) => {

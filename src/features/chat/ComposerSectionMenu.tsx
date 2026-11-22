@@ -14,6 +14,7 @@ import { ComposerMenuSections } from "./ComposerSectionList";
 import type { SessionCommandsLoad } from "./useSessionCommands";
 import "../../styles/composer-menu.css";
 import { MenuPopover } from "../../ui/MenuPopover";
+import { Notice } from "../../ui/Notice";
 import {
   sessionConfigControls,
   sessionModeActions,
@@ -158,7 +159,7 @@ export function ComposerSectionRows({
   const rows = composerNativeRows({
     ...props,
     importable: chatAvailable && importable,
-    onImport: () => launch("sessionImport"),
+    onImport: () => launch("sessionImport", owner ?? undefined),
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:
       load?.kind === "ready" &&
@@ -175,6 +176,14 @@ export function ComposerSectionRows({
     <div
       onKeyDown={(event) => {
         if (event.target instanceof HTMLInputElement) return;
+        if (
+          event.key === " " &&
+          event.target instanceof Element &&
+          event.target.closest("button, [role^='menuitem']")
+        ) {
+          event.stopPropagation();
+          return;
+        }
         if (
           event.key.length === 1 &&
           !event.ctrlKey &&
@@ -214,24 +223,34 @@ export function ComposerSectionRows({
         onPick={(command, input) => props.onPickCommand?.(command, input)}
       />
       {query && !sections.length ? (
-        <p role="status" className="menu-empty">
-          No matching options or commands.
-        </p>
+        <Notice
+          identity="composer-options-empty"
+          severity="info"
+          progress
+          message="No matching options or commands."
+        />
       ) : null}
       {load?.kind === "loading" ? (
-        <p role="status" className="menu-empty">
-          Loading commands...
-        </p>
+        <Notice
+          identity="composer-commands-loading"
+          severity="info"
+          progress
+          message="Loading commands..."
+        />
       ) : null}
       {load?.kind === "error" ? (
-        <p role="status" className="menu-empty">
-          Commands are unavailable. {load.message}
-        </p>
+        <Notice
+          identity="composer-commands-unavailable"
+          severity="warning"
+          message={`Commands are unavailable. ${load.message}`}
+        />
       ) : null}
       {load?.kind === "ready" && !!load.list.omitted ? (
-        <p className="menu-empty">
-          Catalog truncated: {load.list.omitted} commands not shown
-        </p>
+        <Notice
+          identity="composer-commands-truncated"
+          severity="info"
+          message={`Catalog truncated: ${load.list.omitted} commands not shown`}
+        />
       ) : null}
     </div>
   );

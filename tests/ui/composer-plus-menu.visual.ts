@@ -150,12 +150,16 @@ for (const width of [1888, 720, 480]) {
     await expect(field).toHaveValue("/deploy preview");
     await expect(field).toBeFocused();
 
-    await field.fill("");
-    await trigger.click();
-    await menu.getByRole("searchbox").fill("about");
-    await menu.getByRole("menuitem", { name: "/about", exact: true }).click();
-    await expect(field).toHaveValue("/about ");
-    await expect(menu).toHaveCount(0);
+    for (const key of ["Space", "Enter"]) {
+      await field.fill("");
+      await trigger.click();
+      await menu.getByRole("searchbox").fill("about");
+      await menu
+        .getByRole("menuitem", { name: "/about", exact: true })
+        .press(key);
+      await expect(field).toHaveValue("/about ");
+      await expect(menu).toHaveCount(0);
+    }
     await field.fill("");
     await trigger.click();
     await menu.getByRole("searchbox").fill("status");

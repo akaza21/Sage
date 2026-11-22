@@ -38,7 +38,7 @@ describe("ComposerContext", () => {
       document.querySelector(".composer__context-usage-label"),
     ).toHaveTextContent("6K context");
     const meter = screen.getByRole("progressbar", {
-      name: "6,000 used / 272,000 total tokens",
+      name: `${(6_000).toLocaleString()} used / ${(272_000).toLocaleString()} total tokens`,
     });
     expect(meter).toHaveAttribute("aria-valuemin", "0");
     expect(meter).toHaveAttribute("aria-valuemax", "272000");
@@ -51,7 +51,7 @@ describe("ComposerContext", () => {
     expect(meter).toHaveAttribute("tabindex", "0");
     expect(meter).toHaveAttribute(
       "aria-label",
-      "6,000 used / 272,000 total tokens",
+      `${(6_000).toLocaleString()} used / ${(272_000).toLocaleString()} total tokens`,
     );
     expect(meter).not.toHaveTextContent("%");
   });
@@ -75,7 +75,13 @@ describe("ComposerContext", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Show usage/ }));
     const dialog = await screen.findByRole("dialog", { name: "Usage" });
     expect(dialog).toHaveTextContent("Context window0% left");
-    expect(dialog).toHaveTextContent("300K / 272K tokens used");
+    const compact = new Intl.NumberFormat(undefined, {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    });
+    expect(dialog).toHaveTextContent(
+      `${compact.format(300_000)} / ${compact.format(272_000)} tokens used`,
+    );
     vi.restoreAllMocks();
   });
 
@@ -118,7 +124,7 @@ describe("ComposerContext", () => {
       document.querySelector(".composer__context-usage-label"),
     ).toHaveTextContent("300K context");
     const meter = screen.getByRole("progressbar", {
-      name: "300,000 used / 272,000 total tokens",
+      name: `${(300_000).toLocaleString()} used / ${(272_000).toLocaleString()} total tokens`,
     });
     expect(meter).toHaveAttribute("aria-valuenow", "272000");
     expect(meter).toHaveAttribute(
@@ -205,7 +211,13 @@ describe("ComposerContext", () => {
     expect(dialog.firstElementChild).toHaveTextContent(
       "Context window98% left",
     );
-    expect(dialog).toHaveTextContent("6K / 272K tokens used");
+    const compact = new Intl.NumberFormat(undefined, {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    });
+    expect(dialog).toHaveTextContent(
+      `${compact.format(6_000)} / ${compact.format(272_000)} tokens used`,
+    );
     expect(read).toHaveBeenCalledWith(request);
 
     fireEvent.click(trigger);
