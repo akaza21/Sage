@@ -3,12 +3,18 @@ import { useWorkbenchStore } from "../../app/store";
 import { GitBranch } from "../../ui/leanIcons";
 import type * as BranchChunk from "../../workbench/StatusBarDetails";
 import { lazyParts } from "./lazyParts";
+import { selectComposerBranchTurnBusy } from "./composerBranchLock";
 
 const BranchPart = lazyParts<typeof BranchChunk>(
   () => import("../../workbench/StatusBarDetails"),
 );
 
-export function ComposerBranchChip({ turnBusy }: { turnBusy: boolean }) {
+export function ComposerBranchChip({
+  disabled: submissionBusy,
+}: {
+  disabled: boolean;
+}) {
+  const turnBusy = useWorkbenchStore(selectComposerBranchTurnBusy);
   const project = useWorkbenchStore((state) => state.project);
   const repositories = useWorkbenchStore((state) => state.repositories);
   const targetId = useWorkbenchStore((state) => {
@@ -36,13 +42,17 @@ export function ComposerBranchChip({ turnBusy }: { turnBusy: boolean }) {
   const repository = repositories.roots.find(
     (entry) => entry.rootId === root?.id,
   );
-  const [loaded, setLoaded] = useState(false);
+  const [loadState, setLoadState] = useState<"idle" | "requested" | "failed">(
+    "idle",
+  );
   const [open, setOpen] = useState(false);
   if (repository?.state !== "repository" || !root) return null;
-  const disabled = turnBusy || busy;
+  const disabled = submissionBusy || turnBusy || busy;
   const title = turnBusy
     ? "Can't switch branches while the agent is working"
-    : undefined;
+    : loadState === "failed"
+      ? "Couldn't load branches. Click to retry."
+      : undefined;
   const label = (
     <>
       <GitBranch size={14} aria-hidden="true" />
@@ -55,19 +65,19 @@ export function ComposerBranchChip({ turnBusy }: { turnBusy: boolean }) {
     <button
       type="button"
       className="searchable-picker__trigger searchable-picker__trigger--plain"
-      aria-label={`Switch branch in ${root.name}`}
+      aria-label={`${loadState === "failed" ? "Retry loading branches" : "Switch branch"} in ${root.name}`}
       aria-haspopup="listbox"
       aria-expanded={open && !disabled}
       title={title}
       disabled={disabled}
       onClick={() => {
-        setLoaded(true);
+        setLoadState("requested");
         setOpen(true);
       }}
       onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          setLoaded(true);
+          setLoadState("requested");
           setOpen(true);
         }
       }}
@@ -77,7 +87,7 @@ export function ComposerBranchChip({ turnBusy }: { turnBusy: boolean }) {
   );
   return (
     <div className="composer-branch" title={title}>
-      {loaded ? (
+      {loadState === "requested" ? (
         <BranchPart
           part="SourceBranchList"
           key={`${project?.id}:${root.id}`}
@@ -91,6 +101,10 @@ export function ComposerBranchChip({ turnBusy }: { turnBusy: boolean }) {
           open={open}
           onOpenChange={setOpen}
           fallback={fallback}
+          onLoadFailed={() => {
+            setOpen(false);
+            setLoadState("failed");
+          }}
         />
       ) : (
         fallback

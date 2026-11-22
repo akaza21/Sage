@@ -36,11 +36,9 @@ const targets: readonly SearchablePickerOption[] = [
 export function ComposerLocationStrip({
   projectName,
   disabled,
-  turnBusy = false,
 }: {
   projectName: string;
   disabled: boolean;
-  turnBusy?: boolean;
 }) {
   return (
     <div className="composer-location" role="group" aria-label="Chat location">
@@ -62,7 +60,7 @@ export function ComposerLocationStrip({
         disabled={disabled}
         popoverPlacement="above-start"
       />
-      <BranchPart part="ComposerBranchChip" turnBusy={turnBusy} />
+      <BranchPart part="ComposerBranchChip" disabled={disabled} />
     </div>
   );
 }

@@ -149,7 +149,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
           disabled={actionBusy || projectTransitioning || !!sessionId}
-          turnBusy={activeTurn}
         />
       ) : null}
       <div className="chat-dock surface surface--dock">

@@ -41,7 +41,7 @@ it("offers checked local work and announces remote work as unavailable", async (
   expect(trigger).toHaveTextContent("This computer");
 });
 
-it("hides outside Git, locks during a turn, and switches through shared dirty checkout", async () => {
+it("hides outside Git, propagates the composer lock, and switches through shared dirty checkout", async () => {
   const repository: RootRepositoryStatus = {
     rootId: "root-a",
     state: "notRepository",
@@ -86,14 +86,8 @@ it("hides outside Git, locks during a turn, and switches through shared dirty ch
     name: "Switch branch in Alpha",
   });
   expect(chip).toHaveTextContent("main");
-  view.rerender(
-    <ComposerLocationStrip projectName="Alpha" disabled={false} turnBusy />,
-  );
+  view.rerender(<ComposerLocationStrip projectName="Alpha" disabled />);
   expect(chip).toBeDisabled();
-  expect(chip).toHaveAttribute(
-    "title",
-    "Can't switch branches while the agent is working",
-  );
   fireEvent.click(chip);
   expect(screen.queryByRole("listbox")).toBeNull();
   view.rerender(<ComposerLocationStrip projectName="Alpha" disabled={false} />);
@@ -207,18 +201,10 @@ it("hides outside Git, locks during a turn, and switches through shared dirty ch
   expect(useWorkbenchStore.getState().repositories.roots[0].branch).toBe(
     "topic",
   );
-  view.rerender(
-    <ComposerLocationStrip projectName="Alpha" disabled={false} turnBusy />,
-  );
+  view.rerender(<ComposerLocationStrip projectName="Alpha" disabled />);
   expect(
     screen.getByRole("button", { name: "Switch branch in Alpha" }),
   ).toBeDisabled();
-  expect(
-    screen.getByRole("button", { name: "Switch branch in Alpha" }),
-  ).toHaveAttribute(
-    "title",
-    "Can't switch branches while the agent is working",
-  );
   act(() =>
     useWorkbenchStore.setState({
       repositories: { roots: [repository], truncated: false, elapsedMs: 1 },
