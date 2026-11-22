@@ -321,12 +321,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         let mut prospective_terminal = self.terminal;
         let mut facts = Vec::new();
+        let mut writes = Vec::new();
         if facts.try_reserve_exact(events.len()).is_err() {
             return self
                 .fail_deferred_protocol(mode, AdapterPumpError::BatchCapacity)
                 .await;
         }
         for event in events {
+            if let Some(write) = self.agent_write(&event, now_millis, prospective_terminal)
+                && writes.try_reserve(1).is_ok()
+            {
+                writes.push(write);
+            }
             if let AdapterEvent::TurnStarted { id } = &event {
                 if let Err(error) = self.accept_turn_started(id, prospective_terminal) {
                     return self.fail_deferred_protocol(mode, error).await;
@@ -363,6 +369,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 }
                 facts.push(fact);
             }
+        }
+        // Write records follow every item, so a file pair stays beside its
+        // item. Those past the transaction's fact bound go unrecorded.
+        let room =
+            (LIMITS.queues.journal_facts_per_transaction as usize).saturating_sub(facts.len());
+        writes.truncate(room);
+        if facts.try_reserve(writes.len()).is_ok() {
+            facts.append(&mut writes);
         }
         if validate_deny_pairs(&facts, &egress).is_err() {
             return self

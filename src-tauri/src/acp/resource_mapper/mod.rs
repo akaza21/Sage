@@ -14,8 +14,10 @@ const MAX_PROJECT_ROOTS: usize = MAX_ROOTS_PER_PROJECT as usize;
 const MAX_ROOT_PATH_BYTES_TOTAL: usize =
     MAX_PROJECT_ROOTS * LIMITS.wire.absolute_path_bytes_native_only as usize;
 
+mod content_digest;
 mod diff_context;
 mod missing_display;
+pub(crate) use content_digest::ContentState;
 
 /// Native-only configuration input. Absolute paths never cross the IPC or
 /// durable normalized-item boundary.
@@ -275,6 +277,13 @@ impl ResourceMapper for NativeResourceMapper {
 
     fn read_diff_context(&self, resource: &SafeResourceRef) -> Option<String> {
         self.bounded_diff_context(resource)
+    }
+
+    fn content_digest(&self, resource: &SafeResourceRef) -> Option<[u8; 32]> {
+        match self.content_state(resource) {
+            ContentState::Present(digest) => Some(digest),
+            ContentState::Missing | ContentState::Unreadable => None,
+        }
     }
 }
 

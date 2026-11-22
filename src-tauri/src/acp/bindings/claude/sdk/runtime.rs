@@ -60,6 +60,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             launch: None,
             binding: self.binding,
             root: Some(self.root),
+            cwd: None,
             epoch: runtime_epoch,
         }))
     }
@@ -79,6 +80,8 @@ struct ClaudeSdkRuntime {
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
+    /// Where Claude Code runs: it may name the files it rewinds relative to it.
+    cwd: Option<std::path::PathBuf>,
     epoch: RuntimeEpoch,
 }
 
@@ -155,6 +158,7 @@ impl LaunchableRuntime for ClaudeSdkRuntime {
         let (Some(root), Some(launch)) = (self.root.take(), self.launch.as_ref()) else {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         };
+        self.cwd = Some(root.as_path().to_owned());
         self.binding.launch_spec(self.epoch.get(), root, launch)
     }
 }
@@ -191,7 +195,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.session.capabilities().map(|capabilities| {
-            let mut capabilities = sdk_capabilities(capabilities);
+            let mut capabilities = sdk_capabilities(capabilities, self.binding.harness_version());
             capabilities.goal = self
                 .bridge
                 .as_ref()

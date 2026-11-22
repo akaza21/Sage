@@ -56,6 +56,7 @@ fn runtime() -> ClaudeSdkRuntime {
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
+        cwd: None,
         epoch: RuntimeEpoch::new(1).unwrap(),
     };
     runtime.bind_activation(&ActivationMode::New {

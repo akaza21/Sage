@@ -10,7 +10,10 @@ import { acpDesktop } from "../../../src/services/acpDesktop";
 import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures";
 
 /** The native command boundary returns a rejection once, then commits the suffix. */
-export function installConversationRewindFixture(inPlace = true) {
+export function installConversationRewindFixture(
+  inPlace = true,
+  files?: { files: string[]; conflicts: string[] },
+) {
   installTranscriptSelectionFixture(false, true);
   const chat = useWorkbenchStore.getState().activeTabId!;
   const projection = acpProjectionStoreFor(chat);
@@ -51,7 +54,7 @@ export function installConversationRewindFixture(inPlace = true) {
       capabilities: {
         ...session.capabilities,
         rewind: {
-          effects: { conversation: inPlace, files: false },
+          effects: { conversation: inPlace, files: !!files },
           targets: "anyTurn",
           forkAt: true,
           onResume: false,
@@ -68,17 +71,32 @@ export function installConversationRewindFixture(inPlace = true) {
   };
   publish();
   acpDesktop.getChatPage = async () => structuredClone(page);
-  let refused = false;
+  let refused = !!files;
+  const sent: unknown[] = [];
+  (window as { __rewindControls?: unknown[] }).__rewindControls = sent;
   Object.defineProperty(window, "__TAURI_INTERNALS__", {
     configurable: true,
     value: {
       transformCallback: () => 0,
       invoke: async (
         command: string,
-        args: { request?: { control?: { kind: string; before: string } } },
+        args: {
+          request?: { control?: { kind: string; before: string } };
+        },
       ) => {
         if (command !== "control_acp_session") return null;
         const control = args.request?.control;
+        sent.push(control);
+        if (control?.kind === "previewRewind")
+          return files
+            ? {
+                preview: {
+                  ...files,
+                  fileCount: files.files.length,
+                  conflictCount: files.conflicts.length,
+                },
+              }
+            : {};
         if (control?.kind !== "rewindConversation")
           throw new Error("Unexpected control");
         if (!refused) {

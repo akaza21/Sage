@@ -61,6 +61,16 @@
   font-size: 11px;
 }
 
+.fork-chat-dialog .rewind-files {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0 var(--space-1) var(--space-2);
+  padding-left: var(--space-4);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 .fork-chat-dialog [role="alert"] {
   margin: var(--space-2) var(--space-1) 0;
   color: var(--color-danger);

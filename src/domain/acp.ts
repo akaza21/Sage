@@ -153,6 +153,8 @@ export type ActivityState =
 export interface AcpRewindEffects {
   conversation: boolean;
   files: boolean;
+  /** Not decoded: the rewind dialog asks the native side for its preview. */
+  filePreview?: boolean;
 }
 
 export interface AcpRewindCapability {

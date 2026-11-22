@@ -75,6 +75,12 @@ pub(crate) trait ResourceMapper {
     fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
         None
     }
+
+    /// The SHA-256 of the file's bytes now, when it can be read within the
+    /// mapper's bound. Agent writes are recorded with it.
+    fn content_digest(&self, _resource: &SafeResourceRef) -> Option<[u8; 32]> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

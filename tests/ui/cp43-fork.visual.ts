@@ -202,6 +202,89 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
   ).toHaveValue(prompt);
 });
 
+async function openFileRewind(
+  page: Page,
+  files: { files: string[]; conflicts: string[] },
+) {
+  const workbench = await openForkableAnswer(page);
+  await page.evaluate(async (files) => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, files);
+  }, files);
+  const actions = page.getByRole("group", { name: "Prompt actions" });
+  await actions
+    .first()
+    .getByRole("button", { name: "More actions", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Prompt actions" })
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Rewind conversation from here",
+  });
+  const sent = () =>
+    page.evaluate(
+      () => (window as { __rewindControls?: unknown[] }).__rewindControls,
+    );
+  return { workbench, actions, dialog, sent };
+}
+
+/** Dry runs only (a dev effect may repeat one), then exactly one rewind. */
+function rewound(controls: unknown[] | undefined, files: { files?: true }) {
+  const before = "turn-00000000-0000-4000-8000-000000000001";
+  const sent = controls ?? [];
+  expect(sent.length).toBeGreaterThan(1);
+  expect(sent.slice(0, -1)).toEqual(
+    sent.slice(0, -1).map(() => ({ kind: "previewRewind", before })),
+  );
+  expect(sent.at(-1)).toEqual({ kind: "rewindConversation", before, ...files });
+}
+
+test("T11b: a preview lists the files, then files and conversation rewind", async ({
+  page,
+}) => {
+  const { workbench, actions, dialog, sent } = await openFileRewind(page, {
+    files: ["src/app.ts", "src/app.test.ts"],
+    conflicts: [],
+  });
+  await expect(dialog.getByRole("listitem")).toHaveText([
+    "src/app.ts",
+    "src/app.test.ts",
+  ]);
+  await expect(
+    dialog.getByText("Rewind does not undo shell commands", { exact: false }),
+  ).toBeVisible();
+  await expect(workbench).toHaveScreenshot("rewind-files-preview.png");
+  await dialog
+    .getByRole("button", { name: "Rewind files and conversation" })
+    .click();
+  await expect(actions).toHaveCount(0);
+  rewound(await sent(), { files: true });
+});
+
+test("T11b: files changed since the agent wrote them refuse a file rewind", async ({
+  page,
+}) => {
+  const { actions, dialog, sent } = await openFileRewind(page, {
+    files: ["src/app.ts", "src/app.test.ts"],
+    conflicts: ["src/app.ts"],
+  });
+  await expect(dialog.getByRole("alert")).toContainText(
+    "changed since the agent last wrote them",
+  );
+  await expect(dialog.getByRole("listitem")).toHaveText(["src/app.ts"]);
+  await expect(
+    dialog.getByRole("button", { name: "Rewind files and conversation" }),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Rewind conversation only", exact: true })
+    .click();
+  await expect(actions).toHaveCount(0);
+  rewound(await sent(), {});
+});
+
 test("T11a: a fork-only offer has no in-place rewind and explains the shared folder", async ({
   page,
 }) => {

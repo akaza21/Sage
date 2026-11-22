@@ -12,7 +12,7 @@ use sage_acp_protocol::{
 fn running(binding: &str) -> (Fixture, AcpService) {
     let mut caps: sage_acp_protocol::intent::CapabilitySnapshotV1 =
         serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
-    caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability();
+    caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability("2.1.326");
     if binding == "checkpoint-fixture" {
         caps.rewind.effects.files = false;
         caps.rewind.targets = sage_acp_protocol::intent::RewindTargets::LatestTurn;

@@ -260,6 +260,10 @@ impl JournalRejectionContext {
                     kind: "fileChangeDiff",
                     external_item_id: external_item_id.as_str().to_owned(),
                 }),
+                DurableAdapterEvent::AgentWrite { .. } => Some(JournalRejectionItem {
+                    kind: "agentWrite",
+                    external_item_id: "turn-scoped".to_owned(),
+                }),
                 DurableAdapterEvent::PermissionRequest { intent, .. }
                 | DurableAdapterEvent::PermissionDeny { intent, .. } => {
                     Some(JournalRejectionItem {

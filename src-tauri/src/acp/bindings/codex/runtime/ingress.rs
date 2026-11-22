@@ -241,6 +241,7 @@ impl CodexRuntime {
             }
             SessionControl::RewindConversation { .. }
             | SessionControl::ForkAt { .. }
+            | SessionControl::RewindFiles { .. }
             | SessionControl::StopActivity { .. }
             | SessionControl::SetTitle { .. }
             | SessionControl::ReconnectMcpServer { .. } => {

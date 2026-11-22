@@ -343,6 +343,9 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 mod tests;
 
 #[cfg(test)]
+mod file_rewind_tests;
+
+#[cfg(test)]
 mod subagent_tests;
 
 #[cfg(test)]

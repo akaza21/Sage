@@ -121,6 +121,7 @@ fn fork_reply(result: Result<NativeRpcReply, HostError>) -> Result<ExternalId, C
             | NativeRpcReply::TerminalsStopped
             | NativeRpcReply::Controlled(_)
             | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::FileRewindPlan(_)
             | NativeRpcReply::McpServers(_)
             | NativeRpcReply::McpSignIn(_),
         ) => Err(ChatForkError::RecoveryRequired),

@@ -38,6 +38,13 @@ pub enum SessionControl {
     UndoTurn {
         turn_id: SageTurnId,
     },
+    /// Restores the files changed since `target`'s prompt to how they were
+    /// before it. A dry run changes nothing and answers with the files a
+    /// restore would change.
+    RewindFiles {
+        target: ConversationTarget,
+        dry_run: bool,
+    },
     /// Stops one running activity the harness reported as stoppable.
     StopActivity {
         activity_id: ExternalId,
@@ -69,7 +76,11 @@ impl SessionControl {
     /// MCP servers changes nothing, and reconnecting a server keeps its
     /// configuration.
     pub fn abandons_at_deadline(&self) -> bool {
-        self.answers_at_once() || matches!(self, Self::ReconnectMcpServer { .. })
+        self.answers_at_once()
+            || matches!(
+                self,
+                Self::ReconnectMcpServer { .. } | Self::RewindFiles { dry_run: true, .. }
+            )
     }
 
     /// Whether the harness answers without waiting on outside work, so a
@@ -80,9 +91,9 @@ impl SessionControl {
 
     pub fn actual_bytes(&self) -> usize {
         match self {
-            Self::RewindConversation { before } | Self::ForkAt { target: before } => {
-                before.actual_bytes()
-            }
+            Self::RewindConversation { before }
+            | Self::ForkAt { target: before }
+            | Self::RewindFiles { target: before, .. } => before.actual_bytes(),
             Self::UndoTurn { turn_id } => turn_id.as_str().len(),
             Self::StopActivity { activity_id } => activity_id.as_str().len(),
             Self::SetTitle { title } => title.as_str().len(),

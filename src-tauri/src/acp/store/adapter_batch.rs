@@ -94,6 +94,12 @@ pub(crate) enum AdapterInboundEvent {
     /// Bounded old/new bytes for the `FileChangeDiff` item with the same
     /// owner and external key. Applied in the same transaction as its item.
     FilePair(FilePairCommand),
+    /// The bytes a finished agent file change left in this Turn.
+    AgentWrite {
+        resource: sage_acp_protocol::intent::SafeResourceRef,
+        digest: [u8; 32],
+        now_millis: i64,
+    },
     ActivityItem(Box<AdapterActivityItemCommand>),
     PermissionRequest {
         intent: PermissionIntent,
@@ -360,6 +366,11 @@ fn apply_event(
             terminal_reason::apply(transaction, owner, command)
         }
         AdapterInboundEvent::FilePair(_) => Err(StoreError::BatchShape),
+        AdapterInboundEvent::AgentWrite {
+            resource,
+            digest,
+            now_millis,
+        } => super::agent_writes::record(transaction, owner, resource, digest, *now_millis),
         event @ AdapterInboundEvent::ActivityItem(_) => {
             activity_item::apply(transaction, owner, event)
         }

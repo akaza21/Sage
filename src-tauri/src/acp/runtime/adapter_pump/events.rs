@@ -78,6 +78,14 @@ pub(crate) enum DurableAdapterEvent {
         now_millis: i64,
     },
     ActivityItem(Box<DurableActivityItem>),
+    /// The bytes a finished agent file change left: a later rewind restores
+    /// that file only while it still holds them.
+    AgentWrite {
+        scope: TurnScope,
+        resource: sage_acp_protocol::intent::SafeResourceRef,
+        digest: [u8; 32],
+        now_millis: i64,
+    },
     PermissionRequest {
         intent: PermissionIntent,
         now_millis: i64,
