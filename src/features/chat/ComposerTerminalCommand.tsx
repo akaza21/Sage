@@ -92,25 +92,27 @@ export function ComposerTerminalCommand({
       </button>
     ) : null;
   return (
-    <Notice
-      identity={`terminal-command:${name}`}
-      severity="info"
-      message={
-        <>
-          {`/${name} needs ${handoff.label}'s terminal.`} {openInTerminal}
-        </>
-      }
-      action={{
-        label: "Send as text anyway",
-        onClick: () => {
-          const field = fieldRef.current;
-          onDone();
-          if (!field) return;
-          field.dataset.terminalText = input;
-          field.form?.requestSubmit();
-        },
-      }}
-    />
+    <div className="composer__notices">
+      <Notice
+        identity={`terminal-command:${name}`}
+        severity="info"
+        message={
+          <>
+            {`/${name} needs ${handoff.label}'s terminal.`} {openInTerminal}
+          </>
+        }
+        action={{
+          label: "Send as text anyway",
+          onClick: () => {
+            const field = fieldRef.current;
+            onDone();
+            if (!field) return;
+            field.dataset.terminalText = input;
+            field.form?.requestSubmit();
+          },
+        }}
+      />
+    </div>
   );
 }
 
