@@ -79,7 +79,7 @@ export function reread(
   const active = currentReady(bridge);
   bridge.setActiveEditor(
     {
-      ...getFileEditorController().ready(document),
+      ...(getFileEditorController().ready(document) as ReadyEditorState),
       unstored: document.dirty ? active?.unstored : undefined,
     },
     {

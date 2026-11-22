@@ -84,7 +84,7 @@ export interface FileEditorController {
     bridge?: EditorStateBridge,
     canCommit?: (resource: ResourceRef) => boolean,
   ): Promise<EditorDocument>;
-  ready(document: EditorDocument): ReadyEditorState;
+  ready(document: EditorDocument): ActiveEditorState;
   updateContent(
     bridge: EditorStateBridge,
     content: EditorContent,
