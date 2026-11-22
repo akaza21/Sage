@@ -148,6 +148,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
 ];
 const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ComposerLocationStrip.tsx",
+  "src/features/chat/ComposerBranchChip.tsx",
   "src/features/chatSearch/ChatSearchPalette.tsx",
   "src/workbench/CollapsedProjectStatus.tsx",
   "src/workbench/ProjectChatNavigation.tsx",

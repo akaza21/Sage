@@ -5,7 +5,13 @@ import {
   type SearchablePickerOption,
 } from "../../ui/SearchablePicker";
 import { ProjectScopeChip } from "./LazyProjectScopeChip";
+import { lazyParts } from "./lazyParts";
+import type * as BranchChunk from "./ComposerBranchChip";
 import "./composer-location.css";
+
+const BranchPart = lazyParts<typeof BranchChunk>(
+  () => import("./ComposerBranchChip"),
+);
 
 const Cloud = lucideIcon("cloud", [
   "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z",
@@ -30,9 +36,11 @@ const targets: readonly SearchablePickerOption[] = [
 export function ComposerLocationStrip({
   projectName,
   disabled,
+  turnBusy = false,
 }: {
   projectName: string;
   disabled: boolean;
+  turnBusy?: boolean;
 }) {
   return (
     <div className="composer-location" role="group" aria-label="Chat location">
@@ -54,6 +62,7 @@ export function ComposerLocationStrip({
         disabled={disabled}
         popoverPlacement="above-start"
       />
+      <BranchPart part="ComposerBranchChip" turnBusy={turnBusy} />
     </div>
   );
 }
