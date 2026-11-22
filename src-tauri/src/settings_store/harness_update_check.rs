@@ -69,7 +69,12 @@ mod tests {
         assert!(!store.set_harness_update_check(false).unwrap());
         assert!(!store.harness_update_check().unwrap());
         drop(store);
-        assert!(!SettingsStore::open(&path).unwrap().harness_update_check().unwrap());
+        assert!(
+            !SettingsStore::open(&path)
+                .unwrap()
+                .harness_update_check()
+                .unwrap()
+        );
         std::fs::remove_dir_all(directory).ok();
     }
 }

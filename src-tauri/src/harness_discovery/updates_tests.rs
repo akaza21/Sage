@@ -153,6 +153,9 @@ fn the_runner_sees_no_npm_call_once_checking_is_off() {
         switch.set(false);
         run(node, args, dir)
     };
-    assert_eq!(lookup_releases(&sources, &enabled, npm, &run_then_off), None);
+    assert_eq!(
+        lookup_releases(&sources, &enabled, npm, &run_then_off),
+        None
+    );
     assert_eq!(calls.borrow().len(), 1);
 }
