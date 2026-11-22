@@ -7,10 +7,34 @@ use sage_acp_protocol::{
     scheduler::RuntimeOwner,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GoalAction {
+    Set { objective: String },
     PauseExisting,
     ClearExisting,
+}
+
+pub(crate) const MAX_GOAL_OBJECTIVE_CHARS: usize = 4_000;
+pub(crate) fn valid_objective(text: &str) -> bool {
+    !text.is_empty() && !text.contains('\0') && text.chars().count() <= MAX_GOAL_OBJECTIVE_CHARS
+}
+
+/// A binding resolves a goal action to a reported command; the ordinary command
+/// path then owns admission, the durable turn, cancellation and delivery recovery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GoalCommand {
+    pub(crate) revision: u64,
+    pub(crate) name: sage_acp_protocol::contract::RequiredText<128>,
+    pub(crate) input: sage_acp_protocol::contract::RequiredText<16384>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GoalProgress {
+    pub(crate) iterations: u64,
+    pub(crate) set_at: u64,
+    pub(crate) tokens_at_start: u64,
+    pub(crate) last_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +124,7 @@ impl NativeRead {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcReply {
     GoalApplied,
+    GoalCommand(GoalCommand),
     TurnsPage(crate::acp::bindings::codex::NativeTurnsPage),
     SessionsPage(crate::acp::bindings::codex::NativeSessionsPage),
     TooLarge,
@@ -155,6 +180,7 @@ impl NativeRpcIntent {
             + self.owner.session_id.as_str().len()
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
+                NativeRpcRequest::Goal(GoalAction::Set { objective }) => objective.len() + 1,
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
@@ -208,6 +234,8 @@ pub(crate) struct GoalSnapshot {
     pub(crate) time_used_seconds: u64,
     pub(crate) created_at: Option<String>,
     pub(crate) updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) progress: Option<GoalProgress>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -227,7 +255,7 @@ impl GoalSnapshot {
         let objective = object
             .get("objective")
             .and_then(Value::as_str)
-            .filter(|s| !s.is_empty() && s.chars().count() <= 4_000 && !s.contains('\0'))
+            .filter(|s| valid_objective(s))
             .ok_or("goal objective invalid")?;
         let status = match object.get("status").and_then(Value::as_str) {
             Some("active") => GoalStatus::Active,
@@ -273,6 +301,7 @@ impl GoalSnapshot {
             time_used_seconds: number("timeUsedSeconds")?,
             created_at: timestamp("createdAt")?,
             updated_at: timestamp("updatedAt")?,
+            progress: None,
         })
     }
 }
@@ -337,14 +366,21 @@ impl GoalChannel {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn update(&self, owner: &RuntimeOwner, state: GoalState) {
+        self.update_observed(owner, &state);
+    }
+
+    /// A stream frame usually leaves its goal unchanged. Clone its bounded
+    /// strings only when the observation changes, never for every token delta.
+    pub(crate) fn update_observed(&self, owner: &RuntimeOwner, state: &GoalState) {
         let mut entry = self
             .entry
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let changed = match entry.as_mut().filter(|e| &e.owner == owner) {
-            Some(current) if current.state != state => {
-                current.state = state;
+            Some(current) if &current.state != state => {
+                current.state = state.clone();
                 current.live
             }
             _ => false,

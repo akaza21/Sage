@@ -547,6 +547,14 @@ export function buildAgentPages(
               capabilities: {
                 ...session().capabilities,
                 protocolVersion: "codex-app-server-observed-0.167.0",
+                goal: {
+                  observes: true,
+                  set: false,
+                  pause: true,
+                  resume: false,
+                  tokenBudget: false,
+                  clear: true,
+                },
               },
             },
           ],

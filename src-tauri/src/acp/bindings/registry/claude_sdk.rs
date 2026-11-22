@@ -85,6 +85,11 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         native_session_import: false,
         native_review: false,
         native_background_terminals: false,
+        goal: sage_acp_protocol::intent::GoalCapabilities {
+            set: true,
+            clear: true,
+            ..Default::default()
+        },
         active_turn_steer: true,
         child_conversation_projection: false,
         child_transcript_read: true,
