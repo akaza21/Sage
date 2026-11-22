@@ -10,6 +10,9 @@ import { ChatComposerRegion } from "./ChatComposerRegion";
 import { preferredAvailableHarness } from "../../domain/harness";
 
 const unchangedSession = () => Promise.resolve();
+// Images taken just before Send join the draft before it is sent; with none
+// in flight, Send acts at once.
+let intake: Promise<void> | undefined;
 
 export function NewChatDraftSurface({
   navigationCollapsed = false,
@@ -170,9 +173,9 @@ export function NewChatDraftSurface({
           onAddImages={
             harness?.bindingId
               ? (files) =>
-                  void import("./draftImages").then((images) =>
-                    images.addDraftImages(draft.id, files),
-                  )
+                  void (intake = import("./draftImages")
+                    .then((images) => images.addDraftImages(draft.id, files))
+                    .finally(() => (intake = undefined)))
               : undefined
           }
           enabled={!submitting && !!available}
@@ -192,8 +195,6 @@ export function NewChatDraftSurface({
           availableBinding={!!harness?.bindingId}
           canPrompt={!!available}
           discoveryPhase={discoveryPhase}
-          sessionHarnessId={null}
-          sessionModelId={null}
           selectedHarnessId={draft.harnessId}
           selectedModelId={choice ? choice.modelId : draft.modelId}
           sessionConfig={null}
@@ -209,10 +210,10 @@ export function NewChatDraftSurface({
           }
           project={shownProject}
           newChat
-          goal={{ kind: "unsupported" }}
           onSubmit={(event) => {
             event.preventDefault();
-            void useWorkbenchStore.getState().sendNewChatDraft();
+            const send = useWorkbenchStore.getState().sendNewChatDraft;
+            void (intake?.finally(send) ?? send());
           }}
           onTextChange={(text) => update({ text })}
           onRemoveContext={(context) =>

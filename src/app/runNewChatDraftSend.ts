@@ -20,7 +20,7 @@ export async function runNewChatDraftSend(
     };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
-  uploadImages?: typeof DraftImages.uploadDraftImages,
+  uploadImages?: Awaited<ReturnType<typeof DraftImages.draftImageUpload>>,
 ) {
   let creation = attempt.submission.creation;
   let opening = false;
@@ -143,12 +143,16 @@ export async function runNewChatDraftSend(
     }
     if (get().activeTabId !== chatId)
       await get().activateTab(chatId, submission);
-    // Images move into the created chat's composer before the prompt does,
-    // so a first send that is then cancelled keeps them there with it.
+    // All the images move into the created chat's composer, or none, before
+    // the prompt does; a first send that is then cancelled keeps them there.
     await uploadImages?.(chatId);
     const { state, draft } = current();
     const owner = state.captureChatOwnership(chatId, draft.id);
-    if (!owner || state.activeTabId !== chatId)
+    // Leaving the chat cancels its send; the handoff then completes unsent.
+    if (
+      !owner ||
+      (state.activeTabId !== chatId && state.pendingFirstSend === submission)
+    )
       throw new Error("Could not open the created chat. Retry to continue.");
     // From here through clearing the draft, handoff is synchronous. No project
     // transition can erase the composer between its assignment and release.

@@ -247,35 +247,46 @@ test("a cancelled first send keeps the images in the created chat", async ({
   expect((await captured(page)).sent).toHaveLength(0);
 });
 
-test("a failed upload keeps the remaining images on the draft", async ({
+test("a failed upload keeps every image on the draft for a retargeted retry", async ({
   page,
 }) => {
   const opened = await openDraft(page);
   await attach(page, opened, "first.png", "second.png");
-  await expect(opened.chips.getByRole("listitem")).toHaveCount(2);
   await control(page, "second.png");
   await opened.field.fill("Both images");
   await opened.field.press("Enter");
   await expect(
     opened.draft.getByText("Could not upload second.png."),
   ).toBeVisible();
+  // All or nothing: the draft keeps both, and the chat's composer none.
   await expect(opened.chips.getByRole("listitem")).toHaveText([
+    "Image · first.png",
     "Image · second.png",
   ]);
+  const chatId = await page.evaluate(
+    () =>
+      (window as never as { draftPlus: { chatId: string } }).draftPlus.chatId,
+  );
+  expect(
+    await page.evaluate(async (id) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      return useWorkbenchStore.getState().chatUiById[id]?.attachedContext
+        .length;
+    }, chatId),
+  ).toBe(0);
+  await reopenDraft(page, true);
+  await expect(opened.chips.getByRole("listitem")).toHaveCount(2);
   await opened.field.press("Enter");
   await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
-  const { sent, uploads, creates } = await captured(page);
+  const { sent, creates } = await captured(page);
   expect(sent[0].attachedContext?.map(({ label }) => label)).toEqual([
     "first.png",
     "second.png",
   ]);
-  expect(uploads).toEqual(["first.png", "second.png"]);
   expect(creates).toBe(1);
 });
 
-test("the draft cannot send twice while its images upload", async ({
-  page,
-}) => {
+test("the draft sends once while its images upload", async ({ page }) => {
   const opened = await openDraft(page);
   await attach(page, opened, "shot.png");
   await control(page, "holdUploads");
@@ -285,11 +296,102 @@ test("the draft cannot send twice while its images upload", async ({
   await expect(
     opened.draft.getByRole("button", { name: /send/i }),
   ).toBeDisabled();
+  await page.keyboard.press("Enter");
   await control(page, "releaseUploads");
   await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
-  const { uploads, creates } = await captured(page);
+  const { sent, uploads, creates } = await captured(page);
+  expect(sent).toHaveLength(1);
   expect(uploads).toEqual(["shot.png"]);
   expect(creates).toBe(1);
+});
+
+test("leaving the created chat mid-upload hands off without sending", async ({
+  page,
+}) => {
+  const opened = await openDraft(page);
+  await attach(page, opened, "shot.png");
+  await control(page, "holdUploads");
+  await opened.field.fill("Later");
+  await opened.field.press("Enter");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as never as { draftPlus: { started: number } }).draftPlus
+            .started,
+      ),
+    )
+    .toBe(1);
+  const previous = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    const id = state.tabs.find(
+      (tab) =>
+        tab.kind === "chat" &&
+        tab.id !==
+          (window as never as { draftPlus: { chatId: string } }).draftPlus
+            .chatId,
+    )!.id;
+    await state.activateTab(id);
+    return id;
+  });
+  await control(page, "releaseUploads");
+  const handed = () =>
+    page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const state = useWorkbenchStore.getState();
+      const id = (window as never as { draftPlus: { chatId: string } })
+        .draftPlus.chatId;
+      const entry = state.chatUiById[id];
+      return {
+        draft: state.newChatDraft,
+        active: state.activeTabId,
+        text: entry?.composerText,
+        images: entry?.attachedContext.map((context) =>
+          context.kind === "image" ? context.label : context.kind,
+        ),
+      };
+    });
+  await expect.poll(async () => (await handed()).draft).toBeNull();
+  expect(await handed()).toEqual({
+    draft: null,
+    active: previous,
+    text: "Later",
+    images: ["shot.png"],
+  });
+  expect((await captured(page)).sent).toHaveLength(0);
+});
+
+test("an image dropped just before Send goes in that send", async ({
+  page,
+}) => {
+  const { field } = await openDraft(page);
+  await field.fill("Right away");
+  await field.evaluate((textbox, bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(
+        [Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))],
+        "drop.png",
+        {
+          type: "image/png",
+        },
+      ),
+    );
+    const form = (textbox as HTMLTextAreaElement).form!;
+    form.dispatchEvent(
+      new DragEvent("drop", {
+        dataTransfer: transfer,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    form.requestSubmit();
+  }, PNG.toString("base64"));
+  await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
+  expect(
+    (await captured(page)).sent[0].attachedContext?.map(({ label }) => label),
+  ).toEqual(["drop.png"]);
 });
 
 test("moving the draft to another project keeps its images", async ({

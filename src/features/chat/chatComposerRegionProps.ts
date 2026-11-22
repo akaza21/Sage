@@ -58,8 +58,8 @@ export interface ChatComposerRegionProps {
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
-  sessionHarnessId: string | null;
-  sessionModelId: string | null;
+  sessionHarnessId?: string | null;
+  sessionModelId?: string | null;
   selectedHarnessId: string | null;
   selectedModelId: string | null;
   sessionPromptUnavailable?: boolean;
@@ -83,7 +83,7 @@ export interface ChatComposerRegionProps {
   newChat?: boolean;
   usage?: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
-  goal: AcpGoalState;
+  goal?: AcpGoalState;
   /** Native goal operations of the live session; absent while offline. */
   goalCapabilities?: AcpGoalCapabilities;
   onSubmit: (

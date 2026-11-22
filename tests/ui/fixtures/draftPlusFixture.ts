@@ -32,6 +32,8 @@ export function installDraftPlusFixture() {
     throw new Error("Draft fixture requires a loaded chat session");
   const control = {
     creates: 0,
+    started: 0,
+    chatId: null as string | null,
     uploads: [] as string[],
     failUpload: null as string | null,
     uploadHold: null as ReturnType<typeof deferred> | null,
@@ -66,6 +68,7 @@ export function installDraftPlusFixture() {
     createChat: async (_target, chatId) => {
       control.creates += 1;
       const id = chatId ?? crypto.randomUUID();
+      control.chatId = id;
       useWorkbenchStore.setState((current) => ({
         tabs: [
           ...current.tabs,
@@ -82,8 +85,26 @@ export function installDraftPlusFixture() {
       }));
       return { status: "confirmed", chatId: id };
     },
-    activateTab: async (id) => {
-      useWorkbenchStore.setState({ activeTabId: id });
+    // As the workbench does: activating any other tab, or leaving a shown
+    // draft, cancels a pending first send.
+    activateTab: async (id, submission) => {
+      const current = useWorkbenchStore.getState();
+      useWorkbenchStore.setState({
+        activeTabId: id,
+        ...(current.pendingFirstSend !== submission && {
+          pendingFirstSend: null,
+          agentCenter: "chat" as const,
+        }),
+      });
+    },
+    // A project-less target keeps the chat where it is, as the internal
+    // project, so a retargeted draft can still hand off.
+    setChatProject: async (target) => {
+      const current = useWorkbenchStore.getState();
+      if (target === null && current.project)
+        useWorkbenchStore.setState({
+          project: { ...current.project, isInternal: true },
+        });
     },
   });
   const pages = new Map<string, AcpChatPage>([[source.chatId, source]]);
@@ -150,6 +171,7 @@ export function installDraftPlusFixture() {
         }
         if (command !== "upload_chat_image") return null;
         const label = args.request?.label ?? "image.png";
+        control.started += 1;
         await control.uploadHold?.promise;
         if (control.failUpload === label) {
           control.failUpload = null;

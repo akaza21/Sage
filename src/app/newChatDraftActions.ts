@@ -54,14 +54,17 @@ export function createNewChatDraftActions(
       const [send, , images] = await Promise.all([
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
-        draft.images?.length && import("../features/chat/draftImages"),
+        draft.images?.length &&
+          import("../features/chat/draftImages").then((images) =>
+            images.draftImageUpload(),
+          ),
       ]);
       released = await send.runNewChatDraftSend(
         set,
         get,
         submittingDraft,
         submission,
-        images ? images.uploadDraftImages : undefined,
+        images || undefined,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));
