@@ -26,6 +26,12 @@ export function FileEditorNotices({
   const key = resourceKey(document.resource);
   return (
     <>
+      {/* Mounted with the File, so each new conflict is announced once. */}
+      <span className="sr-only" aria-live="polite">
+        {document.conflict
+          ? `File ${document.conflict.kind === "deleted" ? "deleted" : "changed"} outside Sage.`
+          : ""}
+      </span>
       {document.conflict || document.base.fingerprint === ABSENT_FINGERPRINT ? (
         <LazyModuleBoundary
           load={loadConflictNotice}
