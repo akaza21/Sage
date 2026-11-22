@@ -237,6 +237,7 @@ pub(super) fn category_label(
         ToolCategory::Think => "Thinking tool",
         ToolCategory::SwitchMode => "Mode switch",
         ToolCategory::Mcp => "MCP tool",
+        ToolCategory::Extension => "Extension tool",
         ToolCategory::Subagent => "Nested activity",
         ToolCategory::Other => profile.other_tool_label,
     }

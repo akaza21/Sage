@@ -109,7 +109,7 @@ pub(super) fn presentation(
             activity_id: None,
             task_lifecycle: execution.task_lifecycle,
         },
-        ToolCategory::Other => ToolPresentation::Other {
+        ToolCategory::Extension | ToolCategory::Other => ToolPresentation::Other {
             label,
             raw_kind: None,
             summary: None,

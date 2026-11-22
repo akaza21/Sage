@@ -47,6 +47,7 @@ use coalescer::PendingIngress;
 pub(crate) use completion::CompletedPumpParts;
 pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
 use payload::hex;
+pub(crate) use payload::permission_payload_fits;
 
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use payload::normalized_payload_bytes;

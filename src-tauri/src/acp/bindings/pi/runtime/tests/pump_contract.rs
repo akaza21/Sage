@@ -8,6 +8,7 @@ mod dialog_replays;
 mod dialogs;
 mod discovery;
 mod error_redaction;
+mod extension_approval;
 mod fixture;
 mod images;
 mod journey;

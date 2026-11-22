@@ -12,6 +12,7 @@ pub(crate) enum CodexLaunchSetupError {
     RunnerStartStdoutReader,
     RunnerStartProcessExitWatcher,
     RunnerStartInitialize,
+    RunnerStartApprovalBridge,
     RunnerStartSessionNew,
     RunnerStartSessionResume,
     RunnerStartSessionLoad,
@@ -32,6 +33,7 @@ impl From<crate::acp::runtime::RunnerStartSubstep> for CodexLaunchSetupError {
             RunnerStartSubstep::StdoutReader => Self::RunnerStartStdoutReader,
             RunnerStartSubstep::ProcessExitWatcher => Self::RunnerStartProcessExitWatcher,
             RunnerStartSubstep::Initialize => Self::RunnerStartInitialize,
+            RunnerStartSubstep::ApprovalBridge => Self::RunnerStartApprovalBridge,
             RunnerStartSubstep::SessionNew => Self::RunnerStartSessionNew,
             RunnerStartSubstep::SessionResume => Self::RunnerStartSessionResume,
             RunnerStartSubstep::SessionLoad => Self::RunnerStartSessionLoad,
@@ -61,6 +63,9 @@ impl CodexLaunchSetupError {
             Self::RunnerStartStdoutReader => "reading the harness output",
             Self::RunnerStartProcessExitWatcher => "watching the harness process",
             Self::RunnerStartInitialize => "initializing the harness",
+            Self::RunnerStartApprovalBridge => {
+                "initializing the approval bridge (missing or mismatched handshake; no prompt sent)"
+            }
             Self::RunnerStartSessionNew => "starting a new harness session",
             Self::RunnerStartSessionResume => "resuming the harness session",
             Self::RunnerStartSessionLoad => "loading the harness session",

@@ -78,6 +78,51 @@ async function applyApproval(page: Page, state: "received" | "declinePending") {
   }, state);
 }
 
+test("extension approval shows its tool name and bounded arguments with the usual choices", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 700 });
+  await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
+  await applyApproval(page, "received");
+  const summary =
+    'Allow extension tool fixture_echo (Fixture echo)?\n{"text":"hello from the extension"}';
+  await page.evaluate(async (summary) => {
+    const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
+      await Promise.all([
+        import("/src/app/store.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
+      ]);
+    const store = acpProjectionStoreFor(
+      useWorkbenchStore.getState().activeTabId,
+    );
+    const { page: current, scope } = store.getState();
+    if (!current || !scope) throw new Error("Expected a loaded chat");
+    const next = structuredClone(current);
+    const item = next.turns
+      .at(-1)!
+      .items.find((item) => item.id === "approval-request")!;
+    Object.assign(item.payload, {
+      category: "extension",
+      summary,
+      reason: null,
+      offeredOptionKinds: ["allow_once", "reject_once"],
+    });
+    store.getState().applyAuthoritativePage(scope, next);
+  }, summary);
+  const card = page.getByRole("group", {
+    name: "Permission request",
+    exact: true,
+  });
+  await expect(card).toContainText("Extension tool");
+  await expect(card.locator("pre")).toHaveText(summary);
+  await expect(card.getByRole("button", { name: /Allow once/ })).toBeVisible();
+  await expect(card.getByRole("button", { name: /Deny/ })).toBeVisible();
+  const box = (await card.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(480);
+});
+
 for (const width of [480, 1280]) {
   test(`approval load failure keeps the toolbar reachable with a full queue and long draft at ${width}px`, async ({
     page,

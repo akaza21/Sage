@@ -93,3 +93,11 @@ pub(super) fn payload_json(
     let (json, measurement) = writer.finish()?;
     Ok((json.ok_or(AdapterPumpError::BatchCapacity)?, measurement))
 }
+
+/// Preflight the exact permission JSON using the pump's bounded writer, without
+/// retaining a second serialized copy. Bindings can refuse oversized tools
+/// before emitting an approval event or occupying the durable pending slot.
+pub(crate) fn permission_payload_fits(payload: &NormalizedPayload) -> bool {
+    let mut writer = PayloadWriter::new(LIMITS.wire.permission_payload_bytes as usize, false);
+    serde_json::to_writer(&mut writer, payload).is_ok()
+}
