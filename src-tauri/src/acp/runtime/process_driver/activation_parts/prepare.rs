@@ -50,3 +50,38 @@ impl<A, R, T, C> CompletedActivationDriverParts<A, CoordinatorActivationJournal,
         })
     }
 }
+
+impl<A: HarnessAdapter, R: ResourceMapper, T: StdinTransport, C: ProcessTreeControl>
+    PreparedActivationTurn<A, R, T, C>
+{
+    pub(crate) fn bind_driver(
+        mut self,
+        journal: JournalHandle,
+        publisher: Arc<dyn ProjectionPublisher>,
+    ) -> FirstTurnDriverResult<A, R, T, C> {
+        // Preparation reserved the prompt's Turn. Idle work arriving before
+        // dispatch must be declined, including starts still in the decoder.
+        while self.parts.parts.turn_started() {
+            let result = self
+                .parts
+                .parts
+                .decline_started_turn(&mut self.parts.transport)
+                .and_then(|()| self.parts.accept_idle_stdout_chunk(&[]));
+            if let Err(error) = result {
+                return Err(Box::new(FirstTurnBindFailure::Retained {
+                    prepared: self,
+                    error: FirstTurnBindError::Pump(error),
+                }));
+            }
+        }
+        self.bind_driver_for(journal, publisher, false)
+    }
+
+    pub(crate) fn bind_harness_driver(
+        self,
+        journal: JournalHandle,
+        publisher: Arc<dyn ProjectionPublisher>,
+    ) -> FirstTurnDriverResult<A, R, T, C> {
+        self.bind_driver_for(journal, publisher, true)
+    }
+}

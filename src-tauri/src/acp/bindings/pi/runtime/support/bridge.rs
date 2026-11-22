@@ -299,19 +299,20 @@ impl PiRuntime {
         }) {
             self.deny = None;
         }
+        let response = reply(
+            id,
+            Refusal::Withdrawn.message(),
+            EgressToken::protocol_notification(),
+        )?;
+        let response = self.cancel_dialog_response(request_id.clone(), response.into_frame())?;
+        self.questions.reply_pending = true;
+        self.questions.settling = Some(request_id.clone());
         let resolved = AdapterEvent::PermissionResolved {
             turn_id: self.turn_identity()?,
             external_request_id: super::identity::external("piPermissionId", request_id)?,
             state: ServerRequestState::Cancelled,
         };
-        AdapterBatch::new(
-            vec![resolved],
-            vec![reply(
-                id,
-                Refusal::Withdrawn.message(),
-                EgressToken::protocol_notification(),
-            )?],
-        )
+        AdapterBatch::new(vec![resolved], vec![response])
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn bridge_permission(

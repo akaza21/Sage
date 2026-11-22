@@ -53,10 +53,12 @@ where
         }
         self.idle_decoder
             .set_oversize_skip(self.parts.skips_oversize_frames());
-        let mut frame = self
-            .idle_decoder
-            .push_chunk(chunk)
-            .map_err(|_| AdapterPumpError::Frame)?;
+        let mut frame = if chunk.is_empty() {
+            self.idle_decoder.drain_pending()
+        } else {
+            self.idle_decoder.push_chunk(chunk)
+        }
+        .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
         loop {
             if let Some(id) = self.idle_decoder.take_oversize_id() {
@@ -191,15 +193,18 @@ where
     T: StdinTransport,
     C: ProcessTreeControl,
 {
-    pub(crate) fn bind_driver(
+    fn bind_driver_for(
         self,
         journal: JournalHandle,
         publisher: Arc<dyn ProjectionPublisher>,
+        started_by_harness: bool,
     ) -> FirstTurnDriverResult<A, R, T, C> {
-        if (!self.parts.idle_decoder.is_frame_aligned() && !self.parts.parts.turn_started())
+        if started_by_harness != self.parts.parts.turn_started()
+            || (!self.parts.idle_decoder.is_frame_aligned() && !started_by_harness)
             || (self.parts.parts.config_pending()
-                && self.parts.parts.harness_turn_authority()
-                    != Some(crate::acp::bindings::adapter::HarnessTurnAuthority::Questions))
+                && !(started_by_harness
+                    && self.parts.parts.harness_turn_authority()
+                        == Some(crate::acp::bindings::adapter::HarnessTurnAuthority::Questions)))
         {
             return Err(Box::new(FirstTurnBindFailure::Retained {
                 prepared: self,

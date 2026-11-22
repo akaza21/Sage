@@ -169,7 +169,7 @@ where
             ))));
         }
     };
-    let turn = match prepared.bind_driver(
+    let turn = match prepared.bind_harness_driver(
         context.journal.clone(),
         std::sync::Arc::clone(&context.publisher),
     ) {

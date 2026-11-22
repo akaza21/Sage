@@ -50,18 +50,13 @@ impl PiRuntime {
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
-            self.poison();
-            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-        }
-        let external = super::identity::external("piDialogId", id.clone())?;
         let bytes = serde_json::to_vec(&serde_json::json!({
             "type":"extension_ui_response", "id":id, "cancelled":true,
         }))
         .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
         let frame =
             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        self.cancelled_dialogs.insert(id, DenyStage::Prepared);
+        let reply = self.cancel_dialog_response(id, frame)?;
         let event = match self.active_turn.as_mut() {
             None => AdapterEvent::IgnoredLate,
             Some(turn) if turn.dialog_notices >= DIALOG_NOTICES_PER_TURN => AdapterEvent::Absorbed,
@@ -80,12 +75,25 @@ impl PiRuntime {
                 self.item(item_id, ItemLifecycle::Cancelled, None, payload)?
             }
         };
-        Ok((
-            Some(event),
-            Some(AdapterEgress::new(
-                frame,
-                EgressToken::permission_cancel(external),
-            )),
+        Ok((Some(event), Some(reply)))
+    }
+
+    /// Correlates a cancellation response until its bytes reach Pi, including
+    /// bridge withdrawals whose reply goes to a separate extension request.
+    pub(super) fn cancel_dialog_response(
+        &mut self,
+        id: String,
+        frame: OutboundFrame,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
+            self.poison();
+            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+        }
+        let external = super::identity::external("piDialogId", id.clone())?;
+        self.cancelled_dialogs.insert(id, DenyStage::Prepared);
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
         ))
     }
 
