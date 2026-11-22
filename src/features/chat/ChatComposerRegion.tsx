@@ -119,6 +119,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInput.sendBlocked ||
     (sessionFeatures && paste.blocksSend);
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const hasContent = Boolean(
+    text.trim() || attachedContext.length || paste.revision,
+  );
   const optionsTriggerId = `${fieldId}-options`;
   const projectName = composerWorkspaceName(project);
   const files = useComposerFiles({
@@ -152,7 +155,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           disabled={actionDisabled || !!sessionId}
         />
       ) : null}
-      <div className="chat-dock surface surface--dock">
+      <div
+        className="chat-dock surface surface--dock"
+        data-working={(activeTurn && !hidden) || undefined}
+      >
         <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
         {approvalSlot}
         <form
@@ -232,11 +238,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                aria-description={
-                  queueing
-                    ? "Enter queues a message while this turn runs."
-                    : undefined
-                }
                 aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.describedBy}`}
                 value={text}
                 rows={2}
@@ -385,17 +386,14 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <ComposerTurnControl
+              activeTurn={activeTurn}
+              hasContent={hasContent}
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              disabled={composerDisabled}
               onCancelTurn={onCancelTurn}
               cancelDisabled={actionDisabled}
-              queueing={Boolean(activeTurn && queueAvailable)}
-              sendDisabled={
-                dispatchBlocked ||
-                (!text.trim() && !attachedContext.length && !paste.revision)
-              }
+              sendDisabled={dispatchBlocked}
             />
           </div>
         </form>
