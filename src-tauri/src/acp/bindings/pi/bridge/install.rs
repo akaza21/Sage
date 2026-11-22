@@ -9,6 +9,13 @@ use crate::acp::bindings::release_version::characterise_against;
 /// releases load it too. Native launch requires this pinned resource.
 pub(crate) const BRIDGE_PI_VERSION: &str = "1.5.0";
 pub(crate) const SOURCE: &[u8] = include_bytes!("extension.mjs");
+pub(crate) fn digest() -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(SOURCE)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 /// The bridge's path under Sage's resource directory. `bundle.resources` in
 /// tauri.conf.json ships the file at exactly this path.
 pub(crate) const RESOURCE: &str = "src/acp/bindings/pi/bridge/extension.mjs";
@@ -57,7 +64,7 @@ fn resource_root() -> Option<PathBuf> {
     tauri::utils::platform::resource_dir(&package, &tauri::Env::default()).ok()
 }
 
-pub(super) fn matches_install(root: &Path, path: &Path) -> Result<(), Unavailable> {
+pub(crate) fn matches_install(root: &Path, path: &Path) -> Result<(), Unavailable> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

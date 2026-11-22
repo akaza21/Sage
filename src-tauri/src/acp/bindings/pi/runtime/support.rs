@@ -16,6 +16,7 @@ use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome};
 
 mod authority;
 mod bridge;
+mod bridge_ready;
 mod capabilities;
 mod commands;
 mod compaction;

@@ -6,7 +6,28 @@ import {
   createReadToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { closeSync, openSync, readSync } from "node:fs";
 const MAX_BYTES = 262144;
+const APPROVAL_TIMEOUT_MS = 60000;
+function bridgeDigest(source) {
+  const file = openSync(source, "r");
+  try {
+    const hash = createHash("sha256");
+    const buffer = Buffer.alloc(8192);
+    let total = 0;
+    for (;;) {
+      const count = readSync(file, buffer);
+      if (!count) return hash.digest("hex");
+      total += count;
+      if (total > MAX_BYTES)
+        throw new Error("Sage bridge exceeds the byte limit");
+      hash.update(buffer.subarray(0, count));
+    }
+  } finally {
+    closeSync(file);
+  }
+}
 // Every answer other than "approved" or "written" is Sage's reason, shown to
 // the model and the user as the tool's error.
 const refusal = (answer) =>
@@ -25,22 +46,30 @@ function freezeInput(value) {
   for (const child of Object.values(value)) freezeInput(child);
 }
 // Hold only the approval transaction, never the tool execution. At most eight
-// callers wait; cancellation removes their entries and listeners immediately.
+// callers wait; cancellation or the approval timeout removes their entries and
+// listeners. Pi 1.5 does not expose a nested call's signal to tool_call hooks.
 function approvalQueue() {
   let active = false;
   const waiting = [];
   return async (signal, operation) => {
     if (signal?.aborted) throw new Error("Cancelled");
     await new Promise((resolve, reject) => {
-      const start = () => {
+      let timeout;
+      const cleanup = () => {
+        clearTimeout(timeout);
         signal?.removeEventListener("abort", cancel);
+      };
+      const start = () => {
+        cleanup();
         resolve();
       };
-      const cancel = () => {
+      const remove = (reason) => {
         const index = waiting.indexOf(start);
         if (index >= 0) waiting.splice(index, 1);
-        reject(new Error("Cancelled"));
+        cleanup();
+        reject(new Error(reason));
       };
+      const cancel = () => remove("Cancelled");
       if (!active) {
         active = true;
         start();
@@ -49,6 +78,10 @@ function approvalQueue() {
       } else {
         waiting.push(start);
         signal?.addEventListener("abort", cancel, { once: true });
+        timeout = setTimeout(
+          () => remove("Sage approval wait timed out"),
+          APPROVAL_TIMEOUT_MS,
+        );
       }
     });
     try {
@@ -77,7 +110,7 @@ async function approve(toolCallId, tool, args, signal, ctx, metadata = {}) {
   freezeInput(args);
   let approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
     signal,
-    timeout: 60000,
+    timeout: APPROVAL_TIMEOUT_MS,
   });
   // Pi expires or aborts a dialog without telling Sage, so Sage settles
   // it: an undecided request is withdrawn, a recorded approval stands.
@@ -91,6 +124,9 @@ async function approve(toolCallId, tool, args, signal, ctx, metadata = {}) {
 export default function sageBridge(pi) {
   const queued = approvalQueue();
   const source = fileURLToPath(import.meta.url);
+  pi.on("session_shutdown", (_event, ctx) => {
+    ctx.ui.setStatus("sage.pi.ready.v1", undefined);
+  });
   pi.on("tool_call", async (event, ctx) => {
     const tool = pi.getAllTools().find((tool) => tool.name === event.toolName);
     if (
@@ -119,7 +155,7 @@ export default function sageBridge(pi) {
   });
   // getAllTools is bound only after discovery. Register then, so a discovered
   // owner keeps its name and is gated above rather than colliding at startup.
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     const managed = [];
     const register = (definition) => {
       const owner = pi
@@ -155,7 +191,7 @@ export default function sageBridge(pi) {
             await approve(toolCallId, name, args, signal, ctx);
             const result = await ctx.ui.input("sage.pi.commit.v1", toolCallId, {
               signal,
-              timeout: 60000,
+              timeout: APPROVAL_TIMEOUT_MS,
             });
             if (result !== "written") throw refusal(result);
           });
@@ -184,5 +220,12 @@ export default function sageBridge(pi) {
     // Pi retains inactive built-in registry entries. Replacing one at runtime
     // does not activate it, so include our (at most four) tools explicitly.
     pi.setActiveTools([...new Set([...pi.getActiveTools(), ...managed])]);
+    ctx.ui.setStatus(
+      "sage.pi.ready.v1",
+      JSON.stringify({
+        version: 1,
+        digest: bridgeDigest(source),
+      }),
+    );
   });
 }

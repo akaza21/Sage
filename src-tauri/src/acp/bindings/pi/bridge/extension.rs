@@ -22,11 +22,16 @@ pub(super) fn prepare(request: Request) -> Result<Extension, Refusal> {
         .map(|label| format!(" ({})", label.as_str()))
         .unwrap_or_default();
     let args = serde_json::to_string(&request.args).map_err(|_| Refusal::Unsupported)?;
+    // Share the credential engine used by managed shell approvals, without
+    // treating structured argument strings as shell grammar or path authority.
+    let args =
+        crate::acp::redaction::text::redact_complete_arguments("permissionSummary", &args, 65_536)
+            .map_err(|_| Refusal::TooLarge)?;
     // The existing approval card has a 64 KiB text budget. Refuse rather than
     // truncate arguments: the user must see the complete operation they allow.
     let summary = SafeText::new(
         "permissionSummary",
-        format!("Allow extension tool {}{label}?\n{args}", name.as_str()),
+        format!("Allow extension tool {}{label}?\n{}", name.as_str(), args),
     )
     .map_err(|_| Refusal::TooLarge)?;
     Ok(Extension {

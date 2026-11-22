@@ -1,13 +1,12 @@
 use super::super::{DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{
-    AdapterOutput,
     bridge::{Bridge, Pending, Refusal, files, write},
     translator::{BRIDGE_WRITE_METHOD, PendingUiRequest},
 };
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
-        EgressToken, ResourceMapper,
+        EgressToken,
     },
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
@@ -73,7 +72,6 @@ impl PiRuntime {
         &mut self,
         value: &Value,
         frame: &Frame,
-        resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let id = value
             .get("id")
@@ -155,20 +153,23 @@ impl PiRuntime {
                 form: None,
                 expires: false,
             });
-            let tool = self.extension_tool_started()?;
-            let batch = self.translate_outputs(
-                vec![AdapterOutput::PermissionRequested {
-                    external_id: id.into(),
-                }],
-                None,
+            let event = self.permission_event(
+                id.into(),
                 request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?,
-                resources,
             )?;
-            let (mut events, egress) = batch.into_parts();
-            if let Some(tool) = tool {
+            if let AdapterEvent::PermissionRequest { payload, .. } = &event
+                && !crate::acp::runtime::permission_payload_fits(payload)
+            {
+                self.discard_bridge_edit();
+                self.translator.take_pending_ui();
+                self.deny = None;
+                return refused(Refusal::TooLarge);
+            }
+            let mut events = vec![event];
+            if let Some(tool) = self.extension_tool_started()? {
                 events.insert(0, tool);
             }
-            return AdapterBatch::new(events, egress);
+            return AdapterBatch::new(events, Vec::new());
         }
         if title == "sage.pi.withdraw.v1" {
             return self.withdraw_bridge_edit(id, body);

@@ -111,7 +111,11 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             self.adapter
                 .ingest(&frame, &self.resources)
                 .map_err(|error| {
-                    self.fail_closed();
+                    if error == crate::acp::bindings::adapter::AdapterRuntimeError::ApprovalBridgeUnavailable {
+                        self.fail_closed_at(ActivationStartupStep::ApprovalBridge);
+                    } else {
+                        self.fail_closed();
+                    }
                     ActivationPumpError::Adapter(error)
                 })?
         };

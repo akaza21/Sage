@@ -44,6 +44,9 @@ impl Journey {
             runtime.enable_bridge(
                 sage_workspace::Workspace::open("project", "root-pi", &root).unwrap(),
             );
+            runtime
+                .ingest(&frame(super::bridge_ready::announcement()), &Mapper)
+                .unwrap();
         }
         ready(&mut runtime);
         let mut journey = Self { runtime, root };

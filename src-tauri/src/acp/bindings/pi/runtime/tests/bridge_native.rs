@@ -18,6 +18,55 @@ impl Drop for Pi {
     }
 }
 impl Pi {
+    fn start(
+        launch: &crate::harness_discovery::DiscoveredPiLaunch,
+        root: &std::path::Path,
+        profile: &std::path::Path,
+        bridge: PathBuf,
+        scenario: &str,
+    ) -> Self {
+        let mut child = Command::new(&launch.node_path)
+            .arg(&launch.entrypoint_path)
+            .args(crate::acp::bindings::pi::native_admission::pi_launch_args(
+                bridge,
+            ))
+            .args([
+                "--no-session",
+                "--provider",
+                "sage-fixture",
+                "--model",
+                "approval",
+            ])
+            .env("PI_CODING_AGENT_DIR", profile)
+            .env("SAGE_PI_FIXTURE_SCENARIO", scenario)
+            .current_dir(root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let output = child.stdout.take().unwrap();
+        let (send, frames) = sync_channel(8);
+        std::thread::spawn(move || {
+            let mut output = BufReader::new(output);
+            loop {
+                let mut line = Vec::new();
+                let count = output
+                    .by_ref()
+                    .take(1_048_577)
+                    .read_until(b'\n', &mut line)
+                    .unwrap();
+                if count == 0 {
+                    break;
+                }
+                assert!(count <= 1_048_576, "bounded Pi RPC frame");
+                if send.send(serde_json::from_slice(&line).unwrap()).is_err() {
+                    break;
+                }
+            }
+        });
+        Self { child, frames }
+    }
     fn send(&mut self, value: Value) {
         let input = self.child.stdin.as_mut().unwrap();
         serde_json::to_writer(&mut *input, &value).unwrap();
@@ -25,9 +74,10 @@ impl Pi {
         input.flush().unwrap();
     }
     fn next(&self) -> Value {
-        self.frames
-            .recv_timeout(Duration::from_secs(30))
-            .expect("Pi RPC frame")
+        self.next_with_timeout(Duration::from_secs(30))
+    }
+    fn next_with_timeout(&self, timeout: Duration) -> Value {
+        self.frames.recv_timeout(timeout).expect("Pi RPC frame")
     }
 }
 
@@ -40,6 +90,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
     else {
         panic!("Pi must be installed")
     };
+    load_failure::check(&launch);
     for scenario in [
         "echo",
         "mutation",
@@ -47,13 +98,14 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
         "concurrent",
         "overflow",
         "cancel",
+        "abandoned",
     ] {
         for mode in [
             SessionAccessMode::ReadOnly,
             SessionAccessMode::WorkspaceWrite,
         ] {
             for decision in [PermissionDecision::Deny, PermissionDecision::AllowOnce] {
-                if ["concurrent", "overflow", "cancel"].contains(&scenario)
+                if ["concurrent", "overflow", "cancel", "abandoned"].contains(&scenario)
                     && (mode != SessionAccessMode::WorkspaceWrite
                         || decision != PermissionDecision::AllowOnce)
                 {
@@ -82,55 +134,32 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                     )
                     .unwrap();
                 }
-                let mut child = Command::new(&launch.node_path)
-                    .arg(&launch.entrypoint_path)
-                    .args(crate::acp::bindings::pi::native_admission::pi_launch_args(
-                        crate::acp::bindings::pi::bridge::install::installed(
-                            &launch.package_version,
-                        )
+                j.runtime.enable_bridge(
+                    sage_workspace::Workspace::open("project", "root-pi", &j.root).unwrap(),
+                );
+                let mut pi = Pi::start(
+                    &launch,
+                    &j.root,
+                    &profile,
+                    crate::acp::bindings::pi::bridge::install::installed(&launch.package_version)
                         .unwrap(),
-                    ))
-                    .args([
-                        "--no-session",
-                        "--provider",
-                        "sage-fixture",
-                        "--model",
-                        "approval",
-                    ])
-                    .env("PI_CODING_AGENT_DIR", profile)
-                    .env("SAGE_PI_FIXTURE_SCENARIO", scenario)
-                    .current_dir(&j.root)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::inherit())
-                    .spawn()
-                    .unwrap();
-                let output = child.stdout.take().unwrap();
-                let (send, frames) = sync_channel(8);
-                std::thread::spawn(move || {
-                    let mut output = BufReader::new(output);
-                    loop {
-                        let mut line = Vec::new();
-                        let count = output
-                            .by_ref()
-                            .take(1_048_577)
-                            .read_until(b'\n', &mut line)
-                            .unwrap();
-                        if count == 0 {
-                            break;
-                        }
-                        assert!(count <= 1_048_576, "bounded Pi RPC frame");
-                        if send.send(serde_json::from_slice(&line).unwrap()).is_err() {
-                            break;
-                        }
-                    }
-                });
-                let mut pi = Pi { child, frames };
+                    scenario,
+                );
                 pi.send(json!({"type":"get_commands","id":"commands"}));
                 let commands = (0..128)
-                    .map(|_| pi.next())
-                    .find(|value| value["id"] == "commands")
+                    .find_map(|_| {
+                        let value = pi.next();
+                        if value["id"] == "commands" {
+                            return Some(value);
+                        }
+                        j.runtime.ingest(&frame(value), &Mapper).unwrap();
+                        None
+                    })
                     .expect("bounded command discovery");
+                assert!(
+                    j.runtime.bridge.as_ref().unwrap().ready,
+                    "real bridge handshake"
+                );
                 assert!(
                     commands["data"]["commands"]
                         .as_array()
@@ -170,8 +199,32 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                     let mut results = Vec::new();
                     let mut cancelled = false;
                     let mut settled_seen = false;
+                    let mut withdrawal = None;
                     for _ in 0..512 {
-                        let value = pi.next();
+                        let value = if scenario == "abandoned" {
+                            pi.next_with_timeout(Duration::from_secs(75))
+                        } else {
+                            pi.next()
+                        };
+                        if scenario == "abandoned" && value["title"] == "sage.pi.withdraw.v1" {
+                            assert!(withdrawal.replace(value).is_none());
+                            continue;
+                        }
+                        if scenario == "abandoned"
+                            && value["method"] == "notify"
+                            && value["message"] == "Abandoned waiter probe queued"
+                        {
+                            let batch = j
+                                .runtime
+                                .ingest(
+                                    &frame(withdrawal.take().expect("held approval expired")),
+                                    &Mapper,
+                                )
+                                .unwrap();
+                            for reply in batch.into_parts().1 {
+                                pi.send(deliver(&mut j.runtime, reply));
+                            }
+                        }
                         if value["type"] == "tool_execution_end" {
                             results.push((
                                 value["toolName"].as_str().unwrap().to_owned(),
@@ -235,6 +288,11 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                                     pi.send(deliver(&mut j.runtime, abort));
                                     continue;
                                 }
+                                if scenario == "abandoned"
+                                    && summary.as_str().contains("nested-held")
+                                {
+                                    continue;
+                                }
                                 let reply = j
                                     .runtime
                                     .command(AdapterCommand::ResolvePermission {
@@ -258,7 +316,24 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                     }
                     assert!(settled_seen, "Pi must finish the turn");
                     let denied = decision == PermissionDecision::Deny;
-                    if scenario == "cancel" && prompt_text == "hello" {
+                    if scenario == "abandoned" {
+                        assert_eq!(cards, 3);
+                        let nested: Vec<_> = results
+                            .iter()
+                            .filter(|(name, _, _)| name == "fixture_echo")
+                            .collect();
+                        assert_eq!(nested.len(), 10);
+                        assert_eq!(nested.iter().filter(|(_, error, _)| *error).count(), 9);
+                        assert!(
+                            nested.iter().any(|(_, error, text)| !error
+                                && text == "Executed: nested-after-timeout")
+                        );
+                        assert!(
+                            results
+                                .iter()
+                                .any(|(name, error, _)| name == "fixture_parallel" && !error)
+                        );
+                    } else if scenario == "cancel" && prompt_text == "hello" {
                         assert!(cancelled);
                         assert_eq!(cards, 2);
                         assert!(
@@ -330,3 +405,6 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
         }
     }
 }
+
+#[path = "bridge_native_failure.rs"]
+mod load_failure;

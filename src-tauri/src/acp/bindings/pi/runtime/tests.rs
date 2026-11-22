@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 mod bridge;
+mod bridge_ready;
 mod compact_command;
 mod config_delivery;
 mod extension_lifecycle;

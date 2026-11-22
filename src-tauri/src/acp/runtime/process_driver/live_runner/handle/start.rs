@@ -24,6 +24,7 @@ pub(crate) enum RunnerStartSubstep {
     StdoutReader,
     ProcessExitWatcher,
     Initialize,
+    ApprovalBridge,
     SessionNew,
     SessionResume,
     SessionLoad,
@@ -47,6 +48,7 @@ impl From<ActivationStartupStep> for RunnerStartSubstep {
     fn from(value: ActivationStartupStep) -> Self {
         match value {
             ActivationStartupStep::Initialize => Self::Initialize,
+            ActivationStartupStep::ApprovalBridge => Self::ApprovalBridge,
             ActivationStartupStep::SessionNew => Self::SessionNew,
             ActivationStartupStep::SessionResume => Self::SessionResume,
             ActivationStartupStep::SessionLoad => Self::SessionLoad,

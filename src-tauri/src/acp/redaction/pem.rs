@@ -11,20 +11,35 @@ pub(crate) fn scan_window(value: &str) -> &str {
 }
 
 pub(crate) fn redact_pem(value: &str) -> Cow<'_, str> {
+    redact_pem_with_status(value).text
+}
+
+pub(crate) struct RedactedPem<'a> {
+    pub(crate) text: Cow<'a, str>,
+    pub(crate) truncated: bool,
+}
+
+pub(crate) fn redact_pem_with_status(value: &str) -> RedactedPem<'_> {
     let Some((mut start, mut label)) = private_key_begin(value) else {
-        return Cow::Borrowed(value);
+        return RedactedPem {
+            text: Cow::Borrowed(value),
+            truncated: false,
+        };
     };
     let mut remaining = value;
     let mut output = String::with_capacity(value.len());
+    let mut truncated = false;
     loop {
         output.push_str(&remaining[..start]);
         output.push_str("[redacted]");
         let block = &remaining[start..];
-        let consumed = label.map_or(block.len(), |label| {
+        let end = label.and_then(|label| {
             let end = format!("-----END {label}-----");
-            scan_window(block)
-                .find(&end)
-                .map_or(block.len(), |index| index + end.len())
+            scan_window(block).find(&end).map(|index| index + end.len())
+        });
+        let consumed = end.unwrap_or_else(|| {
+            truncated = true;
+            block.len()
         });
         remaining = &block[consumed..];
         let Some((next, next_label)) = private_key_begin(remaining) else {
@@ -34,7 +49,10 @@ pub(crate) fn redact_pem(value: &str) -> Cow<'_, str> {
         start = next;
         label = next_label;
     }
-    Cow::Owned(output)
+    RedactedPem {
+        text: Cow::Owned(output),
+        truncated,
+    }
 }
 
 fn private_key_begin(value: &str) -> Option<(usize, Option<&str>)> {

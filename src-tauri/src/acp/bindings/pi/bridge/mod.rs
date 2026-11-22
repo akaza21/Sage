@@ -13,6 +13,7 @@ use sage_acp_protocol::access_mode::SessionAccessMode;
 use sage_workspace::Workspace;
 
 pub(crate) struct Bridge {
+    pub ready: bool,
     pub workspace: Workspace,
     pub mode: SessionAccessMode,
     pub pending: Option<Pending>,
@@ -31,6 +32,7 @@ pub(crate) struct Pending {
 impl Bridge {
     pub(crate) fn new(workspace: Workspace) -> Self {
         Self {
+            ready: false,
             workspace,
             mode: SessionAccessMode::ReadOnly,
             pending: None,
