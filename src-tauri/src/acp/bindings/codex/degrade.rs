@@ -30,7 +30,7 @@ struct OptionalCapabilities {
     child_conversation_projection: bool,
     child_transcript_read: bool,
     collaboration_event_projection: bool,
-    native_session_fork: bool,
+    fork_at: bool,
     native_session_compact: bool,
     native_session_import: bool,
     native_review: bool,
@@ -50,7 +50,7 @@ const PROVEN_OPTIONAL_CAPABILITIES: OptionalCapabilities = OptionalCapabilities 
     collaboration_event_projection: false,
     // `thread/fork` params and response are pinned from the generated
     // schema (testdata/acp/codex/observed-fork-schema.json).
-    native_session_fork: true,
+    fork_at: true,
     // `thread/compact/start` and `review/start` are pinned from the
     // same generated schema.
     native_session_compact: true,
@@ -95,6 +95,20 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
     }
 }
 
+fn codex_rewind() -> sage_acp_protocol::intent::RewindCapability {
+    use sage_acp_protocol::intent::{RewindCapability, RewindEffects, RewindTargets};
+    RewindCapability {
+        effects: RewindEffects {
+            conversation: true,
+            files: false,
+        },
+        targets: RewindTargets::LatestTurn,
+        fork_at: true,
+        on_resume: false,
+        runtime_checkpoint: true,
+    }
+}
+
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
     let pinned =
         ceiling.protocol_identity == sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY;
@@ -108,7 +122,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         child_conversation_projection: ceiling.child_conversation_projection,
         child_transcript_read: true,
         collaboration_event_projection: ceiling.collaboration_event_projection,
-        native_session_fork: pinned,
+        fork_at: pinned,
         native_session_compact: pinned,
         // The managed home is Sage's own, so it holds no CLI sessions.
         native_session_import: false,
@@ -147,7 +161,11 @@ pub(crate) fn projected_capabilities(
         load_session: optional.load_session,
         child_conversation_projection: optional.child_conversation_projection,
         collaboration_event_projection: optional.collaboration_event_projection,
-        native_session_fork: optional.native_session_fork,
+        rewind: if optional.fork_at {
+            codex_rewind()
+        } else {
+            Default::default()
+        },
         native_session_compact: optional.native_session_compact,
         native_session_import: optional.native_session_import,
         native_review: optional.native_review,
@@ -309,18 +327,18 @@ mod tests {
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
         assert!(snapshot.child_transcript_read);
-        assert!(snapshot.native_session_fork && snapshot.native_session_import);
+        assert!(snapshot.rewind.fork_at && snapshot.native_session_import);
         assert!(models);
     }
 
     #[test]
     fn native_fork_is_admitted_only_for_the_pinned_or_characterised_pinned_build() {
         let (managed, _) = projected_capabilities(&pinned(), None).unwrap();
-        assert!(managed.native_session_fork && !managed.native_session_import);
+        assert!(managed.rewind.fork_at && !managed.native_session_import);
         let mut other = pinned();
         other.protocol_identity = "codex-app-server-0.147.0-00000000".into();
         let (unpinned, _) = projected_capabilities(&other, None).unwrap();
-        assert!(!unpinned.native_session_fork && !unpinned.native_session_import);
+        assert!(!unpinned.rewind.fork_at && !unpinned.native_session_import);
         for (reported, characterisation) in [
             (observed_pinned_version(), Characterisation::Uncharacterised),
             (
@@ -337,7 +355,7 @@ mod tests {
             )
             .unwrap();
             assert!(
-                !observed.native_session_fork && !observed.native_session_import,
+                !observed.rewind.fork_at && !observed.native_session_import,
                 "{reported}"
             );
         }
@@ -378,7 +396,7 @@ mod tests {
             same_features.protocol_version = tested.protocol_version.clone();
             assert_eq!(same_features, tested);
             assert_eq!(models, tested_models);
-            assert!(snapshot.cancel && snapshot.resume_session && snapshot.native_session_fork);
+            assert!(snapshot.cancel && snapshot.resume_session && snapshot.rewind.fork_at);
         }
     }
 
@@ -401,7 +419,7 @@ mod tests {
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
         assert!(!snapshot.child_transcript_read);
-        assert!(!snapshot.native_session_fork);
+        assert!(!snapshot.rewind.fork_at);
         assert!(!models);
     }
 

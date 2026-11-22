@@ -47,7 +47,7 @@ impl Store {
             close_session: true,
             prompt: true,
             cancel: true,
-            native_session_fork: false,
+            rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
             native_session_compact: false,
             native_session_import: false,
             native_review: false,
@@ -199,7 +199,11 @@ pub(super) fn project(facts: Vec<Fact>) -> Result<Value, StoreError> {
             }
             Fact::Turn(state) => {
                 let now_millis = store.tick();
-                store.commit(vec![AdapterInboundEvent::Turn { state, now_millis }])?;
+                store.commit(vec![AdapterInboundEvent::Turn {
+                    native_turn_id: None,
+                    state,
+                    now_millis,
+                }])?;
             }
             Fact::UserCancel => store.cancel()?,
         }

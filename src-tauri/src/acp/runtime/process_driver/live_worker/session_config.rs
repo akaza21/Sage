@@ -126,7 +126,14 @@ where
                     idle.parts.write_terminals(&mut idle.transport, action)
                 }
                 crate::acp::goal::NativeRpcRequest::Control(control) => {
-                    idle.parts.write_control(&mut idle.transport, control)
+                    if control.may_read_history() && !idle.idle_decoder.is_frame_aligned() {
+                        return Err(HostError::State);
+                    }
+                    idle.parts.write_control(&mut idle.transport, control)?;
+                    if control.may_read_history() {
+                        idle.idle_decoder.enable_recoverable_oversize();
+                    }
+                    Ok(())
                 }
             },
             Self::Reusable(parts) => match &intent.request {

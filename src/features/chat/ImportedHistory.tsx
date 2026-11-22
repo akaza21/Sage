@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
-import { useStore } from "zustand";
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import {
   readImportedHistory,
   type ImportedHistory as History,
 } from "../../services/nativeSessionImport";
-import { ForkPart } from "./lazyParts";
+import { NoticePart } from "./lazyParts";
 
 export { ImportSessionDialog } from "../../workbench/ImportSessionDialog";
 
 export function ImportedHistory({ chatId }: { chatId: string }) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
-  const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);
   const key = `${projectId}/${chatId}`;
   const [read, setRead] = useState<{
     key: string;
@@ -38,14 +35,16 @@ export function ImportedHistory({ chatId }: { chatId: string }) {
         <p className="acp-history-notice" role="status">
           The imported history couldn&apos;t be shown.
         </p>
-      ) : history && page ? (
-        <ForkPart
-          part="InheritedHistory"
-          page={{ ...page, turns: history.turns }}
-          earlier={history.retentionLimited}
-          label="History from the imported session"
-        />
-      ) : null}
+      ) : (
+        history && (
+          <NoticePart
+            part="ConversationView"
+            view="ImportedHistoryView"
+            chatId={chatId}
+            history={history}
+          />
+        )
+      )}
       <p className="acp-history-notice">Continued in Sage</p>
     </>
   );

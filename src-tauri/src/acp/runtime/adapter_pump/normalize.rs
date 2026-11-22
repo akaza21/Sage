@@ -56,6 +56,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 }
                 Ok(Some(NormalizedFact::new(
                     DurableAdapterEvent::Turn {
+                        native_turn_id: id.turn_id,
                         scope: self.scope(),
                         state,
                         now_millis,

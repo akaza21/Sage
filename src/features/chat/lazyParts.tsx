@@ -19,7 +19,6 @@ import type * as UserInputChunk from "./acp/UserInputPrompt";
 import type * as SessionNoticeChunk from "./acp/SessionNoticeStrip";
 import type * as TranscriptChunk from "./TranscriptInteractions";
 import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
-import type * as ForkChunk from "./ForkChat";
 import type * as HandoffChunk from "./ChatHandoffDialog";
 import type * as HandoffControlChunk from "./ChatHandoffControl";
 import type * as LegacyTranscriptChunk from "./ChatLegacyTranscript";
@@ -148,7 +147,6 @@ export const HarnessSignInPart = lazyParts<typeof HarnessSignInChunk>(
 export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
   () => import("../chatSearch/ChatSearchControl"),
 );
-export const ForkPart = lazyParts<typeof ForkChunk>(() => import("./ForkChat"));
 export const HandoffPart = lazyParts<typeof HandoffChunk>(
   () => import("./ChatHandoffDialog"),
 );

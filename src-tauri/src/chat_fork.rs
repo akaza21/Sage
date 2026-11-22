@@ -250,7 +250,7 @@ pub(crate) async fn committed_transition(
     }
 }
 
-/// Forks `chat_id` through its latest completed Turn `turn_id`. The native
+/// Forks `chat_id` at the admitted conversation target `turn_id`. The native
 /// fork runs on a blocking thread outside the Project transition lock (it can
 /// wait on the harness); the lock is retaken and the epoch and source
 /// re-validated before the fork Chat is committed.
@@ -270,8 +270,12 @@ pub async fn fork_chat(
     let source = {
         let epoch = state.project_transitions.lock().await;
         stale(*epoch, expected_transition_epoch, "forking the chat")?;
-        fork_source(&state.database.connection(), &project, &chat, &turn)
-            .map_err(|_| "This chat can't be forked from this answer".to_owned())?
+        fork_source(&state.database.connection(), &project, &chat, &turn).map_err(|error| {
+            match error {
+                crate::acp::store::StoreError::RewindUnavailable { reason } => reason.to_owned(),
+                _ => "This chat can't be forked from this answer".to_owned(),
+            }
+        })?
     };
     let handle = app.clone();
     let native_source = source.clone();

@@ -1,10 +1,10 @@
 import { useState, type ReactNode, type RefObject } from "react";
 
 import {
-  ForkChatRequestContext,
-  type ForkChatRequest,
+  ConversationRequestContext,
+  type ConversationRequest,
 } from "./forkChatRequest";
-import { ForkPart } from "./lazyParts";
+import { NoticePart } from "./lazyParts";
 
 // A separate host: the source answer may disappear during a project switch.
 export function ForkChatDialogHost({
@@ -14,18 +14,20 @@ export function ForkChatDialogHost({
   children: ReactNode;
   focusRoot: RefObject<HTMLDivElement | null>;
 }) {
-  const [request, setRequest] = useState<ForkChatRequest | null>(null);
+  const [request, setRequest] = useState<ConversationRequest | null>(null);
   return (
-    <ForkChatRequestContext.Provider value={setRequest}>
+    <ConversationRequestContext.Provider value={setRequest}>
       {children}
       {request && (
-        <ForkPart
-          part="ForkChatDialog"
-          {...request}
+        <NoticePart
+          part="ConversationView"
+          view="ConversationDialog"
+          request={request}
           focusRoot={focusRoot}
           onClose={() => setRequest(null)}
+          onLoadFailed={() => setRequest(null)}
         />
       )}
-    </ForkChatRequestContext.Provider>
+    </ConversationRequestContext.Provider>
   );
 }

@@ -32,6 +32,7 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
     fixture.run();
     fixture.turn("turn-1", 0);
     let command = TurnUndoneCommand {
+        rewind_turns: Vec::new(),
         project_id: fixture.project.clone(),
         chat_id: fixture.chat.clone(),
         session_id: SageAgentSessionId::parse("session-a").unwrap(),

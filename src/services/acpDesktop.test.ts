@@ -60,6 +60,13 @@ it("decodes persisted quote context only within the eight-entry UTF-8 bounds", (
   };
   expect(safeTurn(turn)?.attachedContext).toEqual([quote]);
   expect(
+    safeTurn({ ...turn, conversationTarget: true })?.conversationTarget,
+  ).toBe(true);
+  for (const conversationTarget of [undefined, false, "true", 1, null])
+    expect(
+      safeTurn({ ...turn, conversationTarget })?.conversationTarget,
+    ).not.toBe(true);
+  expect(
     safeTurn({
       ...turn,
       attachedContext: Array.from({ length: 9 }, () => quote),

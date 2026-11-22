@@ -57,16 +57,24 @@ pub enum NativeRequest {
     /// Token and cost totals for the whole session (`get_session_stats`).
     SessionStats,
     /// The display name Pi lists the session under (`set_session_name`).
-    SessionName { name: String },
+    SessionName {
+        name: String,
+    },
     /// Stops waiting to retry a failed reply (`abort_retry`).
     AbortRetry,
     /// Copies the session at its current position into a new session and
     /// moves Pi onto the copy (`clone`).
     Clone,
+    ForkMessages,
+    Fork {
+        entry_id: String,
+    },
     /// Reads which session Pi is on after a clone (`get_state`).
     ForkState,
     /// Moves Pi back onto the session it was on (`switch_session`).
-    ReturnToSession { path: String },
+    ReturnToSession {
+        path: String,
+    },
 }
 
 impl NativeRequest {
@@ -76,6 +84,8 @@ impl NativeRequest {
             Self::SessionName { .. } => NativeCommand::SessionName,
             Self::AbortRetry => NativeCommand::AbortRetry,
             Self::Clone => NativeCommand::Clone,
+            Self::ForkMessages => NativeCommand::ForkMessages,
+            Self::Fork { .. } => NativeCommand::Fork,
             Self::ForkState => NativeCommand::ForkState,
             Self::ReturnToSession { .. } => NativeCommand::ReturnToSession,
         }
@@ -84,7 +94,14 @@ impl NativeRequest {
     pub(crate) fn into_fields(self) -> serde_json::Map<String, serde_json::Value> {
         let mut fields = serde_json::Map::new();
         match self {
-            Self::SessionStats | Self::AbortRetry | Self::Clone | Self::ForkState => {}
+            Self::SessionStats
+            | Self::AbortRetry
+            | Self::Clone
+            | Self::ForkState
+            | Self::ForkMessages => {}
+            Self::Fork { entry_id } => {
+                fields.insert("entryId".into(), serde_json::Value::String(entry_id));
+            }
             Self::ReturnToSession { path } => {
                 fields.insert("sessionPath".into(), serde_json::Value::String(path));
             }
@@ -102,6 +119,8 @@ pub enum NativeCommand {
     SessionName,
     AbortRetry,
     Clone,
+    ForkMessages,
+    Fork,
     ForkState,
     ReturnToSession,
 }
@@ -113,6 +132,8 @@ impl NativeCommand {
             Self::SessionName => "set_session_name",
             Self::AbortRetry => "abort_retry",
             Self::Clone => "clone",
+            Self::ForkMessages => "get_fork_messages",
+            Self::Fork => "fork",
             Self::ForkState => "get_state",
             Self::ReturnToSession => "switch_session",
         }

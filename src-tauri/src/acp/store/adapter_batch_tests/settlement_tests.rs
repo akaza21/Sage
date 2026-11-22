@@ -132,6 +132,7 @@ fn an_interrupted_adapter_turn_terminal_settles_only_its_own_open_tool_item() {
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
@@ -145,6 +146,7 @@ fn an_interrupted_adapter_turn_terminal_settles_only_its_own_open_tool_item() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Interrupted,
                 now_millis: 9,
             }],
@@ -189,6 +191,7 @@ fn the_read_path_projects_a_terminal_tool_card_after_an_interrupted_turn() {
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
@@ -202,6 +205,7 @@ fn the_read_path_projects_a_terminal_tool_card_after_an_interrupted_turn() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Interrupted,
                 now_millis: 9,
             }],
@@ -242,6 +246,7 @@ fn a_harness_permission_resolution_after_the_turn_terminal_settles_the_pair() {
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
@@ -251,6 +256,7 @@ fn a_harness_permission_resolution_after_the_turn_terminal_settles_the_pair() {
                     now_millis: 8,
                 },
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Interrupted,
                     now_millis: 9,
                 },
@@ -295,6 +301,7 @@ fn the_turn_terminal_settles_the_maximum_admitted_open_items_beside_a_permission
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
@@ -313,6 +320,7 @@ fn the_turn_terminal_settles_the_maximum_admitted_open_items_beside_a_permission
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Interrupted,
                 now_millis: 9,
             }],
@@ -364,6 +372,7 @@ fn adapter_interrupted_after_a_durable_user_cancel_projects_user_attribution() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Interrupted,
                 now_millis: 7,
             }],
@@ -391,6 +400,7 @@ fn an_item_event_after_the_turn_terminal_rolls_back_the_whole_batch() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Running,
                 now_millis: 6,
             }],
@@ -406,6 +416,7 @@ fn an_item_event_after_the_turn_terminal_rolls_back_the_whole_batch() {
                 &fixture.owner,
                 vec![
                     AdapterInboundEvent::Turn {
+                        native_turn_id: None,
                         state: TurnState::Interrupted,
                         now_millis: 9,
                     },

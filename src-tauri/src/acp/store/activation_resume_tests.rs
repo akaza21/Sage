@@ -34,8 +34,8 @@ fn setup() -> Connection {
     connection
 }
 
-const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
-const NEW_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":true,"nativeSessionFork":true,"nativeSessionCompact":true,"nativeSessionImport":true,"nativeReview":true,"nativeBackgroundTerminals":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"rewind":{"effects":{"conversation":false,"files":false},"targets":"latestTurn","forkAt":false,"onResume":false},"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const NEW_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":true,"rewind":{"effects":{"conversation":true,"files":false},"targets":"anyTurn","forkAt":true,"onResume":false},"nativeSessionCompact":true,"nativeSessionImport":true,"nativeReview":true,"nativeBackgroundTerminals":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
 fn activate(connection: &mut Connection, session: &SageAgentSessionId, epoch: u64) {
     let expected: i64 = connection
@@ -242,14 +242,39 @@ fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
             [session.as_str()],
         )
         .unwrap();
+    let prompt =
+        serde_json::json!({"kind":"text","payload":{"role":"user","text":"Fork this prompt"}})
+            .to_string();
+    use sha2::{Digest, Sha256};
+    connection.execute("INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
+        origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at)
+        VALUES('prompt-fork','project-one','chat-one',?1,'turn-fork',2,0,'primary','text','completed',
+        'prompt-fork',?2,?3,?4,0,46,47,47)", rusqlite::params![session.as_str(),prompt,prompt.len() as i64,format!("{:x}",Sha256::digest(prompt.as_bytes()))]).unwrap();
     let turn = SageTurnId::parse("turn-fork").unwrap();
+    let tx = connection.transaction().unwrap();
+    rewind::record_native_turn(
+        &tx,
+        &AdapterStoreOwner {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: session.clone(),
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            turn_id: turn.clone(),
+            binding_digest: "a".repeat(64),
+            external_session_id: ExternalId::new("externalSessionId", "thread-1").unwrap(),
+        },
+        &ExternalId::new("nativeTurnId", "native-fork").unwrap(),
+        47,
+    )
+    .unwrap();
+    tx.commit().unwrap();
     let source = chat_fork::fork_source(&connection, &project(), &chat(), &turn).unwrap();
     assert_eq!(source.session_id, session);
     assert_eq!(source.runtime_epoch, RuntimeEpoch::new(2).unwrap());
 
     park_and_reactivate(&mut connection, &session, 2);
     let mut negotiated: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
-    negotiated.native_session_fork = false;
+    negotiated.rewind.fork_at = false;
     complete(
         &mut connection,
         &session,
