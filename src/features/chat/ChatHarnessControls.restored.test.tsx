@@ -273,11 +273,14 @@ function renderControls(
 it("marks the restored mode and other options with the same note", async () => {
   renderControls(restoredSessionConfigView(coldPage(), "fixture", null));
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-  const mode = await screen.findByRole("group", { name: "Session mode" });
-  expect(mode).toHaveAttribute("aria-description", RESTORED_NOTE);
+  const mode = await screen.findByRole("menuitemradio", { name: "Plan mode" });
+  expect(mode).toHaveAccessibleDescription(`Plan mode is on ${RESTORED_NOTE}`);
   expect(mode).toHaveAttribute("data-restored", "true");
-  const fast = screen.getByRole("group", { name: "Session fast" });
-  expect(fast).toHaveAttribute("aria-description", RESTORED_NOTE);
+  const otherMode = screen.getByRole("menuitemradio", { name: "Default" });
+  expect(otherMode).toHaveAccessibleDescription(RESTORED_NOTE);
+  expect(otherMode).toHaveAttribute("data-restored", "true");
+  const fast = screen.getByRole("menuitemcheckbox", { name: "Session fast" });
+  expect(fast).toHaveAccessibleDescription(RESTORED_NOTE);
   expect(fast).toHaveAttribute("data-restored", "true");
 });
 
