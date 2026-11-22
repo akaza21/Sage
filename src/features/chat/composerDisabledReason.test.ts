@@ -15,7 +15,7 @@ const healthy = {
   harnessAvailable: true,
   harnessDiscoveryPhase: "ready" as const,
   projectTransitioning: false,
-  selectedHarness: true,
+  selectedHarness: { name: "Codex" },
   useNativeAcp: true,
 };
 
@@ -48,7 +48,13 @@ describe("composerDisabledReason", () => {
         chatLoadFailed: true,
         harnessAvailable: false,
       }),
-    ).toBe("The selected harness is unavailable.");
+    ).toBe("Codex is unavailable.");
+  });
+
+  it("names a harness that has not been set up for Sage", () => {
+    expect(
+      composerDisabledReason({ ...healthy, availableBinding: false }),
+    ).toBe("Codex isn't set up for Sage yet.");
   });
 
   it("explains the disabled composer while a turn is already running", () => {
