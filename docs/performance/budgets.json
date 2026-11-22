@@ -65,9 +65,9 @@
       },
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1300,
+        "maxGzipBytes": 1400,
         "maxCssGzipBytes": 490,
-        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
+        "reason": "Build, update and account notice (newer, too-old, update command, and the fallback-binding reason T13 adds); memoized while typing, off the ready first-Chat path. Measured 1361 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
@@ -242,8 +242,13 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1750,
-        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary and the account block. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%."
+        "maxGzipBytes": 1850,
+        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary, the account block and the version-details boundary. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%; T13 adds its lazy version boundary."
+      },
+      {
+        "entry": "src/features/settings/HarnessVersions.tsx",
+        "maxGzipBytes": 1100,
+        "reason": "T13 Installed / Sage runs / Latest rows, the fallback reason, the update unlock list and the npm check switch; loaded only by Settings > Harnesses. Measured 1015 B."
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",
