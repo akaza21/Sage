@@ -48,9 +48,13 @@ impl AcpService {
                 Ok(Some(event)) => {
                     let _ = publisher
                         .publish_committed_with(event, crate::acp::runtime::TurnNotice::None);
+                    true
                 }
-                Ok(None) => {}
-                Err(error) => tracing::warn!(?error, "catalog capabilities were not stored"),
+                Ok(None) => true,
+                Err(error) => {
+                    tracing::warn!(?error, "catalog capabilities were not stored");
+                    false
+                }
             }
         })
     }

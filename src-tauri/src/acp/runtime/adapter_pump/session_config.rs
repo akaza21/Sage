@@ -212,6 +212,12 @@ pub(crate) fn write_config<A: HarnessAdapter>(
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    pub(crate) fn poll_command_refresh(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        self.adapter.poll_command_refresh(now)
+    }
     pub(crate) fn request_command_refresh(&self) {
         self.adapter.available_commands().request_refresh();
     }
@@ -313,6 +319,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 }
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn poll_command_refresh(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        self.adapter.poll_command_refresh(now)
+    }
     pub(crate) fn request_command_refresh(&self) {
         self.adapter.available_commands().request_refresh();
     }

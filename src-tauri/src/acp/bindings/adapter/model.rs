@@ -131,6 +131,10 @@ pub(crate) trait HarnessAdapter {
     fn refresh_commands(&mut self) -> AdapterOptionalEgress {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
+    /// Expire an unanswered catalog read and return its next deadline for the runtime wait loop.
+    fn poll_command_refresh(&mut self, _now: std::time::Instant) -> Option<std::time::Instant> {
+        None
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         crate::acp::slash_commands::CommandState::unsupported()
     }

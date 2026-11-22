@@ -46,6 +46,23 @@ fn malformed_lists_fail_closed() {
         assert!(list.validate(1, "/old").is_err());
     }
 }
+
+#[test]
+fn identical_admitted_catalog_preserves_authority_but_malformed_input_revokes_it() {
+    let state = CommandState::default();
+    let row = json!({"name":"plan","description":"Plan"});
+    state.replace(parse_acp(&json!([row]))).unwrap();
+    let revision = state.snapshot().revision;
+    state.begin_refresh().unwrap();
+    // Duplicate rows are removed by admission before comparing the catalog.
+    state.replace(parse_acp(&json!([row, row]))).unwrap();
+    state.validate(revision, "/plan work").unwrap();
+    assert_eq!(state.snapshot().revision, revision);
+    assert!(!state.snapshot().pending);
+    assert!(state.replace(parse_acp(&json!(null))).is_err());
+    assert!(state.validate(revision, "/plan work").is_err());
+    assert!(state.snapshot().commands.is_empty());
+}
 #[test]
 fn channel_retains_only_latest_exact_owner_and_clears_after_release() {
     let channel = CommandChannel::default();

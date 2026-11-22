@@ -118,7 +118,8 @@ fn commands_changed_adds_and_removes_catalog_capabilities() {
     let published = Arc::new(std::sync::Mutex::new(Vec::new()));
     let received = published.clone();
     channel.set_recorder(Arc::new(move |_, capabilities| {
-        received.lock().unwrap().push(capabilities.goal)
+        received.lock().unwrap().push(capabilities.goal);
+        true
     }));
     let mut runtime = NativeRuntime::new(ready());
     runtime.attach_commands(owner, channel);
@@ -143,4 +144,112 @@ fn commands_changed_adds_and_removes_catalog_capabilities() {
             !supported
         );
     }
+}
+
+#[test]
+fn identical_claude_refresh_preserves_a_selected_command_for_send() {
+    let mut runtime = ready();
+    let catalog =
+        json!({"commands":[{"name":"review","description":"Review changes","source":"skill"}]});
+    let query = runtime.refresh_commands().unwrap().unwrap();
+    let request = value(&query);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    reply(&mut runtime, &request, catalog.clone());
+    let selected = runtime.available_commands().snapshot().revision;
+    let mut prompt = Prompt::new("command", "/review src").unwrap();
+    prompt.command_revision = Some(selected);
+    let query = runtime.refresh_commands().unwrap().unwrap();
+    let request = value(&query);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    reply(&mut runtime, &request, catalog);
+    let sent = send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "selected-review").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        },
+    );
+    assert_eq!(sent["message"]["content"][0]["text"], "/review src");
+    assert_eq!(runtime.available_commands().snapshot().revision, selected);
+}
+
+#[test]
+fn missing_claude_catalog_reply_expires_during_other_traffic_and_late_reply_is_discarded() {
+    let mut runtime = NativeRuntime::new(ready());
+    let commands = runtime.available_commands();
+    let channel = Arc::new(crate::acp::slash_commands::CommandChannel::default());
+    let owner = sage_acp_protocol::scheduler::RuntimeOwner {
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("project-expiry").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-expiry").unwrap(),
+        session_id: SageAgentSessionId::parse("session-claude-sdk").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    channel.reserve(owner.clone());
+    let published = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = published.clone();
+    let catalog = commands.clone();
+    channel.set_sink(Arc::new(move |_| {
+        received.lock().unwrap().push(catalog.snapshot().pending)
+    }));
+    runtime.attach_commands(owner, channel);
+    commands.request_refresh();
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let request = value(&query);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    let deadline = runtime
+        .poll_command_refresh(std::time::Instant::now())
+        .unwrap();
+    // Session notices keep arriving, but they cannot extend the correlated request's deadline.
+    runtime.ingest(&frame(json!({"type":"system","subtype":"commands_changed","commands":[{"name":"live","source":"skill"}]})), &Mapper).unwrap();
+    for status in [Some("compacting"), None, Some("compacting"), None] {
+        let batch = runtime
+            .ingest(
+                &frame(json!({"type":"system","subtype":"status","status":status})),
+                &Mapper,
+            )
+            .unwrap();
+        assert!(matches!(batch.events(), [AdapterEvent::Session { .. }]));
+        assert_eq!(
+            runtime.poll_command_refresh(std::time::Instant::now()),
+            Some(deadline)
+        );
+    }
+    assert_eq!(
+        runtime.poll_command_refresh(deadline - std::time::Duration::from_millis(1)),
+        Some(deadline)
+    );
+    assert!(commands.snapshot().pending);
+    assert!(runtime.poll_command_refresh(deadline).is_none());
+    assert_eq!(published.lock().unwrap().last(), Some(&false));
+    commands.request_refresh();
+    let retry = runtime.discover_commands().unwrap().unwrap();
+    let retry_request = value(&retry);
+    runtime
+        .resolve_egress(retry.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"success","request_id":request["request_id"],"response":{"commands":[{"name":"stale"}]}}})), &Mapper).unwrap();
+    assert!(commands.snapshot().pending);
+    assert!(
+        commands
+            .snapshot()
+            .commands
+            .iter()
+            .any(|c| c.name == "live")
+    );
+    runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"success","request_id":retry_request["request_id"],"response":{"commands":[{"name":"fresh"}]}}})), &Mapper).unwrap();
+    assert!(!commands.snapshot().pending);
+    assert!(
+        commands
+            .snapshot()
+            .commands
+            .iter()
+            .any(|c| c.name == "fresh")
+    );
 }

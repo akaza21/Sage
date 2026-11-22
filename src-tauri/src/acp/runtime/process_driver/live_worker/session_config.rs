@@ -18,6 +18,22 @@ where
         }
         Ok(())
     }
+    pub(crate) fn poll_command_refresh(
+        &mut self,
+        clock: &dyn crate::acp::runtime::DriverClock,
+    ) -> Option<i64> {
+        let now = std::time::Instant::now();
+        let deadline = match self {
+            Self::Idle(idle) => idle.parts.poll_command_refresh(now),
+            Self::Reusable(parts) => parts.completed.poll_command_refresh(now),
+            Self::Active(active) => active.turn.driver.poll_command_refresh(now),
+            Self::Prepared { turn, .. } => turn.parts.parts.poll_command_refresh(now),
+            _ => None,
+        }?;
+        let remaining =
+            i64::try_from(deadline.saturating_duration_since(now).as_millis()).unwrap_or(i64::MAX);
+        Some(clock.now_millis().saturating_add(remaining))
+    }
     pub(crate) fn poll_idle_title(&mut self, cancel: bool) -> Result<bool, HostError> {
         match self {
             Self::Idle(idle) => idle.parts.poll_title(cancel, &mut idle.transport),

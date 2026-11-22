@@ -15,6 +15,7 @@ impl ClaudeSdkRuntime {
         sdk: Value,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.poll_command_refresh(std::time::Instant::now());
         if self.started.is_some() {
             return Err(AdapterRuntimeError::Operation);
         }

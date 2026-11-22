@@ -171,6 +171,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
         self.session.available_commands()
     }
+    fn poll_command_refresh(&mut self, now: std::time::Instant) -> Option<std::time::Instant> {
+        let bridge = self.bridge.as_mut()?;
+        let pending = bridge.refreshing_commands();
+        let deadline = bridge.poll_command_refresh(now);
+        if pending && deadline.is_none() {
+            self.session.available_commands().finish_refresh();
+        }
+        deadline
+    }
     fn refresh_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let commands = self.available_commands();
         if commands.refresh_pending() {

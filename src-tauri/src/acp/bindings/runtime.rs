@@ -169,6 +169,13 @@ impl HarnessAdapter for NativeRuntime {
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.0.available_commands()
     }
+    fn poll_command_refresh(&mut self, now: std::time::Instant) -> Option<std::time::Instant> {
+        let deadline = self.0.poll_command_refresh(now);
+        if let Some((owner, channel)) = &self.3 {
+            channel.update_catalog(owner, self.0.available_commands(), self.0.capabilities());
+        }
+        deadline
+    }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.discover_catalog()
     }

@@ -76,12 +76,24 @@ impl CommandList {
         &mut self,
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
     ) -> Result<(), AdapterRuntimeError> {
-        self.commands = Vec::new();
         self.pending = false;
-        self.omitted = 0;
-        self.next_revision()?;
-        (self.commands, self.omitted) = admit(parsed?);
-        Ok(())
+        match parsed {
+            Ok(commands) => {
+                let (commands, omitted) = admit(commands);
+                if self.revision == 0 || self.commands != commands || self.omitted != omitted {
+                    self.next_revision()?;
+                    self.commands = commands;
+                    self.omitted = omitted;
+                }
+                Ok(())
+            }
+            Err(error) => {
+                self.commands = Vec::new();
+                self.omitted = 0;
+                self.next_revision()?;
+                Err(error)
+            }
+        }
     }
 
     fn next_revision(&mut self) -> Result<(), AdapterRuntimeError> {
@@ -135,21 +147,7 @@ impl CommandState {
         &self,
         commands: Vec<AvailableCommand>,
     ) -> Result<(), AdapterRuntimeError> {
-        let mut list = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
-        let (commands, omitted) = admit(commands);
-        if list.commands == commands && list.omitted == omitted {
-            list.pending = false;
-            return Ok(());
-        }
-        list.next_revision()?;
-        list.pending = false;
-        list.commands = commands;
-        list.omitted = omitted;
-        Ok(())
+        self.replace(Ok(commands))
     }
     pub(crate) fn catalog_capabilities(&self) -> sage_acp_protocol::intent::GoalCapabilities {
         self.0
@@ -235,13 +233,17 @@ pub(crate) struct CommandsChangedV1 {
 }
 
 pub(crate) type CommandNoticeSink = Arc<dyn Fn(CommandsChangedV1) + Send + Sync>;
-pub(crate) type CatalogRecorder =
-    Arc<dyn Fn(&RuntimeOwner, &sage_acp_protocol::intent::CapabilitySnapshotV1) + Send + Sync>;
+/// True acknowledges a durable write (including an already-current snapshot).
+pub(crate) type CatalogRecorder = Arc<
+    dyn Fn(&RuntimeOwner, &sage_acp_protocol::intent::CapabilitySnapshotV1) -> bool + Send + Sync,
+>;
 
 struct Slot {
     owner: RuntimeOwner,
     state: Arc<CommandState>,
     announced: (u64, bool),
+    /// Only the latest failed snapshot survives; publication retries it until storage acknowledges.
+    pending: Option<sage_acp_protocol::intent::CapabilitySnapshotV1>,
 }
 
 /// One slot per bounded live runtime lane. Old epochs cannot publish or clear a new owner.
@@ -278,6 +280,7 @@ impl CommandChannel {
             owner,
             state: Arc::default(),
             announced: (0, false),
+            pending: None,
         });
     }
     #[cfg(test)]
@@ -290,7 +293,7 @@ impl CommandChannel {
         list: Arc<CommandState>,
         capabilities: Option<sage_acp_protocol::intent::CapabilitySnapshotV1>,
     ) {
-        let revision = {
+        let (revision, pending) = {
             let mut slot = self.slot();
             let Some(current) = slot.as_mut().filter(|s| &s.owner == owner) else {
                 return;
@@ -309,9 +312,12 @@ impl CommandChannel {
                 {
                     // Pending changes notify without revoking an unchanged catalog's picks.
                     current.announced = publication;
-                    revision
+                    if let Some(capabilities) = capabilities {
+                        current.pending = Some(capabilities);
+                    }
+                    (Some(revision), current.pending.clone())
                 }
-                _ => return,
+                _ => (None, current.pending.clone()),
             }
         };
         let recorder = self
@@ -319,9 +325,17 @@ impl CommandChannel {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        if let Some((recorder, capabilities)) = recorder.zip(capabilities) {
-            recorder(owner, &capabilities);
+        if let Some((recorder, capabilities)) = recorder.zip(pending)
+            && recorder(owner, &capabilities)
+        {
+            let mut slot = self.slot();
+            if let Some(current) = slot.as_mut().filter(|s| &s.owner == owner)
+                && current.pending.as_ref() == Some(&capabilities)
+            {
+                current.pending = None;
+            }
         }
+        let Some(revision) = revision else { return };
         let sink = self
             .sink
             .lock()

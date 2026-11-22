@@ -22,6 +22,7 @@ pub(super) async fn step<A, R, T, Auth, C>(
     context: &FirstTurnWorkerContext<Auth>,
     pending_config: &mut Option<PendingConfig>,
     eof_deadline_millis: &mut Option<i64>,
+    catalog_deadline: Option<i64>,
 ) -> Result<(RunnerAction<A, R, T, C>, Option<AdapterTurnCursor>), RunnerExit<A, R, T, C>>
 where
     A: HarnessAdapter,
@@ -48,6 +49,7 @@ where
                     pending_config,
                     [
                         *eof_deadline_millis,
+                        catalog_deadline,
                         active.turn.driver.pending_exit_deadline_millis(),
                         active.pending_steer_deadline_millis(context.clock.as_ref()),
                     ],
@@ -107,6 +109,7 @@ where
                         pending_config,
                         [
                             *eof_deadline_millis,
+                            catalog_deadline,
                             active.turn.driver.pending_exit_deadline_millis(),
                             active.pending_steer_deadline_millis(context.clock.as_ref()),
                         ],
@@ -125,10 +128,16 @@ where
                         RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
                         None,
                     )),
-                    Ok(None) if pending_config.is_some() || active.steer_pending() => Ok((
-                        RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                        None,
-                    )),
+                    Ok(None)
+                        if pending_config.is_some()
+                            || active.steer_pending()
+                            || catalog_deadline.is_some() =>
+                    {
+                        Ok((
+                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                            None,
+                        ))
+                    }
                     _ => Err(failed(FirstTurnWorkerState::Active(active))),
                 }
             }
@@ -148,6 +157,7 @@ where
         pending_config,
         [
             *eof_deadline_millis,
+            catalog_deadline,
             active.turn.driver.pending_exit_deadline_millis(),
             active.pending_steer_deadline_millis(context.clock.as_ref()),
             title_tick,
@@ -194,7 +204,8 @@ where
                 None if pending_config.is_some()
                     || eof_deadline_millis.is_some()
                     || active.steer_pending()
-                    || title_tick.is_some() =>
+                    || title_tick.is_some()
+                    || catalog_deadline.is_some() =>
                 {
                     Ok((
                         RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
