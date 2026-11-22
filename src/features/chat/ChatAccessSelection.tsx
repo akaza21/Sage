@@ -43,25 +43,18 @@ function ReportView({
 
 /** Loaded on demand, so the chat path carries none of it. */
 export default function ChatAccessSelection({
-  bindingId,
   harnessName,
   confirmation,
-  capabilities,
-  sessionConfig: session,
-  chatId,
-  value,
-  onChange,
-  endedPage,
   id,
   triggerRef,
   open,
   onDismiss,
   onView,
+  ...props
 }: ComposerAccessControlProps &
   AccessMenuAnchor & {
     onView: (view: AccessView | null) => void;
   }) {
-  const props = { bindingId, capabilities };
   const error = useSessionAccessModeStore((state) => state.error);
   const withMenu = (view: AccessView) => (
     <>
@@ -84,7 +77,7 @@ export default function ChatAccessSelection({
           }
         >
           <AccessMenu
-            key={bindingId + view.sessionId}
+            key={props.bindingId + view.sessionId}
             id={id}
             triggerRef={triggerRef}
             candidates={view.candidates}
@@ -100,15 +93,7 @@ export default function ChatAccessSelection({
     </>
   );
   return (
-    <ChatAccessView
-      sessionConfig={session}
-      chatId={chatId}
-      value={value}
-      onChange={onChange}
-      endedPage={endedPage}
-      error={error}
-      {...props}
-    >
+    <ChatAccessView {...props} error={error}>
       {withMenu}
     </ChatAccessView>
   );

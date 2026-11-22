@@ -38,7 +38,7 @@ export interface ChatHarnessControlsProps {
   turnBusy: boolean;
   sessionConfig: AcpSessionConfig | null;
   modePending: boolean;
-  modeError: string | null;
+  modeError?: string | null;
   focused: boolean;
   onSetSessionMode: (modeId: string) => Promise<unknown>;
   onSetSessionConfigOption: (

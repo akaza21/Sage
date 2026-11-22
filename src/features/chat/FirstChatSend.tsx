@@ -52,31 +52,18 @@ export function FirstChatSend({
       return;
     if (harness.transport === "legacySimulator") {
       void state.sendPrompt();
+    } else if (pending.images?.length) {
+      // The draft's images load their own upload-then-send step.
+      void import("./draftImages").then((draft) =>
+        draft.sendDraftImages(pending, actions),
+      );
     } else if (harness.bindingId) {
-      const bindingId = harness.bindingId as CuratedBindingId;
-      const text = entry.composerText.trim();
-      const images = pending.images ?? [];
-      const send = () =>
-        actions.submit(
-          text,
-          useWorkbenchStore.getState().chatUiById[chatId]?.attachedContext ??
-            [],
-          bindingId,
-          (entry.modelId ?? null) as CuratedModelId | null,
-        );
-      const intent = state.captureChatOwnership(chatId);
-      // The draft's images reach this chat once: uploaded into its composer,
-      // which the send clears. A failed upload leaves them there, unsent.
-      if (!images.length) void send();
-      else if (intent)
-        void import("./chatImageTransfer")
-          .then((transfer) => transfer.uploadChatImages(intent, images))
-          .then(send, (error: Error) =>
-            useWorkbenchStore.getState().setChatActionState(intent, {
-              sending: false,
-              error: error.message,
-            }),
-          );
+      void actions.submit(
+        entry.composerText.trim(),
+        [],
+        harness.bindingId as CuratedBindingId,
+        (entry.modelId ?? null) as CuratedModelId | null,
+      );
     }
   }, [actions, chatId, page, pending, transitioning]);
   return null;

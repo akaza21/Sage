@@ -165,7 +165,8 @@ export async function runNewChatDraftSend(
           effort: choice.effort,
         },
       });
-    state.setChatComposer(owner, draft.text);
+    const { text, images } = draft;
+    state.setChatComposer(owner, text);
     set({
       newChatDraft: null,
       agentCenter: "chat",
@@ -175,8 +176,8 @@ export async function runNewChatDraftSend(
               ...submission,
               projectId: owner.projectId,
               chatId,
-              text: draft.text,
-              images: draft.images,
+              text,
+              images,
             }
           : null,
     });

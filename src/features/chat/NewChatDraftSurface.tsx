@@ -82,16 +82,13 @@ export function NewChatDraftSurface({
     transitioning,
   ]);
   if (!draft) return null;
-  const images = draft.images ?? [];
   const targetId =
     draft.targetProjectId === undefined
       ? draft.projectId
       : draft.targetProjectId;
-  const targetProject = targetId
+  // Only its name is shown.
+  const shownProject = targetId
     ? projects.find((item) => item.id === targetId)
-    : null;
-  const shownProject = targetProject
-    ? { id: targetProject.id, name: targetProject.name, roots: [] }
     : null;
   const available = harness?.installState === "available";
   const choice = effectiveDraftChoice(draft, {
@@ -169,23 +166,15 @@ export function NewChatDraftSurface({
           descriptionId="new-chat-description"
           disabledReasonId="new-chat-disabled"
           text={draft.text}
-          // Images stay files until the created chat uploads them; a chip
-          // names each by its position.
-          attachedContext={images.map((file, index) => ({
-            kind: "image",
-            artifactId: String(index),
-            mediaType: file.type as "image/png",
-            width: 0,
-            height: 0,
-            byteLength: file.size,
-            sha256: "",
-            label: file.name.slice(0, 80),
-          }))}
+          attachedContext={draft.images ?? []}
           // Images go to a chat's native session, so only with a binding.
           imageInputAvailable={!!harness?.bindingId}
           onAddImages={
             harness?.bindingId
-              ? (files) => update({ images: [...images, ...files] })
+              ? (files) =>
+                  void import("./draftImages").then((images) =>
+                    images.addDraftImages(files),
+                  )
               : undefined
           }
           enabled={!submitting && !!available}
@@ -193,7 +182,6 @@ export function NewChatDraftSurface({
           actionBusy={submitting}
           activeTurn={false}
           projectTransitioning={transitioning}
-          workbenchError={null}
           chatError={composerProblem("create-chat", "new-chat", errorNotice)}
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
@@ -210,10 +198,8 @@ export function NewChatDraftSurface({
           sessionModelId={null}
           selectedHarnessId={draft.harnessId}
           selectedModelId={choice ? choice.modelId : draft.modelId}
-          sessionPromptUnavailable={false}
           sessionConfig={null}
           modePending={false}
-          modeError={null}
           focused
           onSetSessionMode={unchangedSession}
           onSetSessionConfigOption={unchangedSession}
@@ -225,7 +211,6 @@ export function NewChatDraftSurface({
           }
           project={shownProject}
           newChat
-          usage={null}
           goal={{ kind: "unsupported" }}
           onSubmit={(event) => {
             event.preventDefault();
@@ -234,14 +219,9 @@ export function NewChatDraftSurface({
           onTextChange={(text) => update({ text })}
           onRemoveContext={(context) =>
             update({
-              images: images.filter(
-                (_, index) =>
-                  context.kind !== "image" ||
-                  String(index) !== context.artifactId,
-              ),
+              images: draft.images?.filter((image) => image !== context),
             })
           }
-          onCancelTurn={null}
         />
       </section>
     </div>

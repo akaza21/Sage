@@ -29,8 +29,8 @@ export async function openNewChatDraft(
   const draft = state.newChatDraft;
   const holdsWork =
     !!draft &&
-    (draft.text.length > 0 ||
-      !!draft.images?.length ||
+    (draft.text ||
+      draft.images?.length ||
       draft.submission.status !== "released");
   const retainedDraft =
     draft &&

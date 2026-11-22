@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import type { ImageAttachedContext } from "../domain/attachedContext";
 import type { SessionAccessMode } from "../domain/sessionAccessMode";
 import type { createNewChatDraftActions } from "./newChatDraftActions";
 import type { CreateChatResult } from "./runCreateChat";
@@ -22,7 +23,7 @@ export interface NewChatDraft {
   text: string;
   /** Images for the first turn, at most MAX_PROMPT_IMAGES. They stay in the
    * WebView until the created chat uploads them; a retarget drops them. */
-  images?: readonly File[];
+  images?: readonly DraftImage[];
   harnessId: string | null;
   modelId: string | null;
   access: SessionAccessMode | null;
@@ -32,6 +33,9 @@ export interface NewChatDraft {
     | { status: "submitting"; chatId: string; creation: DraftCreation };
   error: string | null;
 }
+
+/** A draft image's chip, with the file the created chat uploads. */
+export type DraftImage = ImageAttachedContext & { file: File };
 
 export interface NewChatDraftOpenOptions {
   /** Automatic continuity must not supersede a later explicit navigation. */
@@ -64,7 +68,7 @@ export interface NewChatDraftSlice {
         /** The text handed to the chat; a different composer text cancels. */
         text: string;
         /** The draft's images, uploaded to the chat before the send. */
-        images?: readonly File[];
+        images?: readonly DraftImage[];
       }
     | null;
   openNewChatDraft: (
