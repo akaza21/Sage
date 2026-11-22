@@ -75,12 +75,7 @@ export function AgentAppearanceSettings() {
           action={{ label: "Reload appearance", onClick: () => void restore() }}
         />
       ) : !ready ? (
-        <Notice
-          identity="settings:appearance:loading"
-          severity="info"
-          message="Loading appearance settings..."
-          progress
-        />
+        <p role="status">Loading appearance settings...</p>
       ) : null}
     </>
   );

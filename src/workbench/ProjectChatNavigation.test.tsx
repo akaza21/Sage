@@ -431,9 +431,7 @@ it("keeps a refused rename beside its field and out of the workbench error", asy
   fireEvent.change(field, { target: { value: "Research" } });
   await act(async () => fireEvent.submit(field.closest("form")!));
   expect(field).toHaveAttribute("aria-invalid", "true");
-  expect(field).toHaveAccessibleDescription(
-    /Chat names hold up to 256 bytes/,
-  );
+  expect(field).toHaveAccessibleDescription(/Chat names hold up to 256 bytes/);
   const form = field.closest("form")!;
   expect(form.querySelectorAll(".notice--warning")).toHaveLength(1);
   expect(document.querySelectorAll(".notice")).toHaveLength(1);

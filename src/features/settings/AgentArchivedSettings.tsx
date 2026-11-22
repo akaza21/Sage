@@ -158,14 +158,7 @@ export function AgentArchivedSettings() {
           </button>
         </div>
       ) : null}
-      {message ? (
-        <Notice
-          identity="settings:unarchive:done"
-          severity="info"
-          message={message}
-          progress
-        />
-      ) : null}
+      {message ? <p role="status">{message}</p> : null}
     </>
   );
 }
