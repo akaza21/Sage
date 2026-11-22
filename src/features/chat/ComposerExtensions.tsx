@@ -93,9 +93,7 @@ function ManagedMcp({
   const harness = useHarnessName(page) ?? "the harness";
   const managed = managedMcp(catalog);
   if (!managed)
-    return (
-      <p role="status">MCP servers are unavailable in this session.</p>
-    );
+    return <p role="status">MCP servers are unavailable in this session.</p>;
   return (
     <section aria-label="MCP servers">
       <strong>MCP servers</strong>
