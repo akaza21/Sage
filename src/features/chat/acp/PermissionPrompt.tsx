@@ -10,7 +10,7 @@ import {
   parkFocus,
   useCardKeyGuard,
 } from "./approvalCard";
-import { ToolKindIcon } from "./ToolItem";
+import { ToolKindIcon } from "./ToolKindIcon";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 

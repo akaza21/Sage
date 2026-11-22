@@ -2,21 +2,7 @@ import { useId } from "react";
 import { type AcpItem } from "../../../domain/acp";
 import { type ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOpenIntent } from "../../../domain/agentArtifact";
-import {
-  ArrowRightLeft,
-  Bot,
-  Brain,
-  Command,
-  FilePen,
-  FileSymlink,
-  FileText,
-  Globe,
-  Image,
-  Search,
-  TerminalSquare,
-  Trash2,
-  Wrench,
-} from "../../../ui/leanIcons";
+import { ToolKindIcon } from "./ToolKindIcon";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { CompactToolItem } from "./CompactToolItem";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
@@ -30,30 +16,7 @@ type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
 export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
-type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
-
-const toolKindIcons: Record<ToolKind | "extension", typeof FileText> = {
-  read: FileText,
-  edit: FilePen,
-  delete: Trash2,
-  move: FileSymlink,
-  search: Search,
-  execute: TerminalSquare,
-  fetch: Globe,
-  webSearch: Command,
-  imageView: Image,
-  think: Brain,
-  switchMode: ArrowRightLeft,
-  mcp: Command,
-  extension: Wrench,
-  subagent: Bot,
-  other: Wrench,
-};
-
-export function ToolKindIcon({ kind }: { kind: ToolKind | "extension" }) {
-  const Icon = toolKindIcons[kind];
-  return <Icon aria-hidden="true" size={14} data-tool-kind-icon={kind} />;
-}
+export { ToolKindIcon } from "./ToolKindIcon";
 
 export interface ToolItemProps {
   item: ToolProjectionItem;
