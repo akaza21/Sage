@@ -294,6 +294,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentHeaderMenu.tsx",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
+  "src/workbench/RepositoryMutationLink.tsx",
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
