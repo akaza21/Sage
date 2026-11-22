@@ -292,6 +292,7 @@ export function ChatHarnessControls({
           />
         ) : null}
         <ComposerHarnessPicker
+          canContinueInNewChat={!draftPickers && !availableBinding}
           discoveryPhase={discoveryPhase}
           open={active === "harness"}
           onOpenChange={setHarnessOpen}

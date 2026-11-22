@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -168,4 +169,76 @@ it("owns one missing-binding explanation with one recovery action", async () => 
   expect(screen.getAllByText(/Fixture isn't set up for Sage yet/)).toHaveLength(
     1,
   );
+});
+
+it("keyboard opening focuses the selected non-first harness", async () => {
+  const first = { ...harness, id: "first", name: "First" };
+  useWorkbenchStore.setState({
+    harnesses: [first, harness],
+    harnessDiscoveryPhase: "ready",
+  });
+  function Selection() {
+    const [open, setOpen] = useState(false);
+    const [selectedId, select] = useState(harness.id);
+    return (
+      <ComposerHarnessPicker
+        open={open}
+        onOpenChange={setOpen}
+        candidates={[
+          { id: first.id, label: first.name },
+          { id: harness.id, label: harness.name },
+        ]}
+        selectedId={selectedId}
+        onSelect={select}
+      />
+    );
+  }
+  render(<Selection />);
+  const trigger = screen.getByRole("button", { name: "Harness" });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  const selected = await screen.findByRole("option", { name: "Fixture" });
+  await waitFor(() => expect(selected).toHaveFocus());
+  fireEvent.click(selected);
+  expect(trigger).toHaveAttribute("data-selected-id", harness.id);
+});
+
+it("keeps build and release dismissals across close and reopen but shows new identities", async () => {
+  const current = {
+    ...harness,
+    boundVersion: "1.2.3",
+    characterisation: "uncharacterised" as const,
+    update: { latestVersion: "1.3.0", command: "update fixture" },
+  };
+  useWorkbenchStore.setState({
+    harnesses: [current],
+    harnessDiscoveryPhase: "ready",
+  });
+  render(<Picker />);
+  const trigger = screen.getByRole("button", { name: "Harness" });
+  fireEvent.click(trigger);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Dismiss build notice" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss update" }));
+  fireEvent.click(trigger);
+  expect(screen.queryByRole("dialog", { name: "Harness" })).toBeNull();
+  fireEvent.click(trigger);
+  await screen.findByRole("dialog", { name: "Harness" });
+  expect(
+    screen.queryByText(/hasn't been tested|1.3.0 is available/),
+  ).toBeNull();
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...current,
+        boundVersion: "1.2.4",
+        update: { ...current.update, latestVersion: "1.4.0" },
+      },
+    ],
+  });
+  expect(
+    await screen.findByText(/Fixture 1.2.4 hasn't been tested/),
+  ).toBeVisible();
+  expect(screen.getByText("Fixture 1.4.0 is available.")).toBeVisible();
 });

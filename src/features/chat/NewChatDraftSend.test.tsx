@@ -1,4 +1,5 @@
 import { HarnessAccountMenu } from "../harness/HarnessSignInStatus";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { EditorContinuityKeeper } from "../../workbench/WorkbenchContinuity";
 import { StrictMode, useState } from "react";
 import {
@@ -307,9 +308,14 @@ it.each([
     const result = acpProjectionStoreFor(chatId).getState().page!;
     if (expected === "cancelled") {
       expect(result.turns[0].state).toBe(expected);
+      fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+      const picker = await screen.findByRole("dialog", { name: "Harness" });
+      expect(await within(picker).findByRole("alert")).toHaveTextContent(
+        "Draft harness can't start yet.",
+      );
       expect(
-        screen.getByText("This chat used a harness that isn't available here."),
-      ).toBeVisible();
+        within(picker).getByRole("button", { name: "Continue in a new chat" }),
+      ).toBeEnabled();
     } else {
       expect(result.turns[0].items[0].payload).toMatchObject({
         state: expected,
@@ -389,7 +395,43 @@ it("uses an available harness for a draft after detecting bootstrap harnesses se
   });
 });
 
-it("shows exactly one message when no draft harness is available", async () => {
+it("keeps a native refusal visible when the frontend catalog is still available", async () => {
+  const chatId = await existingSessionlessChat();
+  const state = useWorkbenchStore.getState();
+  const session = agentSessionFixture({
+    bindingId: harness.bindingId as never,
+    state: "closed",
+    runtimeEpoch: null,
+    residency: "cold",
+  });
+  pages.set(chatId, {
+    ...emptyPage(state.project!.id, chatId),
+    sessions: [session],
+  });
+  useWorkbenchStore.setState({ agentCenter: "chat", newChatDraft: null });
+  state.setChatActionState(state.captureChatOwnership(chatId)!, {
+    sending: false,
+    error: "The project root is no longer available.",
+    errorKind: "unavailable",
+    errorUnavailableReason: "bindingUnavailable",
+  });
+  mount();
+  await settleLazyModules();
+  expect(
+    screen.getAllByText("The project root is no longer available."),
+  ).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  await screen.findByRole("dialog", { name: "Harness" });
+  expect(
+    screen.getAllByText("The project root is no longer available."),
+  ).toHaveLength(1);
+  expect(useWorkbenchStore.getState().harnesses).toEqual([
+    harness,
+    otherHarness,
+  ]);
+});
+
+it("explains an unavailable draft in the picker and opens harness settings", async () => {
   useWorkbenchStore.setState({
     agentCenter: "chat",
     newChatDraft: null,
@@ -400,15 +442,20 @@ it("shows exactly one message when no draft harness is available", async () => {
   await useWorkbenchStore.getState().openNewChatDraft();
   mount();
   await settleLazyModules();
-  expect(screen.getAllByRole("status")).toHaveLength(1);
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "No harness is available here.",
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  const notice = await screen.findByRole("alert");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(notice).toHaveTextContent("Choose a harness.");
+  fireEvent.click(
+    within(notice).getByRole("button", { name: "Open Settings" }),
   );
+  expect(useAgentSettingsState.getState().page).toBe("Harnesses");
+  useAgentSettingsState.getState().close();
   expect(
-    screen.queryByPlaceholderText(
+    screen.getByPlaceholderText(
       "Choose an available harness before starting a session",
     ),
-  ).toBeNull();
+  ).toBeDisabled();
   expect(
     screen.queryByText(
       /can't start this harness|reviewed local binding|selected harness is unavailable/,
@@ -448,32 +495,28 @@ it.each(["bindingUnavailable", "capabilityUnavailable"] as const)(
     });
     mount();
     await settleLazyModules();
-    await waitFor(() =>
-      expect(
-        screen.getByText("This chat used a harness that isn't available here."),
-      ).toBeVisible(),
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    const picker = await screen.findByRole("dialog", { name: "Harness" });
+    expect(await within(picker).findByRole("alert")).toHaveTextContent(
+      "Draft harness can't start yet.",
     );
-    expect(
-      screen.getAllByText(
-        /This chat used a harness|can't start this harness|reviewed local binding|selected harness is unavailable/,
-      ),
-    ).toHaveLength(1);
+    expect(screen.getAllByText("Draft harness can't start yet.")).toHaveLength(
+      1,
+    );
     expect(screen.getByText("Project refresh failed.")).toBeVisible();
-    expect(Boolean(screen.queryByText("Native availability failure."))).toBe(
-      reason !== "bindingUnavailable",
-    );
+    expect(screen.getByText("Native availability failure.")).toBeVisible();
     expect(
       screen.queryByText(
         /can't start this harness|reviewed local binding|selected harness is unavailable/,
       ),
     ).toBeNull();
     expect(
-      screen.queryByPlaceholderText(
+      screen.getByPlaceholderText(
         "Choose an available harness before starting a session",
       ),
-    ).toBeNull();
+    ).toBeDisabled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Continue in a new chat" }),
+      within(picker).getByRole("button", { name: "Continue in a new chat" }),
     );
     await waitFor(() =>
       expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
@@ -1131,11 +1174,13 @@ it("explains non-account model discovery failure and retries without losing the 
   fireEvent.click(screen.getByRole("button", { name: "Harness" }));
   fireEvent.click(await screen.findByRole("option", { name: /Other harness/ }));
   await settleLazyModules();
-  expect(screen.getByRole("alert")).toHaveTextContent(
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  const picker = await screen.findByRole("dialog", { name: "Harness" });
+  expect(await within(picker).findByRole("alert")).toHaveTextContent(
     "Model service unavailable",
   );
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  fireEvent.click(within(picker).getByRole("button", { name: "Retry" }));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled(),
   );
@@ -1390,10 +1435,16 @@ it("lets an unconfirmed draft be edited and reloads its creation with the edited
       })),
     }),
   );
-  expect(screen.getByText(/No harness is available here/)).toBeVisible();
-  expect(screen.getByRole("alert")).toHaveTextContent(/unconfirmed/);
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  const picker = await screen.findByRole("dialog", { name: "Harness" });
+  expect(await within(picker).findByRole("alert")).toHaveTextContent(
+    "Draft harness can't start yet.",
+  );
+  expect(screen.getByText(/Chat creation is unconfirmed/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
-  expect(screen.queryByRole("combobox", { name: "Message agent" })).toBeNull();
+  expect(composer()).toBeDisabled();
+  expect(composer()).toHaveValue("Edited while unconfirmed");
+  fireEvent.keyDown(picker, { key: "Escape" });
   act(() => useWorkbenchStore.setState({ harnesses: catalog }));
   expect(composer()).toHaveValue("Edited while unconfirmed");
   projection.mockImplementation(async () =>
@@ -2194,10 +2245,13 @@ it.each(["sign-in", "discovery retry"] as const)(
       );
       expect(composer()).toHaveValue("Keep this account draft");
     } else {
-      expect(screen.getByRole("alert")).toHaveTextContent(
+      fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+      const picker = await screen.findByRole("dialog", { name: "Harness" });
+      expect(await within(picker).findByRole("alert")).toHaveTextContent(
         "Account discovery unavailable",
       );
-      fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+      fireEvent.click(within(picker).getByRole("button", { name: "Retry" }));
+      fireEvent.keyDown(picker, { key: "Escape" });
     }
     await settleLazyModules();
     await waitFor(() =>

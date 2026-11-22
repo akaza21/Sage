@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import "../../styles/harness-picker.css";
 import { PickerLogo } from "../../ui/PickerLogo";
@@ -6,6 +6,7 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { LazyHarnessNotice } from "./lazyParts";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import type { HarnessNoticeDismissal } from "./harnessNoticePresentation";
 
 type PickerProps = ComponentProps<typeof SearchablePicker>;
 
@@ -17,6 +18,7 @@ export function ComposerHarnessPicker({
   selectedId,
   onSelect,
   discoveryPhase,
+  canContinueInNewChat,
 }: Pick<
   PickerProps,
   | "candidates"
@@ -25,8 +27,12 @@ export function ComposerHarnessPicker({
   | "disabled"
   | "selectedId"
   | "onSelect"
-> & { discoveryPhase?: HarnessDiscoveryPhase }) {
+> & {
+  discoveryPhase?: HarnessDiscoveryPhase;
+  canContinueInNewChat?: boolean;
+}) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
+  const dismissal = useState<HarnessNoticeDismissal[0]>({});
   const keyboardFocus = useHarnessKeyboardFocus();
   const phase = useWorkbenchStore((state) =>
     selectedId === state.selectedHarnessId
@@ -76,9 +82,26 @@ export function ComposerHarnessPicker({
         onSelect={onSelect}
         selectedId={selectedId}
       >
-        {open && attention ? (
+        {open && (attention || canContinueInNewChat) ? (
           <div className="composer__harness-status">
-            <LazyHarnessNotice harness={harness} discoveryPhase={phase} />
+            {attention ? (
+              <LazyHarnessNotice
+                harness={harness}
+                discoveryPhase={phase}
+                dismissal={dismissal}
+              />
+            ) : null}
+            {canContinueInNewChat ? (
+              <button
+                type="button"
+                className="button button--compact"
+                onClick={() =>
+                  void useWorkbenchStore.getState().openNewChatDraft()
+                }
+              >
+                Continue in a new chat
+              </button>
+            ) : null}
           </div>
         ) : null}
       </SearchablePicker>

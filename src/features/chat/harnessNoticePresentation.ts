@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { NoticeProps } from "../../ui/Notice";
 export interface HarnessNoticePresentationProps {
@@ -12,3 +12,10 @@ export interface HarnessNoticePresentationProps {
 
 export type HarnessNoticePresentation =
   ComponentType<HarnessNoticePresentationProps>;
+
+/** One compatibility identity and one release identity, never a history. */
+type DismissalIdentities = { build?: string; release?: string };
+export type HarnessNoticeDismissal = [
+  DismissalIdentities,
+  Dispatch<SetStateAction<DismissalIdentities>>,
+];

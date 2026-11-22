@@ -317,9 +317,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         chatError={composerProblem(
           acpActions.errorKind ?? "command",
           [chatId ?? activeTabId, acpPage?.currentSessionId],
-          acpActions.errorUnavailableReason === "bindingUnavailable"
-            ? null
-            : foregroundError,
+          foregroundError,
         )}
         chatAuth={{
           page: acpPage,

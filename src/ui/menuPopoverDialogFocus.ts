@@ -20,9 +20,11 @@ function dialogControls(container: HTMLElement) {
 export function focusPopoverDialog(popover: HTMLElement) {
   const focus = () => {
     if (popover.isConnected && !popover.hidden) {
+      // A listbox gives its selected option the only tab stop. Recovery
+      // controls before it keep priority, including in a mixed dialog.
       (
         popover.querySelector<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled)",
+          ':is(button,input):not(:disabled):not([tabindex="-1"])',
         ) ?? popover
       ).focus();
     }

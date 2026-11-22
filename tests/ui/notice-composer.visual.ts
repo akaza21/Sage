@@ -135,7 +135,12 @@ test("a cold missing binding has one explanation and keyboard recovery", async (
     await trigger.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Harness", exact: true });
-    await expect(dialog).toBeFocused();
+    await expect(
+      dialog.getByRole("button", {
+        name: "Continue in a new chat",
+        exact: true,
+      }),
+    ).toBeFocused();
     release();
     await expect(dialog.getByRole("alert")).toHaveText(
       /Codex isn't set up for Sage yet/,
@@ -146,7 +151,7 @@ test("a cold missing binding has one explanation and keyboard recovery", async (
       }),
     ).toHaveCount(1);
     await expect(dialog).toHaveScreenshot("composer-notice-binding.png");
-    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     const recovery = dialog.getByRole("button", {
       name: "Open Settings",
       exact: true,
@@ -181,4 +186,44 @@ test("compatibility and update have separate severities and expandable installat
   await expect(
     dialog.getByText("npm install -g example-agent@latest", { exact: true }),
   ).toBeVisible();
+  await dialog.getByRole("button", { name: "Dismiss build notice" }).click();
+  await dialog
+    .getByRole("button", { name: "Dismiss update", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Harness", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Harness", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".notice")).toHaveCount(0);
+});
+
+test("keyboard opening and Enter preserve a non-first harness selection", async ({
+  page,
+}) => {
+  await noticeScenario(page, "checking");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const harness = useWorkbenchStore.getState().harnesses[0];
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          ...harness,
+          id: "other",
+          bindingId: "other-binding",
+          name: "Other harness",
+        },
+        harness,
+      ],
+      harnessDiscoveryPhase: "ready",
+    });
+  });
+  const trigger = page.getByRole("button", { name: "Harness", exact: true });
+  await expect(trigger).toHaveAttribute("data-selected-id", "codex");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Harness", exact: true });
+  await expect(dialog.getByRole("option", { selected: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toHaveAttribute("data-selected-id", "codex");
 });

@@ -9,6 +9,7 @@ import { Notice, type NoticeProps } from "../../ui/Notice";
 import type {
   HarnessNoticePresentation,
   HarnessNoticePresentationProps,
+  HarnessNoticeDismissal,
 } from "./harnessNoticePresentation";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import "./build-notice.css";
@@ -18,10 +19,12 @@ export function HarnessDiscoveryNotice({
   harness: provided,
   discoveryPhase,
   presentation: SettingsPresentation,
+  dismissal,
 }: {
   harness?: HarnessDefinition | null;
   discoveryPhase?: HarnessDiscoveryPhase;
   presentation?: HarnessNoticePresentation;
+  dismissal?: HarnessNoticeDismissal;
 } = {}) {
   const harnesses = useWorkbenchStore((s) => s.harnesses);
   const selectedId = useWorkbenchStore((s) => s.selectedHarnessId);
@@ -33,8 +36,10 @@ export function HarnessDiscoveryNotice({
     confirmHarnessSignIn: confirm,
     cancelHarnessSignIn: cancel,
   } = useWorkbenchStore.getState();
-  const [dismissedBuild, dismissBuild] = useState("");
-  const [dismissedRelease, dismissRelease] = useState("");
+  const localDismissal = useState<HarnessNoticeDismissal[0]>({});
+  const [dismissed, setDismissed] = dismissal ?? localDismissal;
+  const dismiss = (kind: "build" | "release", identity: string) => () =>
+    setDismissed((current) => ({ ...current, [kind]: identity }));
   const harness =
     provided === undefined
       ? harnesses.find((h) => h.id === selectedId)
@@ -60,15 +65,15 @@ export function HarnessDiscoveryNotice({
     const pending = (harness ? [harness] : harnesses).some(
       (h) => h.installState === "detecting" || h.installState === "installing",
     );
-    const message = harnessUnavailableReason(
-      harness?.unavailableReason,
-      harness?.name ?? "This harness",
-    );
     const binding: NoticeProps = {
       identity: id,
       severity: pending ? "info" : "blocking",
       progress: pending,
-      message: pending ? "Checking…" : harness ? message : "Choose a harness.",
+      message: pending
+        ? "Checking…"
+        : harness
+          ? harnessUnavailableReason(harness.unavailableReason, harness.name)
+          : "Choose a harness.",
       action: pending
         ? undefined
         : {
@@ -85,7 +90,7 @@ export function HarnessDiscoveryNotice({
   const builds: NoticeProps[] = [];
   if (
     (newer || harness.characterisation === "uncharacterised") &&
-    dismissedBuild !== build
+    dismissed.build !== build
   )
     builds.push({
       identity: build,
@@ -93,10 +98,10 @@ export function HarnessDiscoveryNotice({
       message: `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
       action: {
         label: "Dismiss build notice",
-        onClick: () => dismissBuild(build),
+        onClick: dismiss("build", build),
       },
     });
-  if (update && dismissedRelease !== release)
+  if (update && dismissed.release !== release)
     builds.push({
       identity: release,
       severity: "info",
@@ -104,7 +109,7 @@ export function HarnessDiscoveryNotice({
       details: update.command,
       action: {
         label: "Dismiss update",
-        onClick: () => dismissRelease(release),
+        onClick: dismiss("release", release),
       },
     });
   const message =

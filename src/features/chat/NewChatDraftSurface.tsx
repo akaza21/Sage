@@ -48,7 +48,10 @@ export function NewChatDraftSurface({
   useComposerFocusHotkey(composerRef, !submitting && !transitioning);
   const harness = harnesses.find((harness) => harness.id === draft?.harnessId);
   useEffect(() => {
-    (composerRef.current ?? surfaceRef.current)?.focus();
+    (composerRef.current?.disabled
+      ? surfaceRef.current
+      : (composerRef.current ?? surfaceRef.current)
+    )?.focus();
   }, [focusRequest]);
   useEffect(() => {
     const available = preferredAvailableHarness(harnesses, draft?.harnessId);
