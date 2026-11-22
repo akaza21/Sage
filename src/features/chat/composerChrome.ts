@@ -67,8 +67,9 @@ export function useComposerDictation(
   }, [cancel, suspended]);
   const nativeSupported = isTauriRuntime() && /win/i.test(navigator.platform);
   const supported = nativeSupported || Boolean(browserRecognition());
+  const disabled = !supported || suspended;
   const start = async () => {
-    if (!supported || suspended) return;
+    if (disabled) return;
     cancel();
     const request = generation.current;
     setError(null);
@@ -117,6 +118,7 @@ export function useComposerDictation(
   };
   return {
     supported,
+    disabled,
     listening: listeningState && !suspended,
     error,
     start,
@@ -154,15 +156,8 @@ export function composerWorkspaceName(
 ): string | null {
   if (!project || project.isInternal) return null;
   const name = project.name.trim();
-  if (
-    !name ||
-    name.split("").some((character) => {
-      const code = character.charCodeAt(0);
-      return code < 32 || code === 127;
-    })
-  ) {
-    return null;
-  }
+  // eslint-disable-next-line no-control-regex
+  if (!name || /[\u0000-\u001f\u007f]/.test(name)) return null;
   if (name.length <= maxLength) return name;
   return `${name.slice(0, maxLength - 1)}…`;
 }

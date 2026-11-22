@@ -10,6 +10,48 @@ import { ChatGoalControl } from "./ChatGoalControl";
 
 afterEach(cleanup);
 
+it.each([
+  ["active", "Pursuing goal"],
+  ["paused", "Goal paused"],
+  ["blocked", "Goal blocked"],
+  ["usageLimited", "Goal usage limit reached"],
+  ["budgetLimited", "Goal token budget reached"],
+  ["complete", "Goal complete"],
+] as const)("labels a native %s goal in the strip", (status, label) => {
+  render(
+    <ChatGoalControl
+      state={{
+        kind: "goal",
+        snapshot: {
+          objective: "Ship safely",
+          status,
+          tokenBudget: null,
+          tokensUsed: 3,
+          timeUsedSeconds: 5,
+          createdAt: "1795300000",
+          updatedAt: "1795300005",
+        },
+      }}
+      capabilities={{
+        observes: true,
+        set: false,
+        pause: true,
+        resume: false,
+        tokenBudget: false,
+        clear: true,
+      }}
+      canMutate
+      onMutation={async () => ({ kind: "applied" })}
+    />,
+  );
+  expect(screen.getByText(label)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Resume goal" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Pause goal" }) !== null).toBe(
+    status === "active",
+  );
+});
+
 it("shows an active native Goal above the composer and exposes details", async () => {
   render(
     <ChatGoalControl
