@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -67,6 +68,11 @@ describe("FileEditorNotices", () => {
       "file-conflict:4:rootreadme.md:external-change",
     ]);
     expect(conflict).toHaveTextContent("This file changed outside Sage.");
+    // Announced once, politely, after its live region exists.
+    const live = conflict.querySelector('[aria-live="polite"]');
+    await waitFor(() =>
+      expect(live).toHaveTextContent("readme.md changed outside Sage."),
+    );
     expect(screen.queryByText(/Disk content changed/)).toBeNull();
     expect(container.querySelector(".notice")).toHaveClass("notice--warning");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -97,16 +103,14 @@ describe("FileEditorNotices", () => {
       "file-conflict:4:rootreadme.md:external-change",
       "file-recovery:4:rootreadme.md",
     ]);
-    const alerts = screen.getAllByRole("alert");
-    expect(alerts).toHaveLength(2);
-    expect(alerts[0]).toHaveTextContent("This file changed outside Sage.");
-    expect(alerts[1]).toHaveTextContent(
+    // The conflict stays a warning; only the lost copy is an alert.
+    expect(container.querySelector(".notice")).toHaveClass("notice--warning");
+    const recovery = screen.getByRole("alert");
+    expect(recovery).toHaveTextContent(
       "Your unsaved changes could not be stored for recovery.",
     );
-    fireEvent.click(
-      within(alerts[1]!).getByRole("button", { name: "Details" }),
-    );
-    expect(alerts[1]).toHaveTextContent("the disk is full");
+    fireEvent.click(within(recovery).getByRole("button", { name: "Details" }));
+    expect(recovery).toHaveTextContent("the disk is full");
   });
 
   it("shows a failed save as its own problem", () => {

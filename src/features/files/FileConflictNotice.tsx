@@ -96,6 +96,19 @@ export default function FileConflictNotice({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletedKey]);
   const key = resourceKey(document.resource);
+  const identity = conflict ? `file-conflict:${key}:${conflict.kind}` : "";
+  // The live region mounts empty; filling it once per conflict announces it.
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    if (!identity) return;
+    const name = document.resource.relativePath.split("/").pop();
+    setAnnouncement(
+      `${name} ${identity.endsWith(":deleted") ? "was deleted" : "changed"} outside Sage.`,
+    );
+    return () => setAnnouncement("");
+    // Once per conflict identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity]);
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     return (
@@ -130,11 +143,15 @@ export default function FileConflictNotice({
         role="group"
         aria-label={deleted ? "Deleted file" : "External change"}
       >
+        {/* A lost recovery copy is its own alert beside this warning. */}
         <Notice
-          identity={`file-conflict:${key}:${conflict.kind}`}
-          severity={ready?.unstored ? "blocking" : "warning"}
+          identity={identity}
+          severity="warning"
           message={deleted ? DELETED_FILE : CHANGED_FILE}
         />
+        <span className="sr-only" aria-live="polite">
+          {announcement}
+        </span>
         {editable && ready ? (
           <span className="file-conflict__actions">
             {deleted ? null : (

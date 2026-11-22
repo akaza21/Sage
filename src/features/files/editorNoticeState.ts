@@ -37,11 +37,6 @@ function changedOnDisk(error: unknown): boolean {
   return DISK_MISMATCH.test(errorMessage(error));
 }
 
-/** A copy refused because disk moved on is that change, which the conflict explains. */
-function unstoredBesideConflict(unstored: string | undefined) {
-  return unstored && !changedOnDisk(unstored) ? unstored : undefined;
-}
-
 function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   const editor = bridge.getActiveEditor();
   return editor?.phase === "ready" ? editor : null;
@@ -55,7 +50,6 @@ export function markDeleted(bridge: EditorStateBridge): void {
         ...active,
         document: { ...active.document, conflict: DELETION_CONFLICT },
         message: null,
-        unstored: unstoredBesideConflict(active.unstored),
       },
       { tabStatus: "failed" },
     );
@@ -91,9 +85,7 @@ export function reread(
   bridge.setActiveEditor(
     {
       ...(getFileEditorController().ready(document) as ReadyEditorState),
-      unstored: document.dirty
-        ? unstoredBesideConflict(active?.unstored)
-        : undefined,
+      unstored: document.dirty ? active?.unstored : undefined,
     },
     {
       dirty: document.dirty,
@@ -112,7 +104,6 @@ export function setExternalChangeConflict(
     {
       ...active,
       message: null,
-      unstored: unstoredBesideConflict(active.unstored),
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -173,7 +164,7 @@ export function actionFailed(
     bridge.setActiveEditor({
       ...active,
       saving: false,
-      // The conflict already explains a failure that disk moving on caused.
+      // The conflict, with any lost copy, already explains this failure.
       message:
         active.document.conflict && changedOnDisk(error)
           ? active.message
@@ -206,7 +197,8 @@ export async function applyWatchNotice(
         }
       : null;
   // Reading the File drops a durable buffer that matches disk, so unsaved edits
-  // are persisted first. The controller records a refused copy as unstored.
+  // are persisted first. The controller records a refused copy as unstored;
+  // a refusal because disk moved on means no durable copy exists either.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&

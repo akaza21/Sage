@@ -218,6 +218,8 @@ export async function saveAllEditors(): Promise<SaveAllFailure[]> {
       seen.add(key);
       return [tab.resource!];
     });
+  // A new run's failures are a new problem, announced afresh.
+  set({ saveAllReport: null });
   const failures: SaveAllFailure[] = [];
   const savedInBackground: ResourceRef[] = [];
   for (const resource of dirty) {

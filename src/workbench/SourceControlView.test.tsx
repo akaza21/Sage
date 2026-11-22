@@ -886,6 +886,62 @@ it("explains a failed Git file action once, inside its repository", () => {
   expect(screen.getAllByText("Git exited before reporting")).toHaveLength(1);
 });
 
+it("explains a failed Git file action once even when its repository is filtered out", () => {
+  const otherRepository: RepositoryRef = { rootId: "root-b", relativePath: "" };
+  const otherStatus: RootRepositoryStatus = { ...rootStatus, rootId: "root-b" };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+        {
+          id: "root-b",
+          name: "Root B",
+          ordinal: 1,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [rootStatus, otherStatus],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository, otherRepository],
+    selectedRepository: otherRepository,
+    selectedRepositoryStatus: otherStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    repositoryMutationError: {
+      resource: { rootId: "root-a", relativePath: "src/file.txt" },
+      action: "unstage",
+      kind: "failed",
+      message: "Git exited 128",
+    },
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  const { container } = render(<SourceControlView />);
+
+  const notices = container.querySelectorAll(
+    "[data-notice-identity^='repository-mutation:']",
+  );
+  expect(notices).toHaveLength(1);
+  expect(notices[0]!.closest(".source-root")).toBeNull();
+  expect(container.querySelectorAll(".source-root")).toHaveLength(1);
+  expect(notices[0]).toHaveTextContent(
+    "Source Control could not unstage src/file.txt.",
+  );
+});
+
 it("lists conflicted files under a Conflicts heading with a Conflict chip", () => {
   useWorkbenchStore.setState({
     project: {

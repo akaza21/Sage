@@ -62,11 +62,19 @@ export function FileEditorHeader({
         )}
         {unwatched ? (
           // Beside the size, which a deleted File hides, not inside it.
-          <span className="file-header__unwatched" title={unwatched}>
-            {unwatched === WATCH_LIMIT_MESSAGE
-              ? " · Not watched: watch limit reached"
-              : " · Not watched"}
-          </span>
+          <>
+            <span
+              className="file-header__unwatched"
+              title={unwatched}
+              aria-hidden="true"
+            >
+              {unwatched === WATCH_LIMIT_MESSAGE
+                ? " · Not watched: watch limit reached"
+                : " · Not watched"}
+            </span>
+            {/* The compact mark is visual; assistive tech hears the reason. */}
+            <span className="sr-only">{` · ${unwatched}`}</span>
+          </>
         ) : null}
       </span>
       {saveState || canPreview ? (
