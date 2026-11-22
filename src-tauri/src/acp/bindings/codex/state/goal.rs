@@ -2,7 +2,58 @@ use serde_json::Value;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::{characterisation::Characterisation, codex::request::OutgoingRequest};
-use crate::acp::goal::{GoalSnapshot, GoalState, GoalStatus, valid_objective};
+use crate::acp::goal::{GoalAction, GoalSnapshot, GoalState, GoalStatus, valid_objective};
+
+#[derive(Clone, PartialEq)]
+pub(super) struct PendingGoalMutation {
+    id: u64,
+    generation: u64,
+    objective: Option<String>,
+    token_budget: Option<u64>,
+    status: Option<GoalStatus>,
+}
+
+impl PendingGoalMutation {
+    fn new(id: u64, generation: u64, action: &GoalAction) -> Self {
+        let mut pending = Self {
+            id,
+            generation,
+            objective: None,
+            token_budget: None,
+            status: None,
+        };
+        match action {
+            GoalAction::Set {
+                objective,
+                token_budget,
+                ..
+            } => {
+                pending.objective = Some(objective.clone());
+                pending.token_budget = *token_budget;
+            }
+            GoalAction::SetBudget { token_budget, .. } => {
+                pending.token_budget = Some(*token_budget)
+            }
+            GoalAction::ResumeExisting => pending.status = Some(GoalStatus::Active),
+            GoalAction::PauseExisting => pending.status = Some(GoalStatus::Paused),
+            GoalAction::ClearExisting => {}
+        }
+        pending
+    }
+
+    fn matches(&self, snapshot: &GoalSnapshot) -> bool {
+        self.objective
+            .as_ref()
+            .is_none_or(|objective| *objective == snapshot.objective)
+            && self
+                .token_budget
+                .is_none_or(|budget| snapshot.token_budget == Some(budget))
+            && self
+                .status
+                .as_ref()
+                .is_none_or(|status| *status == snapshot.status)
+    }
+}
 
 impl CodexAdapter {
     pub(crate) fn goal_unavailable(&mut self) {
@@ -65,11 +116,11 @@ impl CodexAdapter {
     }
 
     pub(crate) fn goal_pause(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.goal_mutation(id, false, OutgoingRequest::goal_pause)
+        self.goal_mutation(id, &GoalAction::PauseExisting, OutgoingRequest::goal_pause)
     }
 
     pub(crate) fn goal_clear(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.goal_mutation(id, false, OutgoingRequest::goal_clear)
+        self.goal_mutation(id, &GoalAction::ClearExisting, OutgoingRequest::goal_clear)
     }
 
     pub(crate) fn goal_set(
@@ -77,7 +128,6 @@ impl CodexAdapter {
         id: u64,
         action: &crate::acp::goal::GoalAction,
     ) -> Result<OutgoingRequest, AdapterError> {
-        use crate::acp::goal::GoalAction;
         if let GoalAction::Set { expected_goal, .. } | GoalAction::SetBudget { expected_goal, .. } =
             action
         {
@@ -90,8 +140,7 @@ impl CodexAdapter {
                 return Err(AdapterError::GoalChanged);
             }
         }
-        let creates = matches!(action, crate::acp::goal::GoalAction::Set { .. });
-        self.goal_mutation(id, creates, |id, thread| {
+        self.goal_mutation(id, action, |id, thread| {
             OutgoingRequest::goal_set(id, thread, action)
         })
     }
@@ -99,7 +148,7 @@ impl CodexAdapter {
     fn goal_mutation(
         &mut self,
         id: u64,
-        creates: bool,
+        action: &GoalAction,
         build: impl FnOnce(
             u64,
             &sage_acp_protocol::contract::RequiredText<512>,
@@ -107,7 +156,8 @@ impl CodexAdapter {
     ) -> Result<OutgoingRequest, AdapterError> {
         if !self.goal_supported()
             || !(matches!(self.goal_state, GoalState::Goal { .. })
-                || creates && matches!(self.goal_state, GoalState::NoGoal))
+                || matches!(action, GoalAction::Set { .. })
+                    && matches!(self.goal_state, GoalState::NoGoal))
         {
             return Err(AdapterError::CapabilityUnavailable);
         }
@@ -120,14 +170,19 @@ impl CodexAdapter {
             .ok_or(AdapterError::SessionUnavailable)?;
         let request = build(id, thread)?;
         self.reserve(request.clone())?;
-        self.goal_mutation_fence = Some((id, self.goal_notification_generation));
+        self.goal_mutation_fence = Some(PendingGoalMutation::new(
+            id,
+            self.goal_notification_generation,
+            action,
+        ));
         Ok(request)
     }
 
     pub(crate) fn goal_mutation_failed(&mut self, id: u64) {
         if self
             .goal_mutation_fence
-            .is_some_and(|(pending, _)| pending == id)
+            .as_ref()
+            .is_some_and(|pending| pending.id == id)
         {
             self.goal_mutation_fence = None;
         }
@@ -136,7 +191,8 @@ impl CodexAdapter {
     pub(crate) fn goal_mutation_delivery_unknown(&mut self, id: u64) {
         if self
             .goal_mutation_fence
-            .is_some_and(|(pending, _)| pending == id)
+            .as_ref()
+            .is_some_and(|pending| pending.id == id)
         {
             self.goal_state = GoalState::Unavailable;
         }
@@ -148,21 +204,18 @@ impl CodexAdapter {
         kind: super::super::request::RequestKind,
         result: Option<&Value>,
     ) -> bool {
-        let Some((pending, generation)) = self.goal_mutation_fence.take() else {
+        let Some(pending) = self.goal_mutation_fence.take() else {
             return false;
         };
-        if pending != id {
+        if pending.id != id {
             return false;
         }
         let next = match kind {
-            super::super::request::RequestKind::GoalSet => result
+            super::super::request::RequestKind::GoalSet
+            | super::super::request::RequestKind::GoalPause => result
                 .and_then(|value| value.get("goal"))
                 .and_then(|value| goal_snapshot(value).ok())
-                .map(|snapshot| GoalState::Goal { snapshot }),
-            super::super::request::RequestKind::GoalPause => result
-                .and_then(|value| value.get("goal"))
-                .and_then(|value| goal_snapshot(value).ok())
-                .filter(|snapshot| snapshot.status == crate::acp::goal::GoalStatus::Paused)
+                .filter(|snapshot| pending.matches(snapshot))
                 .map(|snapshot| GoalState::Goal { snapshot }),
             super::super::request::RequestKind::GoalClear => match result
                 .and_then(|value| value.get("cleared"))
@@ -174,7 +227,7 @@ impl CodexAdapter {
             _ => None,
         };
         if let Some(next) = next {
-            if generation == self.goal_notification_generation {
+            if pending.generation == self.goal_notification_generation {
                 self.goal_state = next;
             }
             true

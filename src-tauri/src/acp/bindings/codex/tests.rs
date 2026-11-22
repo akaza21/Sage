@@ -318,7 +318,8 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         assert_eq!(adapter.goal_state(), &before);
         assert!(adapter.goal_set(81, &action).is_err());
         // ThreadGoal in the observed wire subset requires int64 timestamps.
-        let reply = json!({"id":80,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}});
+        let budget = expected.get("tokenBudget").cloned().unwrap_or(Value::Null);
+        let reply = json!({"id":80,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"active","tokenBudget":budget,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}});
         assert_eq!(
             adapter
                 .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
@@ -358,6 +359,106 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         },
     ] {
         assert!(request::OutgoingRequest::goal_set(80, &thread, &action).is_err());
+    }
+}
+
+#[test]
+fn goal_mutations_reject_valid_snapshots_that_do_not_apply_the_requested_change() {
+    use crate::acp::goal::{GoalAction, MAX_GOAL_TOKEN_BUDGET};
+    for (mut action, objective, budget, status) in [
+        (
+            GoalAction::Set {
+                expected_goal: None,
+                objective: "New objective".into(),
+                token_budget: None,
+            },
+            "Original",
+            None,
+            "active",
+        ),
+        (
+            GoalAction::Set {
+                expected_goal: None,
+                objective: "New objective".into(),
+                token_budget: Some(1),
+            },
+            "New objective",
+            Some(40000),
+            "active",
+        ),
+        (
+            GoalAction::Set {
+                expected_goal: None,
+                objective: "New objective".into(),
+                token_budget: Some(1),
+            },
+            "New objective",
+            None,
+            "active",
+        ),
+        (
+            GoalAction::SetBudget {
+                expected_goal: None,
+                token_budget: 1,
+            },
+            "Original",
+            Some(40000),
+            "paused",
+        ),
+        (
+            GoalAction::SetBudget {
+                expected_goal: None,
+                token_budget: MAX_GOAL_TOKEN_BUDGET,
+            },
+            "Original",
+            Some(40000),
+            "paused",
+        ),
+        (
+            GoalAction::ResumeExisting,
+            "Original",
+            Some(40000),
+            "paused",
+        ),
+    ] {
+        let mut adapter = adapter();
+        observed_goal_ready(&mut adapter);
+        if matches!(action, GoalAction::Set { .. }) {
+            adapter.goal_cleared();
+        } else {
+            adapter.goal_updated(&json!({
+                "objective":"Original", "status":"paused", "tokenBudget":40000,
+                "tokensUsed":3, "timeUsedSeconds":5,
+                "createdAt":1795300000, "updatedAt":1795300005
+            }));
+        }
+        if let GoalAction::SetBudget { expected_goal, .. } = &mut action {
+            *expected_goal = Some(
+                serde_json::from_value(json!({
+                    "objective":"Original", "createdAt":"1795300000"
+                }))
+                .unwrap(),
+            );
+        }
+        let before = adapter.goal_state().clone();
+        adapter.goal_set(80, &action).unwrap();
+        let reply = json!({"id":80,"result":{"goal":{
+            "threadId":"thread-1", "objective":objective,
+            "status":status, "tokenBudget":budget,
+            "tokensUsed":3, "timeUsedSeconds":5,
+            "createdAt":1795300000, "updatedAt":1795300005
+        }}});
+        assert_eq!(
+            adapter
+                .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
+                .unwrap(),
+            IngressDisposition::GoalMutationRejected,
+            "{action:?}"
+        );
+        assert_eq!(adapter.goal_state(), &before);
+        // A refusal must release the pending mutation so the editor can retry.
+        assert!(adapter.goal_set(81, &action).is_ok());
+        assert!(!adapter.has_active_turn());
     }
 }
 
