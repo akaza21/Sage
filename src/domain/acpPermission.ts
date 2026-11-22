@@ -30,7 +30,7 @@ export interface ResolvePermissionDecisionRequest {
 
 /** Bounds of the harness-neutral question contract (native caps). */
 export const USER_INPUT_MAX_QUESTIONS = 8;
-export const USER_INPUT_MAX_OPTIONS = 8;
+export const USER_INPUT_MAX_OPTIONS = 50;
 /** Longest answer or prefilled text, in UTF-8 bytes. */
 export const USER_INPUT_TEXT_BYTES = 16_384;
 
@@ -40,7 +40,13 @@ export interface UserInputOption {
 }
 
 export type UserInputKind =
-  "text" | "multiline" | "number" | "integer" | "boolean";
+  | "choice"
+  | "confirm"
+  | "text"
+  | "multiline"
+  | "number"
+  | "integer"
+  | "boolean";
 
 export interface UserInputQuestion {
   id: string;

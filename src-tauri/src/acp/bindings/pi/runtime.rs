@@ -96,6 +96,7 @@ pub(crate) struct PiRuntime {
     pub(super) deny: Option<DenyIntent>,
     cancelled_dialogs: BTreeMap<String, DenyStage>,
     recent_cancelled_dialogs: VecDeque<String>,
+    questions: support::Questions,
     staged_initialize: Option<Outbound>,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
@@ -132,45 +133,34 @@ pub(crate) struct PiRuntime {
 }
 
 impl HarnessAdapter for PiRuntime {
-    fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
-        self.launch
-            .as_ref()
-            .ok_or(AdapterRuntimeError::LaunchUnavailable)?
-            .revalidate_title()?;
-        let model = self
-            .current_model
-            .as_ref()
-            .and_then(|current| {
-                self.available_models
-                    .iter()
-                    .find(|model| format!("{}:{}", model.provider, model.id) == *current)
-            })
-            .ok_or(AdapterRuntimeError::Operation)?;
-        if self.title_request.is_some() || self.active_turn.is_some() || input.len() > 4096 {
-            return Err(AdapterRuntimeError::Operation);
+    fn next_request_deadline(&self) -> Option<std::time::Instant> {
+        self.next_question_deadline()
+    }
+    fn poll_request_deadlines(
+        &mut self,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.expire_queued_questions()
+    }
+    fn cancel_permission(
+        &mut self,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.cancel_pending_question(request_id.as_str())
+    }
+    fn defer_cancel(&mut self) -> bool {
+        if !self.questions.idle_turn() {
+            return false;
         }
-        let command = self
-            .title_launch
-            .as_ref()
-            .ok_or(AdapterRuntimeError::LaunchUnavailable)?
-            .command(model)?;
-        self.title_request = Some(super::title_request::TitleRequest::start(command, input)?);
-        Ok(())
+        self.questions.cancel();
+        self.questions.reply_pending = true;
+        true
+    }
+    fn start_title(&mut self, input: &str) -> Result<(), AdapterRuntimeError> {
+        self.begin_title_request(input)
     }
     fn poll_title(&mut self) -> Option<AdapterEgress> {
-        if let Some(result) = self
-            .title_request
-            .as_mut()
-            .and_then(|request| request.poll())
-        {
-            self.title_result = match result {
-                super::title_request::TitleOutcome::Generated(title) => Some(Some(title)),
-                super::title_request::TitleOutcome::Failed => Some(None),
-                super::title_request::TitleOutcome::Preempted => None,
-            };
-            self.title_request = None;
-        }
-        None
+        self.poll_title_request()
     }
     fn cancel_title(&mut self) {
         if let Some(request) = &mut self.title_request {
@@ -322,6 +312,9 @@ impl HarnessAdapter for PiRuntime {
                 Ok(egress)
             }
             AdapterCommand::Cancel if self.active_turn.is_some() => {
+                if let Some(reply) = self.cancel_question_turn()? {
+                    return Ok(reply);
+                }
                 self.discard_bridge_edit();
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
@@ -374,12 +367,16 @@ impl HarnessAdapter for PiRuntime {
             return self.resolve_dialog_cancel(token, resolution);
         }
         if token.deny_request().is_some() {
+            if resolution == EgressResolution::Written {
+                self.question_reply_written(token.deny_request().expect("deny token").0);
+            }
             return self.resolve_deny(token, resolution);
         }
         if token.allow_request().is_some() {
             return match resolution {
                 EgressResolution::Queued => Ok(()),
                 EgressResolution::Written => {
+                    self.question_reply_written(token.allow_request().expect("allow token"));
                     self.deny = None;
                     Ok(())
                 }
@@ -391,7 +388,30 @@ impl HarnessAdapter for PiRuntime {
         self.resolve_request(&token, resolution)
     }
     fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
-        Ok(None)
+        self.cancelled_questions()
+    }
+    fn harness_turn_authority(
+        &self,
+    ) -> Option<crate::acp::bindings::adapter::HarnessTurnAuthority> {
+        self.questions
+            .starting()
+            .then_some(crate::acp::bindings::adapter::HarnessTurnAuthority::Questions)
+    }
+    fn adopt_turn(
+        &mut self,
+        client_message_id: RequiredText<512>,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.adopt_questions(client_message_id)
+    }
+    fn answers_delivered(
+        &mut self,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.advance_questions()
+    }
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.decline_questions()
     }
 }
 

@@ -53,10 +53,12 @@ where
         }
         self.idle_decoder
             .set_oversize_skip(self.parts.skips_oversize_frames());
-        let mut frame = self
-            .idle_decoder
-            .push_chunk(chunk)
-            .map_err(|_| AdapterPumpError::Frame)?;
+        let mut frame = if chunk.is_empty() {
+            self.idle_decoder.drain_pending()
+        } else {
+            self.idle_decoder.push_chunk(chunk)
+        }
+        .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
         loop {
             if let Some(id) = self.idle_decoder.take_oversize_id() {
@@ -106,7 +108,7 @@ where
                     }
                 }
             }
-            if !self.idle_decoder.has_pending_input() {
+            if self.parts.turn_started() || !self.idle_decoder.has_pending_input() {
                 return nonfatal_refusal.map_or(Ok(()), |nonfatal_refusal| {
                     Err(AdapterPumpError::Refused(nonfatal_refusal))
                 });
@@ -119,7 +121,9 @@ where
     }
 }
 
+mod harness_turn;
 mod idle_diagnostic;
+mod prepare;
 use idle_diagnostic::log_idle_frame_rejection;
 
 #[derive(Debug, thiserror::Error)]
@@ -182,57 +186,6 @@ pub(crate) type FirstTurnDriverResult<A, R, T, C> = Result<
     Box<FirstTurnBindFailure<A, R, T, C>>,
 >;
 
-impl<A, R, T, C> CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C> {
-    pub(crate) async fn prepare_first_turn<Auth: ProjectIntentAuthority>(
-        self,
-        coordinator: &SendCoordinator<Auth>,
-        command: PrepareTurnCommand,
-    ) -> Result<PreparedActivationTurn<A, R, T, C>, Box<PrepareActivationTurnFailure<Self>>> {
-        let prepared = match self
-            .parts
-            .journal()
-            .lease()
-            .prepare_turn(coordinator, command)
-            .await
-        {
-            Ok(prepared) => prepared,
-            Err(failure) => {
-                let crate::acp::runtime::PrepareFailure { error, recovery } = *failure;
-                return Err(Box::new(PrepareActivationTurnFailure {
-                    parts: self,
-                    recovery,
-                    error: PrepareActivationTurnError::Prepare(error),
-                }));
-            }
-        };
-        let dispatch = match prepared {
-            PrepareDispatch::Applied(dispatch) => dispatch,
-            PrepareDispatch::Duplicate(_) => {
-                return Err(Box::new(PrepareActivationTurnFailure {
-                    parts: self,
-                    recovery: None,
-                    error: PrepareActivationTurnError::Duplicate,
-                }));
-            }
-        };
-        let active_turn = match ActiveTurnIntent::store_minted(dispatch.turn_id().clone()) {
-            Ok(active_turn) => active_turn,
-            Err(_) => {
-                return Err(Box::new(PrepareActivationTurnFailure {
-                    parts: self,
-                    recovery: Some(PrepareRecovery::Committed(dispatch)),
-                    error: PrepareActivationTurnError::Identity,
-                }));
-            }
-        };
-        Ok(PreparedActivationTurn {
-            parts: self,
-            dispatch,
-            active_turn,
-        })
-    }
-}
-
 impl<A, R, T, C> PreparedActivationTurn<A, R, T, C>
 where
     A: HarnessAdapter,
@@ -240,12 +193,19 @@ where
     T: StdinTransport,
     C: ProcessTreeControl,
 {
-    pub(crate) fn bind_driver(
+    fn bind_driver_for(
         self,
         journal: JournalHandle,
         publisher: Arc<dyn ProjectionPublisher>,
+        started_by_harness: bool,
     ) -> FirstTurnDriverResult<A, R, T, C> {
-        if !self.parts.idle_decoder.is_frame_aligned() || self.parts.parts.config_pending() {
+        if started_by_harness != self.parts.parts.turn_started()
+            || (!self.parts.idle_decoder.is_frame_aligned() && !started_by_harness)
+            || (self.parts.parts.config_pending()
+                && !(started_by_harness
+                    && self.parts.parts.harness_turn_authority()
+                        == Some(crate::acp::bindings::adapter::HarnessTurnAuthority::Questions)))
+        {
             return Err(Box::new(FirstTurnBindFailure::Retained {
                 prepared: self,
                 error: FirstTurnBindError::Pump(AdapterPumpError::Intent),
@@ -286,7 +246,7 @@ where
         } = self;
         let CompletedActivationDriverParts {
             parts,
-            idle_decoder: _,
+            idle_decoder,
             transport,
             control,
             owner,
@@ -307,7 +267,7 @@ where
                             session,
                         )
                         .with_pending_session_events(pending_session_events),
-                        idle_decoder: IncrementalFrameDecoder::new(),
+                        idle_decoder,
                         transport,
                         control,
                         owner,
@@ -382,6 +342,7 @@ where
             pump_admission,
         );
         pump.seed_session_events(pending_session_events, clock.now_millis());
+        pump.restore_decoder(idle_decoder);
         Ok(PreparedDriverTurn {
             driver: ProcessAdapterDriver::from_admission(
                 pump,

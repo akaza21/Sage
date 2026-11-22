@@ -149,9 +149,10 @@ impl PiRuntime {
             self.translator.remember_pending_ui(PendingUiRequest {
                 id: id.into(),
                 method: BRIDGE_WRITE_METHOD.into(),
-                options: Vec::new(),
                 form: None,
-                expires: false,
+                received_at: std::time::Instant::now(),
+                timeout_ms: None,
+                digest: request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?,
             });
             let event = self.permission_event(
                 id.into(),
@@ -298,19 +299,20 @@ impl PiRuntime {
         }) {
             self.deny = None;
         }
+        let response = reply(
+            id,
+            Refusal::Withdrawn.message(),
+            EgressToken::protocol_notification(),
+        )?;
+        let response = self.cancel_dialog_response(request_id.clone(), response.into_frame())?;
+        self.questions.reply_pending = true;
+        self.questions.settling = Some(request_id.clone());
         let resolved = AdapterEvent::PermissionResolved {
             turn_id: self.turn_identity()?,
             external_request_id: super::identity::external("piPermissionId", request_id)?,
             state: ServerRequestState::Cancelled,
         };
-        AdapterBatch::new(
-            vec![resolved],
-            vec![reply(
-                id,
-                Refusal::Withdrawn.message(),
-                EgressToken::protocol_notification(),
-            )?],
-        )
+        AdapterBatch::new(vec![resolved], vec![response])
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn bridge_permission(
