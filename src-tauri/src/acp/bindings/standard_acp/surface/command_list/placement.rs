@@ -9,6 +9,9 @@ use std::sync::OnceLock;
 const MAX_ENTRIES: usize = 128;
 const MAX_TABLE_BYTES: usize = 64 * 1024;
 
+mod terminal;
+pub(crate) use terminal::{TerminalHandoff, TerminalMetadata};
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CommandSection {

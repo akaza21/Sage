@@ -40,6 +40,8 @@ export interface AcpCommandList {
   revision: number;
   commands: AvailableAcpCommand[];
   omitted?: number;
+  /** The binding's curated terminal handoff, decoded where it is used. */
+  terminalHandoff?: unknown;
 }
 export interface RunAcpCommandRequest extends AcpSessionMutationIntent {
   expectedCommandsRevision: number;
@@ -106,6 +108,9 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     // Every row and key is bounded above; reuse the native array without DTO copies.
     commands: value.commands as AvailableAcpCommand[],
     omitted: (value.omitted as number | undefined) ?? 0,
+    ...(value.terminalHandoff === undefined
+      ? {}
+      : { terminalHandoff: value.terminalHandoff }),
   };
 }
 /** Native says one live owner's command list has a new revision; no data. */

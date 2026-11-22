@@ -91,6 +91,29 @@ fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeE
 }
 
 impl PiRuntime {
+    fn supports_command_control(&self, control: NativeControl) -> bool {
+        match control {
+            NativeControl::Compact | NativeControl::UsagePanel => self.initialized,
+            NativeControl::ModelPicker => self.initialized && !self.available_models.is_empty(),
+            _ => false,
+        }
+    }
+    /// Called on every list read; an unchanged projection allocates nothing.
+    pub(in crate::acp::bindings::pi::runtime) fn project_terminal_handoff(&self) {
+        let version = self
+            .launch
+            .as_ref()
+            .and_then(|launch| launch.harness_version())
+            .and_then(crate::acp::bindings::release_version::ReleaseVersion::parse);
+        self.commands.update_terminal_handoff(
+            crate::acp::bindings::pi::manifest::terminal_metadata(),
+            version.as_ref(),
+            &|control| self.supports_command_control(control),
+            self.session_file
+                .as_ref()
+                .map(sage_acp_protocol::contract::RequiredText::as_str),
+        );
+    }
     pub(super) fn list_commands(
         &mut self,
         value: Value,
@@ -101,11 +124,7 @@ impl PiRuntime {
             .as_ref()
             .and_then(|launch| launch.harness_version())
             .and_then(crate::acp::bindings::release_version::ReleaseVersion::parse);
-        let supports = |control| match control {
-            NativeControl::Compact | NativeControl::UsagePanel => self.initialized,
-            NativeControl::ModelPicker => self.initialized && !self.available_models.is_empty(),
-            _ => false,
-        };
+        let supports = |control| self.supports_command_control(control);
         self.commands
             .replace(with_builtins(&value).map(|commands| {
                 place_commands(

@@ -35,6 +35,18 @@ impl ClaudeRuntime {
         )
     }
 
+    /// Called on every list read; an unchanged projection allocates nothing.
+    pub(super) fn project_terminal_handoff(&self) {
+        if let Some(active) = &self.active {
+            active.commands.update_terminal_handoff(
+                super::super::manifest::terminal_metadata(),
+                self.command_version.as_ref(),
+                &|control| self.supports_command_control(control),
+                Some(active.external_id.as_str()),
+            );
+        }
+    }
+
     pub(super) fn recompute_command_placement(&self) -> Result<(), AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
         active.commands.recompute_placement(

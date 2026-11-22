@@ -61,6 +61,8 @@ pub(crate) struct CommandList {
     pub(crate) revision: u64,
     pub(crate) commands: Vec<AvailableCommand>,
     pub(crate) omitted: u32,
+    #[serde(rename = "terminalHandoff", skip_serializing_if = "Option::is_none")]
+    pub(crate) terminal_handoff: Option<placement::TerminalHandoff>,
 }
 
 impl CommandList {
@@ -107,6 +109,24 @@ impl Default for CommandState {
     }
 }
 impl CommandState {
+    /// Projects the binding's curated terminal handoff onto the shown list. It
+    /// keeps the revision: a typed send reads the list afresh, and a pick made
+    /// from the shown list must still run.
+    pub(crate) fn update_terminal_handoff(
+        &self,
+        metadata: &'static placement::TerminalMetadata,
+        running: Option<&crate::acp::bindings::release_version::ReleaseVersion>,
+        supports: &dyn Fn(placement::NativeControl) -> bool,
+        session: Option<&str>,
+    ) {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(list) = list.as_mut() {
+            metadata.update(&mut list.terminal_handoff, running, supports, session);
+        }
+    }
     pub(crate) fn unsupported() -> Arc<Self> {
         static EMPTY: std::sync::OnceLock<Arc<CommandState>> = std::sync::OnceLock::new();
         Arc::clone(EMPTY.get_or_init(|| Arc::new(CommandState(Mutex::new(None)))))

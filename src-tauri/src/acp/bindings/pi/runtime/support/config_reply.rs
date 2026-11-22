@@ -12,6 +12,10 @@ impl PiRuntime {
         self.current_thinking = state.thinking_level;
         self.auto_compaction = state.auto_compaction;
         let _ = state.is_streaming;
+        // An over-cap path resumes nothing rather than a truncated file.
+        self.session_file = state.session_file.as_deref().and_then(|file| {
+            sage_acp_protocol::contract::RequiredText::new("sessionFile", file).ok()
+        });
         self.session_dir = state
             .session_file
             .as_deref()

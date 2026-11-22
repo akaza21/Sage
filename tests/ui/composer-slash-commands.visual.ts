@@ -378,3 +378,52 @@ test("picking Codex's /review shows its input hint", async ({ page }) => {
     "/review base <branch>, commit <sha>, or what to check",
   );
 });
+
+test("a typed terminal-only command waits for a choice and sends nothing", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  // As the native list carries a curated binding's terminal handoff.
+  await installNativeCommands(page, commands, {
+    terminalHandoff: {
+      label: "Claude Code",
+      command: 'claude --resume "4f1c2a"',
+      terminalOnly: [{ name: "hooks", aliases: [] }],
+      controls: [],
+    },
+  });
+  const field = page
+    .locator("form.composer")
+    .first()
+    .getByRole("combobox", { name: "Message agent" });
+  await field.focus();
+  await field.fill("/hooks");
+  await page.keyboard.press("Escape");
+  await field.press("Enter");
+  const notice = page.locator(
+    "[data-notice-identity='terminal-command:hooks']",
+  );
+  await expect(notice).toContainText("/hooks needs Claude Code's terminal.");
+  await expect(
+    notice.getByRole("button", { name: "Open in terminal" }),
+  ).toBeVisible();
+  await expect(
+    notice.getByRole("button", { name: "Send as text anyway" }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("/hooks");
+  const invoked = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __slashCommands: { invoked: string[] } })
+          .__slashCommands.invoked,
+    );
+  expect(await invoked()).not.toContain("send_acp_turn");
+  await expect(page.locator("form.composer").first()).toHaveScreenshot(
+    "composer-terminal-command.png",
+  );
+  // Editing the command releases the choice.
+  await field.press("Backspace");
+  await expect(notice).toHaveCount(0);
+});

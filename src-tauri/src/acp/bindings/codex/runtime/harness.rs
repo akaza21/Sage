@@ -57,6 +57,7 @@ impl HarnessAdapter for CodexRuntime {
         self.discard_invalid_answer(frame)
     }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.inner.project_terminal_handoff();
         self.inner.skills()
     }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {

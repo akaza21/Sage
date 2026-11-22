@@ -253,6 +253,7 @@ impl HarnessAdapter for ClaudeRuntime {
         self.commands_notification(&value).map(|_| ())
     }
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
+        self.project_terminal_handoff();
         self.active
             .as_ref()
             .map_or_else(Arc::default, |a| Arc::clone(&a.commands))

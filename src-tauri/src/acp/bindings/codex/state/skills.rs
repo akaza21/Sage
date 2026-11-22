@@ -138,6 +138,29 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
 }
 
 impl CodexAdapter {
+    fn supports_command_control(&self, control: NativeControl) -> bool {
+        self.negotiated
+            .as_ref()
+            .is_some_and(|methods| match control {
+                NativeControl::Compact => methods.snapshot.native_session_compact,
+                NativeControl::Review => methods.snapshot.native_review,
+                NativeControl::UsagePanel | NativeControl::McpPanel => true,
+                _ => false,
+            })
+    }
+
+    /// Called on every list read; an unchanged projection allocates nothing.
+    pub(crate) fn project_terminal_handoff(&self) {
+        let version =
+            crate::acp::bindings::release_version::ReleaseVersion::parse(&self.runtime_version);
+        self.skills.list.update_terminal_handoff(
+            super::super::manifest::terminal_metadata(),
+            version.as_ref(),
+            &|control| self.supports_command_control(control),
+            self.external_thread_id.as_ref().map(|id| id.as_str()),
+        );
+    }
+
     pub(crate) fn command_catalog_path(
         &self,
         bytes: &[u8],
@@ -216,16 +239,7 @@ impl CodexAdapter {
             .unwrap_or_default();
         let version =
             crate::acp::bindings::release_version::ReleaseVersion::parse(&self.runtime_version);
-        let supports = |control| {
-            self.negotiated
-                .as_ref()
-                .is_some_and(|methods| match control {
-                    NativeControl::Compact => methods.snapshot.native_session_compact,
-                    NativeControl::Review => methods.snapshot.native_review,
-                    NativeControl::UsagePanel | NativeControl::McpPanel => true,
-                    _ => false,
-                })
-        };
+        let supports = |control| self.supports_command_control(control);
         let commands = place_commands(
             builtins.into_iter().chain(skills).collect(),
             super::super::manifest::known_commands(),

@@ -20,17 +20,16 @@ export function parseSlashCommand(
 }
 
 // The typed command route marks the turn as a command; Pi's extension commands
-// depend on that.
+// depend on that. `false` means the composer took the command and sends nothing.
 export async function slashCommandTurn(
   request: SendAcpTurnRequest,
   nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],
   port?: SlashCommandPort,
-): Promise<(() => Promise<AcpMutationResult>) | null> {
+): Promise<(() => Promise<AcpMutationResult>) | null | false> {
   if (request.target !== "session") return null;
   const { prompt, attachedContext } = request;
   const command = parseSlashCommand(prompt);
-  // The typed route carries no attached context; such a prompt stays text.
-  if (!command || attachedContext?.length) return null;
+  if (!command) return null;
   const intent: AcpSessionMutationIntent = {
     projectId: request.projectId,
     projectGeneration: request.projectGeneration,
@@ -42,7 +41,11 @@ export async function slashCommandTurn(
   };
   const commands = port ?? acpCommandsDesktop;
   const list = await commands.listCommands(intent).catch(() => null);
-  if (list?.commands.some((candidate) => candidate.name === command.name)) {
+  const reported = list?.commands.some(
+    (candidate) => candidate.name === command.name,
+  );
+  // The typed route carries no attached context; such a prompt stays text.
+  if (list && reported && !attachedContext?.length) {
     return () =>
       commands.runCommand({
         ...intent,
@@ -51,6 +54,12 @@ export async function slashCommandTurn(
         name: command.name,
         ...(command.input ? { input: command.input } : {}),
       });
+  }
+  // A curated terminal-only command waits for the user's choice.
+  if (list?.terminalHandoff && !reported) {
+    const route = await import("./terminalCommandRoute");
+    if (route.routeTerminalCommand(request.chatId, prompt, command.name, list))
+      return false;
   }
   if (pickedCommandFor(request.chatId) === command.name) {
     throw new AcpDesktopError({
