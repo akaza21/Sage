@@ -233,7 +233,7 @@ fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
     let wire = serde_json::to_value(&list.commands[0]).unwrap();
     assert_eq!(
         wire,
-        json!({"name":"review","description":"Review","inputHint":null,"source":"skill"})
+        json!({"name":"review","description":"Review","inputHint":null,"source":"skill","placement":{"section":"more"}})
     );
     let state = CommandState::default();
     state.replace(Ok(list.commands)).unwrap();

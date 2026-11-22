@@ -8,6 +8,7 @@ pub(crate) mod bindings;
 pub mod browser;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;
+pub(crate) use bindings::adapter::slash_commands::placement as command_placement;
 pub(crate) mod elicitation_form;
 pub(crate) mod errors;
 #[cfg(any(test, feature = "acp-fixture"))]

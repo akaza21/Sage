@@ -12,11 +12,14 @@ pub(crate) const MAX_COMMANDS: usize = 512;
 pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 
 mod entry;
+pub(crate) mod placement;
 pub(crate) use entry::*;
 
-/// Stable priority seam: T2 can rank curated commands ahead of built-ins here.
+/// Curated commands survive admission ahead of other built-ins and external commands.
 fn priority(command: &AvailableCommand) -> u8 {
-    if command.source == CommandSource::Builtin {
+    if command.placement.known {
+        0
+    } else if command.source == CommandSource::Builtin {
         1
     } else {
         2
@@ -145,6 +148,23 @@ impl CommandState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .unwrap_or_default()
+    }
+    /// Refresh catalog-derived controls when their configuration or capabilities change.
+    pub(crate) fn recompute_placement(
+        &self,
+        table: &placement::KnownCommandTable,
+        running: Option<&crate::acp::bindings::release_version::ReleaseVersion>,
+        supports: &dyn Fn(placement::NativeControl) -> bool,
+    ) -> Result<(), AdapterRuntimeError> {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+        if placement::recompute_placement(&mut list.commands, table, running, supports) {
+            list.next_revision()?;
+        }
+        Ok(())
     }
     fn revision(&self) -> Option<u64> {
         self.0
