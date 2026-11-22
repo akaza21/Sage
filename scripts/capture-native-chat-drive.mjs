@@ -286,7 +286,7 @@ export async function waitForComposerIdle(
     return (
       SETTLED_TURN_STATES.includes(latest.state) &&
       !latest.controls.stop &&
-      latest.controls.send === true &&
+      latest.controls.composer === true &&
       latest.controls[control] === true
     );
   }, deadline);
