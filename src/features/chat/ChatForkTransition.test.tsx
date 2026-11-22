@@ -36,7 +36,14 @@ it("keeps a refused fork visible when the project transition clears its answer",
       id: "session-1",
       runtimeEpoch: "2",
       residency: "hot",
-      capabilities: { nativeSessionFork: true },
+      capabilities: {
+        rewind: {
+          effects: { conversation: false, files: false },
+          targets: "latestTurn",
+          forkAt: true,
+          onResume: false,
+        },
+      },
     },
   ] as never;
   let refuse!: (reason: Error) => void;

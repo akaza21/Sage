@@ -21,6 +21,7 @@ pub(crate) use admission::{
 };
 pub(crate) use probe::{known_models, launch_effort_option, models as probed_models};
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;
+pub(crate) use runtime::native::rewind_capability;
 
 #[cfg(test)]
 mod undo_tests;

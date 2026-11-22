@@ -22,6 +22,7 @@ fn completed() -> Fixture {
             vec![
                 AdapterInboundEvent::Item(reply),
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Completed,
                     now_millis: 7,
                 },

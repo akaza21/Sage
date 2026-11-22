@@ -51,7 +51,15 @@ fn the_fork_request_is_the_pinned_thread_fork_shape() {
 
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
-    assert!(runtime.capabilities().unwrap().native_session_fork);
+    let offer = runtime.capabilities().unwrap().rewind;
+    assert!(offer.fork_at);
+    assert!(offer.effects.conversation);
+    assert!(!offer.effects.files);
+    assert_eq!(
+        offer.targets,
+        sage_acp_protocol::intent::RewindTargets::LatestTurn
+    );
+    assert!(offer.runtime_checkpoint);
     let (_, request) = fork_request(&mut runtime);
     assert_eq!(request["method"], schema["method"]);
     let params = request["params"].as_object().unwrap();

@@ -47,11 +47,20 @@ export function installTranscriptSelectionFixture(
         ? {
             ...session,
             residency: "hot",
-            capabilities: { ...session.capabilities, nativeSessionFork: true },
+            capabilities: {
+              ...session.capabilities,
+              rewind: {
+                effects: { conversation: false, files: false },
+                targets: "latestTurn",
+                forkAt: true,
+                onResume: false,
+              },
+            },
           }
         : session,
     );
   const turn = source.turns[0];
+  turn.conversationTarget = true;
   const answer = turn.items.find(
     (item) => item.kind === "text" && item.payload.role === "assistant",
   );

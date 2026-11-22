@@ -17,14 +17,14 @@ export function useSessionControl(boundChatId?: string | null) {
   const pending = useRef(false);
   const run = useCallback(
     async (control: SessionControlIntent, done: string) => {
-      if (pending.current) return;
+      if (pending.current) return false;
       const context = currentContext(boundChatId);
       const session = context?.page.sessions.find(
         (item) => item.id === context.page.currentSessionId,
       );
       if (!context || !session?.runtimeEpoch) {
         setStatus({ kind: "failed", message: "The session is not running." });
-        return;
+        return false;
       }
       pending.current = true;
       setStatus({ kind: "pending" });
@@ -37,6 +37,7 @@ export function useSessionControl(boundChatId?: string | null) {
           control,
         });
         setStatus({ kind: "done", message: summary ?? done });
+        return true;
       } catch (error) {
         setStatus({
           kind: "failed",
@@ -45,6 +46,7 @@ export function useSessionControl(boundChatId?: string | null) {
               ? error.message
               : "The request failed.",
         });
+        return false;
       } finally {
         pending.current = false;
       }

@@ -302,7 +302,7 @@ impl CodexAdapter {
     /// Only a characterised negotiation admits it, and only between Turns: the
     /// fork carries the thread through its latest completed Turn.
     pub(crate) fn fork(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.native_session_fork)?;
+        self.require_method(|methods| methods.snapshot.rewind.fork_at)?;
         if self.pending_fork.is_some()
             || self.pending_read.is_some()
             || self.turn_start_correlations.has_pending()

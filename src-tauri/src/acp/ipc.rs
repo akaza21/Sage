@@ -42,6 +42,8 @@ pub struct GetAcpChatPageRequest {
     pub project_generation: ProjectGeneration,
     pub chat_id: SageChatId,
     pub cursor: Option<PageCursor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_history_for: Option<SageChatId>,
 }
 
 /// Returns one bounded pair,

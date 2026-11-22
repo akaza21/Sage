@@ -65,6 +65,7 @@ fn a_running_mcp_line_is_projected_until_the_store_terminalizes_the_call() {
             &fixture.owner,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
@@ -83,6 +84,7 @@ fn a_running_mcp_line_is_projected_until_the_store_terminalizes_the_call() {
         batch(
             &fixture.owner,
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Interrupted,
                 now_millis: 9,
             }],

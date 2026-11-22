@@ -887,7 +887,7 @@ mod tests {
         assert!(capabilities.new_session && capabilities.prompt);
         assert!(capabilities.cancel && capabilities.close_session);
         assert!(!capabilities.resume_session && !capabilities.load_session);
-        assert!(!capabilities.native_session_fork && !capabilities.active_turn_steer);
+        assert!(!capabilities.rewind.fork_at && !capabilities.active_turn_steer);
         assert_eq!(capabilities.model_count, 0);
         assert_eq!(capabilities.config_count, 0);
         assert!(

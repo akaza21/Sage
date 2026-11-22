@@ -53,6 +53,7 @@ fn ended_spawn_turn() -> Fixture {
 fn ended_spawn_turn_reporting(state: &str) -> Fixture {
     let mut fixture = migrated_fixture();
     let ended = AdapterInboundEvent::Turn {
+        native_turn_id: None,
         state: TurnState::Completed,
         now_millis: 20,
     };
@@ -401,6 +402,7 @@ fn a_child_resumed_after_its_spawn_turn_ended_is_shown_as_its_current_state() {
     assert!(!settle(&mut fixture, "first", TurnState::Completed, 21));
     let closed = spawn_row_reporting(&fixture.owner, "completed");
     let ended = AdapterInboundEvent::Turn {
+        native_turn_id: None,
         state: TurnState::Completed,
         now_millis: 30,
     };
@@ -438,6 +440,7 @@ fn a_spawn_row_closed_after_a_later_child_turn_began_keeps_its_own_state() {
     assert!(!start(&mut fixture, "second", 23));
     let closed = spawn_row_reporting(&fixture.owner, "completed");
     let ended = AdapterInboundEvent::Turn {
+        native_turn_id: None,
         state: TurnState::Completed,
         now_millis: 30,
     };

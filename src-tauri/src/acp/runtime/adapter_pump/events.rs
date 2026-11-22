@@ -26,6 +26,7 @@ pub(crate) enum DurableAdapterEvent {
     Turn {
         scope: TurnScope,
         state: TurnState,
+        native_turn_id: Option<ExternalId>,
         now_millis: i64,
     },
     Item {

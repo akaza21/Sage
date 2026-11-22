@@ -474,6 +474,13 @@ fn schema_029_recovering_session_resumes_after_forward_upgrade() {
     source.close().unwrap();
 
     let mut upgraded = open_or_migrate(&directory.database()).unwrap();
+    let ready_capabilities = serde_json::to_string(
+        &serde_json::from_str::<sage_acp_protocol::intent::CapabilitySnapshotV1>(
+            READY_CAPABILITIES,
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let resumed = complete_activation(
         &mut upgraded,
         CompleteActivationCommand {
@@ -484,7 +491,7 @@ fn schema_029_recovering_session_resumes_after_forward_upgrade() {
             binding_digest: "a".repeat(64),
             artifact_digest: "d".repeat(64),
             external_session_id: ExternalId::new("external", "external").unwrap(),
-            capabilities_json: READY_CAPABILITIES.into(),
+            capabilities_json: ready_capabilities.clone(),
             now_millis: 3,
         },
     )
@@ -494,7 +501,7 @@ fn schema_029_recovering_session_resumes_after_forward_upgrade() {
         "SELECT capabilities_json,harness_version,binding_digest FROM agent_sessions WHERE id='session'",
         [],
         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
-    ).unwrap(), (READY_CAPABILITIES.into(), "1.0.0".into(), "a".repeat(64)));
+    ).unwrap(), (ready_capabilities, "1.0.0".into(), "a".repeat(64)));
     drop(upgraded);
     let reopened = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
