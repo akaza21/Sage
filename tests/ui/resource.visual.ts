@@ -832,7 +832,9 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await expect(
       page.getByText("Saved agent change", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText(
+    const unavailable = page.getByRole("alert");
+    await unavailable.getByRole("button", { name: "Details" }).click();
+    await expect(unavailable).toContainText(
       "The saved edit is unavailable for this Chat session.",
     );
     await expect(
