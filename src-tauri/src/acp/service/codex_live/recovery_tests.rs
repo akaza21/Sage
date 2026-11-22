@@ -1997,7 +1997,7 @@ fn test_capabilities() -> sage_acp_protocol::intent::CapabilitySnapshotV1 {
         close_session: true,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
+        rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
         native_session_compact: false,
         native_session_import: false,
         native_review: false,

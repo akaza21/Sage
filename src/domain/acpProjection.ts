@@ -264,6 +264,7 @@ export interface TurnSessionActivity {
 export const SESSION_ACTIVITIES_MAX = 16;
 
 export interface TurnProjection {
+  conversationTarget?: boolean;
   attachedContext?: readonly AttachedContext[];
   sessionAction?: AcpSessionAction;
   unrecognizedAction?: true;

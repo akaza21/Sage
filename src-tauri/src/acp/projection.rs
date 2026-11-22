@@ -322,6 +322,7 @@ pub struct ActivityProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnProjection {
+    pub conversation_target: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attached_context: Vec<super::attached_context::AttachedContext>,
     /// The session action this Turn ran, as stored. The client decodes it to

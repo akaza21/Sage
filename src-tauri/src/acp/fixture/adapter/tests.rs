@@ -53,7 +53,7 @@ fn activation_capabilities_match_the_implemented_session_surface() {
     );
     assert_eq!(
         (
-            capabilities.native_session_fork,
+            capabilities.rewind.fork_at,
             capabilities.active_turn_steer,
             capabilities.child_conversation_projection,
             capabilities.child_transcript_read,

@@ -16,6 +16,18 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chat/ComposerCommandRuntime.tsx",
+        "maxGzipBytes": 4200,
+        "maxCssGzipBytes": 550,
+        "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
+      },
+      {
+        "entry": "src/features/chat/ComposerSectionMenu.tsx",
+        "maxGzipBytes": 5500,
+        "maxCssGzipBytes": 500,
+        "reason": "Shared capability and catalog section browser; loads only after the composer + menu opens, with bounded search and argument inputs. Existing startup and menu caps stay unchanged."
+      },
+      {
         "entry": "src/features/chatSearch/ChatSearchPalette.tsx",
         "maxGzipBytes": 3000,
         "reason": "Search palette layout, bounded actions and scope tabs load only when search opens; result rendering and search execution retain their own budgets."
@@ -289,12 +301,6 @@
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
         "maxGzipBytes": 3990,
         "reason": "Chat search dialog as a combobox with its results list, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K). Measured 3929 B JS."
-      },
-      {
-        "entry": "src/features/chat/ForkChat.tsx",
-        "maxGzipBytes": 2364,
-        "maxCssGzipBytes": 685,
-        "reason": "Answer More actions menu, Fork chat from here dialog, Continued from chat link and the fork's inherited parent history; loads once a forkable answer or a fork is shown."
       },
       {
         "entry": "src/features/chat/ChatHandoffDialog.tsx",
@@ -583,6 +589,12 @@
         "maxGzipBytes": 1560,
         "maxCssGzipBytes": 760,
         "reason": "Project selection, duplicate-name paths and pre-session scope controls load only with a visible project chip; the closed New project dialog has its own entry."
+      },
+      {
+        "entry": "src/features/chat/ConversationActions.tsx",
+        "maxGzipBytes": 5000,
+        "maxCssGzipBytes": 1500,
+        "reason": "Prompt rewind/fork actions, confirmations, legacy last-turn controls and inherited fork history share one deferred chunk. Dialogs retain no hidden DOM or active session."
       }
     ],
     "windowsInstallerMb": 45,

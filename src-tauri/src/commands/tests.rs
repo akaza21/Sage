@@ -1149,6 +1149,7 @@ fn page_read_uses_native_generation_and_projects_v5_history() {
         let page = get_acp_chat_page_inner(
             &state,
             GetAcpChatPageRequest {
+                fork_history_for: None,
                 project_id: SageProjectId::parse(project).unwrap(),
                 project_generation: ProjectGeneration::ZERO,
                 chat_id: SageChatId::parse(chat).unwrap(),
@@ -2678,6 +2679,7 @@ fn stale_native_generation_is_rejected_before_page_read() {
         let result = get_acp_chat_page_inner(
             &state,
             GetAcpChatPageRequest {
+                fork_history_for: None,
                 project_id: SageProjectId::parse(project).unwrap(),
                 project_generation: ProjectGeneration::new(1).unwrap(),
                 chat_id: SageChatId::parse(chat).unwrap(),

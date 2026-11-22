@@ -340,6 +340,7 @@ export function safeTurn(value: unknown): TurnProjection | null {
           ? { unrecognizedAction: true }
           : sessionAction && { sessionAction }),
         ...(command && { command }),
+        ...(value.conversationTarget === true && { conversationTarget: true }),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],

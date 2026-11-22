@@ -1,18 +1,18 @@
 import type { AcpGoalState, AcpGoalCapabilities } from "../../domain/acpGoal";
 import { ChatGoalControl } from "./ChatGoalControl";
 import { useGoalMutation } from "./acp/useGoalMutation";
-import type { BoundGoalDetails } from "./useBoundGoalDetails";
+import type { GoalControlsChange } from "./goalControls";
 
 export function BoundChatGoalControl({
   state,
   chatId,
   capabilities,
-  details: { onReady },
+  onControlsChange,
 }: {
   state: AcpGoalState;
   capabilities?: AcpGoalCapabilities;
   chatId: string;
-  details: BoundGoalDetails;
+  onControlsChange: GoalControlsChange;
 }) {
   const boundChatId = chatId || undefined;
   const mutate = useGoalMutation(boundChatId);
@@ -21,7 +21,7 @@ export function BoundChatGoalControl({
       state={state}
       canMutate={!!capabilities}
       capabilities={capabilities}
-      onReady={onReady}
+      onControlsChange={onControlsChange}
       onMutation={mutate}
     />
   );

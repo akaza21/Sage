@@ -8,6 +8,7 @@ mod activity_provenance;
 mod capability;
 mod error_kind;
 mod file_change;
+mod rewind;
 pub mod session_event;
 mod tool_category;
 mod tool_execution;
@@ -19,6 +20,7 @@ pub use capability::{CapabilitySnapshotV1, GoalCapabilities};
 pub use error_kind::ErrorKind;
 pub use file_change::FileChangeOperation;
 pub use file_change::{FileChangeFacts, line_delta};
+pub use rewind::{RewindCapability, RewindEffects, RewindTargets};
 pub use tool_category::ToolCategory;
 pub use tool_execution::{TOOL_PROGRESS_BYTES, ToolExecution};
 

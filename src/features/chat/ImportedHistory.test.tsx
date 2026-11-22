@@ -62,3 +62,15 @@ it("renders the imported Turns as inherited Turns, an unfinished one stopped", a
   expect(container.querySelector(".acp-live-shimmer")).toBeNull();
   expect(screen.getByText("Continued in Sage")).toBeTruthy();
 });
+
+it("shows the failure notice when native imported history is malformed", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1" },
+  } as unknown as Parameters<typeof useWorkbenchStore.setState>[0]);
+  invokeNative.mockResolvedValueOnce({ turns: "invalid" });
+  render(<ImportedHistory chatId="chat-malformed-import" />);
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "The imported history couldn't be shown.",
+  );
+  expect(screen.getByText("Continued in Sage")).toBeVisible();
+});

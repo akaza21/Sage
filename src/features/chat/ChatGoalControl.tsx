@@ -1,7 +1,6 @@
-import { isResumableGoalStatus } from "./acp/goalMutability";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
 import { Pause, RotateCw, Target } from "../../ui/leanIconNodesLazy";
-import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
   AcpGoalSnapshot,
@@ -17,7 +16,8 @@ const GoalContent = lazyParts<typeof GoalContentChunk>(
   () => import("./GoalDetails"),
 );
 
-import type { GoalControls } from "./useBoundGoalDetails";
+import type { GoalControlsChange } from "./goalControls";
+import { isResumableGoalStatus } from "./goalStatus";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
@@ -51,7 +51,7 @@ export function ChatGoalControl({
   capabilities,
   editorOpen = false,
   onEditorClose,
-  onReady,
+  onControlsChange,
   canMutate = false,
   onMutation,
 }: {
@@ -59,7 +59,7 @@ export function ChatGoalControl({
   capabilities?: AcpGoalCapabilities;
   editorOpen?: boolean;
   onEditorClose?: () => void;
-  onReady?: (controls: GoalControls) => () => void;
+  onControlsChange?: GoalControlsChange;
   canMutate?: boolean;
   onMutation?: (
     action: GoalMutationAction,
@@ -98,29 +98,28 @@ export function ChatGoalControl({
     },
     [controls, locked, capabilities],
   );
-  useEffect(
-    () =>
-      onReady?.({
-        goalUnobserved: capabilities?.observes === false,
-        onOpenGoal:
-          capabilities?.set || state.kind === "goal"
-            ? () => {
-                if (capabilities?.set) setEditing(true);
-                else if (detailsRef.current) {
-                  detailsRef.current.open = true;
-                  detailsRef.current.querySelector("summary")?.focus();
-                }
+  useEffect(() => {
+    onControlsChange?.({
+      goalUnobserved: capabilities?.observes === false,
+      onOpenGoal:
+        capabilities?.set || state.kind === "goal"
+          ? () => {
+              if (capabilities?.set) setEditing(true);
+              else if (detailsRef.current) {
+                detailsRef.current.open = true;
+                detailsRef.current.querySelector("summary")?.focus();
               }
-            : undefined,
-        onClearGoal:
-          !capabilities?.observes && capabilities?.clear
-            ? () => {
-                void run("clear");
-              }
-            : undefined,
-      }),
-    [onReady, capabilities, state.kind, run],
-  );
+            }
+          : undefined,
+      onClearGoal:
+        !capabilities?.observes && capabilities?.clear
+          ? () => {
+              void run("clear");
+            }
+          : undefined,
+    });
+    return () => onControlsChange?.();
+  }, [onControlsChange, capabilities, state.kind, run]);
   const closeEditor = () => {
     setEditing(false);
     onEditorClose?.();

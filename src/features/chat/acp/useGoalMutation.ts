@@ -15,7 +15,8 @@ import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
-import { canMutateGoal, isResumableGoalStatus } from "./goalMutability";
+import { canMutateGoal } from "./goalMutability";
+import { isResumableGoalStatus } from "../goalStatus";
 import { currentSession } from "./acpTurnState";
 
 type Action = GoalMutationAction;

@@ -162,6 +162,7 @@ pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, Transc
         return Err(TranscriptError::ParentChain);
     }
     let mut next = start.ok_or(TranscriptError::ParentChain)?;
+    let cut = next;
     for _ in 0..MAX_HOPS {
         let Some(id) = next else {
             return Ok(None);
@@ -169,7 +170,9 @@ pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, Transc
         let &(parent, is_reply, is_prompt) =
             entries.get(&id).ok_or(TranscriptError::ParentChain)?;
         if is_reply {
-            return Ok(Some(id.hyphenated().to_string()));
+            // Keep trailing system/attachment chain entries of the preceding
+            // turn too: a guarded SDK resume must not discard part of it.
+            return Ok(cut.map(|id| id.hyphenated().to_string()));
         }
         if is_prompt {
             return Err(TranscriptError::ParentChain);
@@ -227,7 +230,9 @@ pub(super) fn validate_cut(path: &Path, at: &str) -> Result<(), TranscriptError>
     let at = parse_uuid(at).ok_or(TranscriptError::ParentChain)?;
     let mut found = false;
     for_each_entry(path, |entry| {
-        found |= entry.id() == Some(at) && entry.is_main_reply();
+        found |= entry.id() == Some(at)
+            && entry.sidechain != Some(true)
+            && matches!(entry.kind, Some("assistant" | "system" | "attachment"));
         true
     })?;
     if found {

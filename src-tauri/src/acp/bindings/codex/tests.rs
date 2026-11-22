@@ -1372,7 +1372,7 @@ fn pinned_codex_uses_captured_read_only_spellings_per_request_shape() {
     let caps = candidate.effective_capabilities().unwrap();
     assert!(caps.new_session && caps.resume_session && caps.prompt && caps.cancel);
     assert!(caps.multi_root_extension_schema_id.is_none());
-    assert!(caps.native_session_fork && caps.active_turn_steer);
+    assert!(caps.rewind.fork_at && caps.active_turn_steer);
     assert!(candidate.project_root(r"repo".into()).is_err());
     assert!(candidate.project_root(r"C:\repo\bad:name".into()).is_err());
 }
@@ -1474,7 +1474,7 @@ fn curated_initialize_requires_the_provisioned_home_originator_and_windows_host(
     let capabilities = negotiated.effective_capabilities().unwrap();
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(capabilities.collaboration_event_projection);
-    assert!(capabilities.native_session_fork && capabilities.active_turn_steer);
+    assert!(capabilities.rewind.fork_at && capabilities.active_turn_steer);
     assert_eq!(
         capabilities.protocol_version.as_str(),
         PINNED_PROTOCOL_IDENTITY

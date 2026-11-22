@@ -69,10 +69,13 @@ const text = (value: unknown, max: number): value is string =>
   typeof value === "string" &&
   value.length <= max * 2 &&
   !value.includes("\0") &&
-  [...value].length <= max;
+  (value.length <= max || [...value].length <= max);
 const timestamp = (value: unknown): value is string | null =>
   value === null ||
-  (text(value, 64) && !/\p{Cc}/u.test(value) && utf8ByteLength(value) <= 64);
+  (typeof value === "string" &&
+    value.length <= 64 &&
+    !/\p{Cc}/u.test(value) &&
+    utf8ByteLength(value) <= 64);
 const counter = (value: unknown): value is number =>
   safeOrdinal(value) !== null;
 

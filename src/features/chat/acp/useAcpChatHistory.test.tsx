@@ -9,11 +9,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type { AcpChatPage } from "../../../domain/acp";
 import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { page as projectionPage } from "./acpProjection.fixture";
 import { useAcpChatHistory } from "./useAcpChatHistory";
 import { useAcpChatProjection } from "./useAcpChatProjection";
 import { ChatTranscript } from "../ChatTranscript";
@@ -30,6 +35,7 @@ const page = {
 } as unknown as AcpChatPage;
 
 beforeEach(() => {
+  clearAcpProjectionRegistry();
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState({
     project: { id: "project-1" } as never,
@@ -51,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  clearAcpProjectionRegistry();
   useAcpProjectionStore.getState().clear();
 });
 
@@ -169,19 +176,61 @@ describe("useAcpChatHistory", () => {
   });
 
   it("loads a bound chat's continuation while another chat is active", async () => {
-    vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
-      ...page,
-      nextCursor: null,
+    const earlierPage = projectionPage("completed");
+    const currentTurn = {
+      ...earlierPage.turns[0],
+      id: "turn-2" as (typeof earlierPage.turns)[number]["id"],
+      ordinal: 2,
+      items: [],
+    };
+    const boundStore = acpProjectionStoreFor("chat-1");
+    const scope = {
+      projectId: page.projectId,
+      projectGeneration: "7" as never,
+      chatId: page.chatId,
+    };
+    boundStore.getState().activateScope(scope);
+    boundStore.getState().applyAuthoritativePage(scope, {
+      ...earlierPage,
+      turns: [currentTurn],
+      nextCursor: page.nextCursor,
     });
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockResolvedValue(earlierPage);
     useWorkbenchStore.setState({
       activeTabId: "chat-2",
       tabs: ["chat-1", "chat-2"].map((id) => ({ id, kind: "chat" })) as never,
     });
     const { result } = renderHook(() => useAcpChatHistory("chat-1"));
+    expect(result.current.hasEarlier).toBe(true);
     act(() => result.current.onLoadEarlier());
+    expect(load).toHaveBeenCalledExactlyOnceWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: "cursor-1",
+      },
+      decodeAcpGoal,
+    );
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
+    expect(boundStore.getState().page).toMatchObject({
+      chatId: "chat-1",
+      nextCursor: null,
+      turns: [
+        {
+          id: "turn-1",
+          items: [
+            {
+              payload: { role: "assistant", text: "Normalized answer" },
+            },
+          ],
+        },
+        currentTurn,
+      ],
+    });
     expect(useWorkbenchStore.getState().activeTabId).toBe("chat-2");
-    expect(useAcpProjectionStore.getState().page?.chatId).toBe("chat-1");
   });
 
   it("expects a page only for a resolved chat in a settled project", () => {

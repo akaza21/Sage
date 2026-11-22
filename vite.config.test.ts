@@ -77,6 +77,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAttach.tsx",
   "src/features/chat/ComposerAccessMenu.tsx",
   "src/features/chat/ComposerAddActions.tsx",
+  "src/features/chat/ComposerSectionMenu.tsx",
+  "src/features/chat/ComposerCommandRuntime.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
   // The Thinking level a new chat chooses before its first session loads
@@ -201,7 +203,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Pasted-text staging, chips and messages load with a native chat's
   // composer or over-cap input; only the size check stays eager.
   "src/features/chat/ComposerPaste.tsx",
-  "src/features/chat/ForkChat.tsx",
+  "src/features/chat/ConversationActions.tsx",
   // An imported session's history and the session picker load on first use.
   "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
@@ -605,6 +607,32 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
+  it("loads goal policy with the deferred goal controls", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    const owner = graph.moduleFiles.get(
+      "src/features/chat/BoundChatGoalControl.tsx",
+    );
+    expect(owner).toBeDefined();
+    for (const module of [
+      "src/features/chat/goalStatus.ts",
+      "src/features/chat/acp/goalMutability.ts",
+      "src/features/chat/acp/useGoalMutation.ts",
+    ]) {
+      const file = graph.moduleFiles.get(module);
+      expect(file, module).toBeDefined();
+      expect(file, module).toBe(owner);
+      for (const facade of [
+        "src/workbench/Workbench.tsx",
+        "src/workbench/AgentWorkbenchBody.tsx",
+      ]) {
+        expect(
+          closureForModule(graph, facade).some((id) => id.endsWith(module)),
+          `${facade}: ${module}`,
+        ).toBe(false);
+      }
+    }
+  }, 90_000);
+
   it("loads transcript decoders with Chat rather than harness discovery", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     for (const module of [
@@ -792,6 +820,35 @@ describe("desktop-native chunk topology", () => {
         module,
       ).toBe(false);
     }
+    const conversationDetails = [
+      "src/features/chat/ForkChat.tsx",
+      "src/features/chat/RewindChatDialog.tsx",
+      "src/features/chat/UserMessageActions.tsx",
+      "src/features/chat/conversationActionAvailability.ts",
+      "src/features/chat/ForkHistory.tsx",
+    ];
+    const conversation = closureForModule(
+      graph,
+      "src/features/chat/ConversationActions.tsx",
+    );
+    const messageTrigger = closureForModule(
+      graph,
+      "src/features/chat/MessageActionsTrigger.tsx",
+    );
+    for (const module of conversationDetails) {
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        messageTrigger.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        conversation.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+    }
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>
@@ -840,10 +897,8 @@ describe("desktop-native chunk topology", () => {
   it("preserves chat-helper ownership without adding feature modules to lane-base closures", async () => {
     const baselineConfig = desktopGraphConfig(true);
     setDesktopGraphGroups(baselineConfig, LANE_BASE_DESKTOP_GROUPS);
-    const [baseline, grouped] = await Promise.all([
-      build(baselineConfig),
-      build(desktopGraphConfig(true)),
-    ]);
+    const baseline = await build(baselineConfig);
+    const grouped = await build(desktopGraphConfig(true));
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const files = [
@@ -876,10 +931,8 @@ describe("desktop-native chunk topology", () => {
 
   it("preserves the legacy module graph while separating Agent and Editor closures", async () => {
     const baselineConfig = legacyChunkGroupConfig();
-    const [baseline, grouped] = await Promise.all([
-      build(baselineConfig),
-      build(desktopGraphConfig(true)),
-    ]);
+    const baseline = await build(baselineConfig);
+    const grouped = await build(desktopGraphConfig(true));
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const workbench = "src/workbench/Workbench.tsx";
@@ -1231,10 +1284,8 @@ describe("desktop-native chunk topology", () => {
       codeSplittingGroups(ordinaryConfig.build.rolldownOptions?.output),
     ).toBeUndefined();
 
-    const [ordinary, grouped] = await Promise.all([
-      build(desktopGraphConfig(false)),
-      build(desktopGraphConfig(true)),
-    ]);
+    const ordinary = await build(desktopGraphConfig(false));
+    const grouped = await build(desktopGraphConfig(true));
     const ordinaryGraph = graphInventory(ordinary);
     const groupedGraph = graphInventory(grouped);
 

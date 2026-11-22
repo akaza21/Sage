@@ -173,7 +173,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 loop {
                     let page = get_acp_chat_page_inner(
                         &state,
-                        GetAcpChatPageRequest {
+                        GetAcpChatPageRequest { fork_history_for: None,
                             project_id: project_id.clone(),
                             project_generation: ProjectGeneration::ZERO,
                             chat_id: chat_id.clone(),
@@ -268,7 +268,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
         }
         let completed = get_acp_chat_page_inner(
             &state,
-            GetAcpChatPageRequest {
+            GetAcpChatPageRequest { fork_history_for: None,
                 project_id: project_id.clone(),
                 project_generation: ProjectGeneration::ZERO,
                 chat_id: chat_id.clone(),
