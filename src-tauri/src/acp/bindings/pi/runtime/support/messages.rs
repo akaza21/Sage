@@ -20,10 +20,10 @@ impl PiRuntime {
         self.current_thinking = state.thinking_level;
         self.auto_compaction = state.auto_compaction;
         // Optional like the read that asked for it.
-        Ok((
-            Some(AdapterEvent::IgnoredDuplicate),
-            self.begin_one(Operation::GetModels, super::super::RequestKind::Models)
-                .ok(),
-        ))
+        let models = self
+            .begin_one(Operation::GetModels, super::super::RequestKind::Models)
+            .ok();
+        self.configuration_models_pending = models.is_some();
+        Ok((Some(AdapterEvent::IgnoredDuplicate), models))
     }
 }

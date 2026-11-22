@@ -158,8 +158,9 @@ impl PiRuntime {
                         .map_err(|_| AdapterRuntimeError::BatchCount)?;
                 }
                 self.available_models = models;
-                // Within a turn, a configuration read continues to the levels.
-                let levels = if self.initialized
+                // A configuration read continues to the thinking levels.
+                let levels = if std::mem::take(&mut self.configuration_models_pending)
+                    && self.initialized
                     && self.active_turn.is_some()
                     && self.refresh_thinking_after_model
                     && self.thinking_request_command.is_none()
