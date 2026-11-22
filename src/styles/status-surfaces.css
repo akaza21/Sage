@@ -233,6 +233,17 @@
   transition: opacity var(--motion-duration-fade) ease-out;
 }
 
+.send-button > svg {
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
+}
+
+.send-button--cancel > svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  fill: currentColor;
+}
+
 .send-button:hover:not(:disabled) {
   background: var(--composer-send-hover);
 }
@@ -246,15 +257,6 @@
 .send-button:disabled::before {
   background: var(--color-plane-raised);
   opacity: 1;
-}
-
-.send-button--cancel {
-  color: var(--composer-send-text);
-  background: var(--color-status-foreground);
-}
-
-.send-button--cancel:hover:not(:disabled) {
-  background: var(--composer-send-hover);
 }
 
 .composer__error,

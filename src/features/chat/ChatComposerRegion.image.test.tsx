@@ -579,17 +579,24 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [],
     });
-    const send = screen.getByRole("button", { name: "Send message" });
-    expect(send).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /dictation|Voice input/ }),
+    ).toBeVisible();
     rerenderComposer({
       text: "  ",
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: "Send message" }),
+        ).toBeEnabled(),
+      { timeout: 5_000 },
+    );
   });
 
-  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", async () => {
+  it("keeps attachment-only Send paired with a visible page chip, then restores the mic on removal", async () => {
     const page = {
       kind: "browserPage" as const,
       tabId: "browser-1",
@@ -610,7 +617,10 @@ describe("composer image input", () => {
     );
     expect(await screen.findByText("Page · Example page")).toBeVisible();
     rerenderComposer({ text: "  ", attachedContext: [] });
-    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /dictation|Voice input/ }),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
   });
 
   it("does not submit with an unsupported image or while upload is pending", () => {

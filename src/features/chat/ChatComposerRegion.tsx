@@ -118,6 +118,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInput.sendBlocked ||
     (sessionFeatures && paste.blocksSend);
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const hasContent = Boolean(
+    text.trim() || attachedContext.length || paste.revision,
+  );
   const optionsTriggerId = `${fieldId}-options`;
   const projectName = composerWorkspaceName(project);
   const files = useComposerFiles({
@@ -385,17 +388,14 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <ComposerTurnControl
+              activeTurn={activeTurn}
+              hasContent={hasContent}
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              disabled={composerDisabled}
               onCancelTurn={onCancelTurn}
               cancelDisabled={actionBusy || projectTransitioning}
-              queueing={Boolean(activeTurn && queueAvailable)}
-              sendDisabled={
-                dispatchBlocked ||
-                (!text.trim() && !attachedContext.length && !paste.revision)
-              }
+              sendDisabled={dispatchBlocked || !hasContent}
             />
           </div>
         </form>

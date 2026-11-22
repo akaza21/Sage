@@ -264,7 +264,7 @@ button.composer__control-trigger[aria-expanded="true"] {
 .composer__mic {
   width: 28px;
   height: 28px;
-  grid-area: mic;
+  grid-area: send;
   display: grid;
   place-items: center;
   border: 0;
@@ -276,6 +276,10 @@ button.composer__control-trigger[aria-expanded="true"] {
 
 .composer__mic:hover:not(:disabled) {
   background: var(--composer-control-hover);
+}
+.composer__mic > svg {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
 }
 .composer__mic:disabled {
   color: var(--color-text-disabled);

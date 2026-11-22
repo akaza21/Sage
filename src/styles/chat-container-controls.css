@@ -189,8 +189,8 @@
 }
 
 .composer__toolbar:has([data-fit~="wrap"]) {
-  grid-template-areas: "controls controls controls" "mic meter send";
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "controls controls" "meter send";
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-1);
 }
 
