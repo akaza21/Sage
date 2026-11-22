@@ -12,12 +12,7 @@ const loadSettingsSurface = () =>
     default: SettingsSurface,
   }));
 
-const loadSaveAllNotice = () =>
-  import("../features/files/SaveAllNotice").then(({ SaveAllNotice }) => ({
-    default: SaveAllNotice,
-  }));
-
-const loadRepositoryMutationLink = () => import("./RepositoryMutationLink");
+const loadEditorCanvasNotices = () => import("./EditorCanvasNotices");
 
 export default ActiveEditorCanvas;
 
@@ -67,25 +62,24 @@ export function ActiveEditorCanvas({
     !editorTab &&
     (!activeTab || activeTab.kind === "chat" || activeTab.kind === "browser");
 
+  const noticed = !!contextualMutationError || saveAllFailed;
+
   return (
     <div
-      className={`active-canvas${contextualMutationError || saveAllFailed ? " active-canvas--noticed" : ""}`}
+      className={`active-canvas${noticed ? " active-canvas--noticed" : ""}`}
       role="tabpanel"
     >
-      {contextualMutationError ? (
+      {noticed ? (
         <LazyModuleBoundary
-          label="Source Control link"
-          load={loadRepositoryMutationLink}
+          label="Editor notices"
+          load={loadEditorCanvasNotices}
           fallback={null}
-          render={(Link) => <Link error={contextualMutationError} />}
-        />
-      ) : null}
-      {saveAllFailed ? (
-        <LazyModuleBoundary
-          label="Save All"
-          load={loadSaveAllNotice}
-          fallback={null}
-          render={(SaveAllNotice) => <SaveAllNotice />}
+          render={(EditorCanvasNotices) => (
+            <EditorCanvasNotices
+              mutationError={contextualMutationError}
+              saveAllFailed={saveAllFailed}
+            />
+          )}
         />
       ) : null}
       {canvas}

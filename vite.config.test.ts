@@ -115,7 +115,6 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/app/editorConflictActions.ts",
   "src/features/files/editorNoticeState.ts",
   "src/features/files/FileConflictCompare.tsx",
-  "src/features/files/SaveAllNotice.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
   "src/features/chat/ComposerUsageLimits.tsx",
   "src/features/chat/composerDictationRuntime.ts",
@@ -294,7 +293,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentHeaderMenu.tsx",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
-  "src/workbench/RepositoryMutationLink.tsx",
+  "src/workbench/EditorCanvasNotices.tsx",
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
