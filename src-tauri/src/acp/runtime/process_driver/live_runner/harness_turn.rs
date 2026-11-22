@@ -53,6 +53,13 @@ where
                 }
                 next
             }
+            FirstTurnWorkerState::Idle(parts) if parts.parts.turn_started() => {
+                let (next, notification) = open_first(parts, context, host).await?;
+                if notification.is_some() {
+                    *started = notification;
+                }
+                next
+            }
             state => return Ok(state),
         };
     }
@@ -115,6 +122,86 @@ where
             ))));
         }
     };
+    activate(turn, context, host).await
+}
+
+async fn open_first<A, R, T, Auth, C>(
+    parts: Box<
+        crate::acp::runtime::process_driver::CompletedActivationDriverParts<
+            A,
+            crate::acp::runtime::CoordinatorActivationJournal,
+            R,
+            T,
+            C,
+        >,
+    >,
+    context: &FirstTurnWorkerContext<Auth>,
+    host: &Weak<RuntimeHost>,
+) -> Result<(WorkerState<A, R, T, C>, Option<StartNotification>), RunnerExit<A, R, T, C>>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
+    let prepared = match parts
+        .prepare_first_harness_turn(&context.coordinator, context.clock.now_millis())
+        .await
+    {
+        Ok(turn) => turn,
+        Err(failure) => {
+            if failure.recovery.is_none() {
+                let mut parts = Box::new(failure.parts);
+                if parts
+                    .parts
+                    .decline_started_turn(&mut parts.transport)
+                    .is_err()
+                    || parts.accept_idle_stdout_chunk(&[]).is_err()
+                {
+                    return Err(failed(FirstTurnWorkerState::Idle(parts)));
+                }
+                return Ok((FirstTurnWorkerState::Idle(parts), None));
+            }
+            return Err(failed(FirstTurnWorkerState::Recovery(Box::new(
+                FirstTurnWorkerRecovery::Prepare(failure),
+            ))));
+        }
+    };
+    let turn = match prepared.bind_driver(
+        context.journal.clone(),
+        std::sync::Arc::clone(&context.publisher),
+    ) {
+        Ok(turn) => turn,
+        Err(failure) => {
+            return Err(failed(FirstTurnWorkerState::Recovery(Box::new(
+                FirstTurnWorkerRecovery::Bind(failure),
+            ))));
+        }
+    };
+    activate(turn, context, host).await
+}
+
+async fn activate<A, R, T, Auth, C>(
+    turn: crate::acp::runtime::process_driver::PreparedDriverTurn<
+        A,
+        SqliteAdapterBatchJournal,
+        R,
+        T,
+        C,
+    >,
+    context: &FirstTurnWorkerContext<Auth>,
+    host: &Weak<RuntimeHost>,
+) -> Result<(WorkerState<A, R, T, C>, Option<StartNotification>), RunnerExit<A, R, T, C>>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
     let turn_id = turn.dispatch.turn_id().clone();
     let mut active = Box::new(PreparedProcessWrite::started_by_harness(turn));
     let notification = match host
@@ -132,7 +219,12 @@ where
             return Err(failed(FirstTurnWorkerState::Active(active)));
         }
     };
-    if let Err(error) = active.turn.driver.adopt_started_turn(now_millis).await {
+    if let Err(error) = active
+        .turn
+        .driver
+        .adopt_started_turn(context.clock.now_millis())
+        .await
+    {
         tracing::warn!(
             activation_checkpoint = "live_runner.harness_turn.adopt",
             ?error,

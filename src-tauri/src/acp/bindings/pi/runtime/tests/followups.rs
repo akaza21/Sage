@@ -1,6 +1,6 @@
 use super::*;
 use sage_acp_protocol::{
-    lifecycle::{ItemLifecycle, ServerRequestState, ToolState},
+    lifecycle::{ItemLifecycle, ToolState},
     permissions::PermissionDecision,
 };
 
@@ -75,10 +75,22 @@ fn pi_second_extension_gate_after_timeout_can_receive_a_reply() {
         .ingest(&frame(gate("gate-expired")), &Mapper)
         .unwrap();
     let batch = runtime.ingest(&frame(gate("gate-next")), &Mapper).unwrap();
-    assert!(matches!(batch.events(), [
-        AdapterEvent::PermissionResolved { external_request_id: expired, state: ServerRequestState::Cancelled, .. },
-        AdapterEvent::PermissionRequest { external_request_id, .. },
-    ] if expired.as_str() == "gate-expired" && external_request_id.as_str() == "gate-next"));
+    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    let expired = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("gate-expired").unwrap(),
+            decision: PermissionDecision::Deny,
+        })
+        .unwrap();
+    runtime.commit_mandatory_egress(expired.token()).unwrap();
+    assert_eq!(
+        deliver(&mut runtime, expired),
+        json!({"type":"extension_ui_response","id":"gate-expired","cancelled":true})
+    );
+    let next = runtime.answers_delivered(&Mapper).unwrap().unwrap();
+    assert!(
+        matches!(next.events(), [AdapterEvent::PermissionRequest { external_request_id, .. }] if external_request_id.as_str() == "gate-next")
+    );
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("gate-expired").unwrap(),
@@ -101,32 +113,26 @@ fn pi_second_extension_gate_after_timeout_can_receive_a_reply() {
 }
 
 #[test]
-fn pi_explicit_gate_denial_suppresses_continuation_and_further_gates() {
+fn pi_authority_denial_suppresses_continuation_and_cancels_further_dialogs() {
     let mut runtime = fixture_runtime(74);
     ready(&mut runtime);
     running(&mut runtime);
-    runtime
-        .ingest(&frame(gate("gate-denied")), &Mapper)
+    let blocked = runtime.ingest(&frame(json!({"type":"tool_execution_start","toolCallId":"unapproved-write","toolName":"write","args":{"path":"fixture.txt"}})), &Mapper).unwrap();
+    assert_eq!(request(&blocked.egress()[0])["type"], "abort");
+    let late = runtime
+        .ingest(&frame(gate("gate-too-late")), &Mapper)
         .unwrap();
-    let abort = runtime
-        .command(AdapterCommand::ResolvePermission {
-            request_id: SageServerRequestId::parse("gate-denied").unwrap(),
-            decision: PermissionDecision::Deny,
-        })
-        .unwrap();
-    assert_eq!(request(&abort)["type"], "abort");
-    for value in [
-        gate("gate-too-late"),
-        json!({"type":"tool_execution_start","toolCallId":"late-read","toolName":"read","args":{"path":"fixture.txt"}}),
-    ] {
-        let batch = runtime.ingest(&frame(value), &Mapper).unwrap();
-        assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
-        assert!(batch.egress().is_empty());
-    }
+    assert_eq!(
+        request(&late.egress()[0]),
+        json!({"type":"extension_ui_response","id":"gate-too-late","cancelled":true})
+    );
+    let batch = runtime.ingest(&frame(json!({"type":"tool_execution_start","toolCallId":"late-read","toolName":"read","args":{"path":"fixture.txt"}})), &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(batch.egress().is_empty());
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
-            request_id: SageServerRequestId::parse("gate-denied").unwrap(),
-            decision: PermissionDecision::AllowOnce,
+            request_id: SageServerRequestId::parse("gate-too-late").unwrap(),
+            decision: PermissionDecision::AllowOnce
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
@@ -205,7 +211,7 @@ fn pi_read_only_fixture_preserves_agent_loop_messages_and_followup() {
 }
 
 #[test]
-fn pi_select_gate_recognition_and_reply_share_exact_allow_options() {
+fn pi_select_options_are_answered_as_choices_even_when_the_label_says_allow() {
     let mut runtime = fixture_runtime(76);
     ready(&mut runtime);
     running(&mut runtime);
@@ -230,11 +236,16 @@ fn pi_select_gate_recognition_and_reply_share_exact_allow_options() {
         let reply = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: SageServerRequestId::parse(id.clone()).unwrap(),
-                decision: PermissionDecision::AllowOnce,
+                decision: PermissionDecision::Answer(
+                    serde_json::from_value(
+                        json!([{"questionId":"answer","selectedOption":option}]),
+                    )
+                    .unwrap(),
+                ),
             })
             .unwrap();
         assert_eq!(
-            request(&reply),
+            deliver(&mut runtime, reply),
             json!({
                 "type":"extension_ui_response","id":id,"value":option
             })

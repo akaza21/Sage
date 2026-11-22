@@ -122,11 +122,12 @@ describe("harness question requests", () => {
         questions: [
           {
             ...question,
-            options: Array(9).fill({ label: "a", description: "" }),
+            options: Array(51).fill({ label: "a", description: "" }),
           },
         ],
       },
       { questions: [{ ...question, id: "" }] },
+      { questions: [{ ...question, kind: ["text"] }] },
       { questions: [question], autoResolutionMs: -1 },
     ]) {
       expect(questionItem(userInput)).toBeNull();

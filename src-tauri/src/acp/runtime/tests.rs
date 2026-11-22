@@ -607,7 +607,7 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
             .unwrap();
         for mode in [Some("bypassPermissions"), None] {
             assert!(matches!(
-                coordinator.open_harness_turn(&tree, mode, 1).await,
+                coordinator.open_harness_turn(&tree, mode.map(crate::acp::bindings::adapter::HarnessTurnAuthority::SessionMode), 1).await,
                 Err(failure) if matches!(failure.error, CoordinatorError::Intent)
             ));
         }

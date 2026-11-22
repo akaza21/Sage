@@ -4,11 +4,7 @@ use crate::acp::{
     },
     transport::OutboundFrame,
 };
-use sage_acp_protocol::{
-    contract::SafeText,
-    intent::NormalizedPayload,
-    lifecycle::{ItemLifecycle, ServerRequestState},
-};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::super::{DenyStage, PiRuntime};
@@ -34,11 +30,16 @@ impl PiRuntime {
         {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
+        if matches!(&record, Record::Event { kind, value } if kind == "extension_ui_request" && matches!(value.get("method").and_then(serde_json::Value::as_str), Some("confirm" | "select" | "input" | "editor")))
+        {
+            return self.ingest_question(record);
+        }
         self.translator.ingest_record(record)
     }
 
     fn dialog_cancelled(&self, id: &str) -> bool {
-        self.cancelled_dialogs.contains_key(id)
+        self.questions.settling.as_deref() == Some(id)
+            || self.cancelled_dialogs.contains_key(id)
             || self
                 .recent_cancelled_dialogs
                 .iter()
@@ -88,25 +89,6 @@ impl PiRuntime {
         ))
     }
 
-    pub(super) fn expire_dialog(
-        &mut self,
-        id: String,
-    ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self
-            .deny
-            .as_ref()
-            .is_some_and(|deny| deny.request_id.as_str() == id && deny.stage == DenyStage::Prepared)
-        {
-            self.deny = None;
-        }
-        let resolved = AdapterEvent::PermissionResolved {
-            turn_id: self.turn_identity()?,
-            external_request_id: super::identity::external("piPermissionId", id)?,
-            state: ServerRequestState::Cancelled,
-        };
-        Ok((Some(resolved), None))
-    }
-
     pub(in crate::acp::bindings::pi::runtime) fn commit_dialog_cancel(
         &mut self,
         token: &EgressToken,
@@ -148,6 +130,9 @@ impl PiRuntime {
         match (*stage, resolution) {
             (DenyStage::Committed, EgressResolution::Queued) => *stage = DenyStage::Queued,
             (DenyStage::Queued, EgressResolution::Written) => {
+                if self.questions.settling.as_deref() == Some(id) {
+                    self.questions.settling = None;
+                }
                 if self.recent_cancelled_dialogs.len()
                     == LIMITS.queues.outstanding_rpc_per_session as usize
                 {

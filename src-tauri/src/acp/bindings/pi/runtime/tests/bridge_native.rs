@@ -408,3 +408,5 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
 
 #[path = "bridge_native_failure.rs"]
 mod load_failure;
+#[path = "questions_native.rs"]
+mod questions;

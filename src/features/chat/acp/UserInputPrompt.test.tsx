@@ -128,6 +128,60 @@ const field = (
 });
 
 describe("UserInputPrompt forms and links", () => {
+  it.each(["choice", "confirm", "text", "multiline"] as const)(
+    "lets the user fill a %s question through the shared card",
+    (kind) => {
+      const options = Array.from({ length: 50 }, (_, at) => ({
+        label: `Target ${at}: ${"x".repeat(120)}`,
+        description: "",
+      }));
+      render(
+        <QuestionCard
+          items={[
+            questionRequest({
+              questions: [
+                field("answer", "Target", {
+                  kind,
+                  ...(kind === "choice" ? { options } : {}),
+                  ...(kind === "multiline"
+                    ? { initialText: "Saved\ntext" }
+                    : {}),
+                }),
+              ],
+            }),
+          ]}
+        />,
+      );
+      if (kind === "choice") {
+        fireEvent.input(screen.getByRole("searchbox"), {
+          target: { value: "Target 49:" },
+        });
+        expect(screen.getAllByRole("radio")).toHaveLength(1);
+        fireEvent.click(screen.getByRole("radio"));
+      } else if (kind === "text") {
+        fireEvent.input(screen.getByRole("textbox"), {
+          target: { value: "Typed text" },
+        });
+      } else if (kind === "multiline") {
+        expect(screen.getByRole("textbox")).toHaveValue("Saved\ntext");
+      }
+      const action = screen.getByRole("button", {
+        name: kind === "confirm" ? /Allow once/ : /Submit/,
+      });
+      expect(action).toBeEnabled();
+      if (kind === "choice") {
+        expect(screen.getByRole("radio")).toBeChecked();
+        expect(screen.getByTitle(options[49]!.label)).toBeVisible();
+      } else if (kind === "confirm") {
+        expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+        const card = screen.getByRole("group", { name: "Agent question" });
+        fireEvent.keyDown(card, { key: "Enter" });
+        expect(fireEvent.keyDown(card, { key: "Enter", repeat: true })).toBe(
+          false,
+        );
+      }
+    },
+  );
   const answered = () =>
     vi.spyOn(acpDesktop, "answerUserInput").mockResolvedValue({
       ...identity,

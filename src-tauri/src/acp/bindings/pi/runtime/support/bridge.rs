@@ -149,9 +149,10 @@ impl PiRuntime {
             self.translator.remember_pending_ui(PendingUiRequest {
                 id: id.into(),
                 method: BRIDGE_WRITE_METHOD.into(),
-                options: Vec::new(),
                 form: None,
-                expires: false,
+                received_at: std::time::Instant::now(),
+                timeout_ms: None,
+                digest: request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?,
             });
             let event = self.permission_event(
                 id.into(),
