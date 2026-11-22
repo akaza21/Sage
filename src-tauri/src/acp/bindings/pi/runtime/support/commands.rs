@@ -8,6 +8,7 @@ use crate::acp::{
             wire_text,
         },
     },
+    command_placement::{NativeControl, place_commands},
     session_action::SessionAction,
     transcript_quote::Prompt,
 };
@@ -95,7 +96,25 @@ impl PiRuntime {
         value: Value,
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         self.commands_pending = false;
-        self.commands.replace(with_builtins(&value))?;
+        let version = self
+            .launch
+            .as_ref()
+            .and_then(|launch| launch.harness_version())
+            .and_then(crate::acp::bindings::release_version::ReleaseVersion::parse);
+        let supports = |control| match control {
+            NativeControl::Compact | NativeControl::UsagePanel => self.initialized,
+            NativeControl::ModelPicker => self.initialized && !self.available_models.is_empty(),
+            _ => false,
+        };
+        self.commands
+            .replace(with_builtins(&value).map(|commands| {
+                place_commands(
+                    commands,
+                    crate::acp::bindings::pi::manifest::known_commands(),
+                    version.as_ref(),
+                    &supports,
+                )
+            }))?;
         Ok(AdapterEvent::Absorbed)
     }
 

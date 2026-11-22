@@ -77,6 +77,7 @@ pub(crate) struct ClaudeRuntime {
     stores_children: bool,
     /// The SDK bridge answers `/status` and `/mcp`, so they open panels.
     opens_panels: bool,
+    command_version: Option<crate::acp::bindings::release_version::ReleaseVersion>,
     /// The permission mode Sage last put the session in, which a turn
     /// Claude Code starts on its own runs in.
     selected_mode: Option<&'static str>,
@@ -144,10 +145,14 @@ impl ClaudeRuntime {
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
+        harness_version: &str,
     ) -> Self {
         Self {
             stores_children: true,
             opens_panels: true,
+            command_version: crate::acp::bindings::release_version::ReleaseVersion::parse(
+                harness_version,
+            ),
             ..Self::new(None, binding_digest, runtime_epoch, session_id)
         }
     }
@@ -192,6 +197,7 @@ impl ClaudeRuntime {
             forks: Vec::new(),
             stores_children: false,
             opens_panels: false,
+            command_version: None,
             selected_mode: None,
         }
     }
