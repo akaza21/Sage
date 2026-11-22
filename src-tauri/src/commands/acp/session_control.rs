@@ -40,6 +40,7 @@ pub(crate) struct SessionControlRequest {
     deny_unknown_fields
 )]
 enum ControlIntent {
+    RewindConversation { before: SageTurnId },
     UndoTurn { turn_id: SageTurnId },
     StopActivity { activity_key: String },
 }
@@ -93,6 +94,16 @@ pub(crate) async fn control_acp_session(
         runtime_epoch: request.runtime_epoch,
     };
     let control = match request.control {
+        ControlIntent::RewindConversation { before } => {
+            let summary = state
+                .acp
+                .rewind_conversation(&owner, before)
+                .await
+                .map_err(control_error)?;
+            return Ok(SessionControlResponse {
+                summary: summary.map(|s| s.as_str().to_owned()),
+            });
+        }
         ControlIntent::UndoTurn { turn_id } => {
             let summary = state
                 .acp

@@ -1,7 +1,9 @@
 use super::*;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-const SETTLEMENT_FACTS: i64 = 3;
+fn settlement_facts(command: &TurnUndoneCommand) -> i64 {
+    2 + command.rewind_turns.len().max(1) as i64
+}
 
 // Drop sequence's INTEGER affinity so SQLite can seek the JSON expression
 // index, as browser operation recovery does for its start receipt.
@@ -15,7 +17,16 @@ pub(super) const PENDING_SQL: &str =
 
 fn reservation_bytes(command: &TurnUndoneCommand) -> i64 {
     // Reserve exact identity escaping and worst-width sequence/count fields.
-    let undone = super::undo_payload(command, UndoneThread::Reverted).len();
+    let single = [command.turn_id.clone()];
+    let turns = if command.rewind_turns.is_empty() {
+        &single[..]
+    } else {
+        &command.rewind_turns
+    };
+    let undone: usize = turns
+        .iter()
+        .map(|turn| super::undo_payload_for(command, UndoneThread::Reverted, turn).len())
+        .sum();
     let settled = serde_json::json!({"start":i64::MAX,"state":"rolledBack"})
         .to_string()
         .len();
@@ -75,6 +86,15 @@ pub(crate) fn pending(
                 Some(serde_json::Value::String(id)) => Some(id.clone()),
                 _ => return Err(StoreError::Corrupt("undo intent cut")),
             };
+            let rewind_turns: Vec<SageTurnId> = value
+                .get("rewindTurns")
+                .map(|value| serde_json::from_value(value.clone()))
+                .transpose()
+                .map_err(|_| StoreError::Corrupt("rewind suffix"))?
+                .unwrap_or_default();
+            if rewind_turns.len() > 100 {
+                return Err(StoreError::Corrupt("rewind suffix limit"));
+            }
             Ok(PendingUndo {
                 sequence,
                 command: TurnUndoneCommand {
@@ -86,6 +106,7 @@ pub(crate) fn pending(
                         .map_err(|_| StoreError::Corrupt("undo session"))?,
                     turn_id: SageTurnId::parse(turn)
                         .map_err(|_| StoreError::Corrupt("undo turn"))?,
+                    rewind_turns,
                     runtime_epoch: epoch,
                     harness_reverted,
                     cut_at,
@@ -117,7 +138,11 @@ pub(crate) fn start(
     )?;
     if !running
         || pending(&tx, project, chat)?.is_some()
-        || !super::super::session_surface::is_undoable_turn(&tx, project, chat, session, turn)?
+        || !(if command.rewind_turns.is_empty() {
+            super::super::session_surface::is_undoable_turn(&tx, project, chat, session, turn)?
+        } else {
+            super::super::rewind::suffix(&tx, project, chat, session, turn)? == command.rewind_turns
+        })
     {
         return Err(StoreError::Conflict {
             resource: "undoIntent",
@@ -125,7 +150,7 @@ pub(crate) fn start(
     }
     let revision = next_projection_revision(&tx, project, chat)?;
     let payload = serde_json::json!({"state":"started", "runtimeEpoch":command.runtime_epoch.get(),
-        "harnessReverted":command.harness_reverted, "cutAt":command.cut_at})
+        "harnessReverted":command.harness_reverted, "cutAt":command.cut_at,"rewindTurns":command.rewind_turns})
     .to_string();
     append_fact_payload(
         &tx,
@@ -139,7 +164,7 @@ pub(crate) fn start(
         command.now_millis,
     )?;
     // Charge completion and recovery writes now, as browser starts do.
-    for index in 0..SETTLEMENT_FACTS {
+    for index in 0..settlement_facts(command) {
         let bytes = if index == 0 {
             reservation_bytes(command)
         } else {
@@ -194,7 +219,12 @@ pub(super) fn release_reservation(
     tx: &Transaction<'_>,
     command: &TurnUndoneCommand,
 ) -> Result<(), StoreError> {
-    adjust_reservation(tx, command, -SETTLEMENT_FACTS, -reservation_bytes(command))
+    adjust_reservation(
+        tx,
+        command,
+        -settlement_facts(command),
+        -reservation_bytes(command),
+    )
 }
 
 fn adjust_reservation(

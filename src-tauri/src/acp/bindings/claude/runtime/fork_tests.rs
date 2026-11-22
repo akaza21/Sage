@@ -79,7 +79,8 @@ fn the_captured_0760_advertisement_negotiates_native_fork() {
     assert!(
         super::super::negotiate_capabilities(&offer)
             .unwrap()
-            .native_session_fork
+            .rewind
+            .fork_at
     );
 }
 
@@ -88,7 +89,7 @@ fn the_fork_request_and_response_replay_the_pinned_session_fork_schema() {
     let pinned = pinned();
     let mut runtime = ClaudeRuntime::fixture();
     ready_with(&mut runtime, captured_initialize_result());
-    assert!(runtime.capabilities().unwrap().native_session_fork);
+    assert!(runtime.capabilities().unwrap().rewind.fork_at);
     let (id, request) = fork(&mut runtime);
     assert_eq!(request["method"], pinned["method"]);
     let params = request["params"].as_object().unwrap();
@@ -162,7 +163,7 @@ fn fork_fails_closed_without_the_advertisement_and_during_a_prompt() {
             "sessionCapabilities":{"resume":{},"close":{}}
         }}),
     );
-    assert!(!unadvertised.capabilities().unwrap().native_session_fork);
+    assert!(!unadvertised.capabilities().unwrap().rewind.fork_at);
     assert!(matches!(
         unadvertised.fork_session(),
         Err(AdapterRuntimeError::UnsupportedCommand)

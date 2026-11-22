@@ -815,6 +815,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         },
     };
     let turn = TurnProjection {
+        conversation_target: false,
         attached_context: Vec::new(),
         session_action: None,
         command: None,
@@ -854,7 +855,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             close_session: true,
             prompt: true,
             cancel: true,
-            native_session_fork: false,
+            rewind: sage_acp_protocol::intent::RewindCapability::latest_fork(false),
             native_session_compact: false,
             native_session_import: false,
             native_review: false,

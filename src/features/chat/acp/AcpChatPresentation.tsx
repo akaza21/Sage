@@ -11,7 +11,6 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { AnswerActionButton, AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { turnSessionForkState } from "../forkChatRequest";
 import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
@@ -19,6 +18,7 @@ import {
   chronologicalTurnItems,
   promptAttachmentItems,
   turnBindingId,
+  currentSession,
 } from "./acpTurnState";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
@@ -44,7 +44,7 @@ import { VirtualTurnList } from "./VirtualTurnList";
 import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 
-const Turn = memo(
+export const Turn = memo(
   function Turn({
     page,
     turn,
@@ -186,6 +186,7 @@ const Turn = memo(
               </div>
             ) : null}
             <TurnPrompts
+              page={page}
               items={promptItems}
               turn={turn}
               interactive={interactive}
@@ -278,17 +279,12 @@ const Turn = memo(
         {inherited && actions}
       </>
     );
-    if (!inherited) return content;
-    return (
-      <section className="chat-fork-turn" aria-label={`Turn ${turn.ordinal}`}>
-        {content}
-      </section>
-    );
+    return content;
   },
   (left, right) =>
     left.turn === right.turn &&
-    turnSessionForkState(left.page, left.turn.sessionId) ===
-      turnSessionForkState(right.page, right.turn.sessionId) &&
+    currentSession(left.page)?.runtimeEpoch ===
+      currentSession(right.page)?.runtimeEpoch &&
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
@@ -393,15 +389,4 @@ export function AcpChatPresentation({
         : null}
     </>
   );
-}
-
-// The fork transcript owns the navigator, find, virtual list and edit summary.
-export function InheritedTurns({ page }: { page: AcpChatPage }) {
-  const dayTimestamps = useTurnDayTimestamps(page.turns);
-  return page.turns.map((turn, index) => (
-    <Fragment key={turn.id}>
-      <TurnDaySeparator timestamp={dayTimestamps[index]} />
-      <Turn page={page} turn={turn} inherited />
-    </Fragment>
-  ));
 }

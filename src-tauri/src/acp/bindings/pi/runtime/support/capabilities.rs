@@ -19,7 +19,11 @@ pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySna
         close_session: false,
         prompt: true,
         cancel: true,
-        native_session_fork: true,
+        rewind: sage_acp_protocol::intent::RewindCapability {
+            targets: sage_acp_protocol::intent::RewindTargets::AnyUserMessage,
+            fork_at: true,
+            ..Default::default()
+        },
         native_session_compact: true,
         native_session_import: false,
         native_review: false,

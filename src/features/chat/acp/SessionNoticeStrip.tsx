@@ -7,7 +7,13 @@ import {
 } from "../../../domain/acpProjection";
 import { Notice } from "../../../ui/Notice";
 import "./session-notice-strip.css";
-import { SessionSurfacePanel } from "./SessionSurfacePanel";
+import { ConversationView } from "../MessageActionsTrigger";
+
+export {
+  ConversationView,
+  MessageActionsTrigger,
+  PromptActions,
+} from "../MessageActionsTrigger";
 
 const versionOf = (notice: SessionNotice) =>
   JSON.stringify([
@@ -17,9 +23,23 @@ const versionOf = (notice: SessionNotice) =>
     notice.diagnostic === true,
   ]);
 
-export function SessionStrip({ page }: { page: AcpChatPage }) {
+export function SessionStrip({
+  page,
+  hasEarlier = false,
+}: {
+  page: AcpChatPage;
+  hasEarlier?: boolean;
+}) {
   return (
     <>
+      {page.forkedFrom && !hasEarlier ? (
+        <ConversationView
+          view="ForkDivider"
+          parentChatId={page.forkedFrom}
+          forkTurnId={page.forkedFromTurnId}
+          forkChatId={page.chatId}
+        />
+      ) : null}
       {page.sessionNotices?.length ? (
         <SessionNoticeStrip
           session={JSON.stringify([page.chatId, page.currentSessionId])}
@@ -27,7 +47,8 @@ export function SessionStrip({ page }: { page: AcpChatPage }) {
         />
       ) : null}
       {page.sessionSurface ? (
-        <SessionSurfacePanel
+        <ConversationView
+          view="SessionSurfacePanel"
           surface={page.sessionSurface}
           chatId={page.chatId}
         />

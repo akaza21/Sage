@@ -31,7 +31,6 @@ const REQUIRED_CAPABILITIES = [
   "closeSession",
   "prompt",
   "cancel",
-  "nativeSessionFork",
   "activeTurnSteer",
   "childConversationProjection",
   "childTranscriptRead",
@@ -60,27 +59,54 @@ function safeCapabilities(
     value.schemaVersion !== 1 ||
     !protocolVersion ||
     extensionSchemaId === undefined ||
-    REQUIRED_CAPABILITIES.some((flag) => typeof value[flag] !== "boolean") ||
     modelCount === null ||
     modelCount > 128 ||
     configCount === null ||
     configCount > 128
   )
     return null;
-  return {
+  const capabilities = {
     schemaVersion: 1,
     protocolVersion,
-    ...Object.fromEntries([
-      ...REQUIRED_CAPABILITIES.map((flag) => [flag, value[flag]]),
-      ...OPTIONAL_CAPABILITIES.filter((flag) => value[flag] === true).map(
-        (flag) => [flag, true],
-      ),
-    ]),
+    rewind: safeRewind(value.rewind),
     goal: decodeGoalCapabilities(value.goal),
     multiRootExtensionSchemaId: extensionSchemaId,
     modelCount,
     configCount,
   } as AgentSessionProjection["capabilities"];
+  for (const flag of REQUIRED_CAPABILITIES) {
+    if (typeof value[flag] !== "boolean") return null;
+    capabilities[flag] = value[flag] as boolean;
+  }
+  for (const flag of OPTIONAL_CAPABILITIES)
+    if (value[flag] === true) capabilities[flag] = true;
+  return capabilities;
+}
+
+function safeRewind(
+  value: unknown,
+): AgentSessionProjection["capabilities"]["rewind"] {
+  if (!isRecord(value) || !isRecord(value.effects)) return undefined;
+  const {
+    effects: { conversation, files },
+    targets,
+    forkAt,
+    onResume,
+  } = value;
+  if (
+    typeof conversation !== "boolean" ||
+    typeof files !== "boolean" ||
+    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
+    typeof forkAt !== "boolean" ||
+    typeof onResume !== "boolean"
+  )
+    return undefined;
+  return {
+    effects: { conversation, files },
+    targets,
+    forkAt,
+    onResume,
+  };
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";

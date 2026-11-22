@@ -40,7 +40,14 @@ impl AcpService {
             .map_err(|_| ChatForkError::Unavailable)?;
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
-            request: NativeRpcRequest::ForkSession,
+            request: match &source.target {
+                Some(target) => NativeRpcRequest::Control(
+                    sage_acp_protocol::session_control::SessionControl::ForkAt {
+                        target: target.clone(),
+                    },
+                ),
+                None => NativeRpcRequest::ForkSession,
+            },
         });
         if matches!(
             result,

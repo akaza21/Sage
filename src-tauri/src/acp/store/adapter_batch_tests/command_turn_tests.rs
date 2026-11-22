@@ -10,6 +10,7 @@ fn prepare(fixture: &mut Fixture, prompt: Prompt, intent: &str) {
             &owner,
             [TurnState::Running, TurnState::Completed]
                 .map(|state| AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state,
                     now_millis: 7,
                 })

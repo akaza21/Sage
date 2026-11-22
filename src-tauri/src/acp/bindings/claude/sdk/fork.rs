@@ -23,6 +23,19 @@ pub(super) struct Fork {
 }
 
 impl Fork {
+    pub(super) fn before(
+        source: &str,
+        config: &Path,
+        turn: &str,
+    ) -> Result<Self, super::TranscriptError> {
+        let source = claude_session(source).to_owned();
+        let at = super::transcript::resolve_undo(config, &source, turn)?;
+        Ok(Self {
+            session: uuid::Uuid::new_v4().to_string(),
+            source,
+            at: at.unwrap_or_default(),
+        })
+    }
     pub(super) fn id(&self) -> String {
         format!(
             "{}{SEPARATOR}{}{SEPARATOR}{}",
@@ -33,7 +46,10 @@ impl Fork {
     pub(super) fn parse(id: &str) -> Option<Self> {
         let mut parts = id.split(SEPARATOR);
         let (session, source, at) = (parts.next()?, parts.next()?, parts.next()?);
-        if parts.next().is_some() || ![session, source, at].into_iter().all(is_uuid) {
+        if parts.next().is_some()
+            || ![session, source].into_iter().all(is_uuid)
+            || (!at.is_empty() && !is_uuid(at))
+        {
             return None;
         }
         Some(Self {
@@ -61,6 +77,10 @@ impl Fork {
     }
 
     pub(super) fn copy_args(&self) -> Vec<OsString> {
+        // Before the first prompt there is no native history to copy.
+        if self.at.is_empty() {
+            return vec!["--session-id".into(), self.session.clone().into()];
+        }
         [
             "--resume",
             &self.source,

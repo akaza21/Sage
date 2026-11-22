@@ -133,7 +133,11 @@ fn apply(
                     now_millis,
                 })
             }
-            IncomingEvent::Turn { state, .. } => AdapterInboundEvent::Turn { state, now_millis },
+            IncomingEvent::Turn { state, .. } => AdapterInboundEvent::Turn {
+                native_turn_id: None,
+                state,
+                now_millis,
+            },
             other => panic!("unexpected plan or terminal event: {other:?}"),
         })
         .collect();
