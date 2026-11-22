@@ -56,7 +56,7 @@ export function FirstChatSend({
     } else if (harness.bindingId) {
       // Images a draft handed over are already in this composer.
       void actions.submit(
-        entry.composerText.trim(),
+        pending.text.trim(),
         entry.attachedContext,
         harness.bindingId as CuratedBindingId,
         (entry.modelId ?? null) as CuratedModelId | null,

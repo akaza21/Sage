@@ -229,14 +229,13 @@ export function ChatHarnessControls({
     ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
-  const hasActions = Boolean(
+  const hasActions =
     Object.values(addActions).some(Boolean) ||
     planAccess ||
     effortInMenu ||
     projectAction ||
     modeOptions.length > 0 ||
-    otherOptions.some((option) => option.type !== "unsupported"),
-  );
+    otherOptions.some((option) => option.type !== "unsupported");
   const closeActions = () => {
     dismiss();
     optionsTriggerRef.current?.focus();

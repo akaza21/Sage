@@ -10,9 +10,9 @@ import type { ImageAction } from "./useComposerImageInput";
 import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import { lazyParts } from "./lazyParts";
 import type * as SectionChunk from "./ComposerSectionMenu";
-const SectionPart = lazyParts<typeof SectionChunk>(
-  () => import("./ComposerSectionMenu"),
-);
+const SectionPart = lazyParts<
+  Pick<typeof SectionChunk, "ComposerOptionsMenu" | "ComposerSectionMenu">
+>(() => import("./ComposerSectionMenu"));
 
 export { ListedHarnessModels } from "./ListedHarnessModels";
 export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";

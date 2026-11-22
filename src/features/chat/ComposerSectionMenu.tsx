@@ -27,6 +27,10 @@ import type { AcpCommandPanel } from "../../domain/acpCommand";
 import { lazyParts } from "./lazyParts";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
+// A new-chat draft's image intake and handoff upload ride in this chunk:
+// "Add images" lives here, and a draft's drops and sends load it too.
+// eslint-disable-next-line react-refresh/only-export-components -- the draft image actions, shared by this lazy chunk's importers
+export { addDraftImages } from "./draftImages";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );

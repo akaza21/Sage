@@ -3,6 +3,7 @@ import {
   boundedChatError,
   validateChatComposerText,
 } from "../domain/chatOwnership";
+import { chatAccessDraftPort } from "./chatAccessDraftPort";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import {
   liveDraftCreation,
@@ -44,27 +45,20 @@ export function createNewChatDraftActions(
       newChatDraft: submittingDraft,
       pendingFirstSend: submission,
     });
-    let released = {
-      submission: attempt.creation,
-      error: "",
-    };
+    let released = { submission: creation, error: "" };
     try {
       // Every module the send needs loads before anything is created, so a
       // failed chunk load cannot strand the draft mid-creation.
-      const [send, , images] = await Promise.all([
+      const [send] = await Promise.all([
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
-        draft.images?.length &&
-          import("../features/chat/draftImages").then((images) =>
-            images.draftImageUpload(),
-          ),
       ]);
       released = await send.runNewChatDraftSend(
         set,
         get,
         submittingDraft,
         submission,
-        images || undefined,
+        chatAccessDraftPort.uploadDraftImages,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));

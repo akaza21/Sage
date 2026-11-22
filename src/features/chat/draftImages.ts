@@ -1,3 +1,4 @@
+import { chatAccessDraftPort } from "../../app/chatAccessDraftPort";
 import { useWorkbenchStore } from "../../app/store";
 import type { DraftImage } from "../../app/newChatDraftSlice";
 import {
@@ -52,42 +53,42 @@ async function sizeDraftImages(draftId: object, added: readonly DraftImage[]) {
   }
 }
 
+// Loads with the draft's first image, so a send has it before its chat exists.
+const transfer = import("./chatImageTransfer");
+let undo = () => {};
+
 /**
- * The handoff's upload, loaded with the other send modules. It moves every
- * draft image into the created chat's composer, or none: on any failure the
- * ones already there are removed again, the draft keeps them all and a retry
- * uploads them all.
+ * The handoff's upload. It moves every draft image into the created chat's
+ * composer, or none: on any failure the ones already there are removed
+ * again, the draft keeps them all and a retry uploads them all. Called
+ * without a chat, it takes them back out of the chat they went to, as a
+ * handoff that fails after uploading does.
  */
-export async function draftImageUpload() {
-  const transfer = await import("./chatImageTransfer");
-  let undo = () => {};
-  // Called without a chat, it takes the images back out of the chat they went
-  // to: a handoff that fails after uploading leaves none there either.
-  return async (chatId?: string) => {
-    if (!chatId) return undo();
-    const { newChatDraft: draft, captureChatOwnership } =
-      useWorkbenchStore.getState();
-    // Without ownership the handoff's own check refuses the chat.
-    const intent = captureChatOwnership(chatId, draft?.id);
-    if (!intent) return;
-    undo = () => {
-      const now = useWorkbenchStore.getState();
-      for (const context of now.chatUiById[chatId]?.attachedContext ?? [])
-        if (context.kind === "image") {
-          now.detachChatContext(intent, attachedContextKey(context));
-          void transfer
-            .removeChatImage(intent, context.artifactId)
-            .catch(Boolean);
-        }
-    };
-    await transfer
-      .uploadChatImages(
-        intent,
-        (draft?.images ?? []).map((image) => image.file),
-      )
-      .catch((error: unknown) => {
-        undo();
-        throw error;
-      });
+async function uploadDraftImages(chatId?: string) {
+  if (!chatId) return undo();
+  const { uploadChatImages, removeChatImage } = await transfer;
+  const { newChatDraft: draft, captureChatOwnership } =
+    useWorkbenchStore.getState();
+  // Without ownership the handoff's own check refuses the chat.
+  const intent = captureChatOwnership(chatId, draft?.id);
+  if (!intent) return;
+  undo = () => {
+    const now = useWorkbenchStore.getState();
+    for (const context of now.chatUiById[chatId]?.attachedContext ?? [])
+      if (context.kind === "image") {
+        now.detachChatContext(intent, attachedContextKey(context));
+        void removeChatImage(intent, context.artifactId).catch(Boolean);
+      }
   };
+  await uploadChatImages(
+    intent,
+    (draft?.images ?? []).map((image) => image.file),
+  ).catch((error: unknown) => {
+    undo();
+    throw error;
+  });
 }
+
+// A draft holds images only once this module has loaded, so its send reaches
+// the upload through the port from then on.
+chatAccessDraftPort.uploadDraftImages = uploadDraftImages;

@@ -7,7 +7,6 @@ import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { DraftCreation, NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
-import type * as DraftImages from "../features/chat/draftImages";
 
 export async function runNewChatDraftSend(
   set: StoreApi<WorkbenchState>["setState"],
@@ -20,7 +19,8 @@ export async function runNewChatDraftSend(
     };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
-  uploadImages?: Awaited<ReturnType<typeof DraftImages.draftImageUpload>>,
+  /** The draft's image handoff, registered with its first image. */
+  uploadDraftImages?: (chatId?: string) => Promise<void>,
 ) {
   let creation = attempt.submission.creation;
   let opening = false;
@@ -145,7 +145,7 @@ export async function runNewChatDraftSend(
       await get().activateTab(chatId, submission);
     // All the images move into the created chat's composer, or none, before
     // the prompt does; a first send that is then cancelled keeps them there.
-    await uploadImages?.(chatId);
+    await uploadDraftImages?.(chatId);
     const { state, draft } = current();
     const owner = state.captureChatOwnership(chatId, draft.id);
     // Leaving the chat cancels its send; the handoff then completes unsent.
@@ -191,7 +191,7 @@ export async function runNewChatDraftSend(
     return { submission: creation, error: "" };
   } catch (error) {
     // All or nothing: a failed handoff takes the images back out of the chat.
-    void uploadImages?.();
+    void uploadDraftImages?.();
     // Opening the chat moved the center to it; unless the user navigated
     // since, a failed handoff returns to the draft that still holds the prompt.
     if (

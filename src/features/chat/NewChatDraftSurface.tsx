@@ -60,7 +60,6 @@ export function NewChatDraftSurface({
     if (
       draft &&
       draft.submission.status === "released" &&
-      !submitting &&
       !transitioning &&
       available &&
       draft.harnessId !== available.id
@@ -76,14 +75,7 @@ export function NewChatDraftSurface({
     ) {
       void chooseHarness(draft.harnessId);
     }
-  }, [
-    chooseHarness,
-    draft,
-    harnesses,
-    selectedHarnessId,
-    submitting,
-    transitioning,
-  ]);
+  }, [chooseHarness, draft, harnesses, selectedHarnessId, transitioning]);
   if (!draft) return null;
   const targetId =
     draft.targetProjectId === undefined
@@ -173,7 +165,7 @@ export function NewChatDraftSurface({
               ? (files) => {
                   const next: Promise<unknown> = Promise.all([
                     intake,
-                    import("./draftImages").then((images) =>
+                    import("./ComposerSectionMenu").then((images) =>
                       images.addDraftImages(draft.id, files),
                     ),
                   ]).finally(() => {

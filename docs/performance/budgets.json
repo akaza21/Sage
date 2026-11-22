@@ -16,11 +16,6 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
-        "entry": "src/features/chat/draftImages.ts",
-        "maxGzipBytes": 700,
-        "reason": "New-chat draft image intake and the upload before its first send; loads only when a draft takes an image or sends with one. Measured 689 B."
-      },
-      {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
         "maxGzipBytes": 4200,
         "maxCssGzipBytes": 550,
