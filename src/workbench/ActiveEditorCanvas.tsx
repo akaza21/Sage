@@ -1,8 +1,9 @@
 import { FileCode2 } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
-import { sameResource } from "../domain/resourceIdentity";
+import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import { Notice } from "../ui/Notice";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
@@ -12,7 +13,10 @@ const loadSettingsSurface = () =>
     default: SettingsSurface,
   }));
 
-const loadEditorCanvasNotices = () => import("./EditorCanvasNotices");
+const loadSaveAllNotice = () =>
+  import("../features/files/SaveAllNotice").then(({ SaveAllNotice }) => ({
+    default: SaveAllNotice,
+  }));
 
 export default ActiveEditorCanvas;
 
@@ -62,24 +66,31 @@ export function ActiveEditorCanvas({
     !editorTab &&
     (!activeTab || activeTab.kind === "chat" || activeTab.kind === "browser");
 
-  const noticed = !!contextualMutationError || saveAllFailed;
-
   return (
     <div
-      className={`active-canvas${noticed ? " active-canvas--noticed" : ""}`}
+      className={`active-canvas${contextualMutationError || saveAllFailed ? " active-canvas--noticed" : ""}`}
       role="tabpanel"
     >
-      {noticed ? (
+      {contextualMutationError ? (
+        // Source Control owns the explanation, even for a filtered-out
+        // repository; the editor only points there.
+        <Notice
+          identity={`repository-mutation-link:${resourceKey(contextualMutationError.resource)}`}
+          severity="warning"
+          message="Source Control has a problem with this file."
+          action={{
+            label: "Show in Source Control",
+            onClick: () =>
+              useWorkbenchStore.getState().setSidebarView("sourceControl"),
+          }}
+        />
+      ) : null}
+      {saveAllFailed ? (
         <LazyModuleBoundary
-          label="Editor notices"
-          load={loadEditorCanvasNotices}
+          label="Save All"
+          load={loadSaveAllNotice}
           fallback={null}
-          render={(EditorCanvasNotices) => (
-            <EditorCanvasNotices
-              mutationError={contextualMutationError}
-              saveAllFailed={saveAllFailed}
-            />
-          )}
+          render={(SaveAllNotice) => <SaveAllNotice />}
         />
       ) : null}
       {canvas}

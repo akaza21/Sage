@@ -92,9 +92,7 @@ export function reread(
     {
       ...(getFileEditorController().ready(document) as ReadyEditorState),
       unstored: document.dirty
-        ? document.conflict
-          ? unstoredBesideConflict(active?.unstored)
-          : active?.unstored
+        ? unstoredBesideConflict(active?.unstored)
         : undefined,
     },
     {
