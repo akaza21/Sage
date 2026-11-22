@@ -190,6 +190,8 @@ export async function runNewChatDraftSend(
     });
     return { submission: creation, error: "" };
   } catch (error) {
+    // All or nothing: a failed handoff takes the images back out of the chat.
+    void uploadImages?.();
     // Opening the chat moved the center to it; unless the user navigated
     // since, a failed handoff returns to the draft that still holds the prompt.
     if (

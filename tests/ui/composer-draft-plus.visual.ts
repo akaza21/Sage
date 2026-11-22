@@ -362,36 +362,90 @@ test("leaving the created chat mid-upload hands off without sending", async ({
   expect((await captured(page)).sent).toHaveLength(0);
 });
 
-test("an image dropped just before Send goes in that send", async ({
+test("images dropped just before Send all go in that send", async ({
   page,
 }) => {
   const { field } = await openDraft(page);
   await field.fill("Right away");
   await field.evaluate((textbox, bytes) => {
-    const transfer = new DataTransfer();
-    transfer.items.add(
-      new File(
-        [Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))],
-        "drop.png",
-        {
-          type: "image/png",
-        },
-      ),
-    );
     const form = (textbox as HTMLTextAreaElement).form!;
-    form.dispatchEvent(
-      new DragEvent("drop", {
-        dataTransfer: transfer,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    for (const name of ["first.png", "second.png"]) {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))], name, {
+          type: "image/png",
+        }),
+      );
+      form.dispatchEvent(
+        new DragEvent("drop", {
+          dataTransfer: transfer,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
     form.requestSubmit();
   }, PNG.toString("base64"));
   await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
   expect(
     (await captured(page)).sent[0].attachedContext?.map(({ label }) => label),
-  ).toEqual(["drop.png"]);
+  ).toEqual(["first.png", "second.png"]);
+});
+
+test("a handoff that fails after uploading takes its images back for the retry", async ({
+  page,
+}) => {
+  const opened = await openDraft(page);
+  await attach(page, opened, "shot.png");
+  await control(page, "holdUploads");
+  await opened.field.fill("Retry me");
+  await opened.field.press("Enter");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as never as { draftPlus: { started: number } }).draftPlus
+            .started,
+      ),
+    )
+    .toBe(1);
+  // Opening a file, diff or browser tab takes the active tab without
+  // cancelling the pending first send, so the handoff then fails.
+  const chatId = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    const created = (window as never as { draftPlus: { chatId: string } })
+      .draftPlus.chatId;
+    useWorkbenchStore.setState({
+      activeTabId: state.tabs.find(
+        (tab) => tab.kind === "chat" && tab.id !== created,
+      )!.id,
+    });
+    return created;
+  });
+  await control(page, "releaseUploads");
+  await expect(
+    opened.draft.getByText(
+      "Could not open the created chat. Retry to continue.",
+    ),
+  ).toBeVisible();
+  await expect(opened.chips.getByRole("listitem")).toHaveText([
+    "Image · shot.png",
+  ]);
+  expect(
+    await page.evaluate(async (id) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      return useWorkbenchStore.getState().chatUiById[id]?.attachedContext
+        .length;
+    }, chatId),
+  ).toBe(0);
+  await opened.field.press("Enter");
+  await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
+  const { sent, creates } = await captured(page);
+  expect(sent[0].attachedContext?.map(({ label }) => label)).toEqual([
+    "shot.png",
+  ]);
+  expect(creates).toBe(1);
 });
 
 test("moving the draft to another project keeps its images", async ({

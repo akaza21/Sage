@@ -39,15 +39,16 @@ export function addDraftImages(draftId: object, files: readonly File[]) {
 async function sizeDraftImages(draftId: object, added: readonly DraftImage[]) {
   for (const image of added) {
     const bitmap = await createImageBitmap(image.file).catch(() => null);
-    const { width = 0, height = 0 } = bitmap ?? {};
-    bitmap?.close();
     const current = draftOf();
-    if (width && current?.id === draftId && current.images?.includes(image))
+    if (bitmap && current?.id === draftId && current.images?.includes(image))
       useWorkbenchStore.getState().updateNewChatDraft({
         images: current.images.map((held) =>
-          held === image ? { ...image, width, height } : held,
+          held === image
+            ? { ...image, width: bitmap.width, height: bitmap.height }
+            : held,
         ),
       });
+    bitmap?.close();
   }
 }
 
@@ -59,28 +60,34 @@ async function sizeDraftImages(draftId: object, added: readonly DraftImage[]) {
  */
 export async function draftImageUpload() {
   const transfer = await import("./chatImageTransfer");
-  return async (chatId: string) => {
+  let undo = () => {};
+  // Called without a chat, it takes the images back out of the chat they went
+  // to: a handoff that fails after uploading leaves none there either.
+  return async (chatId?: string) => {
+    if (!chatId) return undo();
     const { newChatDraft: draft, captureChatOwnership } =
       useWorkbenchStore.getState();
     // Without ownership the handoff's own check refuses the chat.
     const intent = captureChatOwnership(chatId, draft?.id);
-    if (intent)
-      try {
-        await transfer.uploadChatImages(
-          intent,
-          (draft?.images ?? []).map((image) => image.file),
-        );
-      } catch (error) {
-        // Between attempts the created chat's composer holds no images.
-        const now = useWorkbenchStore.getState();
-        for (const context of now.chatUiById[chatId]?.attachedContext ?? [])
-          if (context.kind === "image") {
-            now.detachChatContext(intent, attachedContextKey(context));
-            void transfer
-              .removeChatImage(intent, context.artifactId)
-              .catch(() => undefined);
-          }
+    if (!intent) return;
+    undo = () => {
+      const now = useWorkbenchStore.getState();
+      for (const context of now.chatUiById[chatId]?.attachedContext ?? [])
+        if (context.kind === "image") {
+          now.detachChatContext(intent, attachedContextKey(context));
+          void transfer
+            .removeChatImage(intent, context.artifactId)
+            .catch(Boolean);
+        }
+    };
+    await transfer
+      .uploadChatImages(
+        intent,
+        (draft?.images ?? []).map((image) => image.file),
+      )
+      .catch((error: unknown) => {
+        undo();
         throw error;
-      }
+      });
   };
 }

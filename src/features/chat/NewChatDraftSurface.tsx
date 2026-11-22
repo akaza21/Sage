@@ -10,9 +10,9 @@ import { ChatComposerRegion } from "./ChatComposerRegion";
 import { preferredAvailableHarness } from "../../domain/harness";
 
 const unchangedSession = () => Promise.resolve();
-// Images taken just before Send join the draft before it is sent; with none
-// in flight, Send acts at once.
-let intake: Promise<void> | undefined;
+// Images taken just before Send join the draft before it is sent: Send waits
+// for every drop still in flight, and with none acts at once.
+let intake: Promise<unknown> | undefined;
 
 export function NewChatDraftSurface({
   navigationCollapsed = false,
@@ -90,9 +90,7 @@ export function NewChatDraftSurface({
       ? draft.projectId
       : draft.targetProjectId;
   // Only its name is shown.
-  const shownProject = targetId
-    ? projects.find((item) => item.id === targetId)
-    : null;
+  const shownProject = projects.find((item) => item.id === targetId);
   const available = harness?.installState === "available";
   const choice = effectiveDraftChoice(draft, {
     harnesses,
@@ -138,7 +136,7 @@ export function NewChatDraftSurface({
       >
         <div className="message-list message-list--home">
           <div className="message-list__content">
-            <ChatHome projectName={shownProject?.name ?? null} />
+            <ChatHome projectName={shownProject?.name} />
             {ownsChat && !submitting ? (
               <div>
                 <button
@@ -172,13 +170,20 @@ export function NewChatDraftSurface({
           imageInputAvailable={!!harness?.bindingId}
           onAddImages={
             harness?.bindingId
-              ? (files) =>
-                  void (intake = import("./draftImages")
-                    .then((images) => images.addDraftImages(draft.id, files))
-                    .finally(() => (intake = undefined)))
+              ? (files) => {
+                  const next: Promise<unknown> = Promise.all([
+                    intake,
+                    import("./draftImages").then((images) =>
+                      images.addDraftImages(draft.id, files),
+                    ),
+                  ]).finally(() => {
+                    if (intake === next) intake = undefined;
+                  });
+                  intake = next;
+                }
               : undefined
           }
-          enabled={!submitting && !!available}
+          enabled={!submitting && available}
           sendBlocked={!choice || unconfirmed || !draft.text.trim()}
           actionBusy={submitting}
           activeTurn={false}
@@ -186,17 +191,17 @@ export function NewChatDraftSurface({
           chatError={composerProblem("create-chat", "new-chat", errorNotice)}
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
-            access: choice ? choice.access : draft.access,
-            effort: choice ? choice.effort : draft.effort,
+            access: (choice ?? draft).access,
+            effort: (choice ?? draft).effort,
             onAccessChange: (access) => update({ access }),
             onEffortChange: (effort) =>
               update({ effort: effort === "default" ? null : effort }),
           }}
           availableBinding={!!harness?.bindingId}
-          canPrompt={!!available}
+          canPrompt={available}
           discoveryPhase={discoveryPhase}
           selectedHarnessId={draft.harnessId}
-          selectedModelId={choice ? choice.modelId : draft.modelId}
+          selectedModelId={(choice ?? draft).modelId}
           sessionConfig={null}
           modePending={false}
           focused
