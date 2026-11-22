@@ -10,7 +10,10 @@ import { acpDesktop } from "../../../src/services/acpDesktop";
 import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures";
 
 /** The native command boundary returns a rejection once, then commits the suffix. */
-export function installConversationRewindFixture(inPlace = true) {
+export function installConversationRewindFixture(
+  inPlace = true,
+  residency: "hot" | "cold" = "hot",
+) {
   installTranscriptSelectionFixture(false, true);
   const chat = useWorkbenchStore.getState().activeTabId!;
   const projection = acpProjectionStoreFor(chat);
@@ -47,7 +50,7 @@ export function installConversationRewindFixture(inPlace = true) {
     turns: [first, second],
     sessions: page.sessions.map((session) => ({
       ...session,
-      residency: "hot",
+      residency,
       capabilities: {
         ...session.capabilities,
         rewind: {

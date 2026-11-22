@@ -36,7 +36,11 @@ export function PromptActions({
   item: Extract<AcpItem, { kind: "text" }>;
   interactive: boolean;
 }) {
-  return currentSession(props.page)?.capabilities?.rewind &&
+  const session = currentSession(props.page);
+  // Only a live session can act on a prompt; a cold one would open an empty
+  // menu, so its finished turns carry no actions row.
+  return session?.capabilities?.rewind &&
+    session.residency === "hot" &&
     interactive &&
     props.turn?.terminalAt != null &&
     props.turn.conversationTarget ? (

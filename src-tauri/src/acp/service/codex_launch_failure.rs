@@ -8,6 +8,8 @@ pub(crate) enum CodexLaunchSetupError {
     Mailbox,
     PumpAssembly,
     RuntimeSlot,
+    RuntimeConstruction,
+    ProjectRoot,
     RunnerStartSpawn,
     RunnerStartStdoutReader,
     RunnerStartProcessExitWatcher,
@@ -59,6 +61,10 @@ impl CodexLaunchSetupError {
             Self::Mailbox => "opening the driver mailbox",
             Self::PumpAssembly => "assembling the adapter pump",
             Self::RuntimeSlot => "claiming a live runtime slot",
+            Self::ProjectRoot => "opening the project folder (it is missing, moved or changed)",
+            Self::RuntimeConstruction => {
+                "preparing the harness (its installed files or the project folder are missing or changed)"
+            }
             Self::RunnerStartSpawn => "starting the harness process",
             Self::RunnerStartStdoutReader => "reading the harness output",
             Self::RunnerStartProcessExitWatcher => "watching the harness process",
