@@ -10,7 +10,7 @@ import frame from "../../../src-tauri/testdata/pi/extension-commands.json";
 import { ComposerExtensions } from "./ComposerExtensions";
 import { decodeCommandList } from "../../services/acpCommandsDesktop";
 import { safeItem } from "../../services/acpDesktopResponseItems";
-import { ExtensionMessage } from "./acp/ExtensionMessage";
+import ExtensionMessage from "./acp/ExtensionMessage";
 
 afterEach(cleanup);
 
@@ -88,8 +88,8 @@ it("shows get_commands provenance without attributing unrelated resources and se
   ).toBeVisible();
 });
 
-it("renders a projected custom message as safe text with disposable details", () => {
-  const item = safeItem({
+const projected = (payload: Record<string, unknown>) =>
+  safeItem({
     id: "extension-message",
     projectId: "project-1",
     chatId: "chat-1",
@@ -106,20 +106,34 @@ it("renders a projected custom message as safe text with disposable details", ()
     terminalAt: 1,
     kind: "extensionMessage",
     toolState: null,
-    payload: {
-      label: "fixture-report",
-      text: "<script>plain text</script>",
-      details: "<img src=x onerror=alert(1)>",
-    },
+    payload,
+  });
+
+it("renders a projected custom message as safe text with disposable details", () => {
+  const details = "<img src=x onerror=alert(1)>";
+  const item = projected({
+    label: "fixture-report",
+    text: "<script>plain text</script>",
+    details,
   });
   if (item?.kind !== "extensionMessage") throw new Error("Invalid projection");
   const { container } = render(<ExtensionMessage item={item} />);
   expect(screen.getByText("<script>plain text</script>")).toBeVisible();
   expect(container.querySelector("script, img")).toBeNull();
-  expect(screen.queryByText(item.payload.details!)).not.toBeInTheDocument();
+  expect(screen.queryByText(details)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  expect(screen.getByText(item.payload.details!)).toBeVisible();
+  expect(screen.getByText(details)).toBeVisible();
   expect(container.querySelector("script, img")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
   expect(container.querySelector("pre")).toBeNull();
+});
+
+it("shows an over-cap custom message as a notice instead of its text", () => {
+  const item = projected({ label: "x".repeat(129), text: "body", details: null });
+  if (item?.kind !== "extensionMessage") throw new Error("Invalid projection");
+  render(<ExtensionMessage item={item} />);
+  expect(
+    screen.getByText("An extension message could not be shown."),
+  ).toBeVisible();
+  expect(screen.queryByText("body")).not.toBeInTheDocument();
 });

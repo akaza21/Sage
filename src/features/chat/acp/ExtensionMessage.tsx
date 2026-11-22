@@ -1,20 +1,39 @@
 import { useState } from "react";
 import type { AcpItem } from "../../../domain/acp";
+import {
+  safeNullableText,
+  safeText,
+} from "../../../services/acpDesktopGuards";
 
-export function ExtensionMessage({
+/**
+ * A displayed extension custom message: its label, safe text, and details
+ * behind a disclosure with no DOM while collapsed. The always-loaded
+ * projection keeps the raw payload, so it is decoded and bounded here.
+ */
+export default function ExtensionMessage({
   item,
 }: {
   item: Extract<AcpItem, { kind: "extensionMessage" }>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { payload } = item;
+  const label = safeText(payload.label, 128);
+  const text = safeText(payload.text, 16_384);
+  const details = safeNullableText(payload.details, 16_384);
+  if (label === null || text === null || details === undefined)
+    return (
+      <p className="acp-unknown" data-activity-kind="unknown">
+        An extension message could not be shown.
+      </p>
+    );
   return (
     <article
       className="acp-activity acp-activity-card"
       data-activity-kind="extensionMessage"
     >
-      <strong>{item.payload.label}</strong>
-      <p className="acp-activity__output">{item.payload.text}</p>
-      {item.payload.details !== null ? (
+      <strong>{label}</strong>
+      <p className="acp-activity__output">{text}</p>
+      {details !== null ? (
         <>
           <button
             type="button"
@@ -23,7 +42,7 @@ export function ExtensionMessage({
           >
             Details
           </button>
-          {expanded ? <pre>{item.payload.details}</pre> : null}
+          {expanded ? <pre>{details}</pre> : null}
         </>
       ) : null}
     </article>

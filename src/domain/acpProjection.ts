@@ -159,10 +159,8 @@ export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
   /** A message the user steered into the running Turn, at its place. */
   | PlainItem<"userPrompt", { text: string }>
-  | PlainItem<
-      "extensionMessage",
-      { label: string; text: string; details: string | null }
-    >
+  /** Decoded where it renders, in the extension message chunk. */
+  | PlainItem<"extensionMessage", Record<string, unknown>>
   | PlainItem<"thoughtSummary", { summary: string }>
   | PlainItem<"compactionNotice", Record<string, never>>
   | PlainItem<

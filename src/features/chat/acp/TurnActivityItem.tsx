@@ -22,10 +22,7 @@ import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
 import { isWorkingTool, workingToolStatus } from "./workingTool";
 
-const loadExtensionMessage = () =>
-  import("./ExtensionMessage").then(({ ExtensionMessage }) => ({
-    default: ExtensionMessage,
-  }));
+const loadExtensionMessage = () => import("./ExtensionMessage");
 
 const loadMarkdown = () =>
   import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
