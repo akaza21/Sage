@@ -3,7 +3,6 @@ import { useWorkbenchStore } from "../../app/store";
 import { GitBranch } from "../../ui/leanIcons";
 import type * as BranchChunk from "../../workbench/StatusBarDetails";
 import { lazyParts } from "./lazyParts";
-import { selectComposerBranchTurnBusy } from "./composerBranchLock";
 
 const BranchPart = lazyParts<typeof BranchChunk>(
   () => import("../../workbench/StatusBarDetails"),
@@ -11,10 +10,11 @@ const BranchPart = lazyParts<typeof BranchChunk>(
 
 export function ComposerBranchChip({
   disabled: submissionBusy,
+  activeTurn = false,
 }: {
   disabled: boolean;
+  activeTurn?: boolean;
 }) {
-  const turnBusy = useWorkbenchStore(selectComposerBranchTurnBusy);
   const project = useWorkbenchStore((state) => state.project);
   const repositories = useWorkbenchStore((state) => state.repositories);
   const targetId = useWorkbenchStore((state) => {
@@ -47,8 +47,8 @@ export function ComposerBranchChip({
   );
   const [open, setOpen] = useState(false);
   if (repository?.state !== "repository" || !root) return null;
-  const disabled = submissionBusy || turnBusy || busy;
-  const title = turnBusy
+  const disabled = submissionBusy || activeTurn || busy;
+  const title = activeTurn
     ? "Can't switch branches while the agent is working"
     : loadState === "failed"
       ? "Couldn't load branches. Click to retry."
