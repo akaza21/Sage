@@ -1,77 +1,78 @@
+import type { ButtonHTMLAttributes } from "react";
 import type { useComposerDictation } from "./composerChrome";
 import { ArrowUp, Square, Mic } from "../../ui/leanIcons";
 
 export function ComposerTurnControl({
   dictation,
-  disabled,
+  activeTurn,
+  hasContent,
   onCancelTurn,
   cancelDisabled,
   sendDisabled,
-  queueing,
   disabledReason,
   disabledReasonId,
 }: {
   dictation: ReturnType<typeof useComposerDictation>;
-  disabled: boolean;
+  activeTurn: boolean;
+  hasContent: boolean;
   onCancelTurn: (() => void) | null;
   cancelDisabled: boolean;
   sendDisabled: boolean;
-  queueing: boolean;
   disabledReason?: string | null;
   disabledReasonId?: string;
 }) {
-  const reason = sendDisabled ? (disabledReason ?? undefined) : undefined;
+  const reason = (sendDisabled && disabledReason) || undefined;
+  const microphone = dictation.listening || !hasContent;
+  const Icon = activeTurn ? Square : microphone ? Mic : ArrowUp;
+  const action: ButtonHTMLAttributes<HTMLButtonElement> = activeTurn
+    ? {
+        className: "send-button send-button--cancel",
+        "aria-label": "Cancel turn",
+        title: "Voice input unavailable during a turn",
+        disabled: cancelDisabled || !onCancelTurn,
+        onClick: onCancelTurn ?? undefined,
+      }
+    : microphone
+      ? {
+          className: "composer__mic",
+          "aria-label": dictation.listening
+            ? "Stop dictation"
+            : dictation.supported
+              ? "Start dictation"
+              : "Voice input unavailable",
+          title: dictation.supported
+            ? "May use an online service"
+            : "Voice input is unavailable in this WebView",
+          disabled: dictation.disabled,
+          "aria-pressed": dictation.listening,
+          onMouseDown: (event) => event.preventDefault(),
+          onClick: (event) => {
+            // Stop must never activate a submit, whatever renders next.
+            event.preventDefault();
+            if (dictation.listening) dictation.stop();
+            else void dictation.start();
+          },
+        }
+      : {
+          className: "send-button",
+          type: "submit",
+          "aria-label": "Send message",
+          title: reason,
+          "aria-describedby": reason && disabledReasonId,
+          disabled: sendDisabled,
+        };
   return (
     <>
-      <button
-        className="composer__mic"
-        type="button"
-        aria-label={
-          !dictation.supported
-            ? "Voice input unavailable"
-            : dictation.listening
-              ? "Stop dictation"
-              : "Start dictation"
-        }
-        title={
-          dictation.supported
-            ? "Speech may be processed by an online service"
-            : "Voice input is unavailable in this WebView"
-        }
-        disabled={!dictation.supported || (disabled && !dictation.listening)}
-        aria-pressed={dictation.listening}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={dictation.listening ? dictation.stop : dictation.start}
-      >
-        <Mic size={16} aria-hidden="true" />
+      {/* Each control remounts under its own key (its class): a click needs
+          press and release on one element, so a press on Stop cannot send. */}
+      <button key={action.className} type="button" {...action}>
+        <Icon aria-hidden="true" />
       </button>
       {dictation.error ? (
         <span className="composer__dictation-error" role="alert">
           {dictation.error}
         </span>
       ) : null}
-      {onCancelTurn ? (
-        <button
-          className="send-button send-button--cancel"
-          type="button"
-          aria-label="Cancel turn"
-          disabled={cancelDisabled}
-          onClick={onCancelTurn}
-        >
-          <Square size={14} fill="currentColor" aria-hidden="true" />
-        </button>
-      ) : (
-        <button
-          className="send-button"
-          type="submit"
-          aria-label={queueing ? "Queue message" : "Send message"}
-          title={reason}
-          aria-describedby={reason ? disabledReasonId : undefined}
-          disabled={sendDisabled}
-        >
-          <ArrowUp size={20} aria-hidden="true" />
-        </button>
-      )}
     </>
   );
 }

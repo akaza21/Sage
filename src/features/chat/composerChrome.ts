@@ -67,8 +67,9 @@ export function useComposerDictation(
   }, [cancel, suspended]);
   const nativeSupported = isTauriRuntime() && /win/i.test(navigator.platform);
   const supported = nativeSupported || Boolean(browserRecognition());
+  const disabled = !supported || suspended;
   const start = async () => {
-    if (!supported || suspended) return;
+    if (disabled) return;
     cancel();
     const request = generation.current;
     setError(null);
@@ -117,6 +118,7 @@ export function useComposerDictation(
   };
   return {
     supported,
+    disabled,
     listening: listeningState && !suspended,
     error,
     start,
