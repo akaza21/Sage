@@ -43,6 +43,7 @@ export function markDeleted(bridge: EditorStateBridge): void {
         ...active,
         document: { ...active.document, conflict: DELETION_CONFLICT },
         message: DELETION_CONFLICT.message,
+        messageKind: undefined,
       },
       { tabStatus: "failed" },
     );
@@ -98,6 +99,7 @@ export function setExternalChangeConflict(
     {
       ...active,
       message: active.unstored ?? null,
+      messageKind: active.unstored ? "recovery" : undefined,
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -162,7 +164,7 @@ export function actionFailed(
       ...active,
       saving: false,
       message,
-      ...(action === "save" ? { unstored: message } : {}),
+      messageKind: active.messageKind === "recovery" ? "recovery" : "operation",
     });
   }
   return message;

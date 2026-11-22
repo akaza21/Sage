@@ -254,7 +254,9 @@ export function FileSurface({
     !sameResource(editor.resource, resource) ||
     editor.phase === "loading"
   ) {
-    return <FileSurfaceResourceState path={path} />;
+    return (
+      <FileSurfaceResourceState path={path} identity={activeResourceKey} />
+    );
   }
   if (editor.phase === "error") {
     if (editor.kind === "mixedLineEndings")
@@ -263,7 +265,13 @@ export function FileSurface({
           <MixedEolFileView key={activeResourceKey} resource={resource} />
         </Suspense>
       );
-    return <FileSurfaceResourceState path={path} error={editor.message} />;
+    return (
+      <FileSurfaceResourceState
+        path={path}
+        identity={activeResourceKey}
+        error={editor.message}
+      />
+    );
   }
 
   return (

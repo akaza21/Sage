@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
@@ -24,6 +30,7 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 }));
 
 import { Workbench } from "./Workbench";
+import { SourceControlView } from "./SourceControlView";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 const initialState = useWorkbenchStore.getState();
@@ -50,8 +57,42 @@ afterEach(() => {
 });
 
 describe("Workbench repository mutation errors", () => {
+  it("owns the mutation explanation once in Source Control with no editor overlay", async () => {
+    const activeTab = tab("file");
+    useWorkbenchStore.setState({
+      tabs: [activeTab],
+      activeTabId: activeTab.id,
+      repositoryMutationError: {
+        resource,
+        action: "stage",
+        kind: "failed",
+        message: "Git index is locked",
+      },
+      loadRepositoryInventory: async () => undefined,
+    });
+    const { container } = render(
+      <>
+        <Workbench />
+        <aside aria-label="Source Control test scope">
+          <SourceControlView />
+        </aside>
+      </>,
+    );
+    await settleLazyModules();
+    const sidebar = within(
+      screen.getByRole("complementary", { name: "Source Control test scope" }),
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(sidebar.getByRole("alert")).toHaveTextContent(
+      "Source Control could not stage src/file.txt.",
+    );
+    fireEvent.click(sidebar.getByRole("button", { name: "Details" }));
+    expect(screen.getAllByText("Git index is locked")).toHaveLength(1);
+    expect(container.querySelector(".repository-mutation-alert")).toBeNull();
+    expect(container.querySelector(".active-canvas [role=alert]")).toBeNull();
+  });
   it.each(["file", "diff"] as const)(
-    "renders the exact Source Control error on the active %s surface",
+    "links the active %s to the Source Control issue without an editor alert",
     async (kind) => {
       const activeTab = tab(kind);
       useWorkbenchStore.setState({
@@ -69,12 +110,15 @@ describe("Workbench repository mutation errors", () => {
       render(<Workbench />);
       await settleLazyModules();
 
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Source Control could not stage src/file.txt",
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText("Git index is locked")).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Source Control issue" }),
       );
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Git index is locked",
-      );
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        sidebarView: "sourceControl",
+        sidebarOpen: true,
+      });
     },
   );
 
@@ -98,7 +142,7 @@ describe("Workbench repository mutation errors", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows containment context on the active File without claiming final Git state", async () => {
+  it("links containment failures without repeating their explanation in the editor", async () => {
     const activeTab = tab("file");
     useWorkbenchStore.setState({
       tabs: [activeTab],
@@ -115,11 +159,14 @@ describe("Workbench repository mutation errors", () => {
     render(<Workbench />);
     await settleLazyModules();
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Source Control containment blocked stage for src/file.txt",
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Git termination is proven, but reap did not converge",
-    );
+    expect(
+      screen.getByRole("button", { name: "Source Control issue" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.queryByText(
+        "Git termination is proven, but reap did not converge",
+      ),
+    ).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -50,9 +50,13 @@ describe("ResourceStateNotice", () => {
     );
 
     const notice = screen.getByRole("alert");
-    expect(notice).toHaveClass("resource-state--error");
+    expect(notice).toHaveClass("notice--blocking");
     expect(notice.querySelector("svg")).not.toBeNull();
     expect(screen.getByText("Could not load this diff")).toBeInTheDocument();
+    expect(
+      screen.queryByText("The comparison is temporarily unavailable."),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(
       screen.getByText("The comparison is temporarily unavailable."),
     ).toBeInTheDocument();

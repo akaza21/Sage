@@ -825,9 +825,14 @@ it("distinguishes repository errors from loading and informational states", () =
   render(<SourceControlView />);
 
   expect(screen.getAllByRole("alert")).toHaveLength(2);
-  expect(
-    screen.getByText("Repository inventory failed.").closest('[role="alert"]'),
-  ).toHaveClass("resource-state--error");
+  const inventory = screen
+    .getAllByRole("alert")
+    .find((notice) =>
+      notice.textContent?.includes("Repository status is unavailable"),
+    )!;
+  expect(inventory).toHaveClass("notice--blocking");
+  fireEvent.click(within(inventory).getByRole("button", { name: "Details" }));
+  expect(inventory).toHaveTextContent("Repository inventory failed.");
   expect(screen.getByText("Checkout failed.")).toHaveClass("sidebar__error");
 });
 

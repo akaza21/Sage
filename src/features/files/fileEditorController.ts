@@ -35,6 +35,8 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
+      messageKind?: "operation" | "recovery";
+      keptLocal?: boolean;
       /** Persistence failure retained through edits until save, reload, or Keep mine. */
       unstored?: string;
       unwatched?: string;
@@ -76,7 +78,7 @@ export interface FileEditorController {
     bridge?: EditorStateBridge,
     canCommit?: (resource: ResourceRef) => boolean,
   ): Promise<EditorDocument>;
-  ready(document: EditorDocument): ActiveEditorState;
+  ready(document: EditorDocument): ReadyEditorState;
   updateContent(
     bridge: EditorStateBridge,
     content: EditorContent,
@@ -141,7 +143,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         content: String(active.content),
         revision: active.revision,
       };
-      bridge.setActiveEditor({ ...active, persisting: true, message: null });
+      bridge.setActiveEditor({
+        ...active,
+        persisting: true,
+        message: null,
+        messageKind: undefined,
+      });
       try {
         const ack = await editor.snapshotEditorBuffer(request);
         const current = currentReady(bridge);
@@ -157,6 +164,9 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
               ack.revision,
             ),
             persisting: false,
+            ...(current.revision <= ack.revision
+              ? { unstored: undefined, messageKind: undefined }
+              : {}),
           },
           { dirty },
         );
@@ -168,6 +178,8 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         bridge.setActiveEditor({
           ...current,
           persisting: false,
+          unstored: errorMessage(error),
+          messageKind: "recovery",
           message:
             current.revision === request.revision
               ? errorMessage(error)
@@ -228,6 +240,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           content,
           revision: active.revision + 1,
           message: null,
+          messageKind: undefined,
         },
         { dirty },
       );
@@ -248,7 +261,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       if (!active || !canCommit(active.resource)) {
         return null;
       }
-      bridge.setActiveEditor({ ...active, saving: true, message: null });
+      bridge.setActiveEditor({
+        ...active,
+        saving: true,
+        message: null,
+        messageKind: undefined,
+      });
       await persistLatestEditor(bridge);
       const current = currentReady(bridge);
       if (!current || !canCommit(current.resource)) {
@@ -292,6 +310,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           ...active,
           saving: false,
           message: errorMessage(error),
+          messageKind: "operation",
         });
       }
     },

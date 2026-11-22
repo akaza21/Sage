@@ -1,5 +1,6 @@
 import type { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { Notice } from "../../ui/Notice";
 import {
   forwardRef,
   useImperativeHandle,
@@ -185,9 +186,11 @@ export const EditorAdapter = forwardRef<
         </div>
       ) : null}
       {loadState === "error" ? (
-        <div className="editor-loading editor-loading--error" role="alert">
-          Could not load the editor.
-        </div>
+        <Notice
+          identity={`editor-load:${props.documentIdentity}`}
+          severity="blocking"
+          message="Could not load the editor."
+        />
       ) : null}
     </div>
   );

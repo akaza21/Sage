@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
-import FileConflictNotice from "../features/files/FileConflictNotice";
+import type { EditorDocument } from "../domain/workbench";
+import { FileEditorNotices } from "../features/files/FileEditorNotices";
 import { SaveAllNotice } from "../features/files/SaveAllNotice";
 import { applyEditorExternalWatchNotice } from "../features/files/editorExternalWatch";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -38,6 +39,24 @@ import { useWorkbenchStore } from "./store";
 // disk has moved on.
 const editor = getWorkbenchPorts().editor;
 const store = () => useWorkbenchStore.getState();
+
+function FileConflictNotice({
+  document,
+  editable,
+}: {
+  document: EditorDocument;
+  editable: boolean;
+}) {
+  const active = useWorkbenchStore((state) => state.activeEditor);
+  const ready = active?.phase === "ready" ? active : null;
+  return createElement(FileEditorNotices, {
+    document,
+    editable,
+    message: ready?.message ?? null,
+    messageKind: ready?.messageKind,
+    unstored: ready?.unstored,
+  });
+}
 const bridge = storeEditorBridge(
   useWorkbenchStore.setState,
   useWorkbenchStore.getState,
@@ -321,7 +340,10 @@ describe("a File that changed on disk under unsaved edits", () => {
           editable: true,
         }),
       );
-      expect(screen.getByRole("alert").textContent).toContain("File deleted.");
+      expect(
+        await screen.findByText("This file was deleted outside Sage."),
+      ).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Details" }));
       expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
       cleanup();
@@ -374,8 +396,10 @@ describe("a File that changed on disk under unsaved edits", () => {
     const alerts = screen
       .getAllByRole("alert")
       .map((alert) => alert.textContent);
-    expect(alerts).toContain(failed);
-    expect(alerts.some((text) => text?.includes("External change"))).toBe(true);
+    expect(alerts.some((text) => text?.includes(failed))).toBe(true);
+    expect(
+      await screen.findByText("This file changed outside Sage."),
+    ).toBeVisible();
     cleanup();
   });
 
@@ -467,6 +491,7 @@ describe("a File that changed on disk under unsaved edits", () => {
       }),
     );
 
+    fireEvent.click(await screen.findByRole("button", { name: "Details" }));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
@@ -489,7 +514,7 @@ describe("a File that changed on disk under unsaved edits", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep mine" }));
 
     expect(
       (
@@ -518,6 +543,9 @@ describe("a File that changed on disk under unsaved edits", () => {
           editable: true,
         }),
       );
+      await screen.findByRole("button", { name: "Keep mine" });
+      if (name === "Reload")
+        fireEvent.click(screen.getByRole("button", { name: "Details" }));
       const button = screen.getByRole("button", { name });
 
       fireEvent.click(button);
@@ -528,7 +556,7 @@ describe("a File that changed on disk under unsaved edits", () => {
       });
       await store().loadEditor(b);
       await waitFor(() =>
-        expect(screen.getByRole("button", { name })).toBeEnabled(),
+        expect(screen.queryByRole("button", { name })).toBeNull(),
       );
 
       expect(readyEditor()).toMatchObject({ resource: b, content: "b mine\n" });
@@ -665,7 +693,10 @@ describe("Save All", () => {
     expect(await store().saveActiveEditor()).toBe(true);
     render(createElement(SaveAllNotice));
     const notice = screen.getByRole("alert");
-    expect(notice.textContent).toContain("could not save 1 file.");
+    expect(notice.textContent).toContain(
+      `could not save 1 file: ${broken.relativePath}.`,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(notice.textContent).toContain(
       `${broken.relativePath}: The disk is full.`,
     );

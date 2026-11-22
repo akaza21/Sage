@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
-import { parentResource, resourceKey } from "../../domain/resourceIdentity";
+import {
+  parentResource,
+  resourceKey,
+  sameResource,
+} from "../../domain/resourceIdentity";
 import {
   ABSENT_FINGERPRINT,
   type EditorDocument,
   type ResourceRef,
 } from "../../domain/workbench";
-import { AlertTriangle } from "../../ui/leanIcons";
+import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
@@ -42,10 +46,8 @@ function useConflictAction() {
   return { pending, run };
 }
 
-const UNSTORED_EDITS = "Your unsaved changes are not yet stored.";
-
 const KEPT_DELETED_FILE =
-  "This file was deleted outside Sage. Save to create it again, or close it.";
+  "Your local version is kept; saving will create the deleted file again.";
 
 /**
  * Keyed by the File as it is on disk, so Compare ends by itself once disk
@@ -94,21 +96,19 @@ export default function FileConflictNotice({
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     return (
-      <div
-        className="editor-notice editor-notice--conflict editor-notice--deleted"
-        role="status"
-      >
-        <AlertTriangle size={16} aria-hidden="true" />
-        <span className="editor-notice__text">{KEPT_DELETED_FILE}</span>
-        {editable ? (
-          <div className="editor-notice__actions">
-            <CloseButton busy={off} run={run} />
-          </div>
-        ) : null}
-      </div>
+      <Notice
+        identity={`file-kept:${resourceKey(document.resource)}`}
+        severity="info"
+        message={KEPT_DELETED_FILE}
+        details={editable ? <CloseButton busy={off} run={run} /> : undefined}
+      />
     );
   }
-  const ready = editor?.phase === "ready" ? editor : null;
+  const ready =
+    editor?.phase === "ready" &&
+    sameResource(editor.resource, document.resource)
+      ? editor
+      : null;
   const key = ready && conflictCompareKey(ready);
   const comparing =
     editable && conflict.kind === "external-change" && compareKey === key;
@@ -116,93 +116,74 @@ export default function FileConflictNotice({
   const button = "button button--compact";
   return (
     <>
-      <div
-        className={`editor-notice editor-notice--conflict${deleted ? " editor-notice--deleted" : ""}`}
-        role="alert"
-      >
-        <AlertTriangle size={16} aria-hidden="true" />
-        <span className="editor-notice__text">
-          <strong>
-            {deleted ? "File deleted." : "External change detected."}
-          </strong>{" "}
-          {conflict.message}
-          {ready?.unstored ? (
-            <>
-              {" "}
-              {UNSTORED_EDITS} {ready.unstored}
-            </>
-          ) : null}
-        </span>
-        {editable && ready ? (
-          <div
-            className="editor-notice__actions"
-            role="group"
-            aria-label={deleted ? "Deleted file" : "External change"}
-          >
-            {deleted ? null : (
-              <button
-                className={button}
-                type="button"
-                disabled={off}
-                title="Revert file: drop your changes and load the file from disk"
-                onClick={() => {
+      <Notice
+        identity={`file-conflict:${resourceKey(document.resource)}:${conflict.kind}`}
+        severity={ready?.unstored ? "blocking" : "warning"}
+        message={
+          deleted
+            ? "This file was deleted outside Sage."
+            : "This file changed outside Sage."
+        }
+        action={
+          editable && ready
+            ? {
+                label: "Keep mine",
+                disabled: off,
+                onClick: () => {
                   useWorkbenchStore.setState({ editorCompareKey: null });
                   run(
-                    (a) => a.reloadActiveEditor(ready.resource),
+                    (a) => a.keepActiveEditorBuffer(ready.resource),
                     ready.resource,
                   );
-                }}
-              >
-                Reload
-              </button>
-            )}
-            <button
-              className={`${button} button--primary`}
-              type="button"
-              disabled={off}
-              title={
-                deleted
-                  ? "Keep your version; saving creates the file again"
-                  : "Keep your version; saving writes it over the file on disk"
+                },
               }
-              onClick={() => {
-                useWorkbenchStore.setState({ editorCompareKey: null });
-                run(
-                  (a) => a.keepActiveEditorBuffer(ready.resource),
-                  ready.resource,
-                );
-              }}
+            : undefined
+        }
+        details={
+          editable && ready ? (
+            <div
+              className="file-conflict-actions"
+              role="group"
+              aria-label={deleted ? "Deleted file" : "External change"}
             >
-              Keep mine
-            </button>
-            {deleted ? (
-              <CloseButton busy={off} run={run} />
-            ) : (
-              <button
-                className={`${button} editor-notice__toggle`}
-                type="button"
-                aria-pressed={comparing}
-                title="Compare the file on disk with your version"
-                onClick={() =>
-                  useWorkbenchStore.setState({
-                    editorCompareKey: comparing ? null : key,
-                  })
-                }
-              >
-                Compare
-              </button>
-            )}
-          </div>
-        ) : null}
-      </div>
-      {ready?.message &&
-      ready.message !== conflict.message &&
-      ready.message !== ready.unstored ? (
-        <div className="editor-notice editor-notice--error" role="alert">
-          <AlertTriangle size={16} aria-hidden="true" />
-          <span>{ready.message}</span>
-        </div>
-      ) : null}
+              {deleted ? null : (
+                <button
+                  className={button}
+                  type="button"
+                  disabled={off}
+                  title="Revert file: drop your changes and load the file from disk"
+                  onClick={() => {
+                    useWorkbenchStore.setState({ editorCompareKey: null });
+                    run(
+                      (a) => a.reloadActiveEditor(ready.resource),
+                      ready.resource,
+                    );
+                  }}
+                >
+                  Reload
+                </button>
+              )}
+              {deleted ? (
+                <CloseButton busy={off} run={run} />
+              ) : (
+                <button
+                  className={button}
+                  type="button"
+                  aria-pressed={comparing}
+                  title="Compare the file on disk with your version"
+                  onClick={() =>
+                    useWorkbenchStore.setState({
+                      editorCompareKey: comparing ? null : key,
+                    })
+                  }
+                >
+                  Compare
+                </button>
+              )}
+            </div>
+          ) : undefined
+        }
+      />
       {comparing && ready ? (
         <LazyModuleBoundary
           load={loadConflictCompare}

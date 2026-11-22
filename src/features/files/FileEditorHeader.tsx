@@ -9,6 +9,7 @@ interface FileEditorHeaderProps {
   projectName?: string;
   lineEnding: string;
   diskByteLen: number;
+  deleted?: boolean;
   unwatched?: string;
   persisting: boolean;
   dirty: boolean;
@@ -25,6 +26,7 @@ export function FileEditorHeader({
   projectName,
   lineEnding,
   diskByteLen,
+  deleted = false,
   unwatched,
   persisting,
   dirty,
@@ -53,9 +55,11 @@ export function FileEditorHeader({
       </span>
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()}
-        <span className="file-header__disk">
-          {` · ${diskByteLen.toLocaleString()} disk bytes`}
-        </span>
+        {deleted ? null : (
+          <span className="file-header__disk">
+            {` · ${diskByteLen.toLocaleString()} disk bytes`}
+          </span>
+        )}
         {unwatched ? (
           // Beside the size, which a deleted File hides, not inside it.
           <span className="file-header__unwatched" title={unwatched}>

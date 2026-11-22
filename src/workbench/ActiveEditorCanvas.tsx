@@ -1,7 +1,8 @@
 import { FileCode2 } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
-import { sameResource } from "../domain/resourceIdentity";
+import { resourceKey, sameResource } from "../domain/resourceIdentity";
+import { Notice } from "../ui/Notice";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
@@ -18,21 +19,6 @@ const loadSaveAllNotice = () =>
   }));
 
 export default ActiveEditorCanvas;
-
-function repositoryMutationTitle(
-  error: NonNullable<
-    ReturnType<typeof useWorkbenchStore.getState>["repositoryMutationError"]
-  >,
-) {
-  const path = error.resource.relativePath;
-  if (error.kind === "containment") {
-    return `Source Control containment blocked ${error.action} for ${path}`;
-  }
-  if (error.kind === "effectUnknown") {
-    return `Source Control could not confirm ${error.action} for ${path}`;
-  }
-  return `Source Control could not ${error.action} ${path}`;
-}
 
 function PlaceholderSurface({ tab }: { tab: WorkbenchTab }) {
   return (
@@ -79,10 +65,26 @@ export function ActiveEditorCanvas({
   return (
     <div className="active-canvas" role="tabpanel">
       {contextualMutationError ? (
-        <div className="repository-mutation-alert" role="alert">
-          <strong>{repositoryMutationTitle(contextualMutationError)}</strong>
-          <span>{contextualMutationError.message}</span>
-        </div>
+        <Notice
+          identity={`repository-mutation-link:${resourceKey(contextualMutationError.resource)}:${contextualMutationError.action}`}
+          severity="info"
+          message={
+            <button
+              type="button"
+              className="notice__text-link"
+              onClick={() => {
+                const state = useWorkbenchStore.getState();
+                state.setSidebarView("sourceControl");
+                void state.selectRepository({
+                  rootId: contextualMutationError.resource.rootId,
+                  relativePath: "",
+                });
+              }}
+            >
+              Source Control issue
+            </button>
+          }
+        />
       ) : null}
       {saveAllFailed ? (
         <LazyModuleBoundary

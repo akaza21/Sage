@@ -11,6 +11,8 @@ import {
   type SourceGroupAction,
 } from "../features/git/sourceControlActions";
 import { ResourceStateNotice } from "../ui/ResourceStateNotice";
+import { Notice } from "../ui/Notice";
+import { resourceKey } from "../domain/resourceIdentity";
 
 function disambiguatedRootLabel(
   rootName: string,
@@ -177,6 +179,7 @@ export function SourceControlView() {
         ) : null}
         {inventoryError || statusError ? (
           <ResourceStateNotice
+            identity={`repository-status:${project?.id}:${selectedRepository ? repositoryKey(selectedRepository) : "all"}`}
             detail={inventoryError ?? statusError ?? undefined}
             state="error"
             title="Repository status is unavailable"
@@ -196,6 +199,20 @@ export function SourceControlView() {
           <p className="sidebar__notice">
             Nested repository status is read-only in this beta.
           </p>
+        ) : null}
+        {mutationError ? (
+          <Notice
+            identity={`repository-mutation:${resourceKey(mutationError.resource)}:${mutationError.action}:${mutationError.kind}`}
+            severity="blocking"
+            message={
+              mutationError.kind === "containment"
+                ? `Source Control containment blocked ${mutationError.action} for ${mutationError.resource.relativePath}.`
+                : mutationError.kind === "effectUnknown"
+                  ? `Source Control could not confirm ${mutationError.action} for ${mutationError.resource.relativePath}.`
+                  : `Source Control could not ${mutationError.action} ${mutationError.resource.relativePath}.`
+            }
+            details={mutationError.message}
+          />
         ) : null}
         {selectedRepositories.map((repository) => {
           const projectRoot = projectRoots.get(repository.rootId);
@@ -237,11 +254,6 @@ export function SourceControlView() {
               {remoteError?.rootId === repository.rootId ? (
                 <p className="sidebar__error" role="alert">
                   {remoteError.message}
-                </p>
-              ) : null}
-              {mutationError?.resource.rootId === repository.rootId ? (
-                <p className="sidebar__error" role="alert">
-                  {mutationError.message}
                 </p>
               ) : null}
               {repository.message ? (

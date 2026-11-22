@@ -1,27 +1,41 @@
-import { CircleAlert, LoaderCircle } from "./leanIcons";
+import { useId } from "react";
+import { LoaderCircle } from "./leanIcons";
+import { Notice } from "./Notice";
 
 export function ResourceStateNotice({
   detail,
   state,
   title,
+  identity,
 }: {
   detail?: string;
   state: "error" | "idle" | "loading";
   title: string;
+  /** Resource/problem identity; legacy callers are scoped to this mounted view. */
+  identity?: string;
 }) {
-  const error = state === "error";
+  const scope = useId();
+  if (state === "error") {
+    return (
+      <Notice
+        identity={identity ?? `resource-load:${scope}`}
+        severity="blocking"
+        message={title}
+        details={detail}
+      />
+    );
+  }
   const idle = state === "idle";
-  const Icon = error ? CircleAlert : LoaderCircle;
 
   return (
     <div
       className={`resource-state resource-state--${state}`}
-      role={error ? "alert" : "status"}
+      role="status"
       aria-atomic="true"
     >
       {idle ? null : (
         <span className="resource-state__icon" aria-hidden="true">
-          <Icon size={18} strokeWidth={1.8} />
+          <LoaderCircle size={18} strokeWidth={1.8} />
         </span>
       )}
       <strong className="resource-state__title">{title}</strong>

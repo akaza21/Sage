@@ -2,14 +2,15 @@ import { useEffect } from "react";
 
 import type { SaveAllFailure } from "../../app/editorConflictSlice";
 import { useWorkbenchStore } from "../../app/store";
-import { sameResource } from "../../domain/resourceIdentity";
+import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type {
   ProjectRootSummary,
   ResourceRef,
   WorkbenchTab,
 } from "../../domain/workbench";
-import { AlertTriangle } from "../../ui/leanIcons";
-import "./editor-conflict-notice.css";
+import { Notice } from "../../ui/Notice";
+
+const VISIBLE_FAILURES = 5;
 
 function saveAllPath(
   resource: ResourceRef,
@@ -27,7 +28,12 @@ function unsaved(
   failures: readonly SaveAllFailure[],
   tabs: readonly WorkbenchTab[],
 ): SaveAllFailure[] {
-  return failures.filter(({ resource }) =>
+  const seen = new Set<string>();
+  return failures.filter(({ resource }) => {
+    const key = resourceKey(resource);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return (
     tabs.some(
       (tab) =>
         tab.kind === "file" &&
@@ -35,7 +41,8 @@ function unsaved(
         !!tab.resource &&
         sameResource(tab.resource, resource),
     ),
-  );
+    );
+  });
 }
 
 export function SaveAllNotice() {
@@ -65,29 +72,20 @@ export function SaveAllNotice() {
   const count = failures.length;
   if (!count) return null;
   return (
-    <div className="editor-notice editor-notice--error" role="alert">
-      <AlertTriangle size={16} aria-hidden="true" />
-      <div className="editor-notice__text">
-        <strong>
-          Save All could not save {count} {count === 1 ? "file" : "files"}.
-        </strong>
-        <ul className="editor-notice__list">
-          {failures.map(({ resource, message }) => (
-            <li key={`${resource.rootId}:${resource.relativePath}`}>
-              {saveAllPath(resource, roots ?? [])}: {message}
+    <Notice
+      identity={`save-all:${report!.projectId}`}
+      severity="blocking"
+      message={<>Save All could not save {count} {count === 1 ? "file" : "files"}: {failures.slice(0, VISIBLE_FAILURES).map(({resource}) => saveAllPath(resource, roots ?? [])).join(", ")}{count > VISIBLE_FAILURES ? `, and ${count - VISIBLE_FAILURES} more` : ""}.</>}
+      details={
+        <ul>
+          {failures.slice(0, 300).map(({ resource, message }) => (
+            <li key={resourceKey(resource)}>
+              <button type="button" className="notice__text-link" onClick={() => void useWorkbenchStore.getState().openFile(resource)}>{saveAllPath(resource, roots ?? [])}</button>: {message}
             </li>
           ))}
         </ul>
-      </div>
-      <div className="editor-notice__actions">
-        <button
-          className="button button--compact"
-          type="button"
-          onClick={() => useWorkbenchStore.setState({ saveAllReport: null })}
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
+      }
+      action={{label: "Dismiss", onClick: () => useWorkbenchStore.setState({ saveAllReport: null })}}
+    />
   );
 }

@@ -50,6 +50,11 @@
   margin-top: var(--space-1);
 }
 
+.notice__action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .notice__details pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
