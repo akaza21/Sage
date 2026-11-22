@@ -8,7 +8,7 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
-import { WorkspaceTrackingNotice } from "../AcpHistoryNotices";
+import { NavigationPart } from "../lazyParts";
 
 export function TurnFileActivity({
   page,
@@ -37,8 +37,12 @@ export function TurnFileActivity({
       projectTurnEditSummary(page, turn, workspaceChanges, workspaceIncomplete),
     [page, turn, workspaceChanges, workspaceIncomplete],
   );
-  if (!changes.length && !workspaceIncomplete) return null;
-  const notice = workspaceIncomplete ? <WorkspaceTrackingNotice /> : null;
+  const notice = workspaceIncomplete ? (
+    <NavigationPart
+      part="WorkspaceTrackingNotice"
+      fallback={<p role="status">Workspace tracking is incomplete.</p>}
+    />
+  ) : null;
   if (!changes.length) return notice;
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;

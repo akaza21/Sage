@@ -356,14 +356,16 @@ it("does not render activity from foreign edit records", () => {
   expect(screen.queryByText(/Edited .* file/)).toBeNull();
 });
 
-it("reports an incomplete workspace ledger without an empty edited-files card", () => {
+it("reports an incomplete workspace ledger without an empty edited-files card", async () => {
   const page = snapshotPage();
   page.turns[0].items = [];
   render(
     <TurnFileActivity page={page} turn={page.turns[0]} workspaceIncomplete />,
   );
   expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
-  const notice = screen.getByRole("status");
+  const notice = await screen.findByRole("status", {
+    name: "Workspace tracking",
+  });
   expect(notice).toHaveTextContent(
     "Workspace change tracking is incomplete for this turn.",
   );
