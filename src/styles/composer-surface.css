@@ -32,7 +32,7 @@
   grid-template-rows: subgrid;
 }
 
-.chat-dock:has(.composer:not([hidden]) .send-button--cancel)::after {
+.chat-dock[data-working]::after {
   position: absolute;
   inset: 0;
   border: var(--border-width) solid var(--color-accent);
@@ -42,7 +42,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .chat-dock:has(.composer:not([hidden]) .send-button--cancel)::after {
+  .chat-dock[data-working]::after {
     animation: composer-working var(--motion-duration-shimmer) ease-in-out
       infinite;
   }

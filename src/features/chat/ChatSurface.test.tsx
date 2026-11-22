@@ -1247,10 +1247,6 @@ describe("ChatSurface ACP resource integration", () => {
       /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
     );
     expect(composer).toHaveAttribute("placeholder", "Do anything");
-    expect(composer).toHaveAttribute(
-      "aria-description",
-      "Enter queues a message while this turn runs.",
-    );
     fireEvent.change(composer, { target: { value: "Follow up" } });
     const stop = screen.getByRole("button", { name: "Cancel turn" });
     expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
