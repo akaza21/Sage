@@ -168,6 +168,22 @@ describe("useAcpChatHistory", () => {
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
   });
 
+  it("loads a bound chat's continuation while another chat is active", async () => {
+    vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
+      ...page,
+      nextCursor: null,
+    });
+    useWorkbenchStore.setState({
+      activeTabId: "chat-2",
+      tabs: ["chat-1", "chat-2"].map((id) => ({ id, kind: "chat" })) as never,
+    });
+    const { result } = renderHook(() => useAcpChatHistory("chat-1"));
+    act(() => result.current.onLoadEarlier());
+    await waitFor(() => expect(result.current.hasEarlier).toBe(false));
+    expect(useWorkbenchStore.getState().activeTabId).toBe("chat-2");
+    expect(useAcpProjectionStore.getState().page?.chatId).toBe("chat-1");
+  });
+
   it("expects a page only for a resolved chat in a settled project", () => {
     const active = renderHook(() => useAcpChatHistory());
     expect(active.result.current.pageExpected).toBe(true);
