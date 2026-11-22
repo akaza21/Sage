@@ -218,6 +218,8 @@ describe("DiffSurface resource states", () => {
     );
   });
   it("moves from an announced load through an alert to a ready read-only diff", () => {
+    const gitFailure =
+      "Git operation failed: fatal: bad object deadbeef\nerror: could not read the index";
     const loadDiff = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       tabs: [tab],
@@ -236,14 +238,17 @@ describe("DiffSurface resource states", () => {
     act(() => {
       useWorkbenchStore.setState({
         diffs: {
-          [cacheKey]: { phase: "error", message: "Diff unavailable." },
+          [cacheKey]: { phase: "error", message: gitFailure },
         },
       });
     });
     expect(screen.queryByRole("status")).toBeNull();
-    // The reason is the visible sentence, not a detail.
-    expect(screen.getByRole("alert")).toHaveTextContent("Diff unavailable.");
-    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+    // Native failure text is a diagnostic, never the sentence.
+    const failure = screen.getByRole("alert");
+    expect(failure).toHaveTextContent("Could not load this diff.");
+    expect(failure).not.toHaveTextContent("Git operation failed");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(failure).toHaveTextContent("fatal: bad object deadbeef");
 
     act(() => {
       useWorkbenchStore.setState({

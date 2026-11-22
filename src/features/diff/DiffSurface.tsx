@@ -6,7 +6,12 @@ import { useWorkbenchStore } from "../../app/store";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { snapshotProjectionRevision } from "../../app/snapshotProjection";
 import { diffCacheKey } from "../../domain/diffIdentity";
-import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
+import {
+  CHAT_CHANGED_WHILE_LOADING,
+  SAVED_EDIT_UNAVAILABLE,
+  isSnapshotDiffTab,
+} from "../../domain/agentDiffIdentity";
+import { boundedError } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -109,9 +114,13 @@ function DiffDocument({
   const diff = unavailable
     ? {
         phase: "error" as const,
-        message: "This saved edit is unavailable for the current chat session.",
+        message: SAVED_EDIT_UNAVAILABLE,
       }
     : cached;
+  const appReason =
+    diff?.phase === "error" &&
+    (diff.message === SAVED_EDIT_UNAVAILABLE ||
+      diff.message === CHAT_CHANGED_WHILE_LOADING);
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const change = isSnapshotDiffTab(tab)
@@ -240,9 +249,12 @@ function DiffDocument({
         <Notice
           identity={`diff-load:${tab.id}`}
           severity="blocking"
-          // The reason (no Git baseline, a session's saved edit gone) is the
-          // explanation of this Diff, so it is the sentence, not a detail.
-          message={diff.message || "Could not load this diff."}
+          // A reason Sage wrote is the explanation; any other failure text
+          // is a bounded diagnostic under Details.
+          message={appReason ? diff.message : "Could not load this diff."}
+          details={
+            appReason ? undefined : boundedError(diff.message, 1024, "utf16")
+          }
           action={
             tab.diffRef && tabResource && !unavailable
               ? {
