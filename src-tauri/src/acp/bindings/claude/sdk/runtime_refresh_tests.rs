@@ -51,6 +51,7 @@ fn shared_refresh_intents_coalesce_until_the_harness_answers() {
 fn a_refused_catalog_read_revokes_the_list_and_allows_another_refresh() {
     let mut runtime = NativeRuntime::new(ready());
     let commands = runtime.available_commands();
+    let selected = commands.snapshot().revision;
     commands.request_refresh();
     let query = runtime.discover_commands().unwrap().unwrap();
     let request = value(&query);
@@ -58,7 +59,16 @@ fn a_refused_catalog_read_revokes_the_list_and_allows_another_refresh() {
         .resolve_egress(query.into_token(), EgressResolution::Written)
         .unwrap();
     runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"error","request_id":request["request_id"],"error":"catalog unavailable"}})),&Mapper).unwrap();
-    assert!(commands.snapshot().commands.is_empty());
+    let mut prompt = Prompt::new("command", "/review src").unwrap();
+    prompt.command_revision = Some(selected);
+    assert!(matches!(
+        runtime.command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "revoked-review").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        }),
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    ));
     commands.request_refresh();
     let next = runtime.discover_commands().unwrap().unwrap();
     assert_eq!(value(&next)["request"]["subtype"], "initialize");
