@@ -87,17 +87,22 @@ function safeRewind(
   value: unknown,
 ): AgentSessionProjection["capabilities"]["rewind"] {
   if (!isRecord(value) || !isRecord(value.effects)) return undefined;
-  const { effects, targets, forkAt, onResume } = value;
+  const {
+    effects: { conversation, files },
+    targets,
+    forkAt,
+    onResume,
+  } = value;
   if (
-    typeof effects.conversation !== "boolean" ||
-    typeof effects.files !== "boolean" ||
+    typeof conversation !== "boolean" ||
+    typeof files !== "boolean" ||
     !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
     typeof forkAt !== "boolean" ||
     typeof onResume !== "boolean"
   )
     return undefined;
   return {
-    effects: { conversation: effects.conversation, files: effects.files },
+    effects: { conversation, files },
     targets,
     forkAt,
     onResume,

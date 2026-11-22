@@ -1,4 +1,8 @@
-export { ForkDivider, InheritedHistory } from "./ForkHistory";
+export {
+  ForkDivider,
+  InheritedHistory,
+  ImportedHistoryView,
+} from "./ForkHistory";
 export { SessionSurfacePanel } from "./acp/SessionSurfacePanel";
 export { AnswerMoreActions } from "./ForkChat";
 

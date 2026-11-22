@@ -1,4 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import type { ImportedHistory } from "../../services/nativeSessionImport";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
@@ -48,6 +51,24 @@ export function ForkDivider({
       </div>
     </>
   );
+}
+
+/** Subscribe to the current page only while imported history can be shown. */
+export function ImportedHistoryView({
+  chatId,
+  history,
+}: {
+  chatId: string;
+  history: ImportedHistory;
+}) {
+  const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);
+  return page ? (
+    <InheritedHistory
+      page={{ ...page, turns: history.turns }}
+      earlier={history.retentionLimited}
+      label="History from the imported session"
+    />
+  ) : null;
 }
 
 export function InheritedHistory({
