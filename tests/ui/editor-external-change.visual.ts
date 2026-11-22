@@ -56,6 +56,40 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: `${SHOT_DIR}/${name}-${width}.png` });
 }
 
+test("failed Reload keeps edits and exposes bounded native diagnostics only in Details", async ({
+  page,
+}) => {
+  await openFile(page);
+  await typeAtEnd(page, "// keep these edits");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    await useWorkbenchStore.getState().flushActiveEditor();
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    getWorkbenchPorts().editor.discardEditorBuffer = async () => {
+      throw new Error(
+        "filesystem operation failed: The process cannot access the file because it is being used by another process. (os error 32) " +
+          "diagnostic ".repeat(200),
+      );
+    };
+  });
+  await changeOnDisk(page, "// changed elsewhere\n");
+  const conflict = page.getByRole("group", { name: "External change" });
+  await conflict.getByRole("button", { name: "Reload" }).click();
+  const failure = page.getByRole("alert");
+  await expect(failure).toContainText("Could not reload this file.");
+  await expect(failure).not.toContainText("filesystem operation failed");
+  await expect(conflict).toBeVisible();
+  await expect(page.locator(".cm-content")).toContainText(
+    "// keep these edits",
+  );
+  await failure.getByRole("button", { name: "Details" }).click();
+  const details = failure.locator(".notice__details");
+  await expect(details).toContainText("filesystem operation failed:");
+  expect((await details.textContent())?.length).toBe(1024);
+  await expect(details).toHaveAttribute("aria-live", "off");
+});
+
 for (const width of [1280, 720]) {
   test(`resolves a File changed on disk at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });

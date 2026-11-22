@@ -23,14 +23,14 @@ describe("failureMessage", () => {
     ).toBe("Couldn't save: the disk is full.");
   });
 
-  it("drops the native prefix and OS error number from anything else", () => {
+  it("keeps unknown native failures out of the sentence", () => {
     expect(
       failureMessage(
         new Error(
           "filesystem operation failed: The network path was not found. (os error 53)",
         ),
       ),
-    ).toBe("Couldn't save: The network path was not found.");
+    ).toBe("Couldn't save.");
   });
 
   it("says why Keep mine failed in the user's terms", () => {

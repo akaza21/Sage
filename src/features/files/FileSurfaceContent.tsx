@@ -146,12 +146,7 @@ export function FileSurfaceContent({
         agentMarkdown={agentMarkdown}
         onTogglePreview={onTogglePreview}
       />
-      <FileEditorNotices
-        document={editor.document}
-        message={editor.message}
-        unstored={editor.unstored}
-        editable={!readOnly}
-      />
+      <FileEditorNotices editor={editor} editable={!readOnly} />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">
           {languageNavigationStatus}

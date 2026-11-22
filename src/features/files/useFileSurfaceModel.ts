@@ -67,14 +67,12 @@ export function useFileSurfaceModel(
     }),
     [],
   );
-  const watchedResource =
+  const currentEditor =
     editor?.phase === "ready" && sameResource(editor.resource, resource)
-      ? resource
-      : undefined;
-  const content =
-    editor?.phase === "ready" && sameResource(editor.resource, resource)
-      ? editor.content
-      : "";
+      ? editor
+      : null;
+  const watchedResource = currentEditor ? resource : undefined;
+  const content = currentEditor?.content ?? "";
   useFileEditorLifecycle(controller, {
     resource,
     editor,
@@ -150,7 +148,8 @@ export function useFileSurfaceModel(
     resource,
     path,
     activeResourceKey,
-    editor: shownEditor,
+    // A File surface only receives state for its own resource.
+    editor: sameResource(shownEditor?.resource, resource) ? shownEditor : null,
     projectTransitioning,
     updateEditorContent,
     saveActiveEditor,

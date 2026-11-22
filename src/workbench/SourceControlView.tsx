@@ -200,11 +200,8 @@ export function SourceControlView() {
             Nested repository status is read-only in this beta.
           </p>
         ) : null}
-        {mutationError &&
-        !selectedRepositories.some(
-          (repository) => repository.rootId === mutationError.resource.rootId,
-        ) ? (
-          // Its repository is not listed, so the failure is said here instead.
+        {mutationError ? (
+          // Selection must not remount an old failure's live region.
           <RepositoryMutationNotice error={mutationError} />
         ) : null}
         {selectedRepositories.map((repository) => {
@@ -248,9 +245,6 @@ export function SourceControlView() {
                 <p className="sidebar__error" role="alert">
                   {remoteError.message}
                 </p>
-              ) : null}
-              {mutationError?.resource.rootId === repository.rootId ? (
-                <RepositoryMutationNotice error={mutationError} />
               ) : null}
               {repository.message ? (
                 <p

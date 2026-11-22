@@ -1,5 +1,4 @@
 import { type StateCreator, type StoreApi } from "zustand";
-import { errorMessage } from "../domain/errors";
 import {
   parentResource,
   resourceKey,
@@ -50,6 +49,11 @@ export const createEditorSlice: StateCreator<
 > = (set, get) => {
   const editorController = getFileEditorController();
   const editorState = storeEditorBridge(set, get);
+  const reportFailure = async (error: unknown, action: "save" | "discard") => {
+    const { actionFailed } =
+      await import("../features/files/editorNoticeState");
+    set({ error: actionFailed(editorState, error, action) });
+  };
 
   const closePending = async (discard: boolean) => {
     const tabId = get().pendingCloseTabId;
@@ -203,9 +207,7 @@ export const createEditorSlice: StateCreator<
         return true;
       } catch (error) {
         if (!matchesProjectIntent(get(), generation, projectId)) return false;
-        const { actionFailed } =
-          await import("../features/files/editorNoticeState");
-        set({ error: actionFailed(editorState, error) });
+        await reportFailure(error, "save");
         return false;
       }
     },
@@ -239,8 +241,7 @@ export const createEditorSlice: StateCreator<
         });
       } catch (error) {
         if (matchesProjectIntent(get(), generation, projectId)) {
-          editorController.saveError(editorState, error);
-          set({ error: errorMessage(error) });
+          await reportFailure(error, "discard");
         }
         return false;
       }

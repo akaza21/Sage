@@ -13,7 +13,7 @@ function mutationSentence(error: RepositoryMutationError): string {
   return `Source Control could not ${error.action} ${path}.`;
 }
 
-/** The one explanation of a failed Git file action, beside its repository. */
+/** One explanation of a failed Git file action, above the repository list. */
 export function RepositoryMutationNotice({
   error,
 }: {

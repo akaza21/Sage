@@ -2,7 +2,7 @@ import {
   noticeMatchesWatch,
   type EditorExternalWatchNotice,
 } from "../../domain/editorWatch";
-import { errorMessage } from "../../domain/errors";
+import { boundedError, errorMessage } from "../../domain/errors";
 import {
   ABSENT_FINGERPRINT,
   type DocumentVersion,
@@ -46,6 +46,7 @@ export function markDeleted(bridge: EditorStateBridge): void {
         ...active,
         document: { ...active.document, conflict: DELETION_CONFLICT },
         message: null,
+        details: undefined,
       },
       { tabStatus: "failed" },
     );
@@ -100,6 +101,7 @@ export function setExternalChangeConflict(
     {
       ...active,
       message: null,
+      details: undefined,
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -113,6 +115,8 @@ export function setExternalChangeConflict(
 const FAILED = {
   save: "Couldn't save",
   keep: "Couldn't keep your version",
+  reload: "Could not reload this file",
+  discard: "Could not discard changes",
 } as const;
 
 const REASONS: [RegExp, string][] = [
@@ -138,15 +142,7 @@ export function failureMessage(
 ): string {
   const raw = errorMessage(error);
   const known = REASONS.find(([pattern]) => pattern.test(raw));
-  const reason =
-    known?.[1] ??
-    raw
-      .replace(
-        /^(filesystem operation failed|invalid request|resource limit exceeded|unsupported operation): /,
-        "",
-      )
-      .replace(/ \(os error \d+\)$/, "");
-  return `${FAILED[action]}: ${reason}`;
+  return known ? `${FAILED[action]}: ${known[1]}` : `${FAILED[action]}.`;
 }
 
 export function actionFailed(
@@ -157,14 +153,16 @@ export function actionFailed(
   const message = failureMessage(error, action);
   const active = currentReady(bridge);
   if (active) {
+    // A refused recovery copy after disk moved is explained by the conflict.
+    if (active.document.conflict && DISK_MISMATCH.test(errorMessage(error))) {
+      bridge.setActiveEditor({ ...active, saving: false });
+      return message;
+    }
     bridge.setActiveEditor({
       ...active,
       saving: false,
-      // The conflict, with any lost copy, already explains this failure.
-      message:
-        active.document.conflict && DISK_MISMATCH.test(errorMessage(error))
-          ? active.message
-          : message,
+      message,
+      details: boundedError(error, 1024, "utf16"),
     });
   }
   return message;

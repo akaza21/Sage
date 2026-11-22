@@ -58,7 +58,7 @@ describe("FileEditorNotices", () => {
   it("explains a disk conflict once, with its resolutions beside it", async () => {
     setEditor();
     const { container } = render(
-      <FileEditorNotices document={document} editable message={null} />,
+      <FileEditorNotices editor={{ document, message: null }} editable />,
     );
     const conflict = await screen.findByRole("group", {
       name: "External change",
@@ -90,10 +90,8 @@ describe("FileEditorNotices", () => {
     setEditor("the disk is full");
     const { container } = render(
       <FileEditorNotices
-        document={document}
+        editor={{ document, message: null, unstored: "the disk is full" }}
         editable
-        message={null}
-        unstored="the disk is full"
       />,
     );
     await screen.findByRole("group", { name: "External change" });
@@ -114,9 +112,11 @@ describe("FileEditorNotices", () => {
   it("shows a failed save as its own problem", () => {
     const { container } = render(
       <FileEditorNotices
-        document={{ ...document, conflict: null }}
+        editor={{
+          document: { ...document, conflict: null },
+          message: "Couldn't save: the disk is full.",
+        }}
         editable
-        message="Couldn't save: the disk is full."
       />,
     );
     expect(identities(container)).toEqual(["file-operation:4:rootreadme.md"]);

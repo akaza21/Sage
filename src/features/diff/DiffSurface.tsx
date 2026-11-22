@@ -7,8 +7,8 @@ import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { snapshotProjectionRevision } from "../../app/snapshotProjection";
 import { diffCacheKey } from "../../domain/diffIdentity";
 import {
-  CHAT_CHANGED_WHILE_LOADING,
   SAVED_EDIT_UNAVAILABLE,
+  CHAT_CHANGED_WHILE_LOADING,
   isSnapshotDiffTab,
 } from "../../domain/agentDiffIdentity";
 import { boundedError } from "../../domain/errors";
@@ -28,6 +28,7 @@ export function DiffSurface({
 }: {
   tab: WorkbenchTab;
 } & CanvasSurfaceOptions) {
+  const snapshot = isSnapshotDiffTab(tab);
   return tab.diffRef ? (
     <SnapshotDiffSurface
       tab={tab}
@@ -37,8 +38,8 @@ export function DiffSurface({
   ) : (
     <DiffDocument
       tab={tab}
-      unavailable={isSnapshotDiffTab(tab)}
-      workingTreeNotice={readOnly && !isSnapshotDiffTab(tab)}
+      unavailable={snapshot}
+      workingTreeNotice={readOnly && !snapshot}
       hostHeader={hostHeader}
     />
   );
@@ -73,7 +74,7 @@ function SnapshotDiffSurface({
     <DiffDocument
       tab={tab}
       unavailable={!current}
-      commentEnabled={commentEnabled && current}
+      commentEnabled={commentEnabled}
       hostHeader={hostHeader}
     />
   );
@@ -104,6 +105,7 @@ function DiffDocument({
   );
   const tabResource = tab.resource;
   const tabRepository = tab.repository;
+  const snapshot = isSnapshotDiffTab(tab);
   const path = tabResource?.relativePath ?? tab.title;
   const repositories = useWorkbenchStore((state) => state.repositories);
   const cached = useWorkbenchStore((state) =>
@@ -117,13 +119,13 @@ function DiffDocument({
         message: SAVED_EDIT_UNAVAILABLE,
       }
     : cached;
+  const failure = diff?.phase === "error" ? diff.message : null;
   const appReason =
-    diff?.phase === "error" &&
-    (diff.message === SAVED_EDIT_UNAVAILABLE ||
-      diff.message === CHAT_CHANGED_WHILE_LOADING);
+    failure === SAVED_EDIT_UNAVAILABLE ||
+    failure === CHAT_CHANGED_WHILE_LOADING;
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
-  const change = isSnapshotDiffTab(tab)
+  const change = snapshot
     ? undefined
     : repositories.roots
         .flatMap((repository) => repository.changes)
@@ -148,16 +150,13 @@ function DiffDocument({
 
   const counts = (
     <div className="diff-header__counts">
-      <span>{additions == null ? "" : `+${additions}`}</span>
-      <span>{deletions == null ? "" : `-${deletions}`}</span>
+      <span>{additions != null && `+${additions}`}</span>
+      <span>{deletions != null && `-${deletions}`}</span>
     </div>
   );
 
   const canComment =
-    commentEnabled &&
-    !commentBusy &&
-    Boolean(tab.diffRef) &&
-    focusedChatId === tab.diffRef?.chatId;
+    commentEnabled && !commentBusy && focusedChatId === tab.diffRef?.chatId;
   const addContext = (context: DiffLineCommentContext) => {
     if (!canComment || !focusedChatId) return false;
     const intent = captureChatOwnership(focusedChatId);
@@ -165,8 +164,8 @@ function DiffDocument({
   };
 
   const refreshDiff = () => {
-    if (!tabResource || unavailable || !diff || diff.phase === "loading")
-      return;
+    // The mounted, enabled Refresh button owns the availability checks.
+    if (!tabResource) return;
     const key = diffCacheKey(tabRepository, tabResource, tab.diffRef);
     useWorkbenchStore.setState((state) => {
       const diffs = { ...state.diffs };
@@ -188,13 +187,13 @@ function DiffDocument({
       className="diff-surface resource-document"
       aria-label={`Diff for ${path}`}
     >
-      {workingTreeNotice ? (
+      {workingTreeNotice && (
         <p role="status">
           Current working-tree changes against Git; may include edits from other
           turns.
         </p>
-      ) : null}
-      {hostHeader ? null : (
+      )}
+      {!hostHeader && (
         <header className="diff-header">
           <div className="diff-header__path">
             <FileDiff size={16} aria-hidden="true" />
@@ -205,7 +204,7 @@ function DiffDocument({
       )}
       <div className="diff-toolbar">
         <span className="diff-toolbar__scope">
-          {isSnapshotDiffTab(tab)
+          {snapshot
             ? "Saved agent change"
             : "Changes since HEAD (or initial tree)"}
         </span>
@@ -219,7 +218,7 @@ function DiffDocument({
           role="group"
           aria-label="Diff actions"
         >
-          {tabResource && !unavailable ? (
+          {tabResource && !unavailable && (
             <button
               type="button"
               aria-label="Refresh diff"
@@ -229,8 +228,8 @@ function DiffDocument({
             >
               <RefreshCw size={14} aria-hidden="true" />
             </button>
-          ) : null}
-          {tabResource && !isSnapshotDiffTab(tab) ? (
+          )}
+          {tabResource && !snapshot && (
             <button
               type="button"
               aria-label="Open file"
@@ -239,22 +238,20 @@ function DiffDocument({
             >
               <FileText size={14} aria-hidden="true" />
             </button>
-          ) : null}
+          )}
         </div>
       </div>
-      {!diff || diff.phase === "loading" ? (
+      {(!diff || diff.phase === "loading") && (
         <ResourceStateNotice state="loading" title="Loading diff…" />
-      ) : null}
-      {diff?.phase === "error" ? (
+      )}
+      {failure !== null && (
         <Notice
           identity={`diff-load:${tab.id}`}
           severity="blocking"
           // A reason Sage wrote is the explanation; any other failure text
           // is a bounded diagnostic under Details.
-          message={appReason ? diff.message : "Could not load this diff."}
-          details={
-            appReason ? undefined : boundedError(diff.message, 1024, "utf16")
-          }
+          message={appReason ? failure : "Could not load this diff."}
+          details={appReason ? undefined : boundedError(failure, 1024, "utf16")}
           action={
             tab.diffRef && tabResource && !unavailable
               ? {
@@ -265,31 +262,29 @@ function DiffDocument({
               : undefined
           }
         />
-      ) : null}
-      {diff?.phase === "ready" ? (
-        <>
-          <DiffHunks
-            diff={diff.value}
-            label="Unified file diff"
-            maxLines={1200}
-            limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
-            renderComment={
-              canComment && tab.diffRef
-                ? (line) =>
-                    (line.newLine ?? line.oldLine) !== null &&
-                    line.kind !== "meta" ? (
-                      <DiffLineCommentComposer
-                        diffRef={tab.diffRef!}
-                        side={line.newLine !== null ? "new" : "old"}
-                        line={(line.newLine ?? line.oldLine)!}
-                        onAdd={addContext}
-                      />
-                    ) : null
-                : undefined
-            }
-          />
-        </>
-      ) : null}
+      )}
+      {diff?.phase === "ready" && (
+        <DiffHunks
+          diff={diff.value}
+          label="Unified file diff"
+          maxLines={1200}
+          limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
+          renderComment={
+            canComment
+              ? (line) =>
+                  (line.newLine ?? line.oldLine) !== null &&
+                  line.kind !== "meta" ? (
+                    <DiffLineCommentComposer
+                      diffRef={tab.diffRef!}
+                      side={line.newLine !== null ? "new" : "old"}
+                      line={(line.newLine ?? line.oldLine)!}
+                      onAdd={addContext}
+                    />
+                  ) : null
+              : undefined
+          }
+        />
+      )}
     </section>
   );
 }

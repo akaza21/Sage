@@ -1,10 +1,8 @@
-import {
-  ABSENT_FINGERPRINT,
-  type EditorDocument,
-} from "../../domain/workbench";
+import { ABSENT_FINGERPRINT } from "../../domain/workbench";
 import { resourceKey } from "../../domain/resourceIdentity";
 import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import type { ReadyEditorState } from "./fileEditorController";
 
 const loadConflictNotice = () => import("./FileConflictNotice");
 
@@ -13,14 +11,13 @@ const loadConflictNotice = () => import("./FileConflictNotice");
  * that could not be stored, and a failed save or keep. Each owns its identity.
  */
 export function FileEditorNotices({
-  document,
-  message,
-  unstored,
+  editor: { document, message, details, unstored },
   editable,
 }: {
-  document: EditorDocument;
-  message: string | null;
-  unstored?: string;
+  editor: Pick<
+    ReadyEditorState,
+    "document" | "message" | "details" | "unstored"
+  >;
   editable: boolean;
 }) {
   const key = resourceKey(document.resource);
@@ -55,6 +52,7 @@ export function FileEditorNotices({
           identity={`file-operation:${key}`}
           severity="blocking"
           message={message}
+          details={details}
         />
       ) : null}
     </>

@@ -50,10 +50,13 @@ function ActiveFileNotices({
   const active = useWorkbenchStore((state) => state.activeEditor);
   const ready = active?.phase === "ready" ? active : null;
   return createElement(FileEditorNotices, {
-    document,
+    editor: {
+      document,
+      message: ready?.message ?? null,
+      details: ready?.details,
+      unstored: ready?.unstored,
+    },
     editable,
-    message: ready?.message ?? null,
-    unstored: ready?.unstored,
   });
 }
 const bridge = storeEditorBridge(
@@ -142,6 +145,55 @@ afterEach(() => {
   cleanup();
   resetBrowserDesktopForTests();
 });
+
+it.each(["reload", "discard"] as const)(
+  "keeps rejected %s diagnostics bounded and behind Details beside the conflict",
+  async (action) => {
+    const resource = nextFile();
+    openTabs(resource);
+    await edit(resource, "// keep my edits");
+    await store().flushActiveEditor();
+    await changeOnDisk(resource, "// changed elsewhere");
+    const raw =
+      "filesystem operation failed: The process cannot access the file because it is being used by another process. (os error 32) " +
+      "diagnostic ".repeat(200);
+    vi.spyOn(editor, "discardEditorBuffer").mockRejectedValue(new Error(raw));
+    render(
+      createElement(ActiveFileNotices, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    const conflict = await screen.findByRole("group", {
+      name: "External change",
+    });
+    if (action === "reload") {
+      fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    } else {
+      await act(async () => {
+        expect(await store().discardActiveEditor()).toBe(false);
+      });
+    }
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent(
+      action === "reload"
+        ? "Could not reload this file."
+        : "Could not discard changes.",
+    );
+    expect(failure).not.toHaveTextContent("filesystem operation failed");
+    expect(conflict).toHaveTextContent("This file changed outside Sage.");
+    expect(readyEditor().content).toBe("// keep my edits");
+    expect(readyEditor().details).toBe(raw.slice(0, 1024));
+    expect(store().error).not.toContain("filesystem operation failed");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const details = failure.querySelector(".notice__details");
+    expect(details?.textContent).toBe(raw.slice(0, 1024));
+    expect(details).toHaveAttribute("aria-live", "off");
+    act(() => store().updateEditorContent("// next edit"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(readyEditor().details).toBeUndefined();
+  },
+);
 
 describe("a File that changed on disk under unsaved edits", () => {
   it("Reload replaces the buffer with the File on disk", async () => {
