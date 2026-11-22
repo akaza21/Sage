@@ -161,9 +161,11 @@ impl AcpService {
         if !project_root.project_matches(&command.project_id) {
             return Err(CodexSessionError::Intent);
         }
-        project_root
-            .revalidate()
-            .map_err(|_| CodexSessionError::Intent)?;
+        // A missing or moved project folder is a launch that cannot be
+        // prepared, not a stale session identity.
+        project_root.revalidate().map_err(|_| {
+            CodexSessionError::LaunchSetup(super::CodexLaunchSetupError::ProjectRoot)
+        })?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
@@ -246,7 +248,7 @@ impl AcpService {
         let runtime = admitted
             .into_factory(project_root, mcp)
             .construct(owner.runtime_epoch, owner.session_id.clone())
-            .map_err(|_| CodexSessionError::Intent)?;
+            .map_err(CodexSessionError::from_launch_preparation)?;
         Ok(PreparedActivation {
             owner,
             runtime,
@@ -406,3 +408,5 @@ mod version_tests;
 
 #[cfg(all(test, windows))]
 mod browser_mcp_tests;
+#[cfg(all(test, windows))]
+mod launch_failure_tests;

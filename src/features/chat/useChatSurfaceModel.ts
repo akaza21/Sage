@@ -18,7 +18,11 @@ import type { ResourceRef } from "../../domain/workbench";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
-import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import {
+  SESSION_PROMPT_REFUSAL,
+  composerDisabledReason,
+  sizeReason,
+} from "./composerDisabledReason";
 import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
@@ -251,12 +255,7 @@ export function useChatSurfaceModel({
   );
   const composerEnabled =
     canPrompt && !(model.useNativeAcp && chatLoadFailed) && !legacyAttachments;
-  const sessionPromptUnavailable = Boolean(
-    model.useNativeAcp &&
-    model.selectedSession &&
-    !model.selectedSession.capabilities.prompt,
-  );
-  const disabledReason =
+  const reason =
     accessReason ??
     sizeReason(composerText, attachedContext) ??
     (legacyAttachments
@@ -268,17 +267,21 @@ export function useChatSurfaceModel({
           : queueAvailable
             ? null
             : composerDisabledReason({
+                ...model,
                 actionBusy,
                 activeTurn: Boolean(activeAcpTurn),
-                availableBinding: model.availableBinding,
-                canPrompt,
-                chatLoadFailed: model.useNativeAcp && chatLoadFailed,
-                harnessAvailable: model.harnessAvailable,
+                chatLoadFailed,
                 harnessDiscoveryPhase: discoveryPhase,
                 projectTransitioning,
-                selectedHarness: model.selectedHarness ?? null,
-                useNativeAcp: model.useNativeAcp,
               }));
+  const disabledReason =
+    reason ?? (queueAvailable || canPrompt ? null : SESSION_PROMPT_REFUSAL);
+  // The session's own refusal: it lacks prompts and no other reason applies,
+  // so a session or launch error explains it; a local reason never hides.
+  const sessionPromptUnavailable =
+    !reason &&
+    !queueAvailable &&
+    model.selectedSession?.capabilities.prompt === false;
   const submit = useCallback(
     // The composer names the batch it staged; a queued message never does.
     (event: FormEvent, stagedRevision?: string | null) => {

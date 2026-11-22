@@ -103,7 +103,6 @@ function sendDisabledReason() {
     actionBusy: false,
     activeTurn: false,
     availableBinding: true,
-    canPrompt: true,
     chatLoadFailed: false,
     harnessAvailable: true,
     harnessDiscoveryPhase: useWorkbenchStore.getState().harnessDiscoveryPhase,
