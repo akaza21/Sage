@@ -1,6 +1,21 @@
 use super::*;
 
 impl PiTranslator {
+    /// A configuration read or change is in flight; a refresh waits for it.
+    pub(in crate::acp::bindings::pi) fn configuration_refresh_pending(&self) -> bool {
+        self.pending.values().any(|request| {
+            matches!(
+                request.kind,
+                PendingKind::Configuration
+                    | PendingKind::Models
+                    | PendingKind::ThinkingLevels
+                    | PendingKind::State
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+            )
+        })
+    }
+
     pub(super) fn ingest_response(
         &mut self,
         response: Response,

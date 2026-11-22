@@ -190,19 +190,6 @@ pub(crate) const ANSWER_ID: &str = "answer";
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
-    pub(super) fn configuration_refresh_pending(&self) -> bool {
-        self.pending.values().any(|request| {
-            matches!(
-                request.kind,
-                PendingKind::Configuration
-                    | PendingKind::Models
-                    | PendingKind::ThinkingLevels
-                    | PendingKind::State
-                    | PendingKind::SetModel
-                    | PendingKind::SetThinkingLevel
-            )
-        })
-    }
     pub(crate) fn awaits_large_response(&self) -> bool {
         self.pending.values().any(|request| {
             !matches!(
