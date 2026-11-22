@@ -20,6 +20,9 @@ export interface NewChatDraft {
   /** Undefined retains the owner project; null explicitly chooses no project. */
   targetProjectId?: string | null;
   text: string;
+  /** Images for the first turn, at most MAX_PROMPT_IMAGES. They stay in the
+   * WebView until the created chat uploads them; a retarget drops them. */
+  images?: readonly File[];
   harnessId: string | null;
   modelId: string | null;
   access: SessionAccessMode | null;
@@ -60,6 +63,8 @@ export interface NewChatDraftSlice {
         ownershipEpoch: number;
         /** The text handed to the chat; a different composer text cancels. */
         text: string;
+        /** The draft's images, uploaded to the chat before the send. */
+        images?: readonly File[];
       }
     | null;
   openNewChatDraft: (
@@ -68,7 +73,10 @@ export interface NewChatDraftSlice {
   ) => Promise<unknown>;
   updateNewChatDraft: (
     patch: Partial<
-      Pick<NewChatDraft, "text" | "access" | "effort" | "targetProjectId">
+      Pick<
+        NewChatDraft,
+        "text" | "images" | "access" | "effort" | "targetProjectId"
+      >
     >,
   ) => void;
   selectDraftHarness: (harnessId: string) => Promise<void>;

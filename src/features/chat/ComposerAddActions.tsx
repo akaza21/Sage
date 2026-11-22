@@ -7,6 +7,7 @@ import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode
 import type { PlanAccessTarget } from "./ComposerPlanAccess";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import type { ImageAction } from "./useComposerImageInput";
+import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import { lazyParts } from "./lazyParts";
 import type * as SectionChunk from "./ComposerSectionMenu";
 const SectionPart = lazyParts<typeof SectionChunk>(
@@ -44,6 +45,8 @@ export function ComposerOptionsMenu(props: ComposerOptionsProps) {
 }
 export type ComposerAddActionsProps = {
   boundChatId?: string;
+  /** The new-chat draft's pickers. Only rows needing no session are offered. */
+  draftPickers?: ControlledDraftPickers;
   sessionConfig: AcpSessionConfig | null;
   projectAction?: ReactNode;
   planAccess?: PlanAccessTarget;

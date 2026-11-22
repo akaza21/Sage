@@ -29,7 +29,9 @@ export async function openNewChatDraft(
   const draft = state.newChatDraft;
   const holdsWork =
     !!draft &&
-    (draft.text.length > 0 || draft.submission.status !== "released");
+    (draft.text.length > 0 ||
+      !!draft.images?.length ||
+      draft.submission.status !== "released");
   const retainedDraft =
     draft &&
     (projectId === undefined ||
@@ -41,7 +43,7 @@ export async function openNewChatDraft(
       (holdsWork && !explicit))
       ? draft
       : draft && holdsWork
-        ? { ...draft, targetProjectId: projectId }
+        ? { ...draft, targetProjectId: projectId, images: undefined }
         : null;
   const draftFocusRequest = state.draftFocusRequest;
   const preferred = preferredAvailableHarness(

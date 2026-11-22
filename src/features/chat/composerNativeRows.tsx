@@ -26,6 +26,7 @@ export function composerNativeRows(
     content: ReactNode,
     description?: string,
     control?: ComposerNativeRow["control"],
+    requires?: ComposerNativeRow["requires"],
   ) => {
     rows.push({
       kind: "native",
@@ -34,6 +35,7 @@ export function composerNativeRows(
       label,
       description,
       control,
+      requires,
       content,
     });
   };
@@ -128,7 +130,17 @@ export function composerNativeRows(
       </button>,
     );
   if (props.projectAction)
-    add("project", "addToMessage", "Work in a project", props.projectAction);
+    // It moves the chat it belongs to; a draft chooses its project in its
+    // location strip.
+    add(
+      "project",
+      "addToMessage",
+      "Work in a project",
+      props.projectAction,
+      undefined,
+      undefined,
+      "session",
+    );
   action(
     "goal",
     "session",
@@ -168,7 +180,12 @@ export function composerNativeRows(
       "modelAndAccess",
       "Plan mode",
       <ComposerPlanAccess
-        target={props.planAccess}
+        // The draft's own access picker state, never a second copy.
+        target={{
+          ...props.planAccess,
+          value: props.draftPickers?.access,
+          onChange: props.draftPickers?.onAccessChange,
+        }}
         disabled={disabled}
         onClose={onClose}
       />,
@@ -213,6 +230,8 @@ export function composerNativeRows(
         {selected ? <Check size={14} aria-hidden="true" /> : null}
       </button>,
       description,
+      undefined,
+      "session",
     );
   }
   // This action switches the toolbar's active popover itself.

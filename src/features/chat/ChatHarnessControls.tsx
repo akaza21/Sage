@@ -101,6 +101,7 @@ export function ChatHarnessControls({
     harness: accessHarness,
     available: availableBinding,
     draftChatId,
+    draftPickers,
     endedPage,
     sessionConfig,
     accessOpen: active === "access",
@@ -256,24 +257,22 @@ export function ChatHarnessControls({
           }
         }}
       >
-        {!draftPickers ? (
-          <IconButton
-            ref={optionsTriggerRef}
-            id={optionsTriggerId}
-            className="composer__plus"
-            aria-label="Composer options"
-            title={hasActions ? undefined : "No options for this harness"}
-            aria-controls={optionsId}
-            aria-haspopup="menu"
-            aria-expanded={active === "options"}
-            disabled={
-              projectTransitioning || (!hasActions && active !== "options")
-            }
-            onClick={() => toggle("options")}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </IconButton>
-        ) : null}
+        <IconButton
+          ref={optionsTriggerRef}
+          id={optionsTriggerId}
+          className="composer__plus"
+          aria-label="Composer options"
+          title={hasActions ? undefined : "No options for this harness"}
+          aria-controls={optionsId}
+          aria-haspopup="menu"
+          aria-expanded={active === "options"}
+          disabled={
+            projectTransitioning || (!hasActions && active !== "options")
+          }
+          onClick={() => toggle("options")}
+        >
+          <Plus size={16} aria-hidden="true" />
+        </IconButton>
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
@@ -363,6 +362,7 @@ export function ChatHarnessControls({
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
             {...addActions}
+            draftPickers={draftPickers}
             harnessName={selectedHarness?.name}
             onOpenEffort={
               effortInMenu

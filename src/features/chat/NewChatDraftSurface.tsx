@@ -9,7 +9,6 @@ import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { preferredAvailableHarness } from "../../domain/harness";
 
-const emptyContext = [] as const;
 const unchangedSession = () => Promise.resolve();
 
 export function NewChatDraftSurface({
@@ -83,6 +82,7 @@ export function NewChatDraftSurface({
     transitioning,
   ]);
   if (!draft) return null;
+  const images = draft.images ?? [];
   const targetId =
     draft.targetProjectId === undefined
       ? draft.projectId
@@ -169,9 +169,27 @@ export function NewChatDraftSurface({
           descriptionId="new-chat-description"
           disabledReasonId="new-chat-disabled"
           text={draft.text}
-          attachedContext={emptyContext}
+          // Images stay files until the created chat uploads them; a chip
+          // names each by its position.
+          attachedContext={images.map((file, index) => ({
+            kind: "image",
+            artifactId: String(index),
+            mediaType: file.type as "image/png",
+            width: 0,
+            height: 0,
+            byteLength: file.size,
+            sha256: "",
+            label: file.name.slice(0, 80),
+          }))}
+          // Images go to a chat's native session, so only with a binding.
+          imageInputAvailable={!!harness?.bindingId}
+          onAddImages={
+            harness?.bindingId
+              ? (files) => update({ images: [...images, ...files] })
+              : undefined
+          }
           enabled={!submitting && !!available}
-          sendBlocked={!choice || unconfirmed}
+          sendBlocked={!choice || unconfirmed || !draft.text.trim()}
           actionBusy={submitting}
           activeTurn={false}
           projectTransitioning={transitioning}
@@ -214,7 +232,15 @@ export function NewChatDraftSurface({
             void useWorkbenchStore.getState().sendNewChatDraft();
           }}
           onTextChange={(text) => update({ text })}
-          onRemoveContext={() => undefined}
+          onRemoveContext={(context) =>
+            update({
+              images: images.filter(
+                (_, index) =>
+                  context.kind !== "image" ||
+                  String(index) !== context.artifactId,
+              ),
+            })
+          }
           onCancelTurn={null}
         />
       </section>

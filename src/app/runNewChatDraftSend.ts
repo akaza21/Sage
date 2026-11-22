@@ -176,6 +176,7 @@ export async function runNewChatDraftSend(
               projectId: owner.projectId,
               chatId,
               text: draft.text,
+              images: draft.images,
             }
           : null,
     });

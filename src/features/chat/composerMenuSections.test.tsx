@@ -215,3 +215,64 @@ it.each([
     }
   },
 );
+
+it.each([
+  {
+    sessionless: false,
+    rows: ["files", "project", "goal", "mode:plan", "effort", "usage"],
+    commands: ["link", "recipe", "tune", "status"],
+  },
+  {
+    sessionless: true,
+    rows: ["files", "effort"],
+    commands: ["link", "recipe", "tune"],
+  },
+])(
+  "before a session exists keeps only rows that need none (sessionless $sessionless)",
+  ({ sessionless, rows, commands }) => {
+    const native = composerNativeRows({
+      sessionConfig: {
+        sageAgentSessionId: "s",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        configOptions: [],
+        modes: {
+          currentModeId: "plan",
+          availableModes: [{ id: "plan", name: "Plan" }],
+        },
+      },
+      projectAction: "Project",
+      disabled: false,
+      pending: false,
+      onClose: noop,
+      onSetSessionMode: async () => {},
+      onSetSessionConfigOption: async () => {},
+      onAttachFiles: noop,
+      onOpenGoal: noop,
+      onOpenEffort: noop,
+      onOpenUsage: noop,
+      importable: false,
+      onImport: noop,
+    });
+    const sections = composerMenuSections(
+      native,
+      [
+        command("link", "addToMessage"),
+        command("recipe", "skillsAndCommands", "skill"),
+        command("tune", "modelAndAccess"),
+        command("status", "usage"),
+      ],
+      "",
+      sessionless,
+    );
+    const shown = sections.flatMap((section) =>
+      section.groups.flatMap((group) => group.rows),
+    );
+    expect(
+      shown.flatMap((row) => (row.kind === "native" ? [row.id] : [])),
+    ).toEqual(rows);
+    expect(
+      shown.flatMap((row) => (row.kind === "command" ? [row.id] : [])),
+    ).toEqual(commands);
+  },
+);
