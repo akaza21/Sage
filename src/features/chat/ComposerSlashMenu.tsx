@@ -1,3 +1,4 @@
+import type * as RefreshChunk from "./ComposerCommandRefresh";
 import type * as CommandRuntime from "./ComposerCommandRuntime";
 import { lazyParts } from "./lazyParts";
 import {
@@ -30,6 +31,9 @@ import type { SessionCommandsLoad } from "./useSessionCommands";
  * seven sources of seven rows fit the list's 50 rendered rows.
  */
 const SECTION_ROWS = 7;
+const RefreshPart = lazyParts<typeof RefreshChunk>(
+  () => import("./ComposerCommandRefresh"),
+);
 
 const commandSourceGroups = {
   builtin: "Commands",
@@ -145,6 +149,7 @@ function menuState(
 
 function ComposerSlashList({
   load,
+  boundChatId,
   anchorRef,
   keyHandlerRef,
   listboxId,
@@ -249,14 +254,15 @@ function ComposerSlashList({
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
-        more > 0 || omitted > 0 ? (
-          <>
-            {more > 0 && <span>and {more} more, type to search</span>}
-            {more > 0 && omitted > 0 && <br />}
-            {omitted > 0 && (
-              <span>Catalog truncated: {omitted} commands not shown</span>
-            )}
-          </>
+        more > 0 || omitted > 0 || load?.kind === "ready" ? (
+          <RefreshPart
+            part="ComposerCommandRefresh"
+            more={more}
+            omitted={omitted}
+            boundChatId={boundChatId}
+            owner={load?.kind === "ready" ? load.owner : null}
+            onStatusChange={onStatusChange}
+          />
         ) : undefined
       }
       ariaLabel="Slash commands"

@@ -124,11 +124,9 @@ impl AcpService {
         };
         let recorder = service.session_config_recorder();
         let snapshot = service.session_config_snapshot_recorder();
-        let catalog = service.catalog_recorder();
         for lane in service.lanes() {
             lane.runtime.config.set_recorder(recorder.clone());
             lane.runtime.config.set_snapshot_recorder(snapshot.clone());
-            lane.runtime.commands.set_recorder(catalog.clone());
         }
         Ok(service)
     }

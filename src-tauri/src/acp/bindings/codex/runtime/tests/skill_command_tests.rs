@@ -497,3 +497,29 @@ fn a_read_that_never_left_keeps_the_one_retry_spent() {
     refuse_read(&mut runtime);
     assert!(runtime.discover_commands().unwrap().is_none());
 }
+
+#[test]
+fn explicit_refresh_skips_cache_coalesces_wire_requests_and_keeps_equal_authority() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let skills = json!([skill("review", true)]);
+    read_skills(&mut runtime, skills.clone());
+    let selected = runtime.available_commands().snapshot().revision;
+    let query = runtime.refresh_commands().unwrap().expect("skills/list");
+    let wire: Value = serde_json::from_slice(query.frame().payload()).unwrap();
+    assert_eq!(wire["method"], "skills/list");
+    assert_eq!(wire["params"]["forceReload"], true);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    assert!(runtime.refresh_commands().unwrap().is_none());
+    runtime
+        .ingest(&skills_reply(wire["id"].as_u64().unwrap(), skills), &Mapper)
+        .unwrap();
+    runtime
+        .available_commands()
+        .validate(selected, "/review src")
+        .unwrap();
+    assert!(runtime.discover_commands().unwrap().is_none());
+    assert!(runtime.refresh_commands().unwrap().is_some());
+}

@@ -69,7 +69,7 @@ pub(super) struct Inbound {
 #[derive(Debug)]
 enum Pending {
     Initialize(Value),
-    Commands(std::time::Instant),
+    Commands,
     Session(Value),
     Mode {
         id: Value,

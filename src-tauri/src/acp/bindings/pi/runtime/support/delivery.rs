@@ -25,7 +25,6 @@ impl PiRuntime {
             }
             RequestKind::Commands => {
                 self.commands_pending = false;
-                self.commands.finish_refresh();
             }
             RequestKind::Prompt => self.active_turn = None,
             RequestKind::Steer => self.rollback_steer(id),

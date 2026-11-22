@@ -4,7 +4,7 @@ use super::{ClaudeSdkRuntime, Inbound, sdk_capabilities, sdk_frame};
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressToken, HarnessAdapter, ResourceMapper,
+        EgressToken, ResourceMapper,
     },
     transport::request_value_digest,
 };
@@ -15,7 +15,6 @@ impl ClaudeSdkRuntime {
         sdk: Value,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.poll_command_refresh(std::time::Instant::now());
         if self.started.is_some() {
             return Err(AdapterRuntimeError::Operation);
         }
@@ -104,21 +103,11 @@ impl ClaudeSdkRuntime {
             }
         }
         for acp in inbound.acp {
-            let catalog_dependency = matches!(
-                acp["params"]["update"]["sessionUpdate"].as_str(),
-                Some("available_commands_update" | "config_option_update" | "current_mode_update")
-            );
             let digest = request_value_digest(&acp);
             let (events, egress) = self
                 .session
                 .ingest_value(acp, digest, resources)?
                 .into_parts();
-            if catalog_dependency && let Some(capabilities) = self.session.capabilities() {
-                self.bridge()?.follow_goal_capabilities(capabilities.goal);
-            }
-            if catalog_dependency && self.bridge()?.refreshing_commands() {
-                self.session.available_commands().begin_refresh()?;
-            }
             for event in events {
                 observed = true;
                 batch.push_event(match event {

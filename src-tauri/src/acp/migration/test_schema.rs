@@ -42,7 +42,7 @@ pub(crate) fn rollback_to_version(connection: &Connection, version: u32) -> AppR
             transaction.execute_batch(sql).db()?;
         }
     }
-    if version < 34 {
+    if version < 30 {
         let trigger = historical_trigger_sql(version, "deny_agent_session_identity_mutation")?;
         transaction
             .execute_batch(&format!(

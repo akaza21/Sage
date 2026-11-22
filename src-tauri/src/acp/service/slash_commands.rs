@@ -30,34 +30,6 @@ impl AcpService {
             }
         }
     }
-    pub(super) fn catalog_recorder(&self) -> crate::acp::slash_commands::CatalogRecorder {
-        let database = self.database.clone();
-        let publisher = self.publisher.clone();
-        std::sync::Arc::new(move |owner, capabilities| {
-            let result = database
-                .write_connection()
-                .map_err(|_| StoreError::Corrupt("catalog capability storage"))
-                .and_then(|mut connection| {
-                    crate::acp::store::catalog_capabilities::update(
-                        &mut connection,
-                        owner,
-                        capabilities,
-                    )
-                });
-            match result {
-                Ok(Some(event)) => {
-                    let _ = publisher
-                        .publish_committed_with(event, crate::acp::runtime::TurnNotice::None);
-                    true
-                }
-                Ok(None) => true,
-                Err(error) => {
-                    tracing::warn!(?error, "catalog capabilities were not stored");
-                    false
-                }
-            }
-        })
-    }
     pub(crate) fn refresh_commands(
         &self,
         owner: sage_acp_protocol::scheduler::RuntimeOwner,

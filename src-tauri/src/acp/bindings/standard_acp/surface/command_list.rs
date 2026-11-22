@@ -60,7 +60,6 @@ fn admit(mut commands: Vec<AvailableCommand>) -> (Vec<AvailableCommand>, u32) {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct CommandList {
     pub(crate) revision: u64,
-    pub(crate) pending: bool,
     #[serde(skip)]
     refresh_requested: bool,
     #[serde(skip)]
@@ -76,7 +75,6 @@ impl CommandList {
         &mut self,
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
     ) -> Result<(), AdapterRuntimeError> {
-        self.pending = false;
         match parsed {
             Ok(commands) => {
                 let (commands, omitted) = admit(commands);
@@ -149,14 +147,6 @@ impl CommandState {
     ) -> Result<(), AdapterRuntimeError> {
         self.replace(Ok(commands))
     }
-    pub(crate) fn catalog_capabilities(&self) -> sage_acp_protocol::intent::GoalCapabilities {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .map(|list| placement::catalog_capabilities(&list.commands))
-            .unwrap_or_default()
-    }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
             .lock()
@@ -181,12 +171,12 @@ impl CommandState {
         }
         Ok(())
     }
-    fn publication(&self) -> Option<(u64, bool)> {
+    fn revision(&self) -> Option<u64> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
-            .map(|list| (list.revision, list.pending))
+            .map(|list| list.revision)
     }
     pub(crate) fn validate(&self, revision: u64, text: &str) -> Result<(), AdapterRuntimeError> {
         self.0
@@ -218,9 +208,7 @@ impl CommandState {
     }
 }
 
-/// Tells the WebView to re-read one owner's bounded catalog. Pending transitions
-/// can repeat the command revision: only changed command authority invalidates picks.
-/// The notice carries no command data.
+/// Tells the WebView that one live owner has a new catalog revision; no command data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CommandsChangedV1 {
@@ -233,17 +221,11 @@ pub(crate) struct CommandsChangedV1 {
 }
 
 pub(crate) type CommandNoticeSink = Arc<dyn Fn(CommandsChangedV1) + Send + Sync>;
-/// True acknowledges a durable write (including an already-current snapshot).
-pub(crate) type CatalogRecorder = Arc<
-    dyn Fn(&RuntimeOwner, &sage_acp_protocol::intent::CapabilitySnapshotV1) -> bool + Send + Sync,
->;
 
 struct Slot {
     owner: RuntimeOwner,
     state: Arc<CommandState>,
-    announced: (u64, bool),
-    /// Only the latest failed snapshot survives; publication retries it until storage acknowledges.
-    pending: Option<sage_acp_protocol::intent::CapabilitySnapshotV1>,
+    announced: u64,
 }
 
 /// One slot per bounded live runtime lane. Old epochs cannot publish or clear a new owner.
@@ -251,15 +233,8 @@ struct Slot {
 pub(crate) struct CommandChannel {
     slot: Mutex<Option<Slot>>,
     sink: Mutex<Option<CommandNoticeSink>>,
-    recorder: Mutex<Option<CatalogRecorder>>,
 }
 impl CommandChannel {
-    pub(crate) fn set_recorder(&self, recorder: CatalogRecorder) {
-        *self
-            .recorder
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
-    }
     fn slot(&self) -> std::sync::MutexGuard<'_, Option<Slot>> {
         self.slot
             .lock()
@@ -279,21 +254,11 @@ impl CommandChannel {
         *slot = Some(Slot {
             owner,
             state: Arc::default(),
-            announced: (0, false),
-            pending: None,
+            announced: 0,
         });
     }
-    #[cfg(test)]
     pub(crate) fn update(&self, owner: &RuntimeOwner, list: Arc<CommandState>) {
-        self.update_catalog(owner, list, None);
-    }
-    pub(crate) fn update_catalog(
-        &self,
-        owner: &RuntimeOwner,
-        list: Arc<CommandState>,
-        capabilities: Option<sage_acp_protocol::intent::CapabilitySnapshotV1>,
-    ) {
-        let (revision, pending) = {
+        let revision = {
             let mut slot = self.slot();
             let Some(current) = slot.as_mut().filter(|s| &s.owner == owner) else {
                 return;
@@ -303,39 +268,17 @@ impl CommandChannel {
                 // over a new empty state), so its first revision is news.
                 current.state.close();
                 current.state = list;
-                current.announced = (0, false);
+                current.announced = 0;
             }
-            match current.state.publication() {
+            match current.state.revision() {
                 // Revision 0 is the empty list before any advertisement.
-                Some(publication @ (revision, _))
-                    if revision != 0 && publication != current.announced =>
-                {
-                    // Pending changes notify without revoking an unchanged catalog's picks.
-                    current.announced = publication;
-                    if let Some(capabilities) = capabilities {
-                        current.pending = Some(capabilities);
-                    }
-                    (Some(revision), current.pending.clone())
+                Some(revision) if revision != 0 && revision != current.announced => {
+                    current.announced = revision;
+                    revision
                 }
-                _ => (None, current.pending.clone()),
+                _ => return,
             }
         };
-        let recorder = self
-            .recorder
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if let Some((recorder, capabilities)) = recorder.zip(pending)
-            && recorder(owner, &capabilities)
-        {
-            let mut slot = self.slot();
-            if let Some(current) = slot.as_mut().filter(|s| &s.owner == owner)
-                && current.pending.as_ref() == Some(&capabilities)
-            {
-                current.pending = None;
-            }
-        }
-        let Some(revision) = revision else { return };
         let sink = self
             .sink
             .lock()

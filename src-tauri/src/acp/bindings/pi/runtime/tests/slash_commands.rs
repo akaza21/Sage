@@ -236,6 +236,8 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     prompt.command_revision = Some(commands.revision);
     let refresh = runtime.refresh_commands().unwrap().unwrap();
     let refresh = deliver(&mut runtime, refresh);
+    assert_eq!(refresh["type"], "get_commands");
+    assert!(runtime.refresh_commands().unwrap().is_none());
     runtime.ingest(&response(&refresh, json!({"commands":[{"name":"review","description":"Review changes","source":"extension"}]})), &Mapper).unwrap();
     assert_eq!(
         runtime.available_commands().snapshot().revision,

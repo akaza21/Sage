@@ -217,7 +217,6 @@ fn a_fork_clones_reads_the_copy_and_moves_pi_back_to_the_chat() {
     let query = deliver(&mut chat.runtime, query);
     assert_eq!(query["type"], "get_commands");
     answer(&mut chat, &query, json!({"commands":[]}));
-    assert!(!chat.runtime.available_commands().snapshot().pending);
     chat.runtime.release_fork(&fork, true).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),

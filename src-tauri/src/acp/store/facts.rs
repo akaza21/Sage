@@ -129,26 +129,15 @@ pub(crate) fn publish_projection(
     revision: ProjectionRevision,
     now_millis: i64,
 ) -> Result<(), StoreError> {
-    publish_chat_projection(transaction, project_id, chat_id, revision, now_millis)?;
+    ensure_one(transaction.execute(
+        "UPDATE chats SET projection_revision=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND projection_revision<?3",
+        params![project_id,chat_id,revision.get() as i64,now_millis],
+    )?,"chat projection")?;
     crate::turn_workspace::settle_terminal(transaction, session_id)?;
     ensure_one(transaction.execute(
         "UPDATE agent_sessions SET projection_revision=?2 WHERE id=?1 AND projection_revision<?2",
         params![session_id,revision.get() as i64],
     )?,"session projection")
-}
-
-/// For writers that have already advanced their session cursor atomically with its state.
-pub(crate) fn publish_chat_projection(
-    transaction: &Transaction<'_>,
-    project_id: &str,
-    chat_id: &str,
-    revision: ProjectionRevision,
-    now_millis: i64,
-) -> Result<(), StoreError> {
-    ensure_one(transaction.execute(
-        "UPDATE chats SET projection_revision=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND projection_revision<?3",
-        params![project_id,chat_id,revision.get() as i64,now_millis],
-    )?,"chat projection")
 }
 
 /// Publishes a projection change that leaves a racing send current. Every

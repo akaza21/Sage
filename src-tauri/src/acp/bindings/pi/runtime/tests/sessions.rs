@@ -87,7 +87,6 @@ fn a_saved_chat_reopens_from_pis_session_file() {
     runtime
         .ingest(&response(&query, json!({"commands":[]})), &Mapper)
         .unwrap();
-    assert!(!runtime.available_commands().snapshot().pending);
     running(&mut runtime);
     std::fs::remove_dir_all(dir).unwrap();
 }

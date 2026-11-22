@@ -1,4 +1,4 @@
-use super::{AdapterRuntimeError, CommandState};
+use super::CommandState;
 
 impl CommandState {
     pub(crate) fn refresh_after_turn(&self) {
@@ -22,58 +22,24 @@ impl CommandState {
             list.refresh_requested = true;
         }
     }
-    /// One wanted bit and one outstanding read per session; repeated intents coalesce.
+    /// Coalesce intents until the idle discovery pump consumes them. Outstanding
+    /// wire requests are accounted for by each binding's existing request table.
     pub(crate) fn request_refresh(&self) {
-        let mut state = self
+        if let Some(list) = self
             .0
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(list) = state.as_mut().filter(|list| !list.pending) {
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_mut()
+        {
             list.refresh_requested = true;
         }
     }
 
-    pub(crate) fn refresh_pending(&self) -> bool {
+    pub(crate) fn take_refresh_request(&self) -> bool {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .is_some_and(|list| list.pending)
-    }
-
-    pub(crate) fn refresh_requested(&self) -> bool {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .is_some_and(|list| list.refresh_requested && !list.pending)
-    }
-
-    pub(crate) fn begin_refresh(&self) -> Result<bool, AdapterRuntimeError> {
-        let mut state = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = state.as_mut().ok_or(AdapterRuntimeError::Operation)?;
-        if list.pending {
-            return Ok(false);
-        }
-        list.refresh_requested = false;
-        list.pending = true;
-        Ok(true)
-    }
-
-    pub(crate) fn finish_refresh(&self) {
-        let mut state = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(list) = state
             .as_mut()
-            .filter(|list| list.pending || list.refresh_requested)
-        {
-            list.pending = false;
-            list.refresh_requested = false;
-        }
+            .is_some_and(|list| std::mem::take(&mut list.refresh_requested))
     }
 }

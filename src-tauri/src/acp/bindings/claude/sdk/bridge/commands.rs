@@ -59,29 +59,7 @@ impl super::SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn refreshing_commands(&self) -> bool {
         self.pending
             .values()
-            .any(|pending| matches!(pending, super::Pending::Commands(_)))
-    }
-    pub(in crate::acp::bindings::claude::sdk) fn poll_command_refresh(
-        &mut self,
-        now: std::time::Instant,
-    ) -> Option<std::time::Instant> {
-        let (id, deadline) = self
-            .pending
-            .iter()
-            .find_map(|(id, pending)| match pending {
-                super::Pending::Commands(deadline) => Some((id, *deadline)),
-                _ => None,
-            })?;
-        if now < deadline {
-            return Some(deadline);
-        }
-        let id = id.clone();
-        self.pending.remove(&id);
-        if self.forgotten.len() >= super::MAX_PENDING {
-            self.forgotten.pop_front();
-        }
-        self.forgotten.push_back(id);
-        None
+            .any(|pending| matches!(pending, super::Pending::Commands))
     }
     /// Claude Code 2.1.322's SDK reinitialize() sends initialize again.
     /// supportedCommands() itself only reads the cached initialize response.
@@ -93,12 +71,7 @@ impl super::SdkBridge {
         }
         self.control(
             json!({"subtype":"initialize","perTaskStopAffordance":true,"forwardSubagentText":true}),
-            super::Pending::Commands(
-                std::time::Instant::now()
-                    + std::time::Duration::from_millis(
-                        sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
-                    ),
-            ),
+            super::Pending::Commands,
         )
     }
     pub(in crate::acp::bindings::claude::sdk) fn command_catalog_path(
@@ -118,7 +91,7 @@ impl super::SdkBridge {
                     response.subtype == "success"
                         && matches!(
                             self.pending.get(&response.request_id),
-                            Some(super::Pending::Initialize(_) | super::Pending::Commands(_))
+                            Some(super::Pending::Initialize(_) | super::Pending::Commands)
                         )
                 }) =>
             {

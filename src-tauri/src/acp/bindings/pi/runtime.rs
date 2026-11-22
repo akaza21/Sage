@@ -206,7 +206,6 @@ impl HarnessAdapter for PiRuntime {
             return Ok(None);
         }
         let egress = self.begin_one(Operation::GetCommands, RequestKind::Commands)?;
-        self.commands.begin_refresh()?;
         self.commands_pending = true;
         self.commands_discovered = true;
         Ok(Some(egress))

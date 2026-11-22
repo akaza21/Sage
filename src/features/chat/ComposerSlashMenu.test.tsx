@@ -1,4 +1,3 @@
-import { type AcpCommandCatalog as AcpCommandList } from "../../services/acpCommandCatalogDesktop";
 import {
   act,
   cleanup,
@@ -23,6 +22,7 @@ import type {
 } from "../../domain/acp";
 import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import type {
+  AcpCommandList,
   AcpCommandsChangedV1,
   AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
@@ -32,24 +32,13 @@ import { pickedCommandFor } from "./slashCommandPicks";
 const native = vi.hoisted(() => ({
   lists: [] as AcpCommandList[],
   requests: [] as unknown[],
+  refreshes: [] as unknown[],
   hold: null as Promise<AcpCommandList> | null,
   listeners: new Set<(event: AcpCommandsChangedV1) => void>(),
 }));
-vi.mock("../../services/acpCommandCatalogDesktop", async (original) => ({
+vi.mock("../../services/acpCommandsDesktop", async (original) => ({
   ...(await original<object>()),
-  acpCommandCatalogDesktop: {
-    refreshCommands: async () => {
-      native.lists = [{ revision: 2, commands, pending: true }];
-      native.listeners.forEach((listener) =>
-        listener({
-          sageProjectId: "project-a",
-          sageChatId: "chat-a",
-          sageAgentSessionId: "session-a",
-          runtimeEpoch: "3",
-          revision: 2,
-        }),
-      );
-    },
+  acpCommandsDesktop: {
     listCommands: vi.fn(async (request: unknown) => {
       native.requests.push(request);
       if (native.hold) return native.hold;
@@ -61,6 +50,13 @@ vi.mock("../../services/acpCommandCatalogDesktop", async (original) => ({
         return () => native.listeners.delete(listener);
       },
     ),
+  },
+}));
+vi.mock("../../services/acpCommandCatalogDesktop", () => ({
+  acpCommandCatalogDesktop: {
+    refreshCommands: async (request: unknown) => {
+      native.refreshes.push(request);
+    },
   },
 }));
 const mcp = vi.hoisted(() => ({
@@ -196,6 +192,7 @@ const names = (listbox: HTMLElement) =>
 beforeEach(() => {
   native.lists = [{ revision: 1, commands }];
   native.requests = [];
+  native.refreshes = [];
   native.hold = null;
   native.listeners.clear();
   acpProjectionStoreFor("chat-a").setState({ page: livePage() });
@@ -225,25 +222,31 @@ const status = () =>
   document.querySelector(".composer__input-area > [role='status']");
 
 describe("composer slash commands", () => {
-  it("refreshes the catalog from the footer and retains rows while pending", async () => {
+  it("keeps the catalog usable after refresh is sent and adopts the later reply", async () => {
     render(<Composer />);
     const { field, listbox } = await openMenu();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh commands" }));
-    await screen.findByText("Refreshing\u2026");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Refresh commands" }),
+    );
+    await waitFor(() =>
+      expect(native.refreshes).toEqual([
+        expect.objectContaining({
+          projectId: "project-a",
+          chatId: "chat-a",
+          sessionId: "session-a",
+          runtimeEpoch: "3",
+        }),
+      ]),
+    );
     expect(names(listbox)).toEqual(["/compact", "/review", "/mcp:docs:search"]);
-    native.lists = [
-      {
-        revision: 3,
-        commands: [{ ...commands[0]!, name: "fresh" }],
-        pending: false,
-      },
-    ];
-    announce("session-a", 3);
-    await waitFor(() => expect(names(listbox)).toEqual(["/fresh"]));
-    expect(screen.queryByText("Refreshing\u2026")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Refresh commands" }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
+    native.lists = [
+      { revision: 2, commands: [{ ...commands[0]!, name: "fresh" }] },
+    ];
+    announce("session-a", 2);
+    await waitFor(() => expect(names(listbox)).toEqual(["/fresh"]));
     expect(field).toHaveValue("/");
   });
 

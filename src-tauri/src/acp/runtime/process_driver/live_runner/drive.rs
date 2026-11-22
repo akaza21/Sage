@@ -58,7 +58,7 @@ where
     };
     let mut pending = None;
     let mut deadline = Some(deadline_millis);
-    match active::step(active, context, &mut pending, &mut deadline, None).await {
+    match active::step(active, context, &mut pending, &mut deadline).await {
         Ok((RunnerAction::Continue(next), None)) => Ok(next),
         Ok(_) => panic!("expected a nonterminal runner step"),
         Err(exit) => Err(exit.reason),
@@ -123,7 +123,6 @@ where
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
             return failed(state);
         }
-        let catalog_deadline = state.poll_command_refresh(context.clock.as_ref());
         let native_reply = if pending_config
             .as_ref()
             .is_some_and(PendingConfig::is_native_rpc)
@@ -155,7 +154,6 @@ where
                 context,
                 &mut pending_config,
                 &mut eof_deadline_millis,
-                catalog_deadline,
             )
             .await
             {
@@ -165,7 +163,7 @@ where
             FirstTurnWorkerState::Idle(mut idle) => match context.mailbox.wait_next_until(
                 wait_deadline(
                     &pending_config,
-                    [eof_deadline_millis, title_tick, catalog_deadline],
+                    [eof_deadline_millis, title_tick],
                     context.clock.as_ref(),
                 ),
                 context.clock.as_ref(),
@@ -216,16 +214,10 @@ where
                         None,
                     )
                 }
-                Ok(None)
-                    if pending_config.is_some()
-                        || title_tick.is_some()
-                        || catalog_deadline.is_some() =>
-                {
-                    (
-                        RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
-                        None,
-                    )
-                }
+                Ok(None) if pending_config.is_some() || title_tick.is_some() => (
+                    RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                    None,
+                ),
                 Ok(None) if eof_deadline_millis.is_some() => {
                     return failed_with_exit(
                         FirstTurnWorkerState::Idle(idle),
@@ -242,7 +234,7 @@ where
             FirstTurnWorkerState::Reusable(mut parts) => match context.mailbox.wait_next_until(
                 wait_deadline(
                     &pending_config,
-                    [eof_deadline_millis, title_tick, catalog_deadline],
+                    [eof_deadline_millis, title_tick],
                     context.clock.as_ref(),
                 ),
                 context.clock.as_ref(),
@@ -301,16 +293,10 @@ where
                         None,
                     )
                 }
-                Ok(None)
-                    if pending_config.is_some()
-                        || title_tick.is_some()
-                        || catalog_deadline.is_some() =>
-                {
-                    (
-                        RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
-                        None,
-                    )
-                }
+                Ok(None) if pending_config.is_some() || title_tick.is_some() => (
+                    RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
+                    None,
+                ),
                 Ok(None) if eof_deadline_millis.is_some() => {
                     return failed_with_exit(
                         FirstTurnWorkerState::Reusable(parts),
@@ -324,7 +310,7 @@ where
                 }
             },
             retained => match context.mailbox.wait_next_until(
-                wait_deadline(&pending_config, [catalog_deadline], context.clock.as_ref()),
+                pending_deadline_millis(&pending_config, context.clock.as_ref()),
                 context.clock.as_ref(),
             ) {
                 Ok(Some(ControlMessage::StdoutChunk(chunk)))
@@ -348,9 +334,7 @@ where
                 Ok(Some(message)) if closing(&retained) && process_tail(&message) => {
                     (RunnerAction::Continue(retained), None)
                 }
-                Ok(None) if pending_config.is_some() || catalog_deadline.is_some() => {
-                    (RunnerAction::Continue(retained), None)
-                }
+                Ok(None) if pending_config.is_some() => (RunnerAction::Continue(retained), None),
                 result => {
                     fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                     tracing::warn!(

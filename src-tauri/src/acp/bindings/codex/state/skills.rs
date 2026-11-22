@@ -264,7 +264,6 @@ impl CodexAdapter {
     }
 
     pub(crate) fn skills_unsent(&mut self) {
-        self.skills.list.finish_refresh();
         self.skills.wanted = true;
     }
 

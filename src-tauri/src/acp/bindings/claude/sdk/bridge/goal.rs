@@ -21,35 +21,14 @@ impl SdkBridge {
     }
 
     pub(super) fn refresh_goal_capability(&mut self) {
-        use crate::acp::{command_placement::place_commands, slash_commands::AvailableCommand};
-        let commands = self
-            .commands
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|row| AvailableCommand::from_acp(row).ok())
-            .collect();
-        let commands = place_commands(
-            commands,
-            crate::acp::bindings::claude::manifest::known_commands(),
-            None,
-            &|_| true,
-        );
-        self.follow_goal_capabilities(crate::acp::command_placement::catalog_capabilities(
-            &commands,
-        ));
-    }
-
-    pub(in crate::acp::bindings::claude::sdk) fn follow_goal_capabilities(
-        &mut self,
-        capabilities: GoalCapabilities,
-    ) {
-        self.goals_enabled = capabilities.supported();
+        self.goals_enabled = self.commands.as_array().is_some_and(|commands| {
+            commands.iter().any(|command| {
+                command["name"] == GOAL_COMMAND && command["_meta"]["source"] == "builtin"
+            })
+        });
         if self.goals_enabled && matches!(self.goal, GoalState::Unsupported) {
             // A listed command does not prove that no goal is set.
             self.goal = GoalState::Unavailable;
-        } else if !self.goals_enabled {
-            self.goal = GoalState::Unsupported;
         }
     }
 

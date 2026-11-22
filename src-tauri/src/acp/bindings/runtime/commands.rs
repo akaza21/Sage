@@ -6,19 +6,13 @@ impl NativeRuntime {
         &mut self,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let commands = self.0.available_commands();
-        if commands.refresh_pending() {
-            return Ok(None);
-        }
-        let result = if commands.refresh_requested() {
+        let result = if commands.take_refresh_request() {
             self.0.refresh_commands()
         } else {
             self.0.discover_commands()
         };
-        if result.is_err() {
-            commands.finish_refresh();
-        }
         if let Some((owner, channel)) = &self.3 {
-            channel.update_catalog(owner, commands, self.0.capabilities());
+            channel.update(owner, commands);
         }
         result
     }

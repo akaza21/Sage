@@ -17,12 +17,6 @@ where
     pub(crate) fn request_command_refresh(&self) {
         self.pump.request_command_refresh();
     }
-    pub(crate) fn poll_command_refresh(
-        &mut self,
-        now: std::time::Instant,
-    ) -> Option<std::time::Instant> {
-        self.pump.poll_command_refresh(now)
-    }
     pub(crate) fn begin_configure_session(
         &mut self,
         intent: &ConfigIntent,

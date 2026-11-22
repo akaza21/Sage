@@ -26,7 +26,6 @@ impl PiRuntime {
             if !response.success && response.command == "get_commands" && self.translator.sole_optional_discovery_request_id("get_commands") == Some(response.id.as_str()))
         {
             self.commands_pending = false;
-            self.commands.finish_refresh();
         }
         if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
             && kind == "extension_ui_request"
