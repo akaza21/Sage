@@ -145,18 +145,12 @@ test("effort readiness does not depend on the no-account Codex model picker", as
     },
     {
       state: "completed",
-      controls: {
-        stop: false,
-        composer: true,
-        send: true,
-        effortEnabled: false,
-      },
+      controls: { stop: false, send: true, effortEnabled: false },
     },
     {
       state: "completed",
       controls: {
         stop: false,
-        composer: true,
         send: true,
         effortEnabled: true,
         modelEnabled: false,

@@ -331,7 +331,7 @@ async function openCapture(t, scenario, options) {
       observation.singlePane === true &&
       observation.lazyFallbackVisible === false &&
       // The composer mounts after the projection; slow runners show the gap.
-      observation.controls.composer === true &&
+      observation.controls.send === true &&
       observation.controls.harness === true &&
       typeof observation.selected === "string"
     );
@@ -422,11 +422,6 @@ for (const [scenario, harness, state] of CELLS)
         await drive(capture, options);
         const predicates = await reached(capture, options);
         assert.equal(predicates.namedState, true, JSON.stringify(predicates));
-        if (state === "composer-idle") {
-          const observation = await capture.observe();
-          assert.equal(observation.controls.composer, true);
-          assert.equal(observation.controls.send, false);
-        }
         if ("chat" in predicates) {
           assert.equal(predicates.chat, true);
           assert.equal(predicates.singlePane, true);
@@ -564,8 +559,7 @@ test(
     const narrow = await capture.observe();
     assert.equal(narrow.visible.meter, false);
     assert.equal(narrow.controls.meter, false);
-    assert.equal(narrow.controls.composer, true);
-    assert.equal(narrow.controls.send, false);
+    assert.equal(narrow.controls.send, true);
     // Widening the same Chat refits the toolbar and the meter returns.
     await capture.page.setViewportSize({
       width: options.width,

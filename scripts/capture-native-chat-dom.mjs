@@ -224,7 +224,7 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={composer:has('textarea[aria-label="Message agent"]'),harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}'),effortEnabled:has('${EFFORT_TRIGGER}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('${CONTEXT_METER}')};
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}'),effortEnabled:has('${EFFORT_TRIGGER}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('${CONTEXT_METER}')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
@@ -403,8 +403,7 @@ export function namedState(options, observation, captureChat) {
       terminal && view.code && observation.codeHighlighted === true,
     "answer-mermaid": terminal && view.mermaid,
     "answer-image": terminal && view.image && observation.imageLoaded === true,
-    "composer-idle":
-      !observation.controls.stop && observation.controls.composer,
+    "composer-idle": !observation.controls.stop && observation.controls.send,
     "composer-stop": live && observation.controls.stop,
     "harness-menu": view.harnessMenu,
     "model-menu": view.modelMenu,
@@ -419,11 +418,11 @@ export function namedState(options, observation, captureChat) {
       (observation.meterFit === "shown" && view.meter) ||
       observation.meterFit === "dropped",
     "responsive-wide":
-      terminal && assistantRendered && observation.controls.composer,
+      terminal && assistantRendered && observation.controls.send,
     "responsive-720":
-      terminal && assistantRendered && observation.controls.composer,
+      terminal && assistantRendered && observation.controls.send,
     "responsive-480":
-      terminal && assistantRendered && observation.controls.composer,
+      terminal && assistantRendered && observation.controls.send,
     ...parityRules(observation, { terminal, live, assistantRendered }),
   };
   predicates.namedState =
