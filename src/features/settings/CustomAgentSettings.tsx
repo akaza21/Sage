@@ -1,7 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { errorMessage } from "../../domain/errors";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
-import { Notice } from "../../ui/Notice";
 import { SettingsRow } from "./SettingsRow";
 
 /** A user-defined ACP agent as Rust stores it (names only, never values). */
@@ -90,13 +89,6 @@ export default function CustomAgentSettings() {
   }
 
   if (!native) return null;
-  const notice = error ? (
-    <Notice
-      identity="settings:custom-agents"
-      severity="warning"
-      message={error}
-    />
-  ) : null;
   return (
     <section className="settings-surface__group" aria-label="Your ACP agents">
       <h3>Your ACP agents</h3>
@@ -189,7 +181,6 @@ export default function CustomAgentSettings() {
               }
             />
           </label>
-          {notice}
           <button className="button button--compact" disabled={busy}>
             {busy ? "Saving..." : "Save agent"}
           </button>
@@ -219,7 +210,7 @@ export default function CustomAgentSettings() {
           another.
         </p>
       )}
-      {draft ? null : notice}
+      {error ? <p role="alert">{error}</p> : null}
     </section>
   );
 }

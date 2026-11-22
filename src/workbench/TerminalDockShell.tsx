@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePortalHost } from "../ui/usePortalHost";
 
 import { IconButton } from "../ui/IconButton";
-import { Notice } from "../ui/Notice";
 import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
@@ -315,14 +314,9 @@ export function TerminalDockShell({
         </div>
       </div>
       {!collapsed && status ? (
-        <div className="terminal-dock__message">
-          <Notice
-            identity={`terminal:${scope.projectId}:${scope.chatId}:${message ? "dock" : activeId}`}
-            severity={message ? "warning" : "info"}
-            message={status}
-            progress={!message}
-          />
-        </div>
+        <p className="terminal-dock__message" role="status">
+          {status}
+        </p>
       ) : null}
       {entries.length ? (
         <LazyModuleBoundary
