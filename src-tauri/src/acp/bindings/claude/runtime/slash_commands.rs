@@ -1,6 +1,7 @@
 use super::*;
 use crate::acp::{
     bindings::standard_acp::surface::{panel, update_commands_with},
+    command_placement::{NativeControl, place_commands},
     slash_commands::{AvailableCommand, CommandPanel, CommandSource},
 };
 
@@ -17,14 +18,66 @@ impl ClaudeRuntime {
         } else {
             Vec::new()
         };
-        let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
+        let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
         update_commands_with(
             value,
             active.external_id.as_str(),
-            &mut active.commands,
+            &active.commands,
             &first,
-            classify_command,
+            |commands| {
+                place_commands(
+                    commands.into_iter().map(classify_command).collect(),
+                    super::super::manifest::known_commands(),
+                    self.command_version.as_ref(),
+                    &|control| self.supports_command_control(control),
+                )
+            },
         )
+    }
+
+    pub(super) fn recompute_command_placement(&self) -> Result<(), AdapterRuntimeError> {
+        let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+        active.commands.recompute_placement(
+            super::super::manifest::known_commands(),
+            self.command_version.as_ref(),
+            &|control| self.supports_command_control(control),
+        )
+    }
+
+    fn supports_command_control(&self, control: NativeControl) -> bool {
+        let Some(active) = self.active.as_ref() else {
+            return false;
+        };
+        match control {
+            NativeControl::Compact => {
+                self.opens_panels && self.capabilities.as_ref().is_some_and(|c| c.prompt)
+            }
+            NativeControl::McpPanel | NativeControl::UsagePanel => self.opens_panels,
+            NativeControl::NewChat => self.capabilities.as_ref().is_some_and(|c| c.new_session),
+            NativeControl::ModelPicker => active
+                .config
+                .config_options
+                .as_slice()
+                .iter()
+                .any(|o| o.category.as_ref().is_some_and(|c| c.as_str() == "model")),
+            NativeControl::EffortPicker => {
+                active.config.config_options.as_slice().iter().any(|o| {
+                    o.category
+                        .as_ref()
+                        .is_some_and(|c| matches!(c.as_str(), "effort" | "thought_level"))
+                })
+            }
+            NativeControl::AccessMenu => {
+                active.config.modes.is_some()
+                    || active
+                        .config
+                        .config_options
+                        .as_slice()
+                        .iter()
+                        .any(|o| o.category.as_ref().is_some_and(|c| c.as_str() == "mode"))
+            }
+            _ => false,
+        }
     }
 }
 

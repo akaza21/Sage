@@ -308,9 +308,20 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 1971,
-        "maxCssGzipBytes": 764,
-        "reason": "Native Goal details, Pause and Delete with their mutations; loads with the first chat that shows a Goal. Measured 1842 B JS and 714 B CSS, plus 7%."
+        "maxGzipBytes": 2600,
+        "maxCssGzipBytes": 850,
+        "reason": "Capability-driven native Goal actions, mutations and progress: 2305 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
+      },
+      {
+        "entry": "src/services/acpGoalSubscription.ts",
+        "maxGzipBytes": 600,
+        "reason": "The bounded native Goal notice decoder and subscription load only when an active native chat subscribes. No additional listener or queue is introduced."
+      },
+      {
+        "entry": "src/features/chat/GoalDetails.tsx",
+        "maxGzipBytes": 1100,
+        "maxCssGzipBytes": 650,
+        "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip and content have separate caps."
       },
       {
         "entry": "src/features/chat/ComposerAttachments.tsx",

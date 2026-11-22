@@ -48,6 +48,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 self.binding.binding_digest(),
                 runtime_epoch,
                 session_id,
+                self.binding.harness_version(),
             ),
             bridge: None,
             children: Children::default(),
@@ -189,7 +190,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .transpose()
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        self.session.capabilities().map(sdk_capabilities)
+        self.session.capabilities().map(|capabilities| {
+            let mut capabilities = sdk_capabilities(capabilities);
+            capabilities.goal = self
+                .bridge
+                .as_ref()
+                .map(|bridge| bridge.goal_capabilities())
+                .unwrap_or_default();
+            capabilities
+        })
     }
     fn session_control(
         &mut self,
@@ -225,6 +234,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn abandon_passive_read(&mut self) {
         self.abandon_passive_requests();
+    }
+    fn goal_state(&self) -> Option<&crate::acp::goal::GoalState> {
+        self.bridge.as_ref().map(SdkBridge::goal_state)
+    }
+    fn prepare_goal_command(
+        &mut self,
+        action: &crate::acp::goal::GoalAction,
+    ) -> Result<bool, AdapterRuntimeError> {
+        self.prepare_goal(action)
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()

@@ -1,3 +1,4 @@
+import type { AcpGoalCapabilities } from "./acpGoal";
 export type {
   AcpChatPage,
   AcpItem,
@@ -167,6 +168,7 @@ export interface AcpCapabilitySet {
   nativeSessionCompact?: boolean;
   nativeReview?: boolean;
   nativeBackgroundTerminals?: boolean;
+  goal?: AcpGoalCapabilities;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;

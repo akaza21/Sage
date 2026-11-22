@@ -16,6 +16,7 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "closeSession",
     "collaborationEventProjection",
     "configCount",
+    "goal",
     "loadSession",
     "modelCount",
     "multiRootExtensionSchemaId",

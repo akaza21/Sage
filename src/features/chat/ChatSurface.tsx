@@ -305,7 +305,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {unavailable ? (
+      {unavailable && !activeAcpTurn && !approval.awaiting ? (
         <HarnessUnavailableNotice
           onEditSummaryMount={setEditSummaryContainer}
           existingChat={unavailableChat}
@@ -386,6 +386,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           usage={usage}
           usageRequest={usageRequest}
           goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
+          goalCapabilities={
+            boundSession?.runtimeEpoch
+              ? boundSession.capabilities.goal
+              : undefined
+          }
           onSubmit={submit}
           onTextChange={setComposerText}
           onRemoveContext={removeAttachedContext}

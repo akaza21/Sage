@@ -1,7 +1,7 @@
 import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import type { AcpGoalState } from "../../domain/acpGoal";
+import type { AcpGoalCapabilities, AcpGoalState } from "../../domain/acpGoal";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -83,6 +83,8 @@ export interface ChatComposerRegionProps {
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;
+  /** Native goal operations of the live session; absent while offline. */
+  goalCapabilities?: AcpGoalCapabilities;
   onSubmit: (
     event: FormEvent<HTMLFormElement>,
     stagedRevision?: string | null,

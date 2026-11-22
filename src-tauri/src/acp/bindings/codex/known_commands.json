@@ -1,0 +1,7 @@
+[
+  { "name": "compact", "section": "session", "control": "compact" },
+  { "name": "review", "section": "session", "control": "review" },
+  { "name": "status", "section": "usage", "control": "usagePanel" },
+  { "name": "mcp", "section": "connections", "control": "mcpPanel" },
+  { "name": "skills", "section": "skillsAndCommands" }
+]

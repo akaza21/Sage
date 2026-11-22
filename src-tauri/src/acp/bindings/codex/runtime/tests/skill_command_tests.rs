@@ -385,6 +385,22 @@ fn codex_lists_its_own_commands_for_the_methods_this_session_negotiated() {
         ]
     );
     let listed = serde_json::to_value(&list.commands).unwrap();
+    assert_eq!(
+        listed[0]["placement"],
+        json!({"section":"session","control":"compact"})
+    );
+    assert_eq!(
+        listed[1]["placement"],
+        json!({"section":"session","control":"review"})
+    );
+    assert_eq!(
+        listed[2]["placement"],
+        json!({"section":"usage","control":"usagePanel"})
+    );
+    assert_eq!(
+        listed[3]["placement"],
+        json!({"section":"connections","control":"mcpPanel"})
+    );
     assert_eq!(listed[0].get("panel"), None);
     assert_eq!(listed[2]["panel"], "status");
     assert_eq!(listed[3]["panel"], "mcp");

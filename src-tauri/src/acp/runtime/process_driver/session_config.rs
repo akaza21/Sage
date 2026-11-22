@@ -48,7 +48,7 @@ where
         }
         match &intent.request {
             crate::acp::goal::NativeRpcRequest::Goal(action) => {
-                self.pump.write_goal(&mut self.transport, *action)
+                self.pump.write_goal(&mut self.transport, action.clone())
             }
             crate::acp::goal::NativeRpcRequest::UsageRead => {
                 self.pump.write_usage_read(&mut self.transport)

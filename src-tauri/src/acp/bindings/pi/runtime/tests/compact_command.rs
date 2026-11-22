@@ -185,6 +185,10 @@ fn a_full_catalog_keeps_its_size_and_still_lists_compact() {
     assert_eq!(listed[max - 1].name, format!("t{}", max - 3));
     assert_eq!(listed[0].name, "session");
     assert_eq!(listed[1].name, "compact");
+    assert_eq!(
+        serde_json::to_value(&listed[1]).unwrap()["placement"],
+        json!({"section":"session","control":"compact"})
+    );
 }
 
 #[test]

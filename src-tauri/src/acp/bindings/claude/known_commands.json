@@ -1,0 +1,36 @@
+[
+  { "name": "goal", "section": "session", "control": "goalEditor" },
+  { "name": "compact", "section": "session", "control": "compact" },
+  { "name": "model", "section": "modelAndAccess", "control": "modelPicker" },
+  { "name": "effort", "section": "modelAndAccess", "control": "effortPicker" },
+  { "name": "fast", "section": "modelAndAccess" },
+  { "name": "mcp", "section": "connections", "control": "mcpPanel" },
+  {
+    "name": "reload-plugins",
+    "section": "addOns",
+    "control": "reloadAddOns",
+    "since": "2.1.260"
+  },
+  {
+    "name": "reload-skills",
+    "section": "skillsAndCommands",
+    "control": "reloadAddOns",
+    "since": "2.1.152"
+  },
+  { "name": "usage", "section": "usage", "control": "usagePanel" },
+  { "name": "context", "section": "usage", "control": "usagePanel" },
+  { "name": "status", "section": "usage", "control": "usagePanel" },
+  { "name": "clear", "section": "session", "control": "newChat" },
+  { "name": "agents", "section": "session" },
+  { "name": "hooks", "section": "addOns", "terminalOnly": true },
+  { "name": "memory", "section": "session", "terminalOnly": true },
+  { "name": "plugin", "section": "addOns", "terminalOnly": true },
+  {
+    "name": "permissions",
+    "section": "modelAndAccess",
+    "control": "accessMenu",
+    "terminalOnly": true
+  },
+  { "name": "resume", "section": "session", "terminalOnly": true },
+  { "name": "rewind", "section": "session", "terminalOnly": true }
+]

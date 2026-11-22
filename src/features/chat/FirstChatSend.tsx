@@ -25,12 +25,17 @@ export function FirstChatSend({
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (!pending?.chatId || pending.chatId !== chatId || !page || transitioning)
-      return;
+    if (!pending?.chatId || pending.chatId !== chatId || transitioning) return;
     const state = useWorkbenchStore.getState();
     if (state.pendingFirstSend !== pending) return;
-    const context = currentContext(chatId);
-    if (!context || context.page !== page) return;
+    const entry = state.chatUiById[chatId];
+    const harness = state.harnesses.find(
+      (harness) => harness.id === entry?.harnessId,
+    );
+    if (harness?.transport === "acp") {
+      const context = currentContext(chatId);
+      if (!page || !context || context.page !== page) return;
+    }
     useWorkbenchStore.setState({ pendingFirstSend: null });
     if (
       draftShownFor(state, chatId) ||
@@ -39,21 +44,22 @@ export function FirstChatSend({
       state.chatOwnershipEpoch !== pending.ownershipEpoch
     )
       return;
-    const entry = state.chatUiById[chatId];
-    const harness = state.harnesses.find(
-      (harness) => harness.id === entry?.harnessId,
-    );
     if (
-      entry?.composerText &&
-      entry.composerText === pending.text &&
-      harness?.bindingId
+      !entry?.composerText ||
+      entry.composerText !== pending.text ||
+      harness?.installState !== "available"
     )
+      return;
+    if (harness.transport === "legacySimulator") {
+      void state.sendPrompt();
+    } else if (harness.bindingId) {
       void actions.submit(
         entry.composerText.trim(),
         [],
         harness.bindingId as CuratedBindingId,
         (entry.modelId ?? null) as CuratedModelId | null,
       );
+    }
   }, [actions, chatId, page, pending, transitioning]);
   return null;
 }

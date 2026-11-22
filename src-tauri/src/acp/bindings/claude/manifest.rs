@@ -1,5 +1,14 @@
 use std::path::{Component, Path, PathBuf};
 
+pub(crate) fn known_commands() -> &'static crate::acp::command_placement::KnownCommandTable {
+    static TABLE: std::sync::OnceLock<crate::acp::command_placement::KnownCommandTable> =
+        std::sync::OnceLock::new();
+    crate::acp::command_placement::KnownCommandTable::load(
+        &TABLE,
+        include_bytes!("known_commands.json"),
+    )
+}
+
 use crate::acp::bindings::characterisation::{
     Characterisation, claude_characterisation, node_satisfies_declared_engine,
     valid_numeric_version,
