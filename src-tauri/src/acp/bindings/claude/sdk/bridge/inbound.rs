@@ -90,8 +90,7 @@ impl SdkBridge {
         let reply = response.get("response").unwrap_or(&Value::Null);
         match pending {
             Pending::Commands => {
-                self.commands = super::commands::commands(reply);
-                let commands = self.commands.take();
+                let commands = super::commands::commands(reply);
                 inbound.acp.push(self.update(json!({"sessionUpdate":"available_commands_update","availableCommands":commands})));
             }
             Pending::Initialize(id) => {

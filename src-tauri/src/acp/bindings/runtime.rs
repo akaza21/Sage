@@ -376,12 +376,15 @@ impl HarnessAdapter for NativeRuntime {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let advertised = self.0.available_commands().advertised();
         let result = self.0.ingest(frame, resources);
-        if result.is_err() {
-            self.publish_config()?;
+        if result.is_err()
+            && let Some((owner, channel)) = &self.3
+        {
+            channel.update(owner, self.0.available_commands());
         }
         let batch = result?;
-        self.follow_catalog_triggers(&batch);
+        self.follow_catalog_triggers(&batch, advertised);
         self.publish_config()?;
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()

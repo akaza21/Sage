@@ -172,7 +172,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.session.available_commands()
     }
     fn refresh_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        if self.bridge()?.refreshing_commands() {
+        // An untracked delivery could never settle its pending read, so a full
+        // delivery table refuses the refresh like one already in flight.
+        if self.sent.len() >= MAX_OPEN_DELIVERIES || self.bridge()?.refreshing_commands() {
             return Ok(None);
         }
         let sdk = self

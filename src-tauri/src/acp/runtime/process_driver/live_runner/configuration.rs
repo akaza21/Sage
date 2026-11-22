@@ -161,14 +161,6 @@ where
         return (RunnerAction::Continue(state), None);
     }
     let preempts_title = match &envelope.command {
-        WorkerCommand::NativeRpc { intent, .. }
-            if matches!(
-                intent.request,
-                crate::acp::goal::NativeRpcRequest::RefreshCommands
-            ) =>
-        {
-            false
-        }
         WorkerCommand::AcceptTerminal { .. }
         | WorkerCommand::AcceptLatestCompleted
         | WorkerCommand::ObserveSend { .. }

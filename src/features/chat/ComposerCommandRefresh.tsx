@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { acpCommandCatalogDesktop } from "../../services/acpCommandCatalogDesktop";
 import { commandCatalogRequest } from "./composerCommandCatalogRequest";
 import "../../styles/composer-command-refresh.css";
@@ -15,8 +16,12 @@ export function ComposerCommandRefresh({
   omitted: number;
   onStatusChange: (status: string) => void;
 }) {
+  // Only the IPC call is in flight here; the harness reply arrives later
+  // through the catalog change event.
+  const [sending, setSending] = useState(false);
   const refresh = async () => {
-    if (!owner) return;
+    if (!owner || sending) return;
+    setSending(true);
     try {
       await acpCommandCatalogDesktop.refreshCommands(
         commandCatalogRequest(owner, boundChatId),
@@ -27,6 +32,8 @@ export function ComposerCommandRefresh({
           ? error.message
           : "The command list could not be refreshed.",
       );
+    } finally {
+      setSending(false);
     }
   };
   return (
@@ -40,6 +47,7 @@ export function ComposerCommandRefresh({
         <button
           className="composer-command-refresh"
           type="button"
+          disabled={sending}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void refresh()}
         >

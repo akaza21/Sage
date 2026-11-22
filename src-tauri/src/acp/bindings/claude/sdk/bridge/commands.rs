@@ -66,9 +66,6 @@ impl super::SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn refresh_commands(
         &mut self,
     ) -> Result<Value, super::BridgeError> {
-        if self.refreshing_commands() {
-            return Err(super::BridgeError::Capacity);
-        }
         self.control(
             json!({"subtype":"initialize","perTaskStopAffordance":true,"forwardSubagentText":true}),
             super::Pending::Commands,

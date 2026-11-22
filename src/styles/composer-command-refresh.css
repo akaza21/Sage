@@ -11,3 +11,8 @@
 .composer-command-refresh:hover {
   color: var(--color-text-primary);
 }
+
+.composer-command-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

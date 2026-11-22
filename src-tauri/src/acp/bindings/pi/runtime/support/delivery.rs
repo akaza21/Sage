@@ -23,9 +23,7 @@ impl PiRuntime {
                 self.staged_initialize = None;
                 self.initialized = false;
             }
-            RequestKind::Commands => {
-                self.commands_pending = false;
-            }
+            RequestKind::Commands => self.commands_pending = false,
             RequestKind::Prompt => self.active_turn = None,
             RequestKind::Steer => self.rollback_steer(id),
             RequestKind::ThinkingLevels => {

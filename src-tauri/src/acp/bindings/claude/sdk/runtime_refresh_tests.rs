@@ -136,3 +136,39 @@ fn identical_claude_refresh_preserves_a_selected_command_for_send() {
     assert_eq!(sent["message"]["content"][0]["text"], "/review src");
     assert_eq!(runtime.available_commands().snapshot().revision, selected);
 }
+
+#[test]
+fn a_new_session_sends_exactly_one_catalog_read() {
+    let mut runtime = NativeRuntime::new(super::runtime());
+    let mut reads = 0;
+    let mut written = |runtime: &mut NativeRuntime, egress: AdapterEgress| {
+        let sdk = value(&egress);
+        if sdk["request"]["subtype"] == "initialize" {
+            reads += 1;
+        }
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        sdk
+    };
+    let initialize = runtime.command(AdapterCommand::Initialize).unwrap();
+    let initialize = written(&mut runtime, initialize);
+    runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"success","request_id":initialize["request_id"],"response":{"commands":[{"name":"review","description":"Review changes"}],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}}})), &Mapper).unwrap();
+    let session = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        })
+        .unwrap();
+    let session = written(&mut runtime, session);
+    let batch = runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"success","request_id":session["request_id"],"response":{"applied":{}}}})), &Mapper).unwrap();
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::SessionReady { loaded: false, .. }, ..]
+    ));
+    assert!(runtime.available_commands().advertised());
+    while let Some(egress) = runtime.discover_commands().unwrap() {
+        written(&mut runtime, egress);
+    }
+    assert_eq!(reads, 1);
+}
