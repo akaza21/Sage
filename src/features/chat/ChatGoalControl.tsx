@@ -1,5 +1,6 @@
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
-import { Pause, RotateCw, Target } from "../../ui/leanIconNodesLazy";
+import { RotateCw, Target } from "../../ui/leanIconNodesLazy";
+import { Pause } from "../../ui/goalIcons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
@@ -85,9 +86,7 @@ export function ChatGoalControl({
       setMutation({ kind: "pending" });
       try {
         const outcome = await (action === "set" || action === "tokenBudget"
-          ? tokenBudget === undefined
-            ? controls(action, objective)
-            : controls(action, objective, tokenBudget)
+          ? controls(action, objective, tokenBudget)
           : controls(action));
         setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
         return outcome.kind === "applied";
@@ -135,17 +134,15 @@ export function ChatGoalControl({
     (editing || editorOpen) ? (
       <GoalContent
         part="GoalEditor"
-        objective={state.kind === "goal" ? state.snapshot.objective : ""}
+        snapshot={state.kind === "goal" ? state.snapshot : undefined}
         canSetObjective={!!capabilities?.set}
         canSetBudget={!!capabilities?.tokenBudget}
-        tokenBudget={state.kind === "goal" ? state.snapshot.tokenBudget : null}
         disabled={locked}
-        onSave={(objective, budget) => {
-          if (state.kind !== "goal" || objective !== state.snapshot.objective)
-            return run("set", objective, budget);
-          if (budget !== undefined && budget !== state.snapshot.tokenBudget)
+        onSave={async (objective, budget) => {
+          if (objective !== undefined) return run("set", objective, budget);
+          if (budget !== undefined)
             return run("tokenBudget", undefined, budget);
-          return Promise.resolve(true);
+          return true;
         }}
         onClose={closeEditor}
       />

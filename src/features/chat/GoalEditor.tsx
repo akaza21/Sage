@@ -1,29 +1,36 @@
 import { useState } from "react";
+import type { AcpGoalSnapshot } from "../../domain/acpGoal";
 
 export function GoalEditor({
-  objective,
+  snapshot,
   canSetObjective,
   canSetBudget,
-  tokenBudget,
   disabled,
   onSave,
   onClose,
 }: {
-  objective: string;
+  snapshot?: AcpGoalSnapshot;
   canSetObjective: boolean;
   canSetBudget: boolean;
-  tokenBudget: number | null;
   disabled: boolean;
-  onSave: (objective: string, tokenBudget?: number) => Promise<boolean>;
+  onSave: (objective?: string, tokenBudget?: number) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const [text, setText] = useState(objective);
-  const [budget, setBudget] = useState(tokenBudget?.toString() ?? "");
+  const [baseline, setBaseline] = useState(snapshot);
+  const [editedText, setText] = useState<string>();
+  const [editedBudget, setBudget] = useState<string>();
+  const text = editedText ?? snapshot?.objective ?? "";
+  const budget = editedBudget ?? snapshot?.tokenBudget?.toString() ?? "";
+  const changed =
+    baseline?.objective !== snapshot?.objective ||
+    baseline?.createdAt !== snapshot?.createdAt ||
+    baseline?.progress?.setAt !== snapshot?.progress?.setAt;
+  const textLength = [...text].length;
   const parsedBudget =
-    !canSetBudget || budget === "" ? undefined : Number(budget);
+    canSetBudget && editedBudget ? Number(editedBudget) : undefined;
   const valid =
     text.trim().length > 0 &&
-    [...text].length <= 4000 &&
+    textLength <= 4000 &&
     !text.includes("\0") &&
     (parsedBudget === undefined ||
       (/^\d+$/.test(budget) &&
@@ -31,11 +38,11 @@ export function GoalEditor({
         parsedBudget > 0));
   return (
     <div className="chat-goal-editor" role="group" aria-label="Edit goal">
+      {changed && <p role="alert">The goal changed while you were editing</p>}
       <label>
         Goal objective
         <textarea
           autoFocus={canSetObjective}
-          aria-label="Goal objective"
           value={text}
           maxLength={8000}
           disabled={disabled || !canSetObjective}
@@ -44,7 +51,7 @@ export function GoalEditor({
           }
         />
       </label>
-      <span>{[...text].length.toLocaleString()} / 4,000</span>
+      <span>{textLength.toLocaleString()} / 4,000</span>
       {canSetBudget && (
         <label>
           Token budget (optional)
@@ -62,18 +69,27 @@ export function GoalEditor({
       )}
       <button
         type="button"
-        disabled={disabled || !valid}
-        onClick={() => {
-          if (!disabled && valid)
-            void onSave(text, parsedBudget).then((applied) => {
-              if (applied) onClose();
-            });
+        disabled={disabled || !valid || changed}
+        onClick={async () => {
+          if (
+            await onSave(canSetObjective ? editedText : undefined, parsedBudget)
+          )
+            onClose();
         }}
       >
         Save goal
       </button>
+      {changed && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setBaseline(snapshot)}
+        >
+          Keep editing
+        </button>
+      )}
       <button type="button" disabled={disabled} onClick={onClose}>
-        Cancel
+        {changed ? "Discard" : "Cancel"}
       </button>
     </div>
   );

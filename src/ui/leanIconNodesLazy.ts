@@ -65,10 +65,6 @@ export const PanelLeft = leanIcon("panel-left", [
 export const Paperclip = leanIcon("paperclip", [
   "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
 ]);
-export const Pause = leanIcon("pause", [
-  ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1" }],
-  ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1" }],
-]);
 export const RotateCw = leanIcon("rotate-cw", [
   "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8",
   "M21 3v5h-5",
