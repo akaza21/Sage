@@ -231,7 +231,7 @@ for (const width of [1888, 720, 480]) {
       });
       await trigger.click();
       const menu = page.getByRole("menu", { name: "Composer options menu" });
-      await expect(menu.getByText("Add", { exact: true })).toHaveCSS(
+      await expect(menu.getByText("Add to message", { exact: true })).toHaveCSS(
         "text-transform",
         "none",
       );

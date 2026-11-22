@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { expect, it, vi } from "vitest";
-import { ComposerSlashController } from "./ComposerSlashController";
+import { ComposerSlashController } from "./ComposerCommandRuntime";
 
 const chunk = vi.hoisted(() => {
   let fail: (error: Error) => void = () => {};

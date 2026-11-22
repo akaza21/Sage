@@ -4,7 +4,7 @@ import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import type { AcpChatPage } from "../../domain/acp";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
-import { ComposerAddActions } from "./ComposerAddActions";
+import { ComposerSectionRows as ComposerAddActions } from "./ComposerSectionMenu";
 
 afterEach(() => {
   cleanup();
@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function renderActions(chatAvailable: boolean, nativeSessionImport = true) {
-  pinAgentChatOwner("chat-import");
+  pinAgentChatOwner("another-chat");
   acpProjectionStoreFor("chat-import").setState({
     page: {
       currentSessionId: "session-1",
@@ -26,6 +26,7 @@ function renderActions(chatAvailable: boolean, nativeSessionImport = true) {
       value={{ launch, chatAvailable, terminalAvailable: false }}
     >
       <ComposerAddActions
+        boundChatId="chat-import"
         sessionConfig={null}
         pending={false}
         disabled={false}
@@ -38,7 +39,7 @@ function renderActions(chatAvailable: boolean, nativeSessionImport = true) {
   return { launch, onClose };
 }
 
-it("opens the Codex CLI session picker from the Add menu of an Agent chat", () => {
+it("opens the owning chat's session picker when another chat is focused", () => {
   const { launch, onClose } = renderActions(true);
   fireEvent.click(
     screen.getByRole("menuitem", { name: "Open a Codex CLI session" }),

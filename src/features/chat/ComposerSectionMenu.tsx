@@ -1,0 +1,280 @@
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import type * as CommandRuntime from "./ComposerCommandRuntime";
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
+import type {
+  ComposerAddActionsProps,
+  ComposerOptionsProps,
+} from "./ComposerAddActions";
+import { composerNativeRows } from "./composerNativeRows";
+import { composerMenuSections } from "./composerMenuSections";
+import { ComposerMenuSections } from "./ComposerSectionList";
+import type { SessionCommandsLoad } from "./useSessionCommands";
+import "../../styles/composer-menu.css";
+import { MenuPopover } from "../../ui/MenuPopover";
+import {
+  sessionConfigControls,
+  sessionModeActions,
+  flattenChoices,
+} from "../../domain/acpSessionConfigControls";
+import { withoutGovernedModes } from "../../domain/governedSessionModes";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
+import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
+import type { AcpCommandPanel } from "../../domain/acpCommand";
+import { lazyParts } from "./lazyParts";
+import type * as PanelChunk from "./ComposerCommandPanel";
+import type { pickComposerSlashCommand } from "./insertSlashCommand";
+const PanelPart = lazyParts<typeof PanelChunk>(
+  () => import("./ComposerCommandPanel"),
+);
+
+function ComposerOptionsBrowser({
+  load,
+  insertCommand,
+  id,
+  triggerRef,
+  onDismiss,
+  selectionKey,
+  canSelectEffort,
+  focused,
+  onModeRemoved,
+  accessModes,
+  ...given
+}: ComposerOptionsProps & {
+  load: SessionCommandsLoad | null;
+  insertCommand: typeof pickComposerSlashCommand;
+}) {
+  const pinnedOwner = usePinnedAgentChatOwner();
+  const owner = given.boundChatId ?? pinnedOwner;
+  const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
+  const fieldRef = useMemo(
+    () => ({
+      get current() {
+        return (
+          triggerRef.current?.form?.querySelector<HTMLTextAreaElement>(
+            "textarea",
+          ) ?? null
+        );
+      },
+    }),
+    [triggerRef],
+  );
+  const pickCommand = (command: AvailableAcpCommand, input: string) => {
+    if (given.disabled) return;
+    if (command.panel) {
+      setPanel(command.panel);
+      return;
+    }
+    const field = fieldRef.current;
+    if (!field || field.disabled) return;
+    given.onClose();
+    insertCommand(field, command, input);
+  };
+  const actions = {
+    ...given,
+    sessionConfig: withoutGovernedModes(given.sessionConfig, accessModes),
+  };
+  const actionsKey = JSON.stringify([
+    owner,
+    selectionKey,
+    actions.sessionConfig?.sageAgentSessionId,
+    !!actions.onAttachFiles,
+    !!actions.planAccess,
+    !!actions.onOpenGoal,
+    !!actions.onClearGoal,
+    actions.goalUnobserved,
+    !!actions.onCompact,
+    canSelectEffort,
+    sessionModeActions(actions.sessionConfig).map((mode) => mode.id),
+    sessionConfigControls(actions.sessionConfig, "other").map((option) => [
+      option.id,
+      option.type,
+      flattenChoices(option).map((choice) => choice.value),
+    ]),
+  ]);
+  const previousActionsKey = useRef(actionsKey);
+  useLayoutEffect(() => {
+    if (previousActionsKey.current !== actionsKey) {
+      const element = document.activeElement;
+      const menuHadFocus =
+        element === document.body ||
+        document.getElementById(id)?.contains(element);
+      onDismiss();
+      if (focused && menuHadFocus) onModeRemoved();
+    }
+    previousActionsKey.current = actionsKey;
+  }, [actionsKey, focused, id, onDismiss, onModeRemoved]);
+  if (panel)
+    return (
+      <PanelPart
+        part="ComposerCommandPanel"
+        kind={panel}
+        boundChatId={owner ?? undefined}
+        fieldRef={fieldRef}
+        onClose={onDismiss}
+      />
+    );
+  return (
+    <MenuPopover
+      id={id}
+      className="composer__popover composer__options"
+      ariaLabel="Composer options menu"
+      initialFocus="selected"
+      focusKey="options"
+      restoreFocusOnTab
+      open
+      triggerRef={triggerRef}
+      onDismiss={onDismiss}
+      gap={8}
+    >
+      <ComposerSectionRows
+        {...actions}
+        load={load}
+        onOpenUsage={() => setPanel("status")}
+        onOpenMcp={() => setPanel("mcp")}
+        onPickCommand={pickCommand}
+      />
+    </MenuPopover>
+  );
+}
+
+export function ComposerSectionRows({
+  load = null,
+  ...props
+}: ComposerAddActionsProps & { load?: SessionCommandsLoad | null }) {
+  const pinnedOwner = usePinnedAgentChatOwner();
+  const owner = props.boundChatId ?? pinnedOwner;
+  const page = useStore(acpProjectionStoreFor(owner), (state) => state.page);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const { launch, chatAvailable } = useContext(AgentToolsContext);
+  const importable = !!page?.sessions.some(
+    (session) =>
+      session.id === page.currentSessionId &&
+      session.capabilities.nativeSessionImport,
+  );
+  const rows = composerNativeRows({
+    ...props,
+    importable: chatAvailable && importable,
+    onImport: () => launch("sessionImport"),
+    onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
+    onOpenMcp:
+      load?.kind === "ready" &&
+      load.list.commands.some((command) => command.panel === "mcp")
+        ? props.onOpenMcp
+        : undefined,
+  });
+  const sections = composerMenuSections(
+    rows,
+    load?.kind === "ready" ? load.list.commands : [],
+    query,
+  );
+  return (
+    <div
+      onKeyDown={(event) => {
+        if (event.target instanceof HTMLInputElement) return;
+        if (
+          event.key.length === 1 &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          setQuery((value) => (value + event.key).slice(0, 256));
+          searchRef.current?.focus();
+        }
+      }}
+    >
+      <input
+        ref={searchRef}
+        className="composer-menu__search"
+        type="search"
+        aria-label="Search composer options"
+        placeholder="Search options and commands"
+        maxLength={256}
+        value={query}
+        onChange={(event) => setQuery(event.target.value.slice(0, 256))}
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Escape" &&
+            event.key !== "Tab" &&
+            event.key !== "ArrowDown" &&
+            event.key !== "ArrowUp"
+          )
+            event.stopPropagation();
+        }}
+      />
+      <ComposerMenuSections
+        sections={sections}
+        disabled={props.disabled}
+        onPick={(command, input) => props.onPickCommand?.(command, input)}
+      />
+      {query && !sections.length ? (
+        <p role="status" className="menu-empty">
+          No matching options or commands.
+        </p>
+      ) : null}
+      {load?.kind === "loading" ? (
+        <p role="status" className="menu-empty">
+          Loading commands...
+        </p>
+      ) : null}
+      {load?.kind === "error" ? (
+        <p role="status" className="menu-empty">
+          Commands are unavailable. {load.message}
+        </p>
+      ) : null}
+      {load?.kind === "ready" && !!load.list.omitted ? (
+        <p className="menu-empty">
+          Catalog truncated: {load.list.omitted} commands not shown
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const CatalogPart = lazyParts<typeof CommandRuntime>(
+  () => import("./ComposerCommandRuntime"),
+);
+export function ComposerSectionMenu(props: ComposerAddActionsProps) {
+  const pinnedOwner = usePinnedAgentChatOwner();
+  const owner = props.boundChatId ?? pinnedOwner ?? undefined;
+  return (
+    <CatalogPart
+      part="ComposerCommandCatalog"
+      boundChatId={owner}
+      fallback={<ComposerSectionRows {...props} load={{ kind: "loading" }} />}
+    >
+      {(load) => <ComposerSectionRows {...props} load={load} />}
+    </CatalogPart>
+  );
+}
+
+export function ComposerOptionsMenu(props: ComposerOptionsProps) {
+  const pinnedOwner = usePinnedAgentChatOwner();
+  const owner = props.boundChatId ?? pinnedOwner ?? undefined;
+  return (
+    <CatalogPart
+      part="ComposerCommandCatalog"
+      boundChatId={owner}
+      fallback={
+        <ComposerMenuLoading
+          triggerRef={props.triggerRef}
+          onDismiss={props.onDismiss}
+        />
+      }
+    >
+      {(load, insertCommand) => (
+        <ComposerOptionsBrowser
+          {...props}
+          load={load}
+          insertCommand={insertCommand}
+        />
+      )}
+    </CatalogPart>
+  );
+}

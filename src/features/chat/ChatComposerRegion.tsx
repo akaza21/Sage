@@ -365,7 +365,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 contextUsage={usage}
                 onModeRemoved={() => composerRef.current?.focus()}
                 addActions={{
+                  boundChatId: commandChatId,
                   onAttachFiles: files.attach,
+                  imageAction: imageInput.action,
                   attachRefusalChatId: files.refusalChatId,
                   ...goalDetails.actions,
                   onCompact,
