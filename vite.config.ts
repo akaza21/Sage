@@ -39,14 +39,6 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
 > = [
   { name: "initial-deps", tags: ["$initial"], priority: 2 },
   {
-    name: "chat-commands",
-    priority: 2,
-    includeDependenciesRecursively: false,
-    // Catalog validation and typed dispatch share one demand-only runtime.
-    // Neither the chat body nor opening the menu needs a second runtime chunk.
-    test: /src[\\/](?:services[\\/]acpCommandsDesktop\.ts|domain[\\/]acpCommandPlacement\.ts|features[\\/]chat[\\/]slashCommandTurn\.ts)$/,
-  },
-  {
     name: "workbench-deps",
     priority: 1,
     // Shared page-layer state belongs to the shell, not Agent UI.
