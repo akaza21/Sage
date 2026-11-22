@@ -73,7 +73,7 @@ impl CodexRuntime {
         self.inner.enable_observed_goal_for_test();
         self.inner.goal_updated(&serde_json::json!({
             "objective":"Continue bounded work","status":"active",
-            "tokensUsed":0,"timeUsedSeconds":0
+            "tokensUsed":0,"timeUsedSeconds":0,"createdAt":1795300000,"updatedAt":1795300005
         }));
     }
 

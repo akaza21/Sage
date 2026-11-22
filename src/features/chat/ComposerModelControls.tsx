@@ -197,7 +197,6 @@ export function ComposerModelControls({
             type="button"
             className="composer__control-trigger composer__effort-picker"
             aria-label="Thinking level"
-            aria-description="Available when the harness advertises effort controls for this session."
             title="Available when the harness advertises effort controls for this session."
             disabled
           >

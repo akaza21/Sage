@@ -20,18 +20,8 @@ export function admitLocalBranchName(name: string): string | null {
   ) {
     return null;
   }
-  if (
-    [...name].some(
-      (ch) =>
-        ch.charCodeAt(0) < 32 ||
-        ch === "\u007f" ||
-        /\s/.test(ch) ||
-        "~^:?*[".includes(ch),
-    )
-  ) {
-    return null;
-  }
-  return name;
+  // eslint-disable-next-line no-control-regex
+  return /[\u0000-\u001f\u007f\s~^:?*[]/u.test(name) ? null : name;
 }
 
 export function canCreateLocalBranch(

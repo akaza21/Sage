@@ -1902,7 +1902,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
         .ingest(
             &frame(json!({"id":get["id"],"result":{"goal":{
                 "objective":"Ship safely","status":"active", "tokenBudget":1000,
-                "tokensUsed":42,"timeUsedSeconds":125
+                "tokensUsed":42,"timeUsedSeconds":125,"createdAt":1795300000,"updatedAt":1795300005
             }}})),
             &Mapper,
         )
@@ -1924,7 +1924,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
         .ingest(
             &frame(json!({"id":pause_wire["id"],"result":{"goal":{
                 "objective":"Ship safely","status":"paused","tokenBudget":1000,
-                "tokensUsed":42,"timeUsedSeconds":125
+                "tokensUsed":42,"timeUsedSeconds":125,"createdAt":1795300000,"updatedAt":1795300005
             }}})),
             &Mapper,
         )

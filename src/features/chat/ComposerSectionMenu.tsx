@@ -272,9 +272,9 @@ export function ComposerSectionRows({
   );
 }
 
-const CatalogPart = lazyParts<typeof CommandRuntime>(
-  () => import("./ComposerCommandRuntime"),
-);
+const CatalogPart = lazyParts<
+  Pick<typeof CommandRuntime, "ComposerCommandCatalog">
+>(() => import("./ComposerCommandRuntime"));
 export function ComposerSectionMenu(props: ComposerAddActionsProps) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner ?? undefined;

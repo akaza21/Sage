@@ -3,6 +3,7 @@ import { Pause, Target } from "../../ui/leanIconNodesLazy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
+  AcpGoalSnapshot,
   AcpGoalState,
   GoalMutationAction,
 } from "../../domain/acpGoal";
@@ -18,6 +19,15 @@ import type { GoalControls } from "./useBoundGoalDetails";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
+
+const goalStatusLabels: Record<AcpGoalSnapshot["status"], string> = {
+  active: "Pursuing goal",
+  paused: "Goal paused",
+  blocked: "Goal blocked",
+  usageLimited: "Goal usage limit reached",
+  budgetLimited: "Goal token budget reached",
+  complete: "Goal complete",
+};
 
 function availability(state: Exclude<AcpGoalState, { kind: "goal" }>): string {
   switch (state.kind) {
@@ -184,9 +194,7 @@ export function ChatGoalControl({
       >
         <summary className="chat-goal-strip__row" aria-label="Goal details">
           <Target size={13} aria-hidden="true" />
-          <strong>
-            {snapshot.status === "active" ? "Pursuing goal" : "Goal"}
-          </strong>
+          <strong>{goalStatusLabels[snapshot.status]}</strong>
           <span
             className="chat-goal-strip__objective"
             title={snapshot.objective}

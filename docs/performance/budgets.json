@@ -329,9 +329,9 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 2600,
+        "maxGzipBytes": 2696,
         "maxCssGzipBytes": 850,
-        "reason": "Capability-driven native Goal actions, mutations and progress: 2305 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
+        "reason": "Capability-driven native Goal actions, mutations and six status labels: 2446 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
       },
       {
         "entry": "src/services/acpGoalSubscription.ts",

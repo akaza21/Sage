@@ -1,5 +1,4 @@
 use serde::Serialize;
-use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use sage_acp_protocol::{
@@ -247,63 +246,6 @@ pub(crate) enum GoalStatus {
     UsageLimited,
     BudgetLimited,
     Complete,
-}
-
-impl GoalSnapshot {
-    pub(crate) fn from_wire(value: &Value) -> Result<Self, String> {
-        let object = value.as_object().ok_or("goal object missing")?;
-        let objective = object
-            .get("objective")
-            .and_then(Value::as_str)
-            .filter(|s| valid_objective(s))
-            .ok_or("goal objective invalid")?;
-        let status = match object.get("status").and_then(Value::as_str) {
-            Some("active") => GoalStatus::Active,
-            Some("paused") => GoalStatus::Paused,
-            Some("blocked") => GoalStatus::Blocked,
-            Some("usageLimited") => GoalStatus::UsageLimited,
-            Some("budgetLimited") => GoalStatus::BudgetLimited,
-            Some("complete") => GoalStatus::Complete,
-            _ => return Err("goal status invalid".into()),
-        };
-        let number = |key: &str| -> Result<u64, String> {
-            object
-                .get(key)
-                .and_then(Value::as_u64)
-                .filter(|value| *value <= 9_007_199_254_740_991)
-                .ok_or_else(|| format!("goal {key} invalid"))
-        };
-        let timestamp = |key: &str| -> Result<Option<String>, String> {
-            match object.get(key) {
-                None | Some(Value::Null) => Ok(None),
-                Some(Value::String(value))
-                    if value.len() <= 64 && !value.chars().any(char::is_control) =>
-                {
-                    Ok(Some(value.clone()))
-                }
-                _ => Err(format!("goal {key} invalid")),
-            }
-        };
-        let token_budget = match object.get("tokenBudget") {
-            None | Some(Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_u64()
-                    .filter(|value| *value <= 9_007_199_254_740_991)
-                    .ok_or("goal tokenBudget invalid")?,
-            ),
-        };
-        Ok(Self {
-            objective: objective.to_owned(),
-            status,
-            token_budget,
-            tokens_used: number("tokensUsed")?,
-            time_used_seconds: number("timeUsedSeconds")?,
-            created_at: timestamp("createdAt")?,
-            updated_at: timestamp("updatedAt")?,
-            progress: None,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
