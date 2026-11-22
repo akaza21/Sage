@@ -8,6 +8,8 @@ export function ComposerTurnControl({
   cancelDisabled,
   sendDisabled,
   queueing,
+  disabledReason,
+  disabledReasonId,
 }: {
   dictation: ReturnType<typeof useComposerDictation>;
   disabled: boolean;
@@ -15,7 +17,10 @@ export function ComposerTurnControl({
   cancelDisabled: boolean;
   sendDisabled: boolean;
   queueing: boolean;
+  disabledReason?: string | null;
+  disabledReasonId?: string;
 }) {
+  const reason = sendDisabled ? (disabledReason ?? undefined) : undefined;
   return (
     <>
       <button
@@ -60,6 +65,8 @@ export function ComposerTurnControl({
           className="send-button"
           type="submit"
           aria-label={queueing ? "Queue message" : "Send message"}
+          title={reason}
+          aria-describedby={reason ? disabledReasonId : undefined}
           disabled={sendDisabled}
         >
           <ArrowUp size={20} aria-hidden="true" />

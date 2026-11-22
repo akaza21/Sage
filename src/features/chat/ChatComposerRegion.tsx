@@ -18,6 +18,8 @@ const LocationPart = lazyParts<typeof LocationChunk>(
 );
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
+import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
+import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
@@ -142,17 +144,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const [slashArmed, setSlashArmed] = useState(false);
   return (
     <div className="chat-dock-frame">
-      {!hidden ? (
-        <ComposerStatusNotices
-          selectedHarnessId={selectedHarnessId}
-          workbenchError={workbenchError}
-          chatError={chatError}
-          chatAuth={chatAuth}
-          imageStatus={imageInput.status}
-          missingBindingNotice={missingBindingNotice}
-          discoveryPhase={discoveryPhase}
-        />
-      ) : null}
       {newChat && !hidden ? (
         <LocationPart
           part="ComposerLocationStrip"
@@ -313,20 +304,19 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 disabled={actionBusy || projectTransitioning}
               />
             ) : null}
-            {disabledReason ? (
-              <p className="composer__disabled-reason" id={disabledReasonId}>
-                {disabledReason}
-                {onRetryLoad ? (
-                  <button
-                    type="button"
-                    className="composer__disabled-retry"
-                    onClick={onRetryLoad}
-                  >
-                    Retry
-                  </button>
-                ) : null}
-              </p>
-            ) : null}
+            <ComposerAvailabilityNotice
+              reason={disabledReason}
+              id={disabledReasonId}
+              scope={dictationScope}
+              onRetry={onRetryLoad}
+              compact={
+                missingBindingNotice ||
+                (!availableBinding && !canPrompt) ||
+                ["checking", "consent", "waiting", "signInRequired"].includes(
+                  discoveryPhase,
+                )
+              }
+            />
             {otherContext.length > 0 ? (
               <div className="composer__attachment-row">
                 <AttachmentsPart
@@ -339,6 +329,20 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </div>
             ) : null}
             {sessionFeatures ? files.parts : null}
+            {!hidden ? (
+              <ComposerStatusNotices
+                workbenchError={workbenchError}
+                chatError={chatError}
+                chatAuth={chatAuth}
+                imageStatus={composerProblem(
+                  "image-input",
+                  dictationScope,
+                  imageInput.status,
+                  "attachment",
+                  "info",
+                )}
+              />
+            ) : null}
           </div>
           <div className="composer__toolbar">
             {imageInputAvailable ? (
@@ -351,6 +355,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             {!hidden ? (
               <ChatHarnessControls
                 {...harnessControls}
+                discoveryPhase={discoveryPhase}
                 modelsPending={
                   discoveryPhase === "checking" || discoveryPhase === "idle"
                 }
@@ -381,6 +386,8 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <ComposerTurnControl
+              disabledReason={disabledReason}
+              disabledReasonId={disabledReasonId}
               dictation={dictation}
               disabled={composerDisabled}
               onCancelTurn={onCancelTurn}

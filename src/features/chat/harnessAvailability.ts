@@ -34,7 +34,10 @@ export function harnessAvailability(harness: HarnessDefinition): {
     case "unavailable":
       return {
         label: "unavailable",
-        disabledReason: harnessUnavailableReason(harness.unavailableReason),
+        disabledReason: harnessUnavailableReason(
+          harness.unavailableReason,
+          harness.name,
+        ),
       };
   }
 }

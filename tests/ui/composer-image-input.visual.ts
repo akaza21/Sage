@@ -87,8 +87,11 @@ test("a session without the image capability refuses a paste with its reason", a
   await pasteScreenshot(page);
   const composer = page.locator("form.composer").first();
   await expect(
-    page.getByRole("region", { name: "Composer notices" }).getByRole("alert"),
+    page
+      .getByRole("region", { name: "Composer notices" })
+      .locator(".notice--info"),
   ).toHaveText("This harness does not advertise image input.");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
 });
 

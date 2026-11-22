@@ -64,7 +64,7 @@ test("grows and shrinks the composer within its scroll bound", async ({
   await expectNoViewportOverflow(page);
 });
 
-test("keeps errors above the joined location and composer with harness controls on its surface", async ({
+test("keeps errors beside Send inside the joined composer with harness controls on its surface", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
@@ -83,15 +83,19 @@ test("keeps errors above the joined location and composer with harness controls 
   const frame = page.locator(".chat-dock-frame").first();
   const dock = page.locator(".chat-dock").first();
   const error = frame.getByRole("alert");
-  await expect(error).toHaveText("native project transition did not commit");
-  await expect(dock.getByRole("alert")).toHaveCount(0);
+  await expect(error).toHaveText(
+    "Error: native project transition did not commit",
+  );
+  await expect(dock.getByRole("alert")).toHaveCount(1);
   const strip = frame.getByRole("group", { name: "Chat location" });
   // The location strip loads on demand; measure the notice after it mounts.
   await expect(strip).toBeVisible();
   const errorBox = (await error.boundingBox())!;
   const stripBox = (await strip.boundingBox())!;
   const dockBox = (await dock.boundingBox())!;
-  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(stripBox.y);
+  expect(errorBox.y).toBeGreaterThanOrEqual(dockBox.y);
+  const toolbarBox = (await form.locator(".composer__toolbar").boundingBox())!;
+  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(toolbarBox.y);
   expect(
     Math.abs(stripBox.y + stripBox.height - dockBox.y),
   ).toBeLessThanOrEqual(0.5);
@@ -114,7 +118,9 @@ test("keeps errors above the joined location and composer with harness controls 
   ).toBeNull();
 });
 
-test("shows a three-line notice in full in a tall pane", async ({ page }) => {
+test("shows a four-line local notice in full in a tall pane", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 480, height: 880 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
@@ -128,17 +134,19 @@ test("shows a three-line notice in full in a tall pane", async ({ page }) => {
     useWorkbenchStore.setState({ error: message });
   }, message);
   const notices = page.getByRole("region", { name: "Composer notices" });
-  await expect(notices.getByRole("alert")).toHaveText(message);
+  await expect(notices.getByRole("alert")).toHaveText(`Error: ${message}`);
   const geometry = await notices.evaluate((node) => {
     const text = document.createRange();
-    text.selectNodeContents(node.querySelector('[role="alert"]')!);
+    text.selectNodeContents(
+      node.querySelector(".notice__body > span:not(.sr-only)")!,
+    );
     return {
       lines: text.getClientRects().length,
       scrollHeight: node.scrollHeight,
       clientHeight: node.clientHeight,
     };
   });
-  expect(geometry.lines).toBe(3);
+  expect(geometry.lines).toBe(4);
   expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight);
 });
 
@@ -168,7 +176,7 @@ test("long errors scroll without hiding the input or toolbar in a narrow short p
   }, message);
   const dock = page.locator(".chat-dock");
   const frame = page.locator(".chat-dock-frame");
-  await expect(frame.getByRole("alert")).toHaveText(message);
+  await expect(frame.getByRole("alert")).toHaveText(`Error: ${message}`);
   const input = dock.getByRole("combobox", { name: "Message agent" });
   const toolbar = dock.locator(".composer__toolbar");
   await input.fill("Try again");

@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
   type RefObject,
+  type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
 import { isImeComposing } from "./imeComposition";
@@ -25,6 +26,8 @@ import {
 
 export function SearchablePickerPopover({
   ariaLabel,
+  children,
+  popoverRole = "none",
   candidates,
   close,
   draft,
@@ -53,6 +56,8 @@ export function SearchablePickerPopover({
   triggerRef,
 }: {
   ariaLabel: string;
+  children?: ReactNode;
+  popoverRole?: "dialog" | "none";
   candidates: readonly SearchablePickerOption[];
   close: (reason?: MenuDismissReason) => void;
   draft: string;
@@ -199,9 +204,10 @@ export function SearchablePickerPopover({
       onDismiss={close}
       open
       portalTarget={portalTarget}
-      role="none"
+      role={popoverRole}
       triggerRef={triggerRef}
     >
+      {children}
       {searchable ? (
         <div
           className={
@@ -253,6 +259,15 @@ export function SearchablePickerPopover({
       <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
         {rendered.map((candidate) => (
           <PickerOption
+            tabIndex={
+              popoverRole === "dialog" &&
+              candidate.id ===
+                (selectableIds.includes(selectedId ?? "")
+                  ? selectedId
+                  : selectableIds[0])
+                ? 0
+                : -1
+            }
             key={candidate.id}
             active={candidate.id === active}
             candidate={candidate}
