@@ -305,7 +305,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {unavailable ? (
+      {unavailable && !activeAcpTurn && !approval.awaiting ? (
         <HarnessUnavailableNotice
           onEditSummaryMount={setEditSummaryContainer}
           existingChat={unavailableChat}
