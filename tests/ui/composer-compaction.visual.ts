@@ -262,7 +262,9 @@ for (const width of [1888, 720, 480]) {
       // Files and folders needs a composer that can prompt; without access
       // modes it stays disabled, so the project keeps Add open.
       await add.click();
-      await expect(menu.getByText("Add", { exact: true })).toBeVisible();
+      await expect(
+        menu.getByText("Add to message", { exact: true }),
+      ).toBeVisible();
       await expect(
         menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
       ).toHaveCount(profile.access ? 1 : 0);

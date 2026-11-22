@@ -8,7 +8,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
-import { ComposerAddActions } from "./ComposerAddActions";
+import { ComposerSectionRows as ComposerAddActions } from "./ComposerSectionMenu";
 import { ChatTranscript } from "./ChatTranscript";
 import { page as projectionPage } from "./acp/acpProjection.fixture";
 import { ChatHarnessControls } from "./ChatHarnessControls";
@@ -54,7 +54,9 @@ it("keeps Add descriptions on a secondary line without uppercasing its heading",
   const description = screen.getByText("Plan mode is on");
   expect(getComputedStyle(description).gridColumn).toBe("2 / -1");
   expect(getComputedStyle(description).whiteSpace).toBe("normal");
-  expect(getComputedStyle(screen.getByText("Add")).textTransform).toBe("none");
+  expect(
+    getComputedStyle(screen.getByText("Model and access")).textTransform,
+  ).toBe("none");
 });
 
 it("shows advertised modes by their own names and hides no id as a default", () => {

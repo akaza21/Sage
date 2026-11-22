@@ -16,6 +16,18 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chat/ComposerCommandRuntime.tsx",
+        "maxGzipBytes": 4200,
+        "maxCssGzipBytes": 550,
+        "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
+      },
+      {
+        "entry": "src/features/chat/ComposerSectionMenu.tsx",
+        "maxGzipBytes": 5500,
+        "maxCssGzipBytes": 500,
+        "reason": "Shared capability and catalog section browser; loads only after the composer + menu opens, with bounded search and argument inputs. Existing startup and menu caps stay unchanged."
+      },
+      {
         "entry": "src/features/chatSearch/ChatSearchPalette.tsx",
         "maxGzipBytes": 3000,
         "reason": "Search palette layout, bounded actions and scope tabs load only when search opens; result rendering and search execution retain their own budgets."
