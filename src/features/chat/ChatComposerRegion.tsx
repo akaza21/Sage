@@ -29,7 +29,7 @@ import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
-const SlashPart = lazyParts<typeof SlashChunk>(
+const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
   () => import("./ComposerSlashController"),
 );
 
