@@ -22,6 +22,7 @@ impl ClaudeSdkRuntime {
             GoalAction::Set {
                 objective,
                 token_budget: None,
+                ..
             } if capabilities.set && valid_objective(objective) && objective.trim() != "clear" => {
                 objective.as_str()
             }

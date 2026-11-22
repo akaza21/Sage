@@ -1,5 +1,4 @@
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 use sage_acp_protocol::{
@@ -11,14 +10,41 @@ use sage_acp_protocol::{
 pub(crate) enum GoalAction {
     Set {
         objective: String,
+        expected_goal: Option<GoalIdentity>,
         token_budget: Option<u64>,
     },
     PauseExisting,
     ResumeExisting,
     SetBudget {
+        expected_goal: Option<GoalIdentity>,
         token_budget: u64,
     },
     ClearExisting,
+}
+
+/// Identity captured when an editor opens; usage and status changes do not
+/// replace a goal. Text remains bounded at the IPC and runtime queue seams.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GoalIdentity {
+    pub(crate) objective: sage_acp_protocol::contract::RequiredText<16000>,
+    pub(crate) created_at: Option<sage_acp_protocol::contract::SafeText<64>>,
+}
+
+impl GoalIdentity {
+    pub(crate) fn matches(&self, snapshot: &GoalSnapshot) -> bool {
+        self.objective.as_str() == snapshot.objective
+            && self.created_at.as_ref().map(|value| value.as_str())
+                == snapshot.created_at.as_deref()
+    }
+
+    fn bytes(&self) -> usize {
+        self.objective.as_str().len()
+            + self
+                .created_at
+                .as_ref()
+                .map_or(0, |value| value.as_str().len())
+    }
 }
 
 pub(crate) const MAX_GOAL_OBJECTIVE_CHARS: usize = 4_000;
@@ -191,8 +217,14 @@ impl NativeRpcIntent {
             + self.owner.session_id.as_str().len()
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
-                NativeRpcRequest::Goal(GoalAction::Set { objective, .. }) => objective.len() + 9,
-                NativeRpcRequest::Goal(GoalAction::SetBudget { .. }) => 9,
+                NativeRpcRequest::Goal(GoalAction::Set {
+                    objective,
+                    expected_goal,
+                    ..
+                }) => objective.len() + 9 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes),
+                NativeRpcRequest::Goal(GoalAction::SetBudget { expected_goal, .. }) => {
+                    9 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes)
+                }
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
@@ -259,63 +291,6 @@ pub(crate) enum GoalStatus {
     UsageLimited,
     BudgetLimited,
     Complete,
-}
-
-impl GoalSnapshot {
-    pub(crate) fn from_wire(value: &Value) -> Result<Self, String> {
-        let object = value.as_object().ok_or("goal object missing")?;
-        let objective = object
-            .get("objective")
-            .and_then(Value::as_str)
-            .filter(|s| valid_objective(s))
-            .ok_or("goal objective invalid")?;
-        let status = match object.get("status").and_then(Value::as_str) {
-            Some("active") => GoalStatus::Active,
-            Some("paused") => GoalStatus::Paused,
-            Some("blocked") => GoalStatus::Blocked,
-            Some("usageLimited") => GoalStatus::UsageLimited,
-            Some("budgetLimited") => GoalStatus::BudgetLimited,
-            Some("complete") => GoalStatus::Complete,
-            _ => return Err("goal status invalid".into()),
-        };
-        let number = |key: &str| -> Result<u64, String> {
-            object
-                .get(key)
-                .and_then(Value::as_u64)
-                .filter(|value| *value <= 9_007_199_254_740_991)
-                .ok_or_else(|| format!("goal {key} invalid"))
-        };
-        let timestamp = |key: &str| -> Result<Option<String>, String> {
-            match object.get(key) {
-                None | Some(Value::Null) => Ok(None),
-                Some(Value::String(value))
-                    if value.len() <= 64 && !value.chars().any(char::is_control) =>
-                {
-                    Ok(Some(value.clone()))
-                }
-                _ => Err(format!("goal {key} invalid")),
-            }
-        };
-        let token_budget = match object.get("tokenBudget") {
-            None | Some(Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_u64()
-                    .filter(|value| *value <= 9_007_199_254_740_991)
-                    .ok_or("goal tokenBudget invalid")?,
-            ),
-        };
-        Ok(Self {
-            objective: objective.to_owned(),
-            status,
-            token_budget,
-            tokens_used: number("tokensUsed")?,
-            time_used_seconds: number("timeUsedSeconds")?,
-            created_at: timestamp("createdAt")?,
-            updated_at: timestamp("updatedAt")?,
-            progress: None,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -7,6 +7,7 @@ import type {
   AcpGoalSnapshot,
   AcpGoalState,
   GoalMutationAction,
+  GoalIdentity,
 } from "../../domain/acpGoal";
 import { formatElapsedSeconds } from "../../domain/duration";
 import "../../styles/chat-goal.css";
@@ -64,6 +65,7 @@ export function ChatGoalControl({
     action: GoalMutationAction,
     objective?: string,
     tokenBudget?: number,
+    expectedGoal?: GoalIdentity | null,
   ) => Promise<GoalMutationOutcome>;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -78,16 +80,13 @@ export function ChatGoalControl({
     mutation.kind === "pending" || mutation.kind === "outcomeUnknown";
   const run = useCallback(
     async (
-      action: GoalMutationAction,
-      objective?: string,
-      tokenBudget?: number,
+      ...args: Parameters<NonNullable<typeof onMutation>>
     ): Promise<boolean> => {
+      const [action] = args;
       if (!controls || locked || !capabilities?.[action]) return false;
       setMutation({ kind: "pending" });
       try {
-        const outcome = await (action === "set" || action === "tokenBudget"
-          ? controls(action, objective, tokenBudget)
-          : controls(action));
+        const outcome = await controls(...args);
         setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
         return outcome.kind === "applied";
       } catch {
@@ -138,10 +137,11 @@ export function ChatGoalControl({
         canSetObjective={!!capabilities?.set}
         canSetBudget={!!capabilities?.tokenBudget}
         disabled={locked}
-        onSave={async (objective, budget) => {
-          if (objective !== undefined) return run("set", objective, budget);
+        onSave={async (objective, budget, expectedGoal) => {
+          if (objective !== undefined)
+            return run("set", objective, budget, expectedGoal);
           if (budget !== undefined)
-            return run("tokenBudget", undefined, budget);
+            return run("tokenBudget", undefined, budget, expectedGoal);
           return true;
         }}
         onClose={closeEditor}

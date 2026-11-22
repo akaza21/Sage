@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::{characterisation::Characterisation, codex::request::OutgoingRequest};
-use crate::acp::goal::{GoalSnapshot, GoalState};
+use crate::acp::goal::{GoalSnapshot, GoalState, GoalStatus, valid_objective};
 
 impl CodexAdapter {
     pub(crate) fn goal_unavailable(&mut self) {
@@ -77,6 +77,19 @@ impl CodexAdapter {
         id: u64,
         action: &crate::acp::goal::GoalAction,
     ) -> Result<OutgoingRequest, AdapterError> {
+        use crate::acp::goal::GoalAction;
+        if let GoalAction::Set { expected_goal, .. } | GoalAction::SetBudget { expected_goal, .. } =
+            action
+        {
+            let matches = match (&self.goal_state, expected_goal) {
+                (GoalState::Goal { snapshot }, Some(expected)) => expected.matches(snapshot),
+                (GoalState::NoGoal, None) => true,
+                _ => false,
+            };
+            if !matches {
+                return Err(AdapterError::GoalChanged);
+            }
+        }
         let creates = matches!(action, crate::acp::goal::GoalAction::Set { .. });
         self.goal_mutation(id, creates, |id, thread| {
             OutgoingRequest::goal_set(id, thread, action)
@@ -144,11 +157,11 @@ impl CodexAdapter {
         let next = match kind {
             super::super::request::RequestKind::GoalSet => result
                 .and_then(|value| value.get("goal"))
-                .and_then(|value| GoalSnapshot::from_wire(value).ok())
+                .and_then(|value| goal_snapshot(value).ok())
                 .map(|snapshot| GoalState::Goal { snapshot }),
             super::super::request::RequestKind::GoalPause => result
                 .and_then(|value| value.get("goal"))
-                .and_then(|value| GoalSnapshot::from_wire(value).ok())
+                .and_then(|value| goal_snapshot(value).ok())
                 .filter(|snapshot| snapshot.status == crate::acp::goal::GoalStatus::Paused)
                 .map(|snapshot| GoalState::Goal { snapshot }),
             super::super::request::RequestKind::GoalClear => match result
@@ -175,7 +188,7 @@ impl CodexAdapter {
             return;
         }
         self.goal_notification_generation = self.goal_notification_generation.saturating_add(1);
-        self.goal_state = match GoalSnapshot::from_wire(value) {
+        self.goal_state = match goal_snapshot(value) {
             Ok(snapshot) => GoalState::Goal { snapshot },
             Err(_) => GoalState::Unavailable,
         };
@@ -201,7 +214,7 @@ impl CodexAdapter {
         self.goal_state = match value {
             None => GoalState::Unavailable,
             Some(Value::Null) => GoalState::NoGoal,
-            Some(goal) => match GoalSnapshot::from_wire(goal) {
+            Some(goal) => match goal_snapshot(goal) {
                 Ok(snapshot) => GoalState::Goal { snapshot },
                 Err(_) => GoalState::Unavailable,
             },
@@ -230,4 +243,57 @@ impl CodexAdapter {
             self.goal_state = GoalState::Unavailable;
         }
     }
+}
+
+fn goal_snapshot(value: &Value) -> Result<GoalSnapshot, String> {
+    let object = value.as_object().ok_or("goal object missing")?;
+    let objective = object
+        .get("objective")
+        .and_then(Value::as_str)
+        .filter(|s| valid_objective(s))
+        .ok_or("goal objective invalid")?;
+    let status = match object.get("status").and_then(Value::as_str) {
+        Some("active") => GoalStatus::Active,
+        Some("paused") => GoalStatus::Paused,
+        Some("blocked") => GoalStatus::Blocked,
+        Some("usageLimited") => GoalStatus::UsageLimited,
+        Some("budgetLimited") => GoalStatus::BudgetLimited,
+        Some("complete") => GoalStatus::Complete,
+        _ => return Err("goal status invalid".into()),
+    };
+    let number = |key: &str| -> Result<u64, String> {
+        object
+            .get(key)
+            .and_then(Value::as_u64)
+            .filter(|value| *value <= 9_007_199_254_740_991)
+            .ok_or_else(|| format!("goal {key} invalid"))
+    };
+    // The pinned ThreadGoal schema uses signed int64 timestamps. Preserve
+    // their exact value as bounded decimal text in the shared projection.
+    let timestamp = |key: &str| -> Result<Option<String>, String> {
+        object
+            .get(key)
+            .and_then(Value::as_i64)
+            .map(|value| Some(value.to_string()))
+            .ok_or_else(|| format!("goal {key} invalid"))
+    };
+    let token_budget = match object.get("tokenBudget") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(
+            value
+                .as_u64()
+                .filter(|value| *value <= 9_007_199_254_740_991)
+                .ok_or("goal tokenBudget invalid")?,
+        ),
+    };
+    Ok(GoalSnapshot {
+        objective: objective.to_owned(),
+        status,
+        token_budget,
+        tokens_used: number("tokensUsed")?,
+        time_used_seconds: number("timeUsedSeconds")?,
+        created_at: timestamp("createdAt")?,
+        updated_at: timestamp("updatedAt")?,
+        progress: None,
+    })
 }

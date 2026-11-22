@@ -25,6 +25,8 @@ pub(super) fn observed_platform() -> Platform {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AdapterError {
+    #[error("the goal changed before the mutation started")]
+    GoalChanged,
     #[error(transparent)]
     Request(#[from] RequestError),
     #[error(transparent)]

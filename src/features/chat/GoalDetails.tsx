@@ -15,10 +15,7 @@ export function GoalDetails({
     <div className="chat-goal-strip__details">
       <p>{snapshot.objective}</p>
       {!canMutate ? (
-        <p>
-          Native Goal actions are unavailable for this session. Reconnect or
-          reload to check availability.
-        </p>
+        <p>Native Goal actions are unavailable. Reload to check.</p>
       ) : null}
       {snapshot.progress?.lastReason && <p>{snapshot.progress.lastReason}</p>}
       <dl>

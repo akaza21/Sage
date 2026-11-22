@@ -16,6 +16,7 @@ impl OutgoingRequest {
             GoalAction::Set {
                 objective,
                 token_budget,
+                ..
             } if valid_objective(objective) && !objective.trim().is_empty() => {
                 params["objective"] = json!(objective);
                 if let Some(budget) = token_budget {
@@ -26,7 +27,7 @@ impl OutgoingRequest {
                 }
             }
             GoalAction::ResumeExisting => params["status"] = json!("active"),
-            GoalAction::SetBudget { token_budget } if valid_token_budget(*token_budget) => {
+            GoalAction::SetBudget { token_budget, .. } if valid_token_budget(*token_budget) => {
                 params["tokenBudget"] = json!(token_budget)
             }
             _ => return Err(RequestError::InvalidGoal),

@@ -1,5 +1,5 @@
 import { goalMutations } from "../../../services/acpGoalMutations";
-import type { GoalMutationAction } from "../../../domain/acpGoal";
+import type { GoalMutationAction, GoalIdentity } from "../../../domain/acpGoal";
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import type {
@@ -13,6 +13,7 @@ import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
 import { canMutateGoal } from "./goalMutability";
+import { currentSession } from "./acpTurnState";
 
 type Action = GoalMutationAction;
 
@@ -21,12 +22,16 @@ export function createGoalMutationController(deps: {
   set?: (
     request: AcpSessionMutationIntent & {
       objective: string;
+      expectedGoal?: GoalIdentity | null;
       tokenBudget?: number;
     },
   ) => Promise<AcpMutationResult>;
   resume?: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   tokenBudget?: (
-    request: AcpSessionMutationIntent & { tokenBudget: number },
+    request: AcpSessionMutationIntent & {
+      tokenBudget: number;
+      expectedGoal?: GoalIdentity | null;
+    },
   ) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
@@ -46,6 +51,7 @@ export function createGoalMutationController(deps: {
     action: Action,
     objective?: string,
     tokenBudget?: number,
+    expectedGoal?: GoalIdentity | null,
   ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
@@ -60,9 +66,7 @@ export function createGoalMutationController(deps: {
         message: "Native Goal mutation is unavailable for this session.",
       };
     }
-    const session = captured.page.sessions.find(
-      (item) => item.id === captured.page.currentSessionId,
-    )!;
+    const session = currentSession(captured.page)!;
     if (
       action === "pause" &&
       captured.page.goal?.kind === "goal" &&
@@ -85,8 +89,7 @@ export function createGoalMutationController(deps: {
       if (
         !sameScope(current, captured) ||
         current.page.currentSessionId !== session.id ||
-        current.page.sessions.find((item) => item.id === session.id)
-          ?.runtimeEpoch !== session.runtimeEpoch ||
+        currentSession(current.page)?.runtimeEpoch !== session.runtimeEpoch ||
         !canMutateGoal(current.page, action)
       ) {
         return {
@@ -129,20 +132,29 @@ export function createGoalMutationController(deps: {
             "Enter a positive integer token budget within the supported range.",
         };
       }
-      const operations = {
-        set: () =>
-          deps.set!({
-            ...request,
-            objective: objective!,
-            ...(tokenBudget === undefined ? {} : { tokenBudget }),
-          }),
-        pause: () => deps.pause(request),
-        resume: () => deps.resume!(request),
-        tokenBudget: () =>
-          deps.tokenBudget!({ ...request, tokenBudget: tokenBudget! }),
-        clear: () => deps.clear(request),
+      const baseline = expectedGoal && {
+        objective: expectedGoal.objective,
+        createdAt: expectedGoal.createdAt,
       };
-      const result = await operations[action]();
+      const result =
+        action === "set"
+          ? await deps.set!({
+              ...request,
+              objective: objective!,
+              expectedGoal: baseline,
+              ...(tokenBudget === undefined ? {} : { tokenBudget }),
+            })
+          : action === "tokenBudget"
+            ? await deps.tokenBudget!({
+                ...request,
+                tokenBudget: tokenBudget!,
+                expectedGoal: baseline,
+              })
+            : await {
+                pause: deps.pause,
+                resume: deps.resume!,
+                clear: deps.clear,
+              }[action](request);
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }
@@ -180,12 +192,8 @@ export function useGoalMutation(boundChatId?: string | null) {
           if (
             !sameScope(current, captured) ||
             current.page.currentSessionId !== captured.page.currentSessionId ||
-            current.page.sessions.find(
-              (session) => session.id === current.page.currentSessionId,
-            )?.runtimeEpoch !==
-              captured.page.sessions.find(
-                (session) => session.id === captured.page.currentSessionId,
-              )?.runtimeEpoch
+            currentSession(current.page)?.runtimeEpoch !==
+              currentSession(captured.page)?.runtimeEpoch
           )
             return false;
           return (

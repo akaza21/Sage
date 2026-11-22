@@ -37,6 +37,7 @@ afterEach(() => {
 
 it.each([
   { field: "budget", replacement: "none", choice: "save" },
+  { field: "objective", replacement: "unseen", choice: "save" },
   { field: "objective", replacement: "none", choice: "save" },
   { field: "budget", replacement: "objective", choice: "Keep editing" },
   { field: "objective", replacement: "identity", choice: "Keep editing" },
@@ -128,7 +129,9 @@ it.each([
       tokenBudget: 3000,
       tokensUsed: 84,
       updatedAt: "2",
-      ...(replacement === "objective" ? { objective: "Objective B" } : {}),
+      ...(["objective", "unseen"].includes(replacement)
+        ? { objective: "Objective B" }
+        : {}),
       ...(replacement === "identity" ? { createdAt: "2" } : {}),
     };
     context.page = {
@@ -136,10 +139,14 @@ it.each([
       projectionRevision: "2" as never,
       goal: { kind: "goal", snapshot: latest },
     };
-    view.rerender(
-      <ChatGoalControl {...props} state={{ kind: "goal", snapshot: latest }} />,
-    );
-    if (replacement !== "none") {
+    if (replacement !== "unseen")
+      view.rerender(
+        <ChatGoalControl
+          {...props}
+          state={{ kind: "goal", snapshot: latest }}
+        />,
+      );
+    if (replacement !== "none" && replacement !== "unseen") {
       expect(screen.getByRole("alert")).toHaveTextContent(
         "The goal changed while you were editing",
       );
@@ -169,6 +176,13 @@ it.each([
             clientIntentId: "intent-a",
             sessionId: "session-a",
             runtimeEpoch: "1",
+            expectedGoal: {
+              objective:
+                replacement === "unseen"
+                  ? snapshot.objective
+                  : latest.objective,
+              createdAt: latest.createdAt,
+            },
             ...(field === "budget"
               ? { tokenBudget: 2000 }
               : { objective: "My edited objective" }),

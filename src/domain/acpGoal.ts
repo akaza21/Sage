@@ -32,6 +32,8 @@ export type AcpGoalState =
   | { kind: "noGoal" }
   | { kind: "goal"; snapshot: AcpGoalSnapshot };
 
+export type GoalIdentity = Pick<AcpGoalSnapshot, "objective" | "createdAt">;
+
 export interface AcpGoalSnapshot {
   objective: string;
   status:

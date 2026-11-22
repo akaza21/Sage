@@ -64,6 +64,7 @@ impl AcpService {
             GoalAction::Set {
                 objective,
                 token_budget,
+                ..
             } => {
                 capabilities.goal.set
                     && crate::acp::goal::valid_objective(objective)
@@ -75,7 +76,7 @@ impl AcpService {
             }
             GoalAction::PauseExisting => capabilities.goal.pause,
             GoalAction::ResumeExisting => capabilities.goal.resume,
-            GoalAction::SetBudget { token_budget } => {
+            GoalAction::SetBudget { token_budget, .. } => {
                 capabilities.goal.token_budget
                     && crate::acp::goal::valid_token_budget(*token_budget)
             }

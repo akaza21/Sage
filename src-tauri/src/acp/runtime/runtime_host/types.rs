@@ -60,6 +60,8 @@ pub(crate) enum HostOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum HostError {
+    #[error("the goal changed before the mutation started")]
+    GoalChanged,
     #[error("the bounded runtime-host queue is full")]
     Capacity,
     #[error("the runtime host is unavailable")]

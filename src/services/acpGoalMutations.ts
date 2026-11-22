@@ -2,37 +2,29 @@ import type {
   AcpMutationResult,
   AcpSessionMutationIntent,
 } from "../domain/acp";
-import { decodeAcpGoal } from "../domain/acpGoal";
+import { decodeAcpGoal, type GoalIdentity } from "../domain/acpGoal";
 import { invokeAcpMutation } from "./acpDesktop";
 
+type GoalEditIntent = AcpSessionMutationIntent & {
+  expectedGoal?: GoalIdentity | null;
+};
+
 // Goal mutation commands load with their controls, separately from chat reads.
+function mutation<Request extends AcpSessionMutationIntent>(command: string) {
+  return (request: Request): Promise<AcpMutationResult> =>
+    invokeAcpMutation(command, request, decodeAcpGoal);
+}
+
 export const goalMutations = {
-  pauseExistingGoal(
-    request: AcpSessionMutationIntent,
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("pause_existing_goal", request, decodeAcpGoal);
-  },
-  setGoal(
-    request: AcpSessionMutationIntent & {
-      objective: string;
-      tokenBudget?: number;
-    },
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("set_goal", request, decodeAcpGoal);
-  },
-  resumeExistingGoal(
-    request: AcpSessionMutationIntent,
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("resume_existing_goal", request, decodeAcpGoal);
-  },
-  setGoalBudget(
-    request: AcpSessionMutationIntent & { tokenBudget: number },
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("set_goal_budget", request, decodeAcpGoal);
-  },
-  clearExistingGoal(
-    request: AcpSessionMutationIntent,
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("clear_existing_goal", request, decodeAcpGoal);
-  },
+  pauseExistingGoal: mutation<AcpSessionMutationIntent>("pause_existing_goal"),
+  setGoal: mutation<
+    GoalEditIntent & { objective: string; tokenBudget?: number }
+  >("set_goal"),
+  resumeExistingGoal: mutation<AcpSessionMutationIntent>(
+    "resume_existing_goal",
+  ),
+  setGoalBudget: mutation<GoalEditIntent & { tokenBudget: number }>(
+    "set_goal_budget",
+  ),
+  clearExistingGoal: mutation<AcpSessionMutationIntent>("clear_existing_goal"),
 };

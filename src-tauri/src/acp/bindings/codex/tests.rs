@@ -214,7 +214,7 @@ fn only_observed_existing_goal_can_emit_a_paused_status_mutation() {
     observed_goal_ready(&mut observed);
     assert!(observed.goal_pause(60).is_err());
     observed.goal_updated(&serde_json::json!({
-        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5
+        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005
     }));
     let request = observed.goal_pause(60).unwrap();
     let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
@@ -232,7 +232,7 @@ fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() 
     observed_goal_ready(&mut adapter);
     assert!(adapter.goal_clear(61).is_err());
     adapter.goal_updated(&json!({
-        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5
+        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005
     }));
     let request = adapter.goal_clear(61).unwrap();
     let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
@@ -258,9 +258,10 @@ fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() 
 #[test]
 fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
     use crate::acp::goal::{GoalAction, MAX_GOAL_TOKEN_BUDGET};
-    for (action, params) in [
+    for (mut action, params) in [
         (
             GoalAction::Set {
+                expected_goal: None,
                 objective: "Ship safely".into(),
                 token_budget: None,
             },
@@ -268,6 +269,7 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         ),
         (
             GoalAction::Set {
+                expected_goal: None,
                 objective: "Ship safely".into(),
                 token_budget: Some(40000),
             },
@@ -275,11 +277,15 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         ),
         (GoalAction::ResumeExisting, json!({"status":"active"})),
         (
-            GoalAction::SetBudget { token_budget: 1 },
+            GoalAction::SetBudget {
+                expected_goal: None,
+                token_budget: 1,
+            },
             json!({"tokenBudget":1}),
         ),
         (
             GoalAction::SetBudget {
+                expected_goal: None,
                 token_budget: MAX_GOAL_TOKEN_BUDGET,
             },
             json!({"tokenBudget":MAX_GOAL_TOKEN_BUDGET}),
@@ -290,7 +296,15 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         if matches!(action, GoalAction::Set { .. }) {
             adapter.goal_cleared();
         } else {
-            adapter.goal_updated(&json!({"objective":"Ship safely","status":"paused","tokensUsed":3,"timeUsedSeconds":5}));
+            adapter.goal_updated(&json!({"objective":"Ship safely","status":"paused","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}));
+        }
+        if let GoalAction::SetBudget { expected_goal, .. } = &mut action {
+            *expected_goal = Some(
+                serde_json::from_value(json!({
+                    "objective":"Ship safely", "createdAt":"1795300000"
+                }))
+                .unwrap(),
+            );
         }
         let before = adapter.goal_state().clone();
         let request = adapter.goal_set(80, &action).unwrap();
@@ -303,7 +317,8 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
         );
         assert_eq!(adapter.goal_state(), &before);
         assert!(adapter.goal_set(81, &action).is_err());
-        let reply = json!({"id":80,"result":{"goal":{"objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5}}});
+        // ThreadGoal in the observed wire subset requires int64 timestamps.
+        let reply = json!({"id":80,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}});
         assert_eq!(
             adapter
                 .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
@@ -311,24 +326,34 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
             IngressDisposition::GoalMutationApplied
         );
         assert!(adapter.active_observed_goal());
+        let projected = serde_json::to_value(adapter.goal_state()).unwrap();
+        assert_eq!(projected["snapshot"]["createdAt"], "1795300000");
+        assert_eq!(projected["snapshot"]["updatedAt"], "1795300005");
         assert!(!adapter.has_active_turn());
     }
     let thread = RequiredText::new("thread", "thread-1").unwrap();
     for action in [
         GoalAction::Set {
+            expected_goal: None,
             objective: "x".repeat(4001),
             token_budget: None,
         },
         GoalAction::Set {
+            expected_goal: None,
             objective: " ".into(),
             token_budget: None,
         },
         GoalAction::Set {
+            expected_goal: None,
             objective: "Ship".into(),
             token_budget: Some(0),
         },
-        GoalAction::SetBudget { token_budget: 0 },
         GoalAction::SetBudget {
+            expected_goal: None,
+            token_budget: 0,
+        },
+        GoalAction::SetBudget {
+            expected_goal: None,
             token_budget: MAX_GOAL_TOKEN_BUDGET + 1,
         },
     ] {
@@ -337,17 +362,60 @@ fn goal_set_resume_and_budget_encode_and_apply_confirmed_native_replies() {
 }
 
 #[test]
+fn native_goal_notifications_normalize_int64_timestamps_and_reject_other_types() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    let notification = json!({"method":"thread/goal/updated","params":{
+        "threadId":"thread-1", "goal":{
+            "threadId":"thread-1", "objective":"Ship safely", "status":"active",
+            "tokenBudget":null, "tokensUsed":3,"timeUsedSeconds":5,
+            "createdAt":i64::MIN,"updatedAt":i64::MAX
+        }
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&notification).unwrap(), &Mapper)
+        .unwrap();
+    let projected = serde_json::to_value(adapter.goal_state()).unwrap();
+    assert_eq!(projected["snapshot"]["createdAt"], "-9223372036854775808");
+    assert_eq!(projected["snapshot"]["updatedAt"], "9223372036854775807");
+    for key in ["createdAt", "updatedAt"] {
+        for invalid in [
+            json!("1795300000"),
+            Value::Null,
+            json!(1.5),
+            json!(u64::MAX),
+        ] {
+            let mut invalid_frame = notification.clone();
+            invalid_frame["params"]["goal"][key] = invalid;
+            adapter
+                .ingest(&serde_json::to_vec(&invalid_frame).unwrap(), &Mapper)
+                .unwrap();
+            assert_eq!(adapter.goal_state().availability(), "unavailable");
+        }
+        let mut missing_field = notification.clone();
+        missing_field["params"]["goal"]
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        adapter
+            .ingest(&serde_json::to_vec(&missing_field).unwrap(), &Mapper)
+            .unwrap();
+        assert_eq!(adapter.goal_state().availability(), "unavailable");
+    }
+}
+
+#[test]
 fn newer_goal_notification_wins_over_late_pause_reply_and_refusal_is_nonfatal() {
     let mut adapter = adapter();
     observed_goal_ready(&mut adapter);
     adapter.goal_updated(&json!({
-        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5
+        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005
     }));
     adapter.goal_pause(64).unwrap();
     adapter.goal_updated(&json!({
-        "objective":"Newer","status":"blocked","tokensUsed":4,"timeUsedSeconds":6
+        "objective":"Newer","status":"blocked","tokensUsed":4,"timeUsedSeconds":6,"createdAt":1795300000,"updatedAt":1795300005
     }));
-    adapter.ingest(br#"{"id":64,"result":{"goal":{"objective":"Original","status":"paused","tokensUsed":3,"timeUsedSeconds":5}}}"#, &Mapper).unwrap();
+    adapter.ingest(br#"{"id":64,"result":{"goal":{"objective":"Original","status":"paused","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}}"#, &Mapper).unwrap();
     assert_eq!(adapter.goal_state().objective(), Some("Newer"));
     adapter.goal_pause(65).unwrap();
     let refusal = adapter
@@ -365,10 +433,10 @@ fn malformed_pause_reply_is_refused_without_changing_the_observed_goal() {
     let mut adapter = adapter();
     observed_goal_ready(&mut adapter);
     adapter.goal_updated(&json!({
-        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5
+        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005
     }));
     adapter.goal_pause(66).unwrap();
-    let refusal = adapter.ingest(br#"{"id":66,"result":{"goal":{"objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5}}}"#, &Mapper).unwrap();
+    let refusal = adapter.ingest(br#"{"id":66,"result":{"goal":{"objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}}"#, &Mapper).unwrap();
     assert_eq!(refusal, IngressDisposition::GoalMutationRejected);
     assert_eq!(adapter.goal_state().objective(), Some("Original"));
 }
@@ -383,13 +451,13 @@ fn newer_goal_notification_wins_over_late_get_response() {
     assert_eq!(wire["params"]["threadId"], "thread-1");
     adapter
         .ingest(
-            br#"{"method":"thread/goal/updated","params":{"threadId":"thread-1","goal":{"objective":"newer goal","status":"active","tokensUsed":3,"timeUsedSeconds":5}}}"#,
+            br#"{"method":"thread/goal/updated","params":{"threadId":"thread-1","goal":{"objective":"newer goal","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}}"#,
             &Mapper,
         )
         .unwrap();
     adapter
         .ingest(
-            br#"{"id":44,"result":{"goal":{"objective":"older goal","status":"paused","tokensUsed":1,"timeUsedSeconds":2}}}"#,
+            br#"{"id":44,"result":{"goal":{"objective":"older goal","status":"paused","tokensUsed":1,"timeUsedSeconds":2,"createdAt":1795300000,"updatedAt":1795300005}}}"#,
             &Mapper,
         )
         .unwrap();
@@ -408,7 +476,7 @@ fn goal_clear_notification_wins_over_late_get_response() {
         )
         .unwrap();
     adapter.ingest(
-        br#"{"id":45,"result":{"goal":{"objective":"stale","status":"active","tokensUsed":1,"timeUsedSeconds":2}}}"#,
+        br#"{"id":45,"result":{"goal":{"objective":"stale","status":"active","tokensUsed":1,"timeUsedSeconds":2,"createdAt":1795300000,"updatedAt":1795300005}}}"#,
         &Mapper,
     ).unwrap();
     assert_eq!(adapter.goal_state().availability(), "noGoal");
@@ -468,7 +536,7 @@ fn unsafe_goal_counters_do_not_poison_the_chat_projection() {
     observed_goal_ready(&mut adapter);
     adapter.goal_get(49).unwrap();
     assert!(adapter
-        .ingest(br#"{"id":49,"result":{"goal":{"objective":"counting","status":"active","tokensUsed":9007199254740992,"timeUsedSeconds":0}}}"#, &Mapper)
+        .ingest(br#"{"id":49,"result":{"goal":{"objective":"counting","status":"active","tokensUsed":9007199254740992,"timeUsedSeconds":0,"createdAt":1795300000,"updatedAt":1795300005}}}"#, &Mapper)
         .is_ok());
     assert_eq!(adapter.goal_state().availability(), "unavailable");
 }
@@ -493,7 +561,7 @@ fn goal_ready_after_previous_turn() -> CodexAdapter {
         .ingest(br#"{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-previous","status":"completed"}}}"#, &Mapper)
         .unwrap();
     adapter.goal_updated(&serde_json::json!({
-        "objective":"Continue bounded work","status":"active","tokensUsed":0,"timeUsedSeconds":0
+        "objective":"Continue bounded work","status":"active","tokensUsed":0,"timeUsedSeconds":0,"createdAt":1795300000,"updatedAt":1795300005
     }));
     arm_turn(&mut adapter, 51, "second-client");
     adapter

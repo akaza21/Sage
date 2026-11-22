@@ -264,6 +264,7 @@ pub(super) fn thread_config(
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {
     match error {
+        AdapterError::GoalChanged => AdapterRuntimeError::GoalChanged,
         AdapterError::Ingress(IngressError::FrameBytes | IngressError::Malformed) => {
             AdapterRuntimeError::Frame
         }

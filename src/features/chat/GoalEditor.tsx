@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AcpGoalSnapshot } from "../../domain/acpGoal";
+import type { AcpGoalSnapshot, GoalIdentity } from "../../domain/acpGoal";
 
 export function GoalEditor({
   snapshot,
@@ -13,7 +13,11 @@ export function GoalEditor({
   canSetObjective: boolean;
   canSetBudget: boolean;
   disabled: boolean;
-  onSave: (objective?: string, tokenBudget?: number) => Promise<boolean>;
+  onSave: (
+    objective: string | undefined,
+    tokenBudget: number | undefined,
+    expectedGoal?: GoalIdentity,
+  ) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [baseline, setBaseline] = useState(snapshot);
@@ -29,7 +33,7 @@ export function GoalEditor({
   const parsedBudget =
     canSetBudget && editedBudget ? Number(editedBudget) : undefined;
   const valid =
-    text.trim().length > 0 &&
+    text.trim() !== "" &&
     textLength <= 4000 &&
     !text.includes("\0") &&
     (parsedBudget === undefined ||
@@ -64,7 +68,7 @@ export function GoalEditor({
             disabled={disabled}
             onChange={(event) => setBudget(event.target.value.slice(0, 17))}
           />
-          <span>Leave blank to keep the current budget.</span>
+          <span>Blank keeps the budget.</span>
         </label>
       )}
       <button
@@ -72,7 +76,11 @@ export function GoalEditor({
         disabled={disabled || !valid || changed}
         onClick={async () => {
           if (
-            await onSave(canSetObjective ? editedText : undefined, parsedBudget)
+            await onSave(
+              canSetObjective ? editedText : undefined,
+              parsedBudget,
+              baseline,
+            )
           )
             onClose();
         }}
