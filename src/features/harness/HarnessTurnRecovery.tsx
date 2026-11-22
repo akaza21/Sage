@@ -1,11 +1,39 @@
 import { useWorkbenchStore } from "../../app/store";
-import type { AcpChatPage, TurnProjection } from "../../domain/acp";
+import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import {
   HarnessSignInRecovery,
   SignInRequiredMessage,
 } from "./HarnessSignInStatus";
 
-export function HarnessTurnSignInRecovery({
+export function HarnessTurnFailureDetails({
+  turn,
+  page,
+  error,
+}: {
+  turn: TurnProjection;
+  page?: AcpChatPage;
+  error?: Extract<AcpItem, { kind: "error" }>["payload"];
+}) {
+  return (
+    <>
+      <pre>
+        {JSON.stringify(
+          {
+            reason: turn.terminalReason,
+            error,
+          },
+          null,
+          2,
+        )}
+      </pre>
+      {turn.terminalReason?.kind === "authRequired" && page ? (
+        <HarnessTurnSignInRecovery page={page} turn={turn} />
+      ) : null}
+    </>
+  );
+}
+
+function HarnessTurnSignInRecovery({
   page,
   turn,
 }: {

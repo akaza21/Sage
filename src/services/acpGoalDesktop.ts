@@ -1,9 +1,5 @@
 import type { GetAcpChatPageRequest } from "../domain/acp";
-import {
-  decodeAcpGoal,
-  decodeAcpGoalNotice,
-  type AcpGoalChangedV1,
-} from "../domain/acpGoal";
+import { decodeAcpGoal, type AcpGoalChangedV1 } from "../domain/acpGoal";
 import { acpDesktop } from "./acpDesktop";
 
 export function getGoalChatPage(request: GetAcpChatPageRequest) {
@@ -15,9 +11,9 @@ export async function subscribeGoalChanges(
 ): Promise<() => void> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window))
     return () => undefined;
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen<unknown>("acp-goal-changed-v1", (event) => {
-    const notice = decodeAcpGoalNotice(event.payload);
-    if (notice) onChange(notice);
-  });
+  const [{ listen }, { subscribeGoalChanges }] = await Promise.all([
+    import("@tauri-apps/api/event"),
+    import("./acpGoalSubscription"),
+  ]);
+  return subscribeGoalChanges(onChange, listen);
 }

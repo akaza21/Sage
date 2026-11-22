@@ -103,7 +103,8 @@ export function effectiveDraftChoice(
     (harness) => harness.id === draft.harnessId,
   );
   if (
-    !harness?.bindingId ||
+    !harness ||
+    (harness.transport === "acp" && !harness.bindingId) ||
     harness.installState !== "available" ||
     state.selectedHarnessId !== harness.id ||
     state.harnessDiscoveryPhase !== "ready"

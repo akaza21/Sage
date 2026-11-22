@@ -29,6 +29,7 @@ import type * as ComposerOptionsChunk from "./ComposerAddActions";
 import type * as GoalChunk from "./BoundChatGoalControl";
 import type * as AttachmentsChunk from "./ComposerAttachments";
 import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
+import type * as ImportChunk from "./ImportedHistory";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -128,6 +129,9 @@ export const TranscriptPart = lazyParts<
 >(() => import("./TranscriptInteractions"));
 export const NavigationPart = lazyParts<typeof ChatNavigationChunk>(
   () => import("./ChatNavigation"),
+);
+export const ImportPart = lazyParts<typeof ImportChunk>(
+  () => import("./ImportedHistory"),
 );
 export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
   () => import("./acp/PermissionPrompt"),

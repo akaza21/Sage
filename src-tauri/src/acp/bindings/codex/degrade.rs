@@ -35,6 +35,7 @@ struct OptionalCapabilities {
     native_session_import: bool,
     native_review: bool,
     native_background_terminals: bool,
+    goals: bool,
 }
 
 const PROVEN_OPTIONAL_CAPABILITIES: OptionalCapabilities = OptionalCapabilities {
@@ -59,6 +60,7 @@ const PROVEN_OPTIONAL_CAPABILITIES: OptionalCapabilities = OptionalCapabilities 
     native_review: true,
     // `thread/backgroundTerminals/*` are pinned from the same schema.
     native_background_terminals: true,
+    goals: true,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -112,6 +114,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         native_session_import: false,
         native_review: pinned,
         native_background_terminals: pinned,
+        goals: pinned,
     }
 }
 
@@ -149,6 +152,16 @@ pub(crate) fn projected_capabilities(
         native_session_import: optional.native_session_import,
         native_review: optional.native_review,
         native_background_terminals: optional.native_background_terminals,
+        goal: if optional.goals {
+            sage_acp_protocol::intent::GoalCapabilities {
+                observes: true,
+                pause: true,
+                clear: true,
+                ..Default::default()
+            }
+        } else {
+            Default::default()
+        },
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,

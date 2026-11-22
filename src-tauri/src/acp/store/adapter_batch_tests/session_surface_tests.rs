@@ -13,6 +13,68 @@ fn notice(text: &str) -> SessionScopedEvent {
     notice_fixture(SessionNoticeLevel::Warning, text)
 }
 
+#[test]
+fn problem_identity_survives_durable_notice_reload() {
+    let mut fixture = fixture();
+    let event: SessionScopedEvent = serde_json::from_str(
+        r#"{"kind":"notice","identity":"mcp-start:calendar","level":"warning","text":"Tools unavailable.","source":"runtime"}"#,
+    ).unwrap();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(&fixture.owner, vec![session(event, 6)]),
+    )
+    .unwrap();
+    let reloaded = crate::acp::store::load_chat_page(
+        &fixture.connection,
+        fixture.owner.project_id.clone(),
+        fixture.owner.chat_id.clone(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        reloaded.session_notices[0]
+            .identity
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "mcp-start:calendar"
+    );
+}
+
+#[test]
+fn unclassified_and_legacy_notice_identities_stay_stable_as_the_surface_changes() {
+    let mut fixture = fixture();
+    let apply = |fixture: &mut Fixture, text| {
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(&fixture.owner, vec![session(notice(text), 6)]),
+        )
+        .unwrap();
+    };
+    apply(&mut fixture, "Unclassified notice");
+    let initial = surface(&fixture).notices[0].identity.clone().unwrap();
+    apply(&mut fixture, "Unclassified notice");
+    assert_eq!(surface(&fixture).notices.len(), 1);
+    assert_eq!(
+        surface(&fixture).notices[0].identity.as_ref(),
+        Some(&initial)
+    );
+    let mut legacy = surface(&fixture);
+    legacy.notices[0].identity = None;
+    fixture
+        .connection
+        .execute(
+            "UPDATE acp_session_surfaces SET surface_json=?1",
+            [serde_json::to_string(&legacy).unwrap()],
+        )
+        .unwrap();
+    let replayed = surface(&fixture).notices[0].identity.clone().unwrap();
+    apply(&mut fixture, "A separate problem");
+    let stored = surface(&fixture);
+    assert_eq!(stored.notices[0].identity.as_ref(), Some(&replayed));
+    assert_ne!(stored.notices[0].identity, stored.notices[1].identity);
+}
+
 fn turn(state: TurnState, now_millis: i64) -> AdapterInboundEvent {
     AdapterInboundEvent::Turn { state, now_millis }
 }

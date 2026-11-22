@@ -36,7 +36,12 @@ export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";
 
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
-  "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"
+  | "onAttachFiles"
+  | "attachRefusalChatId"
+  | "onOpenGoal"
+  | "onClearGoal"
+  | "goalUnobserved"
+  | "onCompact"
 >;
 
 export function ComposerOptionsMenu({
@@ -66,10 +71,12 @@ export function ComposerOptionsMenu({
   const actionsKey = JSON.stringify([
     selectionKey,
     actions.sessionConfig?.sageAgentSessionId,
-    Boolean(actions.onAttachFiles),
-    Boolean(actions.planAccess),
-    Boolean(actions.onOpenGoal),
-    Boolean(actions.onCompact),
+    !!actions.onAttachFiles,
+    !!actions.planAccess,
+    !!actions.onOpenGoal,
+    !!actions.onClearGoal,
+    actions.goalUnobserved,
+    !!actions.onCompact,
     canSelectEffort,
     sessionModeActions(actions.sessionConfig).map((mode) => mode.id),
     sessionConfigControls(actions.sessionConfig, "other").map((option) => [
@@ -84,7 +91,7 @@ export function ComposerOptionsMenu({
       const element = document.activeElement;
       const menuHadFocus =
         element === document.body ||
-        Boolean(element && document.getElementById(id)?.contains(element));
+        document.getElementById(id)?.contains(element);
       onDismiss();
       if (focused && menuHadFocus) onModeRemoved();
     }
@@ -117,6 +124,9 @@ export function ComposerAddActions({
   onAttachFiles,
   attachRefusalChatId,
   onOpenGoal,
+  onClearGoal,
+  goalUnobserved,
+  harnessName = "This harness",
   onCompact,
   onOpenEffort,
   onClose,
@@ -131,6 +141,9 @@ export function ComposerAddActions({
   onAttachFiles?: () => void;
   attachRefusalChatId?: string;
   onOpenGoal?: () => void;
+  onClearGoal?: () => void;
+  goalUnobserved?: boolean;
+  harnessName?: string;
   onCompact?: () => void;
   onOpenEffort?: () => void;
   onClose: () => void;
@@ -155,6 +168,40 @@ export function ComposerAddActions({
           session.capabilities.nativeSessionImport,
       ),
   );
+  const sessionAction = (
+    label: string,
+    action: () => void,
+    description?: string,
+    icon?: ReactNode,
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      className="menu-item composer__add-action"
+      aria-label={label}
+      aria-description={description}
+      disabled={disabled}
+      tabIndex={-1}
+      onClick={() => {
+        onClose();
+        action();
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+      {description ? (
+        <span className="composer__action-description">{description}</span>
+      ) : null}
+    </button>
+  );
+  const goalItem = onOpenGoal
+    ? sessionAction(
+        goalUnobserved ? "Set goal\u2026" : "Goal",
+        onOpenGoal,
+        "Set a goal to keep pursuing",
+        <Target size={14} aria-hidden="true" />,
+      )
+    : null;
   return (
     <>
       <p className="menu-group-label composer__add-heading" aria-hidden="true">
@@ -185,27 +232,7 @@ export function ComposerAddActions({
         </button>
       ) : null}
       {projectAction}
-      {onOpenGoal ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item composer__add-action"
-          aria-label="Goal"
-          aria-description="Set a goal to keep pursuing"
-          disabled={disabled}
-          tabIndex={-1}
-          onClick={() => {
-            onClose();
-            onOpenGoal();
-          }}
-        >
-          <Target size={14} aria-hidden="true" />
-          <span>Goal</span>
-          <span className="composer__action-description">
-            Set a goal to keep pursuing
-          </span>
-        </button>
-      ) : null}
+      {!goalUnobserved ? goalItem : null}
       {planAccess ? (
         <ComposerPlanAccess
           target={planAccess}
@@ -259,26 +286,28 @@ export function ComposerAddActions({
           })}
         </div>
       ) : null}
-      {onCompact ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item composer__add-action"
-          aria-label="Compact context"
-          aria-description="Summarize earlier turns to free context"
-          disabled={disabled}
-          tabIndex={-1}
-          onClick={() => {
-            onClose();
-            onCompact();
-          }}
+      {goalUnobserved && (onOpenGoal || onClearGoal) ? (
+        <p
+          className="menu-group-label composer__add-heading"
+          aria-hidden="true"
         >
-          <span>Compact context</span>
-          <span className="composer__action-description">
-            Summarize earlier turns to free context
-          </span>
-        </button>
+          Session
+        </p>
       ) : null}
+      {goalUnobserved ? goalItem : null}
+      {onClearGoal ? sessionAction("Clear goal", onClearGoal) : null}
+      {goalUnobserved && (onOpenGoal || onClearGoal) ? (
+        <p className="composer__action-description">
+          {harnessName} doesn't report goal progress to Sage.
+        </p>
+      ) : null}
+      {onCompact
+        ? sessionAction(
+            "Compact context",
+            onCompact,
+            "Summarize earlier turns to free context",
+          )
+        : null}
       {onOpenEffort ? (
         <button
           type="button"

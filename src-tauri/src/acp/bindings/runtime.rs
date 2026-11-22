@@ -199,7 +199,7 @@ impl HarnessAdapter for NativeRuntime {
         self.publish_goal();
         egress
     }
-    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+    fn goal_state(&self) -> Option<&crate::acp::goal::GoalState> {
         self.0.goal_state()
     }
     fn goal_pending(&self) -> bool {
@@ -282,6 +282,12 @@ impl HarnessAdapter for NativeRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.session_control(control)
     }
+    fn prepare_goal_command(
+        &mut self,
+        action: &crate::acp::goal::GoalAction,
+    ) -> Result<bool, AdapterRuntimeError> {
+        self.0.prepare_goal_command(action)
+    }
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,
@@ -333,12 +339,14 @@ impl HarnessAdapter for NativeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        if let AdapterCommand::Prompt { prompt, .. } = &command
+        if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
+            &command
             && !prompt.action_admitted(self.capabilities().as_ref())
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        if let AdapterCommand::Prompt { prompt, .. } = &command
+        if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
+            &command
             && let Some(revision) = prompt.command_revision
         {
             self.0
@@ -374,7 +382,7 @@ impl HarnessAdapter for NativeRuntime {
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()
         {
-            channel.update(owner, goal);
+            channel.update_observed(owner, goal);
         }
         Ok(batch)
     }

@@ -15,6 +15,70 @@ fn command(revision: u64) -> AdapterCommand {
     }
 }
 #[test]
+fn legacy_constructor_keeps_advertised_version_gated_commands_dispatchable() {
+    use crate::acp::bindings::claude::admission::ClaudeBindingRegistration;
+    use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+    let root = std::env::temp_dir().join(format!("sage-legacy-commands-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let adapter = root.join("adapter.js");
+    let node = root.join("node.exe");
+    std::fs::write(&adapter, b"adapter").unwrap();
+    std::fs::write(&node, b"node").unwrap();
+    let binding = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
+        Box::new(DiscoveredClaudeLaunch {
+            adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+            node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+            adapter_path: adapter,
+            node_path: node,
+            adapter_version: "0.76.0".into(),
+            acp_sdk_version: "1.4.0".into(),
+            node_engine: ">=22".into(),
+            node_version: "22.18.0".into(),
+        }),
+    ))
+    .refresh()
+    .unwrap();
+    let mut runtime = ClaudeRuntime::from_admitted_binding(
+        binding,
+        RuntimeEpoch::new(3).unwrap(),
+        SageAgentSessionId::parse("session-claude-runtime").unwrap(),
+    )
+    .unwrap();
+    ready(&mut runtime);
+    runtime
+        .ingest(
+            &update(
+                "claude-session-1",
+                json!([
+                    {"name":"reload-skills","description":"Reload skills"}
+                ]),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    let list = runtime.available_commands().snapshot();
+    assert_eq!(list.commands.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&list.commands[0]).unwrap()["placement"],
+        json!({"section":"skillsAndCommands"})
+    );
+    let mut prompt = Prompt::new("prompt", "/reload-skills").unwrap();
+    prompt.command_revision = Some(list.revision);
+    let wire = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "legacy-command").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        })
+        .unwrap();
+    let wire: Value = serde_json::from_slice(wire.frame().payload()).unwrap();
+    assert_eq!(
+        wire["params"]["prompt"],
+        json!([{"type":"text","text":"/reload-skills"}])
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
 fn oversized_acp_catalog_reaches_shared_admission_through_wire_ingress() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);

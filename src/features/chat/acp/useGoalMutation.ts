@@ -1,10 +1,12 @@
+import { goalMutations } from "../../../services/acpGoalMutations";
+import type { GoalMutationAction } from "../../../domain/acpGoal";
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import type {
   AcpMutationResult,
   AcpSessionMutationIntent,
 } from "../../../domain/acp";
-import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
+import { AcpDesktopError } from "../../../services/acpDesktop";
 import type { GoalMutationOutcome } from "../ChatGoalControl";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
@@ -12,10 +14,13 @@ import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
 import { canMutateGoal } from "./goalMutability";
 
-type Action = "pause" | "clear";
+type Action = GoalMutationAction;
 
 export function createGoalMutationController(deps: {
   getContext: () => AcpActionContext | null;
+  set?: (
+    request: AcpSessionMutationIntent & { objective: string },
+  ) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   apply: (context: AcpActionContext, result: AcpMutationResult) => boolean;
@@ -30,7 +35,10 @@ export function createGoalMutationController(deps: {
       message: "Goal outcome unknown. Reload this chat to verify.",
     };
   };
-  return async (action: Action): Promise<GoalMutationOutcome> => {
+  return async (
+    action: Action,
+    objective?: string,
+  ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
         kind: "refused",
@@ -38,7 +46,7 @@ export function createGoalMutationController(deps: {
       };
     }
     const captured = deps.getContext();
-    if (!captured || !canMutateGoal(captured.page)) {
+    if (!captured || !canMutateGoal(captured.page, action)) {
       return {
         kind: "refused",
         message: "Native Goal mutation is unavailable for this session.",
@@ -62,7 +70,7 @@ export function createGoalMutationController(deps: {
         current.page.currentSessionId !== session.id ||
         current.page.sessions.find((item) => item.id === session.id)
           ?.runtimeEpoch !== session.runtimeEpoch ||
-        !canMutateGoal(current.page)
+        !canMutateGoal(current.page, action)
       ) {
         return {
           kind: "refused",
@@ -77,9 +85,23 @@ export function createGoalMutationController(deps: {
         sessionId: session.id,
         runtimeEpoch: session.runtimeEpoch!,
       };
-      const result = await (action === "pause"
-        ? deps.pause(request)
-        : deps.clear(request));
+      if (
+        action === "set" &&
+        (!deps.set ||
+          !objective?.trim() ||
+          [...objective].length > 4000 ||
+          objective.includes("\0"))
+      ) {
+        return {
+          kind: "refused",
+          message: "Enter a goal of 1 to 4,000 characters.",
+        };
+      }
+      const result = await (action === "set"
+        ? deps.set!({ ...request, objective: objective! })
+        : action === "pause"
+          ? deps.pause(request)
+          : deps.clear(request));
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }
@@ -107,8 +129,9 @@ export function useGoalMutation(boundChatId?: string | null) {
     () =>
       createGoalMutationController({
         getContext: () => currentContext(boundChatId),
-        pause: acpDesktop.pauseExistingGoal,
-        clear: acpDesktop.clearExistingGoal,
+        set: goalMutations.setGoal,
+        pause: goalMutations.pauseExistingGoal,
+        clear: goalMutations.clearExistingGoal,
         apply: (captured, result) => {
           const current = currentContext(boundChatId);
           if (

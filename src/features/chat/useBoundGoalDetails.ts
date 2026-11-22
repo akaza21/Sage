@@ -1,29 +1,21 @@
-import { useCallback, useRef, useState } from "react";
-import type { AcpGoalState } from "../../domain/acpGoal";
-import { canMutateGoal } from "./acp/goalMutability";
-import { currentContext } from "./acp/useAcpChatActions";
+import { useCallback, useState } from "react";
+
+export interface GoalControls {
+  onOpenGoal?: () => void;
+  onClearGoal?: () => void;
+  goalUnobserved?: boolean;
+}
 
 export type BoundGoalDetails = ReturnType<typeof useBoundGoalDetails>;
 
-export function useBoundGoalDetails(
-  state: AcpGoalState,
-  chatId: string,
-  enabled: boolean,
-) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const [ready, setReady] = useState(false);
-  const onReady = useCallback(() => setReady(true), []);
-  const canMutate =
-    state.kind === "goal" &&
-    canMutateGoal(currentContext(chatId || undefined)?.page);
-  const onOpen =
-    enabled && canMutate && ready
-      ? () => {
-          if (detailsRef.current) {
-            detailsRef.current.open = true;
-            detailsRef.current.querySelector("summary")?.focus();
-          }
-        }
-      : undefined;
-  return { detailsRef, onOpen, canMutate, onReady };
+export function useBoundGoalDetails(enabled: boolean) {
+  const [controls, setControls] = useState<GoalControls>();
+  const onReady = useCallback((actions: GoalControls) => {
+    setControls(actions);
+    return () => setControls(undefined);
+  }, []);
+  return {
+    onReady,
+    actions: enabled ? controls : undefined,
+  };
 }

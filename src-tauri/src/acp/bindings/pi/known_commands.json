@@ -1,0 +1,31 @@
+[
+  { "name": "compact", "section": "session", "control": "compact" },
+  { "name": "session", "section": "usage", "control": "usagePanel" },
+  { "name": "settings", "section": "modelAndAccess", "terminalOnly": true },
+  {
+    "name": "model",
+    "section": "modelAndAccess",
+    "control": "modelPicker",
+    "terminalOnly": true
+  },
+  { "name": "tree", "section": "session", "terminalOnly": true },
+  {
+    "name": "reload",
+    "section": "addOns",
+    "control": "reloadAddOns",
+    "terminalOnly": true
+  },
+  { "name": "login", "section": "modelAndAccess", "terminalOnly": true },
+  { "name": "logout", "section": "modelAndAccess", "terminalOnly": true },
+  {
+    "name": "scoped-models",
+    "section": "modelAndAccess",
+    "terminalOnly": true
+  },
+  { "name": "share", "section": "session", "terminalOnly": true },
+  { "name": "import", "section": "session", "terminalOnly": true },
+  { "name": "copy", "section": "addToMessage", "terminalOnly": true },
+  { "name": "hotkeys", "section": "more", "terminalOnly": true },
+  { "name": "changelog", "section": "more", "terminalOnly": true },
+  { "name": "trust", "section": "modelAndAccess", "terminalOnly": true }
+]

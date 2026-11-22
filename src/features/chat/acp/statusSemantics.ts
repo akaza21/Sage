@@ -59,21 +59,29 @@ export function getTurnStatusLabel(turn: TurnProjection): string {
 export function turnReasonMessage(turn: TurnProjection): string | undefined {
   const detail = turn.terminalReason?.message?.trim();
   if (detail) return detail;
-  const stopped = turn.state === "interrupted" || turn.state === "cancelled";
-  if (!stopped && turn.state !== "failed") return;
+  if (turn.state === "failed")
+    return turnReasonErrorItem(turn)?.payload.message?.trim();
+  if (turn.state !== "interrupted" && turn.state !== "cancelled") return;
   for (let index = turn.items.length; index--;) {
     const item = turn.items[index];
     if (item.kind === "error" && item.payload.kind === undefined) {
       const message = item.payload.message?.trim();
-      if (message || !stopped) return message;
+      if (message) return message;
     }
     if (
       item.kind === "toolCall" &&
-      stopped &&
       item.toolState === "declined" &&
       item.payload.outputSummary?.trim()
     )
       return item.payload.outputSummary;
+  }
+}
+
+/** The same retained source record used for a failed turn's fallback reason. */
+export function turnReasonErrorItem(turn: TurnProjection) {
+  for (let index = turn.items.length; index--;) {
+    const item = turn.items[index];
+    if (item.kind === "error" && item.payload.kind === undefined) return item;
   }
 }
 

@@ -128,6 +128,7 @@ fn page_reply(
         Ok(NativeRpcReply::Rejected) => Err(NativeReadError::Rejected),
         Ok(
             NativeRpcReply::GoalApplied
+            | NativeRpcReply::GoalCommand(_)
             | NativeRpcReply::Forked(_)
             | NativeRpcReply::Released
             | NativeRpcReply::UsageRead

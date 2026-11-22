@@ -48,7 +48,7 @@ impl CodexAdapter {
                 characterisation,
             });
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-        let (snapshot, models) = if self.desktop_fixture {
+        let (mut snapshot, models) = if self.desktop_fixture {
             (
                 degrade::projected_desktop_fixture_capabilities(&self.capability_ceiling)
                     .map_err(|_| AdapterError::CapabilityUnavailable)?,
@@ -59,13 +59,24 @@ impl CodexAdapter {
                 .map_err(|_| AdapterError::CapabilityUnavailable)?
         };
         #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
-        let (snapshot, models) =
+        let (mut snapshot, models) =
             degrade::projected_capabilities(&self.capability_ceiling, observed)
                 .map_err(|_| AdapterError::CapabilityUnavailable)?;
         self.negotiated = Some(NegotiatedMethods {
             snapshot: snapshot.clone(),
             models,
         });
+        snapshot.goal = if self.goal_supported() {
+            sage_acp_protocol::intent::GoalCapabilities {
+                observes: true,
+                pause: true,
+                clear: true,
+                ..Default::default()
+            }
+        } else {
+            Default::default()
+        };
+        self.negotiated.as_mut().expect("negotiated").snapshot.goal = snapshot.goal;
         // The built-ins list as soon as the session can run them; the skills
         // follow their own read.
         self.list_commands(Vec::new());

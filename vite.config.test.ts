@@ -181,6 +181,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // A native Goal's control and mutations load with the first chat that
   // shows one.
   "src/features/chat/BoundChatGoalControl.tsx",
+  "src/features/chat/GoalDetails.tsx",
+  "src/services/acpGoalSubscription.ts",
   // The Hand off trigger loads with the Editor chat header or a row menu.
   "src/features/chat/ChatHandoffControl.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",

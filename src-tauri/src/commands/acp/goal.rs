@@ -33,6 +33,36 @@ pub(crate) async fn clear_existing_goal(
     mutate(&state, request, GoalAction::ClearExisting).await
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SetGoalRequest {
+    #[serde(flatten)]
+    pub session: ExistingGoalRequest,
+    pub objective: sage_acp_protocol::contract::RequiredText<16000>,
+}
+
+#[tauri::command]
+pub(crate) async fn set_goal(
+    state: State<'_, AppState>,
+    request: SetGoalRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    if request.objective.as_str().trim().is_empty()
+        || !crate::acp::goal::valid_objective(request.objective.as_str())
+    {
+        return Err(AcpIpcError::InvalidRequest {
+            message: safe_message("Goal objective must contain 1 to 4,000 characters."),
+        });
+    }
+    mutate(
+        &state,
+        request.session,
+        GoalAction::Set {
+            objective: request.objective.as_str().to_owned(),
+        },
+    )
+    .await
+}
+
 async fn mutate(
     state: &AppState,
     request: ExistingGoalRequest,
@@ -59,19 +89,56 @@ async fn mutate(
     if snapshot.runtime_epoch != Some(request.runtime_epoch) {
         return Err(intent_error(IntentError::StaleRuntimeEpoch));
     }
-    let _intent_id = request.client_intent_id;
-    state
+    let command = state
         .acp
-        .mutate_existing_goal(
+        .mutate_goal(
             RuntimeOwner {
                 project_id: request.project_id.clone(),
                 chat_id: request.chat_id.clone(),
-                session_id: request.session_id,
+                session_id: request.session_id.clone(),
                 runtime_epoch: request.runtime_epoch,
             },
             action,
         )
         .map_err(goal_error)?;
+    let current_turn = if snapshot
+        .turn_state
+        .is_some_and(|state| !state.is_terminal())
+    {
+        snapshot.turn_id.zip(snapshot.turn_revision)
+    } else {
+        None
+    };
+    drop(_transition);
+    if let Some(command) = command {
+        return super::slash_commands::run_command_turn(
+            state,
+            super::slash_commands::RunCommandRequest {
+                session: ActivateAcpSessionRequest {
+                    project_id: request.project_id,
+                    project_generation: request.project_generation,
+                    chat_id: request.chat_id,
+                    expected_projection_revision: request.expected_projection_revision,
+                    client_intent_id: request.client_intent_id,
+                    session_id: request.session_id,
+                    runtime_epoch: request.runtime_epoch,
+                },
+                expected_commands_revision: command.revision,
+                name: command.name,
+                input: Some(command.input),
+            },
+            current_turn,
+        )
+        .await
+        .map_err(|error| match error.prompt_dispatch {
+            crate::acp::ipc::PromptDispatch::NotStarted => error.failure,
+            _ => AcpIpcError::RecoveryRequired {
+                message: safe_message(
+                    "Goal command outcome is unknown; reload this chat to verify.",
+                ),
+            },
+        });
+    }
     mutation_response(state, request.project_id, request.chat_id)
 }
 
@@ -110,6 +177,11 @@ mod tests {
     #[test]
     fn goal_ipc_accepts_only_owner_fields_and_no_status_objective_or_budget() {
         assert!(serde_json::from_value::<ExistingGoalRequest>(request()).is_ok());
+        let mut set = request();
+        set["objective"] = json!("Ship the release");
+        assert!(serde_json::from_value::<SetGoalRequest>(set.clone()).is_ok());
+        set["objective"] = json!("x".repeat(16001));
+        assert!(serde_json::from_value::<SetGoalRequest>(set).is_err());
         for (key, value) in [
             ("status", json!("active")),
             ("objective", json!("invented")),

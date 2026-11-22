@@ -2735,6 +2735,12 @@ describe("ChatSurface ACP resource integration", () => {
         await screen.findByRole("group", { name: "Turn failed" }),
       ).getByText("Authentication required"),
     ).toBeVisible();
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Turn failed" })).getByRole(
+        "button",
+        { name: "Details" },
+      ),
+    );
     expect(
       await screen.findByRole("button", { name: "Check sign-in" }),
     ).toBeVisible();
@@ -2790,6 +2796,11 @@ describe("ChatSurface ACP resource integration", () => {
     harnessSignInFailures.page?.(hooks.page);
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(
+      within(
+        screen.getAllByRole("group", { name: "Turn failed" }).at(-1)!,
+      ).getByRole("button", { name: "Details" }),
+    );
+    fireEvent.click(
       await screen.findByRole("button", { name: "Check sign-in" }),
     );
     await waitFor(() =>
@@ -2818,6 +2829,11 @@ describe("ChatSurface ACP resource integration", () => {
       })),
     );
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    fireEvent.click(
+      within(
+        screen.getAllByRole("group", { name: "Turn failed" }).at(-1)!,
+      ).getByRole("button", { name: "Details" }),
+    );
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Sign in to Claude Code" }),
@@ -2839,6 +2855,11 @@ describe("ChatSurface ACP resource integration", () => {
     };
     act(() => harnessSignInFailures.page?.(hooks.page!));
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    fireEvent.click(
+      within(
+        screen.getAllByRole("group", { name: "Turn failed" }).at(-1)!,
+      ).getByRole("button", { name: "Details" }),
+    );
     expect(
       await screen.findByRole("button", { name: "Check sign-in" }),
     ).toBeVisible();
@@ -4725,6 +4746,10 @@ describe("ChatSurface ACP resource integration", () => {
       name: /Showing 1 changed file/,
     });
     fireEvent.click(editPill);
+    const boundary = screen
+      .getByText(/Some chat history was discarded/)
+      .closest<HTMLElement>("[data-notice-identity]")!;
+    fireEvent.click(within(boundary).getByRole("button", { name: "Details" }));
     expect(
       screen.getByText(/discarded to stay within memory limits/i),
     ).toBeVisible();

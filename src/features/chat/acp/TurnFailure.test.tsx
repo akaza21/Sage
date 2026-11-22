@@ -4,17 +4,97 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { page } from "./acpProjection.fixture";
 import { TurnFailure } from "./TurnFailure";
+import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { TurnHeader } from "./TurnHeader";
 import { useWorkbenchStore } from "../../../app/store";
 
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it("discloses the current failure diagnostics and unmounts them when closed", async () => {
+    const turn = page("failed", {
+      kind: "timeout",
+      message: "The request timed out.",
+    }).turns[0];
+    turn.items = [
+      {
+        kind: "error",
+        payload: {
+          code: "requestTimeout",
+          message: "The connection closed after 30 seconds.",
+          recoverable: true,
+        },
+      } as never,
+    ];
+    const { container, rerender } = render(<TurnFailure turn={turn} />);
+    expect(container.querySelector("pre")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    await waitFor(() => {
+      expect(container.querySelector("pre")).toHaveTextContent(
+        '"code": "requestTimeout"',
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(container.querySelector("pre")).toBeNull();
+    rerender(
+      <TurnFailure
+        turn={{
+          ...turn,
+          terminalReason: {
+            kind: "timeout",
+            message: "The request timed out after reconnecting.",
+          },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    await waitFor(() => {
+      expect(container.querySelector("pre")).toHaveTextContent(
+        '"message": "The request timed out after reconnecting."',
+      );
+    });
+  });
+
+  it("announces a newly failed turn through the gate once while keeping later copy revisions quiet", async () => {
+    const view = (projection: ReturnType<typeof page>) => (
+      <>
+        <AcpAnnouncementRegions page={projection} />
+        <TurnFailure turn={projection.turns[0]} />
+      </>
+    );
+    const running = page("running");
+    const { rerender, container } = render(view(running));
+    const region = container.querySelector(
+      '[data-acp-announcement="assertive"]',
+    );
+    expect(region).toBeEmptyDOMElement();
+    const failed = page("failed", {
+      kind: "timeout",
+      message: "The request timed out.",
+    });
+    failed.projectionRevision = "13" as never;
+    rerender(view(failed));
+    await waitFor(() =>
+      expect(region).toHaveTextContent("The request timed out."),
+    );
+    const updated = page("failed", {
+      kind: "timeout",
+      message: "The request timed out after reconnecting.",
+    });
+    updated.projectionRevision = "14" as never;
+    rerender(view(updated));
+    expect(
+      screen.getByText("The request timed out after reconnecting."),
+    ).toBeVisible();
+    expect(region).toHaveTextContent("The request timed out.");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
   it("shows manual login instructions when the failed turn has no sign-in checker or remediation", async () => {
     const initial = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
@@ -40,6 +120,10 @@ describe("TurnFailure", () => {
       failed.sessions[0].bindingId = "fixture-binding" as never;
       render(<TurnFailure turn={failed.turns[0]} page={failed} />);
       const failure = screen.getByRole("group", { name: "Turn failed" });
+      expect(
+        within(failure).queryByText(/requires sign-in before it can continue/),
+      ).toBeNull();
+      fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
       expect(
         await within(failure).findByText(
           "OpenCode requires sign-in before it can continue. Run opencode auth login. Choose a provider to sign in. Then try again.",
@@ -72,6 +156,13 @@ describe("TurnFailure", () => {
       failed.sessions[0].bindingId = "fixture-binding" as never;
       render(<TurnFailure turn={failed.turns[0]} page={failed} />);
       const failure = screen.getByRole("group", { name: "Turn failed" });
+      expect(
+        within(failure).queryByRole("button", {
+          name: "Sign in to Team agent",
+        }),
+      ).toBeNull();
+      expect(within(failure).getAllByText("Not signed in")).toHaveLength(1);
+      fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
       expect(within(failure).getByText("Not signed in")).toBeVisible();
       expect(
         await within(failure).findByRole("button", {
@@ -112,6 +203,7 @@ describe("TurnFailure", () => {
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
     ["other", "The harness gave no error details."],
+    ["cancelledByUser", "Cancelled by you"],
   ] as const)(
     "states a message-free %s failure cause only once in the turn",
     (kind, label) => {
@@ -123,6 +215,9 @@ describe("TurnFailure", () => {
         </>,
       );
       expect(screen.getAllByText(label)).toHaveLength(1);
+      expect(screen.queryByText("Turn failed")).toBeNull();
+      expect(screen.queryByText("Turn failure")).toBeNull();
+      expect(document.querySelector("code")).toBeNull();
       expect(
         within(screen.getByRole("group", { name: "Turn failed" })).getByText(
           label,
@@ -147,7 +242,7 @@ describe("TurnFailure", () => {
     );
     const failure = screen.getByRole("group", { name: "Turn failed" });
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(failure).not.toHaveAttribute("aria-label");
+    expect(failure).toHaveAccessibleName("Turn failed");
     expect(within(failure).getByText("Authentication required")).toBeVisible();
     expect(within(failure).getByText("Sign in to continue")).toBeVisible();
     fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
@@ -156,9 +251,7 @@ describe("TurnFailure", () => {
 
   it("states explicitly when the harness supplied no failure detail", () => {
     render(<TurnFailure turn={page("failed").turns[0]} />);
-    expect(
-      screen.getByRole("group", { name: "Turn failed" }),
-    ).toHaveTextContent("Turn failed");
+    expect(screen.queryByText("Turn failed")).toBeNull();
     expect(
       screen.getByText("The harness gave no error details."),
     ).toBeVisible();
@@ -172,6 +265,7 @@ describe("TurnFailure", () => {
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
     ["other", "The harness gave no error details."],
+    ["cancelledByUser", "Cancelled by you"],
   ] as const)(
     "uses the %s reason as the cause when no text was supplied",
     (kind, label) => {

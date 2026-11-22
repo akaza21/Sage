@@ -61,6 +61,7 @@ fn session_event(event: &AdapterEvent) -> SessionScopedEvent {
 
 fn warning(source: &str, text: &str, diagnostic: bool) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        identity: None,
         diagnostic,
         level: SessionNoticeLevel::Warning,
         text: RequiredText::new("text", text).unwrap(),

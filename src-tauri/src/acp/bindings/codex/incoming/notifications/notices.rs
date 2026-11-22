@@ -23,6 +23,9 @@ use super::super::{
     support::{identity, sanitize, text},
 };
 
+mod mcp;
+pub(super) use mcp::mcp_startup_failed;
+
 const ID_BYTES: usize = 512;
 const MODEL_BYTES: usize = 512;
 /// Bytes kept from each harness part (message, summary, details), so a long
@@ -83,35 +86,6 @@ fn ignored_settings_warning(message: &str) -> bool {
 }
 
 pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
-
-/// Codex keeps running when an MCP server fails to start, so report the
-/// missing tools without ending the session.
-pub(super) fn mcp_startup_failed(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-    server: &str,
-    thread: &str,
-) -> Result<IngressDisposition, IngressError> {
-    let server = clean(server, ID_BYTES);
-    let message = if params.get("failureReason").and_then(Value::as_str)
-        == Some(REAUTHENTICATION_REQUIRED)
-    {
-        format!(
-            "The MCP server {server} needs you to sign in again; its tools are unavailable until then."
-        )
-    } else {
-        match human(params, "error") {
-            Ok(error) => format!("The MCP server {server} failed to start: {error}"),
-            Err(_) => format!("The MCP server {server} failed to start."),
-        }
-    };
-    let notice = notice(SessionNoticeLevel::Warning, "codex mcp", message)?;
-    if adapter.bound_thread_id().is_none() {
-        adapter.buffer_session_notice(notice);
-        return Ok(IngressDisposition::IgnoredLate);
-    }
-    single(adapter.thread_session_id(thread).map_err(identity)?, notice)
-}
 
 pub(super) fn guardian_warning(
     adapter: &CodexAdapter,
@@ -384,6 +358,7 @@ pub(super) fn notice(
 ) -> Result<SessionScopedEvent, IngressError> {
     let message = clip(&message, SESSION_NOTICE_TEXT_BYTES);
     Ok(SessionScopedEvent::Notice(SessionNotice {
+        identity: None,
         diagnostic: false,
         level,
         text: RequiredText::new("noticeText", message).map_err(|_| IngressError::Content)?,

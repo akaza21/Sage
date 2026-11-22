@@ -2,7 +2,6 @@ import type {
   AcpChatPage,
   AcpMutationResult,
   AcpProjectionChangedEvent,
-  AcpSessionMutationIntent,
   ActivateAcpSessionRequest,
   AgentEditDisposition,
   CancelAcpTurnRequest,
@@ -16,7 +15,7 @@ import type {
   StartAcpSessionRequest,
   SteerAcpTurnRequest,
 } from "../domain/acp";
-import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
+import type { AcpGoalState } from "../domain/acpGoal";
 import type {
   AgentDiffSnapshot,
   GetAgentDiffRequest,
@@ -37,7 +36,7 @@ export { AcpDesktopError, safeFailure } from "./acpDesktopCommand";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
 
-async function invokeAcpMutation<Request extends object>(
+export async function invokeAcpMutation<Request extends object>(
   command: string,
   request: Request,
   decodeGoal?: (value: unknown) => AcpGoalState | null,
@@ -60,16 +59,6 @@ export const acpDesktop = {
     request: RunAcpSessionActionRequest,
   ): Promise<AcpMutationResult> {
     return invokeAcpMutation("run_session_action", request);
-  },
-  pauseExistingGoal(
-    request: AcpSessionMutationIntent,
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("pause_existing_goal", request, decodeAcpGoal);
-  },
-  clearExistingGoal(
-    request: AcpSessionMutationIntent,
-  ): Promise<AcpMutationResult> {
-    return invokeAcpMutation("clear_existing_goal", request, decodeAcpGoal);
   },
   async resolveChatFileReference(
     projectId: string,

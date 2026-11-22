@@ -360,6 +360,7 @@ export function ChatHarnessControls({
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
             {...addActions}
+            harnessName={selectedHarness?.name}
             onOpenEffort={
               effortInMenu
                 ? () => {

@@ -94,7 +94,7 @@ impl ClaudeRuntime {
         active.config = candidate;
         // Options reported alone still move the mode they restate.
         active.config.follow_mode_option();
-        Ok(())
+        self.recompute_command_placement()
     }
     fn reported_mode(&self) -> Option<String> {
         self.active
@@ -126,6 +126,7 @@ impl ClaudeRuntime {
                     .config
                     .set_current_mode(id.clone())
                     .map_err(|_| AdapterRuntimeError::Frame)?;
+                self.recompute_command_placement()?;
                 Some(id.as_str().to_owned())
             }
             _ => {
