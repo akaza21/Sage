@@ -40,6 +40,7 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 export function ChatHarnessControls({
   modelsPending,
+  discoveryPhase,
   draftPickers,
   contextUsage,
   usageRequest,
@@ -291,6 +292,7 @@ export function ChatHarnessControls({
           />
         ) : null}
         <ComposerHarnessPicker
+          discoveryPhase={discoveryPhase}
           open={active === "harness"}
           onOpenChange={setHarnessOpen}
           candidates={harnessCandidates}

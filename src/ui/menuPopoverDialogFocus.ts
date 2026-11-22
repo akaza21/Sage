@@ -38,12 +38,14 @@ export function exitPopoverDialogOnTab(
 ) {
   const popover = event.currentTarget;
   const controls = dialogControls(popover);
+  // A lazy dialog can gain controls after its initial container focus.
+  if (document.activeElement === popover && controls.length) {
+    event.preventDefault();
+    (event.shiftKey ? controls.at(-1) : controls[0])?.focus();
+    return;
+  }
   const boundary = event.shiftKey ? controls[0] : controls.at(-1);
-  if (
-    !boundary ||
-    document.activeElement === boundary ||
-    document.activeElement === popover
-  ) {
+  if (!boundary || document.activeElement === boundary) {
     event.preventDefault();
     event.stopPropagation();
     trigger?.focus();

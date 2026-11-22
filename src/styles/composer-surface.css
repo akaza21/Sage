@@ -4,8 +4,8 @@
   min-height: 0;
   max-height: 100%;
   /* The composer keeps its intrinsic minimum; notices and edits can scroll. */
-  grid-template-areas: "notices" "location" "dock" "dock" "dock";
-  grid-template-rows: minmax(0, auto) auto minmax(auto, 1fr) auto auto;
+  grid-template-areas: "location" "dock" "dock" "dock";
+  grid-template-rows: auto minmax(auto, 1fr) auto auto;
   width: min(
     var(--chat-column-measure),
     calc(
@@ -40,7 +40,7 @@
 }
 
 .chat-dock > .acp-permission-prompt,
-.chat-dock > .composer__notice {
+.chat-dock > .notice {
   min-height: 0;
   grid-area: approval;
   align-self: stretch;
@@ -102,7 +102,8 @@
 
 .composer__notices {
   min-height: 0;
-  grid-area: notices;
+  max-block-size: min(10rem, 20vh);
+  padding-inline: var(--space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -299,28 +300,6 @@
   line-height: var(--line-height-normal);
 }
 
-.composer__disabled-retry {
-  display: inline-flex;
-  min-height: var(--control-height-compact);
-  align-items: center;
-  margin-left: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-accent);
-  font: inherit;
-  background: var(--color-surface);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-duration-fast) ease,
-    background-color var(--motion-duration-fast) ease;
-}
-
-.composer__disabled-retry:hover {
-  border-color: var(--color-accent);
-  background: var(--color-surface-hover);
-}
-
 .access-mode {
   display: inline-flex;
   min-width: 0;
@@ -364,6 +343,9 @@
 }
 
 .chat-harness-unavailable {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-4) var(--space-6);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);

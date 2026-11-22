@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { ComposerContext } from "./ComposerContext";
 import type { ComposerAccessTarget } from "./chatComposerRegionProps";
@@ -15,6 +16,7 @@ export interface ControlledDraftPickers {
   onEffortChange: (value: string) => void;
 }
 export interface ChatHarnessControlsProps {
+  discoveryPhase?: HarnessDiscoveryPhase;
   modelsPending?: boolean;
   draftPickers?: ControlledDraftPickers;
   contextUsage?: ChatUsage | null;

@@ -5,6 +5,30 @@ import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
 afterEach(cleanup);
 
+it("separates compatibility warning from update information", () => {
+  render(<HarnessDiscoveryNotice harness={{ ...harness, update }} />);
+  const compatibility = screen
+    .getByText(/hasn't been tested/)
+    .closest(".notice");
+  const available = screen
+    .getByText("Fixture agent 1.3.0 is available.")
+    .closest(".notice");
+  expect(compatibility).toHaveClass("notice--warning");
+  expect(compatibility).not.toHaveTextContent("1.3.0");
+  expect(available).toHaveClass("notice--info");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
+  expect(screen.queryByText(/hasn't been tested/)).toBeNull();
+  expect(available).toBeVisible();
+});
+const currentNotice = () =>
+  screen
+    .getByText(/Fixture agent [0-9]|This version is too old|Sage can't start/)
+    .closest(".notice")!;
+const absentNotice = () =>
+  screen.queryByText(
+    /Fixture agent [0-9]|This version is too old|Sage can't start/,
+  );
+
 const harness: HarnessDefinition = {
   id: "fixture-agent",
   name: "Fixture agent",
@@ -20,15 +44,15 @@ const harness: HarnessDefinition = {
 
 it("dismisses the current build notice and shows a different build", () => {
   const { rerender } = render(<HarnessDiscoveryNotice harness={harness} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
+  expect(currentNotice()).toHaveTextContent("Fixture agent 1.2.3");
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(absentNotice()).toBeNull();
   rerender(<HarnessDiscoveryNotice harness={{ ...harness }} />);
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(absentNotice()).toBeNull();
   rerender(
     <HarnessDiscoveryNotice harness={{ ...harness, boundVersion: "1.2.4" }} />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.4");
+  expect(currentNotice()).toHaveTextContent("Fixture agent 1.2.4");
 });
 
 it("keeps an unavailable harness explanation visible after dismissing a build", () => {
@@ -39,9 +63,7 @@ it("keeps an unavailable harness explanation visible after dismissing a build", 
       harness={{ ...harness, installState: "unavailable" }}
     />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Sage can't start this harness",
-  );
+  expect(currentNotice()).toHaveTextContent("Sage can't start this harness");
   expect(
     screen.queryByRole("button", { name: "Dismiss build notice" }),
   ).toBeNull();
@@ -53,7 +75,7 @@ it("shows another harness's notice even when the build label is identical", () =
   rerender(
     <HarnessDiscoveryNotice harness={{ ...harness, id: "another-agent" }} />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
+  expect(currentNotice()).toHaveTextContent("Fixture agent 1.2.3");
 });
 
 it("explains the build again when a chat pane is remounted", () => {
@@ -61,7 +83,7 @@ it("explains the build again when a chat pane is remounted", () => {
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
   firstPane.unmount();
   render(<HarnessDiscoveryNotice harness={harness} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
+  expect(currentNotice()).toHaveTextContent("Fixture agent 1.2.3");
 });
 
 it("says a newer release keeps the tested features instead of calling it untested", () => {
@@ -70,9 +92,9 @@ it("says a newer release keeps the tested features instead of calling it unteste
       harness={{ ...harness, characterisation: "newerThanTested" }}
     />,
   );
-  const notice = screen.getByRole("status");
+  const notice = currentNotice();
   expect(notice).toHaveTextContent(
-    "Fixture agent 1.2.3 is newer than Sage has tested. Tested features stay on.",
+    "Fixture agent 1.2.3 is newer than tested; tested features stay on.",
   );
   expect(notice).not.toHaveTextContent("some features are off");
 });
@@ -83,7 +105,7 @@ it("shows no build notice for the tested release", () => {
       harness={{ ...harness, characterisation: "characterised" }}
     />,
   );
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(absentNotice()).toBeNull();
 });
 
 it("tells the user to update a release older than Sage supports", () => {
@@ -96,8 +118,8 @@ it("tells the user to update a release older than Sage supports", () => {
       }}
     />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "This version is too old for Sage. Update it, then refresh harness discovery in Settings.",
+  expect(currentNotice()).toHaveTextContent(
+    "This version is too old for Sage.",
   );
 });
 
@@ -112,13 +134,14 @@ it("names a published update and the command that installs it", () => {
       harness={{ ...harness, characterisation: "characterised", update }}
     />,
   );
-  const notice = screen.getByRole("status");
-  expect(notice).toHaveTextContent(
-    "Fixture agent 1.3.0 is available. Run npm install -g fixture-agent@latest, then refresh discovery in Settings.",
-  );
+  const notice = currentNotice();
+  expect(notice).toHaveTextContent("Fixture agent 1.3.0 is available.");
   expect(notice).not.toHaveTextContent("tested");
-  fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
-  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByText(update.command)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText(update.command)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss update" }));
+  expect(absentNotice()).toBeNull();
   rerender(
     <HarnessDiscoveryNotice
       harness={{
@@ -128,7 +151,7 @@ it("names a published update and the command that installs it", () => {
       }}
     />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent(
+  expect(currentNotice()).toHaveTextContent(
     "Fixture agent 1.4.0 is available.",
   );
 });
@@ -144,16 +167,18 @@ it("tells a too-old install the exact update command when one is known", () => {
       }}
     />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "This version is too old for Sage. Run npm install -g fixture-agent@latest, then refresh discovery in Settings.",
+  expect(currentNotice()).toHaveTextContent(
+    "This version is too old for Sage.",
   );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText(update.command)).toBeVisible();
 });
 
 it("keeps a dismissed build explanation away when an update is found later", () => {
   const { rerender } = render(<HarnessDiscoveryNotice harness={harness} />);
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
   rerender(<HarnessDiscoveryNotice harness={{ ...harness, update }} />);
-  const notice = screen.getByRole("status");
+  const notice = currentNotice();
   expect(notice).toHaveTextContent("Fixture agent 1.3.0 is available.");
   expect(notice).not.toHaveTextContent("hasn't been tested");
 });

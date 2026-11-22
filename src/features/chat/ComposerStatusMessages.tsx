@@ -1,4 +1,5 @@
 import { HarnessSignInPart } from "./lazyParts";
+import { Notice } from "../../ui/Notice";
 import {
   ComposerNoticeFrame,
   type ComposerStatusNoticeProps,
@@ -8,13 +9,11 @@ export function ComposerStatusMessages({
   chatError,
   signInHarness = null,
   authRecovery,
-  selectedHarnessId,
   ...props
 }: ComposerStatusNoticeProps) {
   return (
     <ComposerNoticeFrame
       {...props}
-      selectedHarnessId={selectedHarnessId}
       chatError={signInHarness ? null : chatError}
     >
       {authRecovery ? (
@@ -23,19 +22,25 @@ export function ComposerStatusMessages({
           recovery={authRecovery}
           refusal={
             signInHarness ? (
-              <div className="composer__error" role="alert">
-                <HarnessSignInPart
-                  part="SignInRequiredMessage"
-                  harness={signInHarness}
-                />
-              </div>
+              <Notice
+                identity={`sign-in:${authRecovery.scope}`}
+                severity="blocking"
+                message={
+                  <HarnessSignInPart
+                    part="SignInRequiredMessage"
+                    harness={signInHarness}
+                  />
+                }
+              />
             ) : null
           }
           fallback={
             signInHarness && chatError ? (
-              <div className="composer__error" role="alert">
-                {chatError}
-              </div>
+              <Notice
+                identity={`sign-in:${authRecovery.scope}`}
+                severity="blocking"
+                message={chatError.message}
+              />
             ) : null
           }
         />

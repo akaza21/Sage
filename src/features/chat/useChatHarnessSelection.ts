@@ -27,6 +27,10 @@ export function harnessPickerCandidates(
   return harnesses
     .map<SearchablePickerOption>((harness) => {
       const availability = harnessAvailability(harness);
+      const disabledReason =
+        harness.id === selectedId && availability.disabledReason
+          ? "Unavailable"
+          : availability.disabledReason;
       const status = harness.versionChecking
         ? "version checking…"
         : harness.source === "development"
@@ -37,8 +41,8 @@ export function harnessPickerCandidates(
         icon: harness.brand ?? "generic",
         label: harness.name,
         subtitle: harness.id === selectedId ? selectedSubtitle : undefined,
-        accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
-        disabledReason: availability.disabledReason,
+        accessibleLabel: `${harness.name} — ${status}${disabledReason ? `. ${disabledReason}` : ""}`,
+        disabledReason,
       };
     })
     .sort(

@@ -20,6 +20,8 @@ export function harnessUnavailableReason(
   reason: HarnessUnavailableReason | null | undefined,
 ): string {
   switch (reason) {
+    case "versionTooOld":
+      return "This version is too old for Sage.";
     case "admissionIncomplete":
       return "Sage hasn't finished checking this harness, so it won't start it yet.";
     case "adapterAbsent":
