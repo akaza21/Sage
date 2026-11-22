@@ -139,7 +139,7 @@ for (const harness of ["codex", "claude", "pi"])
         bindingId: HARNESS[harness].binding,
         state: "none",
         turnCount: 0,
-        controls: { stop: false, send: true },
+        controls: { stop: false, composer: true, send: true },
         visible: { harnessMenu: true, addMenu: true },
       };
       const accepted = (sample) =>
@@ -353,7 +353,7 @@ for (const state of ["approval-approved", "approval-declined"])
       turnCount: 0,
       state: "none",
       bindingId: HARNESS.claude.binding,
-      controls: { stop: false, send: true, modelEnabled: true },
+      controls: { stop: false, composer: true, send: true, modelEnabled: true },
       assistantRendered: true,
     };
     const cdp = {
@@ -365,6 +365,7 @@ for (const state of ["approval-approved", "approval-declined"])
             observation.state = "completed";
             observation.controls = {
               stop: false,
+              composer: true,
               send: true,
               modelEnabled: true,
             };
@@ -416,6 +417,7 @@ for (const state of ["approval-approved", "approval-declined"])
           observation.state = "completed";
           observation.controls = {
             stop: false,
+            composer: true,
             send: true,
             modelEnabled: true,
           };
@@ -1064,7 +1066,7 @@ test("hydrated empty chats bind to the selected harness, not a retained welcome 
         { harness, state },
         {
           ...observation,
-          controls: { stop: false, send: true },
+          controls: { stop: false, composer: true, send: true },
           visible: { harnessMenu: true },
         },
       );

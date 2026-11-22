@@ -68,6 +68,7 @@ mod repository_cherry_pick_commands;
 mod repository_commit_commands;
 mod repository_git_base_commands;
 mod repository_mutation_commands;
+mod repository_mutation_guard;
 mod repository_pull_commands;
 mod repository_rebase_commands;
 mod repository_ref_commands;
@@ -179,6 +180,9 @@ pub fn run() {
                 Err(error) => return Err(error.into()),
             };
             app.manage(profile_lock);
+            acp::bindings::pi::bridge::install::use_profile_copy(
+                profile.durable_dir().join("pi-bridge"),
+            );
             reject_unavailable_fixture_environment_inputs()?;
             #[cfg(all(windows, feature = "acp-fixture"))]
             let fixture_mode = resolve_desktop_fixture_mode_from_environment(&profile)?;

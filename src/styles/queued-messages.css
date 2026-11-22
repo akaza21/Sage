@@ -88,5 +88,7 @@
 .composer__queued-row .composer__queued-steer {
   width: auto;
   padding: 0 var(--space-2);
-  color: var(--color-text-primary);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+  font-weight: var(--font-weight-medium);
 }

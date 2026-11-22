@@ -21,7 +21,6 @@ use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerStat
 
 #[path = "turn/prepare_error.rs"]
 mod prepare_error;
-use prepare_error::{map_prepare, map_prepare_next};
 
 pub(super) async fn handle_reusable<A, R, T, C, Auth>(
     parts: Box<
@@ -77,12 +76,7 @@ where
                         intent.access_mode,
                     )))
                 }
-                Err(failure) => {
-                    responder.respond(Err(map_prepare_next(&failure.error)));
-                    FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::PrepareNext(
-                        failure,
-                    )))
-                }
+                Err(failure) => prepare_error::settle_next(failure, responder),
             }
         }
         WorkerCommand::AcceptLatestCompleted => {
@@ -134,7 +128,7 @@ where
                 responder.respond(Err(error));
                 return FirstTurnWorkerState::Idle(parts);
             }
-            if !parts.idle_decoder.is_frame_aligned() {
+            if !parts.idle_decoder.is_frame_aligned() || parts.parts.turn_started() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Idle(parts);
             }
@@ -152,12 +146,7 @@ where
                         access_mode: intent.access_mode,
                     }
                 }
-                Err(failure) => {
-                    responder.respond(Err(map_prepare(&failure.error)));
-                    FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::Prepare(
-                        failure,
-                    )))
-                }
+                Err(failure) => prepare_error::settle_first(failure, responder),
             }
         }
         WorkerCommand::BeginClose(command) => {

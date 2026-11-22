@@ -137,7 +137,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("refocuses the project-selected unsent draft through the sidebar New chat button", async () => {
+it("refocuses the unsent draft without a project through the sidebar New chat button", async () => {
   render(<Workbench />);
   await settleLazyModules();
   const sidebar = screen.getByRole("complementary", {
@@ -166,7 +166,11 @@ it("refocuses the project-selected unsent draft through the sidebar New chat but
   await settleLazyModules();
   expect(composer).toHaveFocus();
   expect(composer).toHaveValue("Keep my unsent prompt");
-  expect(useWorkbenchStore.getState().newChatDraft).toEqual(draft);
+  expect(useWorkbenchStore.getState().newChatDraft).toEqual({
+    ...draft,
+    targetProjectId: null,
+  });
+  expect(screen.getByRole("button", { name: "Choose project" })).toBeVisible();
 });
 
 it("restores Files with collapsed navigation when split space returns and lets navigation reclaim the space", async () => {

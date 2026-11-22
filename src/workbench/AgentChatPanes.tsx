@@ -259,7 +259,7 @@ export function AgentChatPanes({
                   type="button"
                   disabled={projectTransitioning}
                   onClick={() =>
-                    void useWorkbenchStore.getState().openNewChatDraft()
+                    void useWorkbenchStore.getState().openNewChatDraft(null)
                   }
                 >
                   New chat

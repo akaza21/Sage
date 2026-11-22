@@ -258,11 +258,10 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     native.files = [{ id: "file-9", name: "notes.md", bytes: 2048 }];
     native.revision = "revision-9";
     render(<Composer />);
-    const send = screen.getByRole("button", { name: "Send message" });
-    expect(send).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
     await screen.findByText("notes.md · 2 KB", undefined, LAZY);
     expect(native.calls).toEqual(["list_prompt_files"]);
-    expect(send).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 
   it("turns a paste over the cap into a previewable pasted-text chip", async () => {
@@ -287,24 +286,24 @@ describe("composer large paste", { timeout: 15_000 }, () => {
       event.preventDefault(),
     );
     render(<Composer onSubmit={onSubmit} />);
-    const send = screen.getByRole("button", { name: "Send message" });
-    expect(send).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
     await focusField();
     paste(log);
     await screen.findByRole("button", { name: label }, LAZY);
+    const send = screen.getByRole("button", { name: "Send message" });
     expect(send).toBeEnabled();
     fireEvent.click(send);
     expect(onSubmit).toHaveBeenCalledWith(expect.anything(), native.revision);
   });
 
   it("keeps staged pasted text out of a queued message", async () => {
-    render(<Composer activeTurn queueAvailable />);
+    const onSubmit = vi.fn((event) => event.preventDefault());
+    render(<Composer activeTurn queueAvailable onSubmit={onSubmit} />);
     await focusField();
     paste(log);
     await screen.findByRole("button", { name: label }, LAZY);
-    expect(
-      screen.getByRole("button", { name: /Queue message|Send message/ }),
-    ).toBeDisabled();
+    fireEvent.submit(screen.getByRole("form"));
+    expect(onSubmit).not.toHaveBeenCalled();
     const reason = screen.getByText(
       /Attached text goes with the next message you send, not a queued one\./,
     );

@@ -169,3 +169,40 @@ fn curated_commands_survive_a_full_report_ahead_of_other_builtins() {
     assert!(list.validate(list.revision, "/compact").is_ok());
     assert!(list.validate(list.revision, "/cmd511").is_err());
 }
+
+#[test]
+fn an_upgrade_unlocks_exactly_the_known_commands_introduced_after_the_installed_release() {
+    let table = KnownCommandTable::parse(
+        br#"[
+        {"name":"compact","section":"session","control":"compact"},
+        {"name":"reload-skills","section":"skillsAndCommands","since":"2.1.152"},
+        {"name":"reload-plugins","section":"addOns","since":"2.1.260"},
+        {"name":"future","section":"usage","since":"2.2.0"}
+    ]"#,
+    )
+    .unwrap();
+    for (installed, latest, expected) in [
+        ("2.1.100", "2.1.152", vec!["reload-skills"]),
+        ("2.1.152", "2.1.260", vec!["reload-plugins"]),
+        (
+            "2.1.100",
+            "2.2.0",
+            vec!["reload-skills", "reload-plugins", "future"],
+        ),
+        ("2.1.260", "2.1.330", vec![]),
+        ("2.1.152", "2.1.152", vec![]),
+        ("2.2.0", "2.1.100", vec![]),
+    ] {
+        let (installed_version, latest_version) = (
+            ReleaseVersion::parse(installed).unwrap(),
+            ReleaseVersion::parse(latest).unwrap(),
+        );
+        assert_eq!(
+            table
+                .introduced_between(&installed_version, &latest_version)
+                .collect::<Vec<_>>(),
+            expected,
+            "{installed} -> {latest}"
+        );
+    }
+}

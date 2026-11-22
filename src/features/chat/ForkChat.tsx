@@ -136,7 +136,7 @@ export function AnswerMoreActions({
       ariaLabel={prompt ? "Prompt actions" : "Answer actions"}
       className="answer-more-menu"
       gap={2}
-      placement="above-start"
+      placement={prompt ? "above-end" : "above-start"}
       triggerRef={trigger}
       onDismiss={onDismiss}
     >

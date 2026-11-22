@@ -360,7 +360,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         };
         const runCommand = normalizedPrompt.startsWith("/")
           ? await (
-              await import("../slashCommandTurn")
+              await import("../ComposerSlashController")
             ).slashCommandTurn(
               request,
               nextIntentId,

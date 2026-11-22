@@ -244,6 +244,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::custom_acp_agents::custom_acp_agents,
         settings_commands::custom_acp_agents::save_custom_acp_agent,
         settings_commands::custom_acp_agents::remove_custom_acp_agent,
+        settings_commands::harness_update_check::harness_update_check,
+        settings_commands::harness_update_check::harness_set_update_check,
         settings_commands::new_chat_defaults::get_new_chat_defaults,
         settings_commands::new_chat_defaults::set_new_chat_defaults,
         settings_commands::browser_preferences::browser_preferences,

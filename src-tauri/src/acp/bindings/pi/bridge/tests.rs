@@ -245,6 +245,88 @@ fn pi_bridge_resource_ships_at_the_path_sage_resolves() {
     );
 }
 
+/// Regression: a lone release binary has no resource directory beside it, so
+/// every Pi launch was refused. It must load the compiled bytes from its profile.
+#[test]
+fn pi_bridge_without_bundled_resource_loads_an_exact_profile_copy() {
+    use install::Unavailable::{Missing, Modified};
+    let lone_binary = Fixture::new();
+    let profile = Fixture::new();
+    let copies = profile.path.join("pi-bridge");
+    let resources = Some(lone_binary.path.clone());
+    assert_eq!(install::locate(resources.clone(), None), Err(Missing));
+
+    let copy = install::locate(resources.clone(), Some(&copies)).unwrap();
+    assert_eq!(copy, copies.join("extension.mjs"));
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    // A drifted copy is repaired through the fixed staging name, even when a
+    // stale staging file is already there.
+    std::fs::write(&copy, "tampered").unwrap();
+    std::fs::write(copies.join("extension.mjs.tmp"), "stale").unwrap();
+    assert_eq!(
+        install::locate(resources.clone(), Some(&copies)),
+        Ok(copy.clone())
+    );
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    // A write that fails after staging (the copy's name is taken by a
+    // directory, so the rename fails) refuses and leaves no staging file.
+    std::fs::remove_file(&copy).unwrap();
+    std::fs::create_dir(&copy).unwrap();
+    assert!(install::locate(resources.clone(), Some(&copies)).is_err());
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    std::fs::remove_dir(&copy).unwrap();
+    assert_eq!(
+        install::locate(resources.clone(), Some(&copies)),
+        Ok(copy.clone())
+    );
+
+    // The bundled resource wins, and an altered one is never replaced.
+    let bundled = lone_binary.path.join(install::RESOURCE);
+    std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+    std::fs::write(&bundled, include_bytes!("extension.mjs")).unwrap();
+    assert_eq!(
+        install::locate(Some(lone_binary.path.clone()), Some(&copies)),
+        Ok(bundled.clone())
+    );
+    std::fs::write(&bundled, "outdated").unwrap();
+    assert_eq!(
+        install::locate(Some(lone_binary.path.clone()), Some(&copies)),
+        Err(Modified)
+    );
+}
+
+/// The only test that sets the process's profile copy directory. A lone
+/// binary (empty resources) gets its copy at startup, staging leftovers are
+/// swept, and launch then finds the copy through the startup directory.
+#[test]
+fn pi_bridge_lone_binary_startup_writes_the_copy_launch_finds() {
+    let lone_binary = Fixture::new();
+    let profile = Fixture::new();
+    let copies = profile.path.join("pi-bridge");
+    std::fs::create_dir_all(&copies).unwrap();
+    std::fs::write(copies.join("extension.mjs.4242.0.tmp"), "partial").unwrap();
+    std::fs::write(copies.join("extension.mjs.tmp"), "partial").unwrap();
+    let resources = Some(lone_binary.path.clone());
+    assert_eq!(
+        install::installed_with(install::BRIDGE_PI_VERSION, resources.clone(), None),
+        Err(install::Unavailable::Missing)
+    );
+
+    install::start_profile_copy(resources.clone(), copies.clone());
+    let copy = copies.join("extension.mjs");
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    assert_eq!(
+        install::installed_with(
+            install::BRIDGE_PI_VERSION,
+            resources,
+            install::profile_copy_dir()
+        ),
+        Ok(copy)
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn pi_bridge_memory_peak_and_settled() {

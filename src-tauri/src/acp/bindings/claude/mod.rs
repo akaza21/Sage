@@ -3,6 +3,7 @@ mod admission;
 mod auth;
 mod capabilities;
 mod manifest;
+pub(crate) use manifest::known_commands;
 mod runtime;
 pub(crate) mod sdk;
 

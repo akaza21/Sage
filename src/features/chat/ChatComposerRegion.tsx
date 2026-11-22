@@ -19,6 +19,7 @@ const LocationPart = lazyParts<typeof LocationChunk>(
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
+import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
@@ -29,7 +30,7 @@ import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
-const SlashPart = lazyParts<typeof SlashChunk>(
+const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
   () => import("./ComposerSlashController"),
 );
 
@@ -119,6 +120,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInput.sendBlocked ||
     (sessionFeatures && paste.blocksSend);
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const hasContent = Boolean(
+    text.trim() || attachedContext.length || paste.revision,
+  );
   const optionsTriggerId = `${fieldId}-options`;
   const projectName = composerWorkspaceName(project);
   const files = useComposerFiles({
@@ -153,7 +157,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           activeTurn={activeTurn}
         />
       ) : null}
-      <div className="chat-dock surface surface--dock">
+      <div
+        className="chat-dock surface surface--dock"
+        data-working={(activeTurn && !hidden) || undefined}
+      >
         <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
         {approvalSlot}
         <form
@@ -233,11 +240,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                aria-description={
-                  queueing
-                    ? "Enter queues a message while this turn runs."
-                    : undefined
-                }
                 aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.describedBy}`}
                 value={text}
                 rows={2}
@@ -308,11 +310,13 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               scope={dictationScope}
               onRetry={onRetryLoad}
               compact={
+                // A visible error explains the session's own refusal; a local
+                // reason (size, queue, access) stays visible.
+                (!!chatError && sessionPromptUnavailable) ||
                 missingBindingNotice ||
                 (!availableBinding && !canPrompt) ||
-                ["checking", "consent", "waiting", "signInRequired"].includes(
-                  discoveryPhase,
-                )
+                discoveryPhase === "checking" ||
+                SIGN_IN_PHASES.includes(discoveryPhase)
               }
             />
             {otherContext.length > 0 ? (
@@ -386,17 +390,14 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <ComposerTurnControl
+              activeTurn={activeTurn}
+              hasContent={hasContent}
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              disabled={composerDisabled}
               onCancelTurn={onCancelTurn}
               cancelDisabled={actionDisabled}
-              queueing={Boolean(activeTurn && queueAvailable)}
-              sendDisabled={
-                dispatchBlocked ||
-                (!text.trim() && !attachedContext.length && !paste.revision)
-              }
+              sendDisabled={dispatchBlocked}
             />
           </div>
         </form>
