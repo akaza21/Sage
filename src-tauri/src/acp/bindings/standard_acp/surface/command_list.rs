@@ -141,7 +141,8 @@ impl CommandState {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
         let (commands, omitted) = admit(commands);
-        if list.commands == commands && list.omitted == omitted && !list.pending {
+        if list.commands == commands && list.omitted == omitted {
+            list.pending = false;
             return Ok(());
         }
         list.next_revision()?;
@@ -182,12 +183,12 @@ impl CommandState {
         }
         Ok(())
     }
-    fn revision(&self) -> Option<u64> {
+    fn publication(&self) -> Option<(u64, bool)> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
-            .map(|list| list.revision)
+            .map(|list| (list.revision, list.pending))
     }
     pub(crate) fn validate(&self, revision: u64, text: &str) -> Result<(), AdapterRuntimeError> {
         self.0
@@ -219,8 +220,9 @@ impl CommandState {
     }
 }
 
-/// Tells the WebView that one live owner's command list has a new revision,
-/// so it re-reads the bounded list. It carries no command data.
+/// Tells the WebView to re-read one owner's bounded catalog. Pending transitions
+/// can repeat the command revision: only changed command authority invalidates picks.
+/// The notice carries no command data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CommandsChangedV1 {
@@ -239,7 +241,7 @@ pub(crate) type CatalogRecorder =
 struct Slot {
     owner: RuntimeOwner,
     state: Arc<CommandState>,
-    announced: u64,
+    announced: (u64, bool),
 }
 
 /// One slot per bounded live runtime lane. Old epochs cannot publish or clear a new owner.
@@ -275,7 +277,7 @@ impl CommandChannel {
         *slot = Some(Slot {
             owner,
             state: Arc::default(),
-            announced: 0,
+            announced: (0, false),
         });
     }
     #[cfg(test)]
@@ -298,12 +300,15 @@ impl CommandChannel {
                 // over a new empty state), so its first revision is news.
                 current.state.close();
                 current.state = list;
-                current.announced = 0;
+                current.announced = (0, false);
             }
-            match current.state.revision() {
+            match current.state.publication() {
                 // Revision 0 is the empty list before any advertisement.
-                Some(revision) if revision != 0 && revision != current.announced => {
-                    current.announced = revision;
+                Some(publication @ (revision, _))
+                    if revision != 0 && publication != current.announced =>
+                {
+                    // Pending changes notify without revoking an unchanged catalog's picks.
+                    current.announced = publication;
                     revision
                 }
                 _ => return,

@@ -58,7 +58,6 @@ impl CommandState {
         if list.pending {
             return Ok(false);
         }
-        list.next_revision()?;
         list.refresh_requested = false;
         list.pending = true;
         Ok(true)
@@ -75,7 +74,6 @@ impl CommandState {
         {
             list.pending = false;
             list.refresh_requested = false;
-            let _ = list.next_revision();
         }
     }
 }

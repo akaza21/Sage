@@ -11,6 +11,21 @@ fn catalog_capabilities_replace_durable_controls_only_for_the_running_epoch() {
         runtime_epoch: fixture.owner.runtime_epoch,
     };
     let mut capabilities: CapabilitySnapshotV1 = serde_json::from_str(&capabilities()).unwrap();
+    capabilities.goal.set = true;
+    capabilities.goal.clear = true;
+    // A capability write without both revision cursors remains an identity violation.
+    assert!(
+        fixture
+            .connection
+            .execute(
+                "UPDATE agent_sessions SET capabilities_json=?1,revision=revision+1 WHERE id=?2",
+                rusqlite::params![
+                    serde_json::to_string(&capabilities).unwrap(),
+                    owner.session_id.as_str()
+                ],
+            )
+            .is_err()
+    );
     for supported in [true, false] {
         capabilities.goal.set = supported;
         capabilities.goal.clear = supported;

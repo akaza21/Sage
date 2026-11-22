@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/033_sign_in_evide
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentSignInEvidenceIndexes => return Ok(()),
+        SchemaClass::CurrentSignInEvidenceIndexes | SchemaClass::CurrentLiveSessionCapabilities => {
+            return Ok(());
+        }
         SchemaClass::CurrentPrivateProjects => {}
         _ => return invalid("sign-in evidence indexes require the exact private projects schema"),
     }
@@ -172,9 +174,13 @@ mod tests {
         apply(&mut connection).unwrap();
         assert_eq!(retained_rows(&connection), before);
         let migrated = database_fingerprint(&connection).unwrap();
-        post_v18::apply(&mut connection).unwrap();
+        apply(&mut connection).unwrap();
         assert_eq!(database_fingerprint(&connection).unwrap(), migrated);
         assert_eq!(migrated.schema, SchemaClass::CurrentSignInEvidenceIndexes);
+        post_v18::apply(&mut connection).unwrap();
+        let migrated = database_fingerprint(&connection).unwrap();
+        assert_eq!(migrated.schema, fingerprint::CURRENT_SCHEMA);
+        assert_eq!(retained_rows(&connection), before);
         drop(connection);
 
         let (mut reopened, anchor) = open_or_migrate(&path).unwrap().into_parts();

@@ -11,7 +11,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentSessionCapabilities
         | SchemaClass::CurrentChildThreadStates
         | SchemaClass::CurrentPrivateProjects
-        | SchemaClass::CurrentSignInEvidenceIndexes => {
+        | SchemaClass::CurrentSignInEvidenceIndexes
+        | SchemaClass::CurrentLiveSessionCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentOperationTerminalIndex => {}

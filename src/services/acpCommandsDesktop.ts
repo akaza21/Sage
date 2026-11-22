@@ -42,7 +42,7 @@ function invalid(): AcpDesktopError {
     message: "Invalid bounded command response.",
   });
 }
-/** Native says one live owner's command list has a new revision; no data. */
+/** Re-read this live owner's list; pending changes can repeat its command revision. */
 export interface AcpCommandsChangedV1 {
   sageProjectId: string;
   sageChatId: string;

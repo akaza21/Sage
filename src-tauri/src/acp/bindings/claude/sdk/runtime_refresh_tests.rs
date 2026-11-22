@@ -8,10 +8,29 @@ fn value(egress: &AdapterEgress) -> Value {
 fn shared_refresh_intents_coalesce_until_the_harness_answers() {
     let mut runtime = NativeRuntime::new(ready());
     let commands = runtime.available_commands();
+    let revision = commands.snapshot().revision;
+    let channel = Arc::new(crate::acp::slash_commands::CommandChannel::default());
+    let owner = sage_acp_protocol::scheduler::RuntimeOwner {
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("project-refresh").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-refresh").unwrap(),
+        session_id: SageAgentSessionId::parse("session-claude-sdk").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    channel.reserve(owner.clone());
+    let published = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = published.clone();
+    let catalog = commands.clone();
+    channel.set_sink(Arc::new(move |_| {
+        let list = catalog.snapshot();
+        received.lock().unwrap().push((list.revision, list.pending));
+    }));
+    runtime.attach_commands(owner, channel);
     commands.request_refresh();
     let query = runtime.discover_commands().unwrap().unwrap();
     let request = value(&query);
     assert_eq!(request["request"]["subtype"], "initialize");
+    assert_eq!(commands.snapshot().revision, revision);
+    assert_eq!(published.lock().unwrap().last(), Some(&(revision, true)));
     runtime
         .resolve_egress(query.into_token(), EgressResolution::Written)
         .unwrap();
@@ -25,6 +44,10 @@ fn shared_refresh_intents_coalesce_until_the_harness_answers() {
     let list = commands.snapshot();
     assert!(!list.pending);
     assert!(list.commands.iter().any(|command| command.name == "fresh"));
+    assert_eq!(
+        published.lock().unwrap().last(),
+        Some(&(list.revision, false))
+    );
     assert!(runtime.discover_commands().unwrap().is_none());
 }
 

@@ -10,6 +10,7 @@ mod legacy;
 mod legacy_events;
 mod legacy_project;
 mod limits;
+mod live_session_capabilities;
 mod manifest;
 mod notifications;
 mod opened;
