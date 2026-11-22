@@ -211,6 +211,7 @@ fn intent() -> PumpIntent {
 fn turn_event(state: TurnState) -> DurableAdapterEvent {
     let intent = intent();
     DurableAdapterEvent::Turn {
+        native_turn_id: None,
         scope: TurnScope {
             project_id: intent.project_id,
             chat_id: intent.chat_id,

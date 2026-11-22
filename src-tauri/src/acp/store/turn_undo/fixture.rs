@@ -7,7 +7,7 @@ use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::ProjectionRevision;
 use sage_db::database::Database;
 
-pub(crate) const CAPABILITIES: &str = super::super::sessions::PENDING_CAPABILITIES_JSON;
+pub(crate) const CAPABILITIES: &str = r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"rewind":{"effects":{"conversation":false,"files":false},"targets":"latestTurn","forkAt":false,"onResume":false},"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
 const DIGEST: &str = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
@@ -133,6 +133,7 @@ impl Fixture {
         // itself lists turns newest first.
         let has_prior = self.page_turns().iter().any(|id| id != turn);
         let command = TurnUndoneCommand {
+            rewind_turns: Vec::new(),
             project_id: self.project.clone(),
             chat_id: self.chat.clone(),
             session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),

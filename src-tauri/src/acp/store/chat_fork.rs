@@ -16,8 +16,7 @@ use super::{
     sessions::{ensure_one, ensure_session_capacity, update_chat},
 };
 
-/// The Turn a fork is taken through: the latest completed Turn of the Chat's
-/// live head session.
+/// A validated loaded-history target of the Chat's live head session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ForkSource {
     pub project_id: SageProjectId,
@@ -25,11 +24,11 @@ pub(crate) struct ForkSource {
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,
     pub turn_id: SageTurnId,
+    pub target: Option<sage_acp_protocol::session_control::ConversationTarget>,
 }
 
-/// Admits a fork only from the latest completed Turn of a hot head session
-/// whose latest committed negotiation admits `nativeSessionFork`, with no
-/// Turn in flight. Temporary side chats are never fork sources.
+/// The offer selects arbitrary prompt targets or a legacy latest-turn fork.
+/// Both require an idle head; temporary side chats are never fork sources.
 pub(crate) fn fork_source(
     connection: &Connection,
     project_id: &SageProjectId,
@@ -68,14 +67,28 @@ pub(crate) fn fork_source(
             resource: "forkRuntime",
         });
     };
-    let admits_fork = serde_json::from_str::<CapabilitySnapshotV1>(&capabilities)
-        .is_ok_and(|snapshot| snapshot.native_session_fork);
+    let rewind = serde_json::from_str::<CapabilitySnapshotV1>(&capabilities)
+        .map(|snapshot| snapshot.rewind)
+        .unwrap_or_default();
+    let admits_fork = rewind.fork_at;
     if !admits_fork || residency != "hot" || !matches!(state.as_str(), "ready" | "active") {
         return Err(StoreError::Conflict {
             resource: "forkCapability",
         });
     }
-    require_latest_completed(connection, &session, turn_id)?;
+    super::turn_undo::intent::ensure_settled(connection, project_id.as_str(), chat_id.as_str())?;
+    let target = if rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
+        require_latest_completed(connection, &session, turn_id)?;
+        None
+    } else {
+        Some(super::rewind::target(
+            connection,
+            project_id.as_str(),
+            chat_id.as_str(),
+            &session,
+            turn_id.as_str(),
+        )?)
+    };
     Ok(ForkSource {
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
@@ -86,6 +99,7 @@ pub(crate) fn fork_source(
             .and_then(|value| RuntimeEpoch::new(value).ok())
             .ok_or(StoreError::Corrupt("fork runtime epoch"))?,
         turn_id: turn_id.clone(),
+        target,
     })
 }
 
@@ -194,6 +208,8 @@ pub(crate) fn install_fork(
         "state": "committed",
         "parentChatId": source.chat_id.as_str(),
         "sourceTurnId": source.turn_id.as_str(),
+        "beforePrompt": source.target.is_some(),
+        "sourceSequence": transaction.query_row("SELECT COALESCE(MAX(sequence),0) FROM session_facts WHERE session_id=?1",[source.session_id.as_str()],|r|r.get::<_,i64>(0))?,
     })
     .to_string();
     append_fact_payload(
@@ -257,4 +273,27 @@ pub(crate) fn forked_from(
             ))
         })
         .transpose()
+}
+
+pub(crate) struct ForkHistory {
+    pub session: String,
+    pub session_ordinal: i64,
+    pub through_ordinal: i64,
+    pub sequence: i64,
+}
+
+pub(crate) fn history_boundary(
+    connection: &Connection,
+    project: &SageProjectId,
+    parent: &SageChatId,
+    child: &SageChatId,
+) -> Result<ForkHistory, StoreError> {
+    connection.query_row("SELECT s.id,s.ordinal,t.ordinal-COALESCE(json_extract(f.payload_json,'$.beforePrompt'),0),
+        COALESCE(json_extract(f.payload_json,'$.sourceSequence'),(SELECT COALESCE(MAX(sequence),0) FROM session_facts old
+          WHERE old.session_id=s.id AND old.created_at<=l.created_at))
+        FROM chat_lineage l JOIN agent_sessions s ON s.id=l.source_session_id
+        JOIN turns t ON t.id=l.source_turn_id
+        LEFT JOIN session_facts f ON f.project_id=l.child_project_id AND f.chat_id=l.child_chat_id AND f.kind='sessionForked'
+        WHERE l.child_project_id=?1 AND l.parent_project_id=?1 AND l.parent_chat_id=?2 AND l.child_chat_id=?3 AND l.relation='nativeFork'
+        LIMIT 1",params![project.as_str(),parent.as_str(),child.as_str()],|r|Ok(ForkHistory{session:r.get(0)?,session_ordinal:r.get(1)?,through_ordinal:r.get(2)?,sequence:r.get(3)?})).map_err(Into::into)
 }

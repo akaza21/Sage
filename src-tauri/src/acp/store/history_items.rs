@@ -285,6 +285,7 @@ fn project_turn(
         super::browser_operations::load(connection, row)?;
     let prompt = super::super::transcript_quote::load_prompt_metadata(connection, &row.id)?;
     Ok(TurnProjection {
+        conversation_target: super::rewind::has_identity(connection, &row.session_id, &row.id)?,
         attached_context: prompt.attached_context,
         session_action: prompt.session_action,
         command: prompt.command,

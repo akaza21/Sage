@@ -417,10 +417,12 @@ fn codex_interrupted_file_change_never_creates_a_journal_item() {
             4096,
             vec![
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: TurnState::Running,
                     now_millis: 6,
                 },
                 AdapterInboundEvent::Turn {
+                    native_turn_id: None,
                     state: *state,
                     now_millis: 7,
                 },

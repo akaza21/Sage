@@ -61,6 +61,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.commit_and_egress(
             vec![
                 DurableAdapterEvent::Turn {
+                    native_turn_id: None,
                     scope: self.scope(),
                     state: TurnState::Failed,
                     now_millis,

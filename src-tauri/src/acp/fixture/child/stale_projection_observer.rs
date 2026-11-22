@@ -65,6 +65,7 @@ pub(crate) fn execute(case: &FrozenCase) -> Value {
             batch.actual_bytes(),
             batch.actual_bytes(),
             vec![AdapterInboundEvent::Turn {
+                native_turn_id: None,
                 state: TurnState::Completed,
                 now_millis: 2,
             }],

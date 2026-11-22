@@ -40,6 +40,8 @@ impl SdkBridge {
         }
         let mut pending = Pending::Control;
         let request = match control {
+            SessionControl::RewindConversation { .. } => json!({"subtype":"get_settings"}),
+            SessionControl::ForkAt { .. } => return Err(BridgeError::Unsupported),
             SessionControl::UndoTurn { turn_id } => json!({
                 "subtype": "rewind_files",
                 "user_message_id": message_uuid(turn_id.as_str()).ok_or(BridgeError::Unsupported)?,
@@ -92,7 +94,7 @@ impl SdkBridge {
         self.pending.values().any(|pending| {
             matches!(
                 pending,
-                Pending::Control | Pending::Passive(_) | Pending::Fork(_)
+                Pending::Control | Pending::Passive(_) | Pending::Fork(_) | Pending::ForkAt(..)
             )
         })
     }
@@ -131,6 +133,38 @@ impl SdkBridge {
         inbound.native = Some(
             config
                 .and_then(|config| super::super::fork::Fork::of(&self.session_id, config))
+                .and_then(|fork| {
+                    sage_acp_protocol::intent::ExternalId::new("externalSessionId", fork.id()).ok()
+                })
+                .map_or(NativeRpcReply::Rejected, NativeRpcReply::Forked),
+        );
+    }
+
+    pub(in crate::acp::bindings::claude::sdk) fn fork_at(
+        &mut self,
+        config: Option<std::path::PathBuf>,
+        turn: sage_acp_protocol::contract::SageTurnId,
+    ) -> Result<Value, BridgeError> {
+        if self.controlling() || self.prompt.is_some() {
+            return Err(BridgeError::Capacity);
+        }
+        self.control(
+            json!({"subtype":"get_settings"}),
+            Pending::ForkAt(config, turn),
+        )
+    }
+
+    pub(super) fn forked_at(
+        &self,
+        config: Option<&std::path::Path>,
+        turn: &str,
+        inbound: &mut Inbound,
+    ) {
+        inbound.native = Some(
+            config
+                .and_then(|config| {
+                    super::super::fork::Fork::before(&self.session_id, config, turn).ok()
+                })
                 .and_then(|fork| {
                     sage_acp_protocol::intent::ExternalId::new("externalSessionId", fork.id()).ok()
                 })

@@ -15,6 +15,7 @@ fn session(event: SessionScopedEvent) -> AdapterInboundEvent {
 
 fn turn(state: TurnState) -> AdapterInboundEvent {
     AdapterInboundEvent::Turn {
+        native_turn_id: None,
         state,
         now_millis: 7,
     }

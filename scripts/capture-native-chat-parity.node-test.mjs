@@ -247,16 +247,16 @@ test("parity selectors stay anchored to the wave 6-8 product components", () => 
       "workbench/SubagentResourceRows.tsx",
       ["aria-label={`${title} subagents`}"],
     ],
+    ["features/chat/MessageActionsTrigger.tsx", ['label="More actions"']],
     [
       "features/chat/ForkChat.tsx",
       [
-        'label="More actions"',
         'className="answer-more-menu"',
         'role="menuitem"',
         'className="fork-chat-dialog',
-        'className="chat-fork-divider"',
       ],
     ],
+    ["features/chat/ForkHistory.tsx", ['className="chat-fork-divider"']],
     ["features/chat/ChatTranscript.tsx", ['className="chat-follow-end"']],
     ["features/chat/acp/TurnActivityItem.tsx", ["data-selectable-answer="]],
   ];

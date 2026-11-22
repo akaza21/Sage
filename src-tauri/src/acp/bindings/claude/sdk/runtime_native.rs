@@ -71,6 +71,14 @@ impl ClaudeSdkRuntime {
         &mut self,
         control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let sage_acp_protocol::session_control::SessionControl::ForkAt { target } = control {
+            let config = self.binding.config_directory();
+            let sdk = self
+                .bridge()?
+                .fork_at(config, target.turn_id.clone())
+                .map_err(|_| AdapterRuntimeError::Operation)?;
+            return self.control_egress(&sdk);
+        }
         let sdk = self
             .bridge()?
             .session_control(control)
@@ -117,6 +125,24 @@ impl ClaudeSdkRuntime {
 pub(super) fn sdk_capabilities(mut capabilities: CapabilitySnapshotV1) -> CapabilitySnapshotV1 {
     capabilities.active_turn_steer = capabilities.prompt;
     capabilities.native_session_compact = capabilities.prompt;
-    capabilities.native_session_fork = capabilities.prompt;
+    capabilities.rewind = if capabilities.prompt {
+        rewind_capability()
+    } else {
+        Default::default()
+    };
     capabilities
+}
+
+pub(crate) fn rewind_capability() -> sage_acp_protocol::intent::RewindCapability {
+    use sage_acp_protocol::intent::{RewindCapability, RewindEffects, RewindTargets};
+    RewindCapability {
+        effects: RewindEffects {
+            conversation: true,
+            files: true,
+        },
+        targets: RewindTargets::AnyUserMessage,
+        fork_at: true,
+        on_resume: true,
+        runtime_checkpoint: false,
+    }
 }
