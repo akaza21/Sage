@@ -54,7 +54,8 @@ export function ManagedMcpPanel({
 }) {
   const load = useSessionCommands(boundChatId);
   const harness = useHarnessName(page) ?? "the harness";
-  const managed = load?.kind === "ready" ? managedMcp(load.list.commands) : null;
+  const managed =
+    load?.kind === "ready" ? managedMcp(load.list.commands) : null;
   if (!managed)
     return (
       <p role="status">

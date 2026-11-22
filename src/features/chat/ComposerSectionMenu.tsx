@@ -48,9 +48,7 @@ function ComposerOptionsBrowser({
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<PanelChunk.ComposerPanelKind | null>(
-    null,
-  );
+  const [panel, setPanel] = useState<PanelChunk.ComposerPanelKind | null>(null);
   const fieldRef = useMemo(
     () => ({
       get current() {
@@ -176,8 +174,7 @@ export function ComposerSectionRows({
       // A Sage MCP panel, or the harness's own MCP command placed on the row.
       load.list.commands.some(
         (command) =>
-          command.panel === "mcp" ||
-          command.placement?.control === "mcpPanel",
+          command.panel === "mcp" || command.placement?.control === "mcpPanel",
       )
         ? props.onOpenMcp
         : undefined,
