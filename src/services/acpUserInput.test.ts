@@ -167,7 +167,7 @@ describe("harness question requests", () => {
   it("answer through the native command and accept only the matching reply", async () => {
     const reply = {
       ...answer,
-      answers: undefined,
+      answers: answer.answers,
       decision: "answer",
       state: "allowPending",
     };
@@ -191,4 +191,26 @@ describe("harness question requests", () => {
       failure: { kind: "internal" },
     });
   });
+
+  it.each([
+    { projectId: "other-project" },
+    { chatId: "other-chat" },
+    { sessionId: "other-session" },
+    { turnId: "other-turn" },
+    { runtimeEpoch: "3" },
+    { runtimeEpoch: "0" },
+  ])(
+    "reject an answer reply with a foreign or invalid identity: %j",
+    async (identity) => {
+      invokeMock.mockResolvedValueOnce({
+        ...answer,
+        ...identity,
+        decision: "answer",
+        state: "allowPending",
+      });
+      await expect(acpDesktop.answerUserInput(answer)).rejects.toMatchObject({
+        failure: { kind: "internal" },
+      });
+    },
+  );
 });
