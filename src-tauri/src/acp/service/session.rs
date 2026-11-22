@@ -246,7 +246,7 @@ impl AcpService {
         let runtime = admitted
             .into_factory(project_root, mcp)
             .construct(owner.runtime_epoch, owner.session_id.clone())
-            .map_err(|_| CodexSessionError::Intent)?;
+            .map_err(CodexSessionError::from_construction)?;
         Ok(PreparedActivation {
             owner,
             runtime,
@@ -406,3 +406,5 @@ mod version_tests;
 
 #[cfg(all(test, windows))]
 mod browser_mcp_tests;
+#[cfg(all(test, windows))]
+mod launch_failure_tests;

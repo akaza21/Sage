@@ -3,7 +3,7 @@
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
 
 use crate::acp::bindings::release_version::characterise_against;
@@ -23,13 +23,44 @@ pub(crate) fn digest() -> String {
 pub(crate) const RESOURCE: &str = "src/acp/bindings/pi/bridge/extension.mjs";
 /// The profile copy's file name, inside the directory given at startup.
 const PROFILE_COPY: &str = "extension.mjs";
+/// The one staging file a copy is written through before it replaces the copy.
+const STAGED_COPY: &str = "extension.mjs.tmp";
+/// Earlier builds staged through `extension.mjs.<pid>.<n>.tmp`; at most this
+/// many directory entries are examined when sweeping leftovers.
+const SWEEP_LIMIT: usize = 64;
 static PROFILE_COPY_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// Serialises copy writes within this process; the profile lock excludes others.
+static COPY_WRITE: Mutex<()> = Mutex::new(());
 
 /// A binary run without its bundle resources (a lone `sage.exe`) still carries
 /// the bridge bytes; Pi then loads an exact copy kept under the Sage profile.
-/// Set once this process owns the profile.
+/// Called once this process holds the profile lock: it sweeps staging
+/// leftovers and writes the copy when there is no bundled resource, so later
+/// checks only verify it.
 pub(crate) fn use_profile_copy(dir: PathBuf) {
-    let _ = PROFILE_COPY_DIR.set(dir);
+    start_profile_copy(resource_root(), dir);
+}
+
+pub(crate) fn start_profile_copy(resources: Option<PathBuf>, dir: PathBuf) {
+    let dir = PROFILE_COPY_DIR.get_or_init(|| dir);
+    sweep_staged(dir);
+    if let Err(error) = locate(resources, Some(dir)) {
+        tracing::warn!(?error, "the Pi bridge is not available at startup");
+    }
+}
+
+/// Removes staging files a crashed write left behind.
+fn sweep_staged(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.take(SWEEP_LIMIT).flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("extension.mjs.") && name.ends_with(".tmp") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// Why the bridge cannot be enabled; native launch is refused.
@@ -44,25 +75,41 @@ pub(crate) enum Unavailable {
 }
 
 pub(crate) fn installed(version: &str) -> Result<PathBuf, Unavailable> {
+    installed_with(version, resource_root(), profile_copy_dir())
+}
+
+/// The profile copy directory set at startup, if any.
+pub(crate) fn profile_copy_dir() -> Option<&'static Path> {
+    PROFILE_COPY_DIR.get().map(PathBuf::as_path)
+}
+
+pub(crate) fn installed_with(
+    version: &str,
+    resources: Option<PathBuf>,
+    profile_copy: Option<&Path>,
+) -> Result<PathBuf, Unavailable> {
     if !characterise_against(version, BRIDGE_PI_VERSION).runs_tested_features() {
         return Err(Unavailable::UnsupportedVersion);
     }
-    locate(
-        resource_root(),
-        PROFILE_COPY_DIR.get().map(PathBuf::as_path),
-    )
+    locate(resources, profile_copy)
 }
 
 /// The bundled resource wins. Only a missing one falls back to the profile
-/// copy; an altered resource still refuses launch.
+/// copy, which is verified and rewritten only if it drifted; an altered
+/// resource still refuses launch.
 pub(crate) fn locate(
     resources: Option<PathBuf>,
     profile_copy: Option<&Path>,
 ) -> Result<PathBuf, Unavailable> {
     match resources.ok_or(Unavailable::Missing).and_then(bundled) {
-        Err(Unavailable::Missing) => profile_copy
-            .ok_or(Unavailable::Missing)
-            .and_then(write_profile_copy),
+        Err(Unavailable::Missing) => {
+            let dir = profile_copy.ok_or(Unavailable::Missing)?;
+            let path = dir.join(PROFILE_COPY);
+            match matches_install(dir, &path) {
+                Ok(()) => Ok(path),
+                Err(_) => write_profile_copy(dir),
+            }
+        }
         found => found,
     }
 }
@@ -96,22 +143,20 @@ fn resource_root() -> Option<PathBuf> {
     tauri::utils::platform::resource_dir(&package, &tauri::Env::default()).ok()
 }
 
-/// Keeps one copy per profile. Sage holds the profile lock, so only this
-/// process replaces it, by renaming a fully written sibling over it.
+/// Keeps one copy per profile. Sage holds the profile lock and this process
+/// serialises its writers, so one fixed staging file is renamed over the copy
+/// once fully written. A writer that waited re-checks and finds it correct.
 fn write_profile_copy(dir: &Path) -> Result<PathBuf, Unavailable> {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let _writing = COPY_WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     std::fs::create_dir_all(dir).map_err(|_| Unavailable::Missing)?;
     let path = dir.join(PROFILE_COPY);
     if matches_install(dir, &path).is_ok() {
         return Ok(path);
     }
-    let staged = dir.join(format!(
-        "{PROFILE_COPY}.{}.{}.tmp",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let written = std::fs::File::create_new(&staged)
+    let staged = dir.join(STAGED_COPY);
+    let written = std::fs::File::create(&staged)
         .and_then(|mut file| file.write_all(SOURCE).and_then(|()| file.sync_all()))
         .and_then(|()| std::fs::rename(&staged, &path));
     if written.is_err() {

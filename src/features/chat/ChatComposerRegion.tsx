@@ -308,6 +308,8 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               scope={dictationScope}
               onRetry={onRetryLoad}
               compact={
+                // A visible chat error (always blocking) explains the refusal.
+                !!chatError ||
                 missingBindingNotice ||
                 (!availableBinding && !canPrompt) ||
                 ["checking", "consent", "waiting", "signInRequired"].includes(

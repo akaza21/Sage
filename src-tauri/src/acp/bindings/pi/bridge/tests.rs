@@ -259,8 +259,17 @@ fn pi_bridge_without_bundled_resource_loads_an_exact_profile_copy() {
     let copy = install::locate(resources.clone(), Some(&copies)).unwrap();
     assert_eq!(copy, copies.join("extension.mjs"));
     assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    // A drifted copy is repaired once; concurrent checks wait and find it correct.
     std::fs::write(&copy, "tampered").unwrap();
-    assert_eq!(install::locate(resources, Some(&copies)), Ok(copy.clone()));
+    let checks: Vec<_> = (0..4)
+        .map(|_| {
+            let (resources, copies) = (resources.clone(), copies.clone());
+            std::thread::spawn(move || install::locate(resources, Some(&copies)))
+        })
+        .collect();
+    for check in checks {
+        assert_eq!(check.join().unwrap(), Ok(copy.clone()));
+    }
     assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
     assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
 
@@ -276,6 +285,37 @@ fn pi_bridge_without_bundled_resource_loads_an_exact_profile_copy() {
     assert_eq!(
         install::locate(Some(lone_binary.path.clone()), Some(&copies)),
         Err(Modified)
+    );
+}
+
+/// The only test that sets the process's profile copy directory. A lone
+/// binary (empty resources) gets its copy at startup, staging leftovers are
+/// swept, and launch then finds the copy through the startup directory.
+#[test]
+fn pi_bridge_lone_binary_startup_writes_the_copy_launch_finds() {
+    let lone_binary = Fixture::new();
+    let profile = Fixture::new();
+    let copies = profile.path.join("pi-bridge");
+    std::fs::create_dir_all(&copies).unwrap();
+    std::fs::write(copies.join("extension.mjs.4242.0.tmp"), "partial").unwrap();
+    std::fs::write(copies.join("extension.mjs.tmp"), "partial").unwrap();
+    let resources = Some(lone_binary.path.clone());
+    assert_eq!(
+        install::installed_with(install::BRIDGE_PI_VERSION, resources.clone(), None),
+        Err(install::Unavailable::Missing)
+    );
+
+    install::start_profile_copy(resources.clone(), copies.clone());
+    let copy = copies.join("extension.mjs");
+    assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    assert_eq!(
+        install::installed_with(
+            install::BRIDGE_PI_VERSION,
+            resources,
+            install::profile_copy_dir()
+        ),
+        Ok(copy)
     );
 }
 

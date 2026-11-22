@@ -249,6 +249,41 @@ for (const width of [1888, 720, 480]) {
         ).toHaveText(String(index + 1));
       }
     });
+    test("a blocking error is the one visible explanation; the reason stays described", async ({
+      page,
+    }) => {
+      await render(page, "Pi", "refused");
+      const composer = page.locator("form.composer");
+      await expect(
+        composer.getByText("Native launch failed safely", { exact: false }),
+      ).toBeVisible();
+      const reason = composer.getByText("This session can't accept prompts.", {
+        exact: true,
+      });
+      await expect(reason).toHaveClass("sr-only");
+      await expect(
+        composer.getByRole("combobox", { name: "Message agent" }),
+      ).toHaveAccessibleDescription(/This session can't accept prompts\./);
+    });
+    test("a harness toggle row lines its label up with the other rows", async ({
+      page,
+    }) => {
+      await render(page, "Pi", "menu-keyboard");
+      await page
+        .getByRole("button", { name: "Composer options", exact: true })
+        .click();
+      const menu = page.getByRole("menu", { name: "Composer options menu" });
+      await waitForAnimations(menu);
+      const toggle = menu.getByRole("menuitemcheckbox", {
+        name: "Session auto-compact",
+      });
+      await expect(toggle).toHaveAttribute("aria-checked", "true");
+      const label = async (row: typeof toggle) =>
+        (await row.locator(":scope > span").first().boundingBox())!.x;
+      expect(await label(toggle)).toBe(
+        await label(menu.getByRole("menuitem", { name: "Compact context" })),
+      );
+    });
     test("Add descriptions are secondary lines and advertised modes are exclusive", async ({
       page,
     }) => {
