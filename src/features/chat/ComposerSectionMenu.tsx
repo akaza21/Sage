@@ -26,8 +26,13 @@ import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { lazyParts } from "./lazyParts";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
+import type * as ExtensionsChunk from "./ComposerExtensions";
+import type { AcpCommandPanel } from "../../domain/acpCommand";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
+);
+const ExtensionsPart = lazyParts<typeof ExtensionsChunk>(
+  () => import("./ComposerExtensions"),
 );
 
 function ComposerOptionsBrowser({
@@ -48,7 +53,9 @@ function ComposerOptionsBrowser({
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<PanelChunk.ComposerPanelKind | null>(null);
+  const [panel, setPanel] = useState<
+    AcpCommandPanel | "managedMcp" | "extensions" | null
+  >(null);
   const fieldRef = useMemo(
     () => ({
       get current() {
@@ -106,6 +113,18 @@ function ComposerOptionsBrowser({
     }
     previousActionsKey.current = actionsKey;
   }, [actionsKey, focused, id, onDismiss, onModeRemoved]);
+  if (panel === "extensions" || panel === "managedMcp")
+    return (
+      <ExtensionsPart
+        part="ExtensionsPopover"
+        kind={panel}
+        load={load}
+        boundChatId={owner ?? undefined}
+        triggerRef={fieldRef}
+        onClose={onDismiss}
+        onRunCommand={(command) => pickCommand(command, "")}
+      />
+    );
   if (panel)
     return (
       <PanelPart
@@ -114,7 +133,6 @@ function ComposerOptionsBrowser({
         boundChatId={owner ?? undefined}
         fieldRef={fieldRef}
         onClose={onDismiss}
-        onRunCommand={(command) => pickCommand(command, "")}
       />
     );
   return (

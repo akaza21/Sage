@@ -1,28 +1,66 @@
-import { useState } from "react";
+import { useId, useState, type RefObject } from "react";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
-import { useSessionCommands } from "./useSessionCommands";
+import { MenuPopover } from "../../ui/MenuPopover";
+import type { SessionCommandsLoad } from "./useSessionCommands";
 
-export function ExtensionsPanel({
+/**
+ * The + menu's Extensions and managed MCP views. The menu hands in its own
+ * command load, so this chunk keeps no catalog subscription or cache.
+ */
+export function ExtensionsPopover({
+  kind,
+  load,
   boundChatId,
-  page,
+  triggerRef,
+  onClose,
+  onRunCommand,
 }: {
+  kind: "extensions" | "managedMcp";
+  load: SessionCommandsLoad | null;
   boundChatId?: string;
-  page: AcpChatPage | null;
+  triggerRef: RefObject<HTMLTextAreaElement | null>;
+  onClose: () => void;
+  onRunCommand: (command: AvailableAcpCommand) => void;
 }) {
-  const load = useSessionCommands(boundChatId);
-  return load?.kind === "ready" ? (
-    <ComposerExtensions
-      catalog={load.list.commands}
-      page={page}
-      omitted={load.list.omitted}
-    />
-  ) : (
-    <p role="status">
-      {load?.kind === "error" ? load.message : "Loading extensions…"}
-    </p>
+  const id = useId();
+  const page = useStore(
+    acpProjectionStoreFor(boundChatId),
+    (state) => state.page,
+  );
+  return (
+    <MenuPopover
+      id={id}
+      role="dialog"
+      ariaLabel={kind === "extensions" ? "Extensions" : "MCP servers"}
+      className="composer__popover composer__options"
+      placement="above-start"
+      open
+      triggerRef={triggerRef}
+      onDismiss={onClose}
+    >
+      {load?.kind !== "ready" ? (
+        <p role="status">
+          {load?.kind === "error" ? load.message : "Loading commands…"}
+        </p>
+      ) : kind === "extensions" ? (
+        <ComposerExtensions
+          catalog={load.list.commands}
+          page={page}
+          omitted={load.list.omitted}
+        />
+      ) : (
+        <ManagedMcp
+          catalog={load.list.commands}
+          page={page}
+          onRunCommand={onRunCommand}
+        />
+      )}
+    </MenuPopover>
   );
 }
 
@@ -43,28 +81,20 @@ function useHarnessName(page: AcpChatPage | null): string | undefined {
 }
 
 /** The harness reports no MCP inventory over its protocol; its command does. */
-export function ManagedMcpPanel({
-  boundChatId,
+function ManagedMcp({
+  catalog,
   page,
   onRunCommand,
 }: {
-  boundChatId?: string;
+  catalog: readonly AvailableAcpCommand[];
   page: AcpChatPage | null;
-  onRunCommand?: (command: AvailableAcpCommand) => void;
+  onRunCommand: (command: AvailableAcpCommand) => void;
 }) {
-  const load = useSessionCommands(boundChatId);
   const harness = useHarnessName(page) ?? "the harness";
-  const managed =
-    load?.kind === "ready" ? managedMcp(load.list.commands) : null;
+  const managed = managedMcp(catalog);
   if (!managed)
     return (
-      <p role="status">
-        {load?.kind === "error"
-          ? load.message
-          : load?.kind === "ready"
-            ? "MCP servers are unavailable in this session."
-            : "Loading MCP management…"}
-      </p>
+      <p role="status">MCP servers are unavailable in this session.</p>
     );
   return (
     <section aria-label="MCP servers">
@@ -73,15 +103,13 @@ export function ManagedMcpPanel({
         Managed by {harness}. Run <code>/{managed.name}</code> in this chat to
         print server status. MCP tools appear as ordinary tools.
       </p>
-      {onRunCommand ? (
-        <button
-          type="button"
-          className="menu-item"
-          onClick={() => onRunCommand(managed)}
-        >
-          Insert /{managed.name}
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="menu-item"
+        onClick={() => onRunCommand(managed)}
+      >
+        Insert /{managed.name}
+      </button>
     </section>
   );
 }

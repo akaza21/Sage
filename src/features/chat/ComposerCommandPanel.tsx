@@ -16,19 +16,11 @@ import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
 import { confirmedComposerModel } from "./inheritedComposerModel";
 import { ComposerMcpServers } from "./ComposerMcpServers";
 import type * as LimitsChunk from "./ComposerUsageLimits";
-import type * as ExtensionsChunk from "./ComposerExtensions";
-import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { lazyParts } from "./lazyParts";
 
 const Usage = lazyParts<typeof LimitsChunk>(
   () => import("./ComposerUsageLimits"),
 );
-const Extensions = lazyParts<typeof ExtensionsChunk>(
-  () => import("./ComposerExtensions"),
-);
-
-/** Command panels, plus the views only the + menu opens. */
-export type ComposerPanelKind = AcpCommandPanel | "managedMcp" | "extensions";
 
 function liveRequest(
   boundChatId: string | undefined,
@@ -51,13 +43,11 @@ export function ComposerCommandPanel({
   boundChatId,
   fieldRef,
   onClose,
-  onRunCommand,
 }: {
-  kind: ComposerPanelKind;
+  kind: AcpCommandPanel;
   boundChatId?: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   onClose: () => void;
-  onRunCommand?: (command: AvailableAcpCommand) => void;
 }) {
   const id = useId();
   const page = useStore(
@@ -70,33 +60,14 @@ export function ComposerCommandPanel({
     <MenuPopover
       id={id}
       role="dialog"
-      ariaLabel={
-        kind === "extensions"
-          ? "Extensions"
-          : kind === "status"
-            ? "Session status"
-            : "MCP servers"
-      }
+      ariaLabel={kind === "mcp" ? "MCP servers" : "Session status"}
       className="composer__popover composer-command-panel"
       placement="above-start"
       open
       triggerRef={fieldRef}
       onDismiss={onClose}
     >
-      {kind === "extensions" ? (
-        <Extensions
-          part="ExtensionsPanel"
-          boundChatId={boundChatId}
-          page={page}
-        />
-      ) : kind === "managedMcp" ? (
-        <Extensions
-          part="ManagedMcpPanel"
-          boundChatId={boundChatId}
-          page={page}
-          onRunCommand={onRunCommand}
-        />
-      ) : kind === "mcp" ? (
+      {kind === "mcp" ? (
         <ComposerMcpServers request={request} />
       ) : (
         <SessionStatus page={page} request={request} />
