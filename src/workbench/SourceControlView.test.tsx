@@ -242,6 +242,10 @@ it("projects repository loading, empty, and error states through ResourceStateNo
   });
   rerender(<SourceControlView />);
   expect(screen.getByRole("alert")).toHaveTextContent(
+    "Repository status is unavailable.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByRole("alert")).toHaveTextContent(
     "Could not refresh repository inventory.",
   );
 

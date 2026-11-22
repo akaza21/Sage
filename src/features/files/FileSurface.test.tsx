@@ -150,6 +150,7 @@ describe("FileSurface document language", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       `Could not open ${path}`,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The file is unavailable.",
     );

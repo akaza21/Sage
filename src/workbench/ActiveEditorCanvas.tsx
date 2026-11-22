@@ -1,11 +1,8 @@
 import { FileCode2 } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
-import type { RepositoryMutationError } from "../app/repositoryMutationSlice";
-import { isRootRepository } from "../domain/repositoryInventory";
-import { resourceKey, sameResource } from "../domain/resourceIdentity";
+import { sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
-import { Notice } from "../ui/Notice";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
@@ -21,38 +18,9 @@ const loadSaveAllNotice = () =>
     default: SaveAllNotice,
   }));
 
-export default ActiveEditorCanvas;
+const loadRepositoryMutationLink = () => import("./RepositoryMutationLink");
 
-/** Source Control owns the explanation; the editor only points there. */
-function RepositoryMutationLink({ error }: { error: RepositoryMutationError }) {
-  return (
-    <Notice
-      identity={`repository-mutation-link:${resourceKey(error.resource)}:${error.action}`}
-      severity="warning"
-      message="Source Control has a problem with this file."
-      action={{
-        label: "Show in Source Control",
-        onClick: () => {
-          const state = useWorkbenchStore.getState();
-          state.setSidebarView("sourceControl");
-          const selected = state.selectedRepository;
-          if (
-            selected &&
-            !(
-              selected.rootId === error.resource.rootId &&
-              isRootRepository(selected)
-            )
-          ) {
-            void state.selectRepository({
-              rootId: error.resource.rootId,
-              relativePath: "",
-            });
-          }
-        },
-      }}
-    />
-  );
-}
+export default ActiveEditorCanvas;
 
 function PlaceholderSurface({ tab }: { tab: WorkbenchTab }) {
   return (
@@ -106,7 +74,12 @@ export function ActiveEditorCanvas({
       role="tabpanel"
     >
       {contextualMutationError ? (
-        <RepositoryMutationLink error={contextualMutationError} />
+        <LazyModuleBoundary
+          label="Source Control link"
+          load={loadRepositoryMutationLink}
+          fallback={null}
+          render={(Link) => <Link error={contextualMutationError} />}
+        />
       ) : null}
       {saveAllFailed ? (
         <LazyModuleBoundary
