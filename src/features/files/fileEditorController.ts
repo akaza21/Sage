@@ -36,7 +36,7 @@ export type ActiveEditorState =
       saving: boolean;
       /** A failed save, keep, or revert; the disk conflict explains itself. */
       message: string | null;
-      /** Why the recovery copy could not be stored, kept until a copy, save, reload, or Keep mine succeeds. */
+      /** Why the recovery copy failed; cleared once a copy, save, reload or Keep mine succeeds. */
       unstored?: string;
       unwatched?: string;
     };
@@ -158,9 +158,8 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
               ack.revision,
             ),
             persisting: false,
-            ...(current.revision <= ack.revision
-              ? { unstored: undefined }
-              : {}),
+            unstored:
+              current.revision > ack.revision ? current.unstored : undefined,
           },
           { dirty },
         );
