@@ -36,7 +36,9 @@ export interface NewChatDraftOpenOptions {
 }
 
 interface DraftOpenIntent {
-  projectId?: string;
+  projectId?: string | null;
+  /** False for automatic continuity, which never retargets unsent work. */
+  requestFocus: boolean;
   sourceProjectId: string | null;
   activeTabId: string | null;
   ownershipEpoch: number;
@@ -61,7 +63,7 @@ export interface NewChatDraftSlice {
       }
     | null;
   openNewChatDraft: (
-    projectId?: string,
+    projectId?: string | null,
     options?: NewChatDraftOpenOptions,
   ) => Promise<unknown>;
   updateNewChatDraft: (
@@ -100,13 +102,14 @@ export const createNewChatDraftSlice: StateCreator<
     pendingFirstSend: null,
     openNewChatDraft: async (projectId, options) => {
       const from = get();
+      const explicit = options?.requestFocus !== false;
       let request: DraftOpenIntent | null = {
         projectId,
+        requestFocus: explicit,
         sourceProjectId: from.project?.id ?? null,
         activeTabId: from.activeTabId,
         ownershipEpoch: from.chatOwnershipEpoch,
       };
-      const explicit = options?.requestFocus !== false;
       if (explicit)
         set({
           draftFocusRequest:
@@ -129,7 +132,7 @@ export const createNewChatDraftSlice: StateCreator<
               now.activeTabId === request.activeTabId &&
               now.chatOwnershipEpoch === request.ownershipEpoch
             )
-              await loaded.openNewChatDraft(request.projectId);
+              await loaded.openNewChatDraft(request.projectId, request);
             else outcome = "cancelled";
           } catch {
             outcome = "failed";

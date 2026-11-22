@@ -76,7 +76,7 @@ fn caps_are_enforced_when_a_request_or_answer_is_decoded() {
     let option = json!({"label": "a", "description": ""});
     assert!(
         serde_json::from_value::<UserInputRequest>(json!({"questions": [{
-            "id": "q", "header": "", "question": "?", "options": vec![option; 9]
+            "id": "q", "header": "", "question": "?", "options": vec![option; 51]
         }]}))
         .is_err()
     );

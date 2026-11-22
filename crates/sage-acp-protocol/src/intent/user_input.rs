@@ -17,7 +17,7 @@ mod limits;
 pub use limits::UserInputLimits;
 
 pub const USER_INPUT_MAX_QUESTIONS: usize = 8;
-pub const USER_INPUT_MAX_OPTIONS: usize = 8;
+pub const USER_INPUT_MAX_OPTIONS: usize = 50;
 /// Longest answer text, and longest prefilled text, in UTF-8 bytes.
 pub const USER_INPUT_TEXT_BYTES: usize = 16_384;
 /// Longest admitted auto-resolution window (24 hours); longer windows clamp.
@@ -42,6 +42,9 @@ impl UserInputOption {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserInputKind {
+    Choice,
+    /// A one-time approval, resolved through the existing approval policy.
+    Confirm,
     /// One line of text, or a choice sent as its option value.
     #[default]
     Text,
@@ -192,7 +195,10 @@ impl UserInputQuestion {
             UserInputKind::Number => limits::parse_number(trimmed)
                 .and_then(serde_json::Number::from_f64)
                 .map_or_else(|| raw.into(), Value::Number),
-            UserInputKind::Text | UserInputKind::Multiline => raw.into(),
+            UserInputKind::Text
+            | UserInputKind::Multiline
+            | UserInputKind::Choice
+            | UserInputKind::Confirm => raw.into(),
         }
     }
 }
@@ -306,6 +312,10 @@ impl UserInputAnswers {
 }
 
 impl UserInputRequest {
+    pub fn is_confirmation(&self) -> bool {
+        matches!(self.questions.as_slice(), [question] if question.kind == UserInputKind::Confirm)
+    }
+
     pub fn auto_resolution_window_ms(&self) -> Option<u64> {
         self.auto_resolution_ms
             .map(|value| value.min(USER_INPUT_MAX_AUTO_RESOLUTION_MS))

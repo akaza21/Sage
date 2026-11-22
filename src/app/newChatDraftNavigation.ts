@@ -7,7 +7,12 @@ import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
-export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
+export async function openNewChatDraft(
+  set: Set,
+  get: Get,
+  projectId?: string | null,
+  explicit = true,
+) {
   let state = get();
   if (state.projectTransitioning) return;
   if (!state.project) {
@@ -17,19 +22,27 @@ export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     state = get();
     if (!state.project || state.projectTransitioning) return;
   }
-  // An omitted target reopens the draft. Explicit retargeting may replace an
-  // empty draft, but an unsent prompt must be sent or discarded by its owner.
+  // An omitted target reopens the draft. A different target replaces an
+  // empty draft. Only the user's explicit open moves unsent text or a created
+  // chat to it; automatic continuity keeps the target the user chose.
+  // In-flight or unconfirmed creation stays frozen until its outcome is known.
   const draft = state.newChatDraft;
+  const holdsWork =
+    !!draft &&
+    (draft.text.length > 0 || draft.submission.status !== "released");
   const retainedDraft =
     draft &&
     (projectId === undefined ||
       (draft.targetProjectId === undefined
         ? draft.projectId
         : draft.targetProjectId) === projectId ||
-      draft.text.length > 0 ||
-      draft.submission.status !== "released")
+      draft.submission.status === "submitting" ||
+      draft.submission.status === "unconfirmed" ||
+      (holdsWork && !explicit))
       ? draft
-      : null;
+      : draft && holdsWork
+        ? { ...draft, targetProjectId: projectId }
+        : null;
   const draftFocusRequest = state.draftFocusRequest;
   const preferred = preferredAvailableHarness(
     state.harnesses,
@@ -49,7 +62,7 @@ export async function openNewChatDraft(set: Set, get: Get, projectId?: string) {
   if (
     state.agentCenter === "draft" &&
     retainedDraft &&
-    resolvedDraft === retainedDraft
+    resolvedDraft === draft
   ) {
     set({ draftFocusRequest });
     return;

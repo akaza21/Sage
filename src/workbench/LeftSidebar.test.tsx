@@ -476,6 +476,8 @@ it("opens an unsent draft from a foreign project menu", async () => {
     activeTabId: "chat:sage",
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
+  await useWorkbenchStore.getState().openNewChatDraft(null);
+  useWorkbenchStore.getState().updateNewChatDraft({ text: "Keep my prompt" });
   render(<LeftSidebar />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Project actions for Cross" }),
@@ -487,7 +489,7 @@ it("opens an unsent draft from a foreign project menu", async () => {
     expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
       projectId: "sage",
       targetProjectId: "cross",
-      text: "",
+      text: "Keep my prompt",
     });
   });
   expect(

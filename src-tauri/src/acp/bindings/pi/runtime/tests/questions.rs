@@ -4,7 +4,6 @@ use sage_acp_protocol::{
         PermissionOptionKind,
         user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
     },
-    lifecycle::ServerRequestState,
     permissions::PermissionDecision,
 };
 
@@ -55,8 +54,12 @@ fn pi_input_editor_and_select_dialogs_are_answered_on_the_question_card() {
     );
     let question = &form.questions.as_slice()[0];
     assert_eq!(
-        (question.question.as_str(), question.kind),
-        ("Branch name?", UserInputKind::Text)
+        (
+            question.header.as_str(),
+            question.question.as_str(),
+            question.kind
+        ),
+        ("Branch name?", "feature/x", UserInputKind::Text)
     );
     let reply = resolve(
         &mut runtime,
@@ -182,41 +185,50 @@ fn a_second_dialog_waits_out_the_open_card_and_the_first_still_answers() {
             &Mapper,
         )
         .unwrap();
-    let [egress] = batch.egress() else {
-        panic!("cancel reply")
-    };
-    assert_eq!(
-        request(egress),
-        json!({"type":"extension_ui_response","id":"second","cancelled":true})
-    );
+    assert!(batch.egress().is_empty());
+    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
     let reply = resolve(
         &mut runtime,
         "first",
         answers(json!([{"questionId":"answer","text":"Ada"}])),
     );
     assert_eq!(deliver(&mut runtime, reply)["value"], "Ada");
+    let next = runtime.answers_delivered(&Mapper).unwrap().unwrap();
+    assert!(
+        matches!(next.events(), [AdapterEvent::PermissionRequest { external_request_id, .. }] if external_request_id.as_str() == "second")
+    );
+    let reply = resolve(
+        &mut runtime,
+        "second",
+        answers(json!([{"questionId":"answer","text":"Grace"}])),
+    );
+    assert_eq!(deliver(&mut runtime, reply)["value"], "Grace");
 }
 
 #[test]
-fn a_timed_question_pi_dropped_gives_way_to_the_next_dialog() {
+fn a_timed_question_waits_for_its_deadline_and_then_releases_the_next_dialog() {
     let mut runtime = fixture_runtime(85);
+    let _clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     running(&mut runtime);
-    ask(
+    let form = ask(
         &mut runtime,
-        json!({"type":"extension_ui_request","id":"timed","method":"input","title":"Name?","timeout":1}),
+        json!({"type":"extension_ui_request","id":"timed","method":"input","title":"Name?","timeout":1000}),
     );
-    let batch = runtime
-        .ingest(
-            &frame(json!({"type":"extension_ui_request","id":"next","method":"input","title":"Other?"})),
-            &Mapper,
-        )
-        .unwrap();
-    assert!(matches!(batch.events(), [
-        AdapterEvent::PermissionResolved { external_request_id: expired, state: ServerRequestState::Cancelled, .. },
-        AdapterEvent::PermissionRequest { external_request_id, .. },
-    ] if expired.as_str() == "timed" && external_request_id.as_str() == "next"));
+    assert_eq!(form.auto_resolution_ms, Some(1000));
+    let batch = runtime.ingest(&frame(json!({"type":"extension_ui_request","id":"next","method":"input","title":"Other?"})), &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
     assert!(batch.egress().is_empty());
+    let reply = resolve(&mut runtime, "timed", PermissionDecision::Deny);
+    runtime.commit_mandatory_egress(reply.token()).unwrap();
+    assert_eq!(
+        deliver(&mut runtime, reply),
+        json!({"type":"extension_ui_response","id":"timed","cancelled":true})
+    );
+    let next = runtime.answers_delivered(&Mapper).unwrap().unwrap();
+    assert!(
+        matches!(next.events(), [AdapterEvent::PermissionRequest { external_request_id, .. }] if external_request_id.as_str() == "next")
+    );
     let reply = resolve(
         &mut runtime,
         "next",

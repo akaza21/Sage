@@ -1,13 +1,11 @@
-use super::super::{ANSWER_ID, PendingUiRequest, PiTranslator, TurnPhase};
-use crate::acp::bindings::pi::{
-    AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
-};
+use super::super::{ANSWER_ID, PendingUiRequest, PiTranslator};
+use crate::acp::bindings::pi::{AdapterError, AdapterOutput, decode::external_id};
 use crate::acp::elicitation_form;
 use sage_acp_protocol::{
-    contract::{BoundedVec, RequiredText, SafeText},
+    contract::{BoundedVec, RequiredText},
     intent::{
         session_event::SessionNoticeLevel,
-        user_input::{UserInputKind, UserInputOption, UserInputQuestion, UserInputRequest},
+        user_input::{UserInputKind, UserInputQuestion, UserInputRequest},
     },
 };
 use serde_json::Value;
@@ -17,13 +15,10 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        if self
+        let authority_denied = self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.authority_denied && turn.lifecycle.terminal().is_none())
-        {
-            return Ok(vec![AdapterOutput::LateIgnored]);
-        }
+            .is_some_and(|turn| turn.authority_denied && turn.lifecycle.terminal().is_none());
         let method = value
             .get("method")
             .and_then(Value::as_str)
@@ -62,68 +57,41 @@ impl PiTranslator {
             return self.unknown_event("extension_ui_request");
         }
         let id = external_id(value.get("id"))?.ok_or(AdapterError::Malformed)?;
-        let running = self.active.as_ref().is_some_and(|turn| {
-            turn.lifecycle.phase == TurnPhase::ModelRunning
-                && turn.lifecycle.terminal().is_none()
-                && !turn.authority_denied
-        });
-        // One card at a time: Pi may run tools in parallel, and a second
-        // dialog must not take the place of one the user is still answering.
-        // A dialog with a timeout may already be gone, so a newer one replaces it.
-        let open = self
-            .pending_ui
-            .as_ref()
-            .is_some_and(|pending| !pending.expires);
-        if !running || open {
+        if authority_denied {
             return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
         }
-        let options = if method == "select" {
+        if method == "select" {
             let values = value
                 .get("options")
                 .and_then(Value::as_array)
                 .ok_or(AdapterError::Malformed)?;
-            if values.len() > 8 {
-                return Err(AdapterError::Limit("extension options"));
+            if values.len() > 50 {
+                return Ok(vec![AdapterOutput::DialogRefused { external_id: id }]);
             }
-            values
-                .iter()
-                .map(|value| {
-                    let option = value.as_str().ok_or(AdapterError::Malformed)?;
-                    if option.len() > 64 || option.contains('\0') {
-                        return Err(AdapterError::Limit("extension option bytes"));
-                    }
-                    Ok(option.to_owned())
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        } else {
-            Vec::new()
-        };
-        // Confirm, and a select offering an allow answer, gate Pi's work; every
-        // other dialog is a question the user answers on the question card.
-        let gate = method == "confirm" || options.iter().any(|option| is_allow_option(option));
-        let form = if gate {
-            None
-        } else {
-            match question(method, value) {
-                Some(form) => Some(Box::new(form)),
-                None => return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]),
+            if values.iter().any(|value| {
+                value
+                    .as_str()
+                    .is_none_or(|option| option.len() > 256 || option.contains('\0'))
+            }) {
+                return Ok(vec![AdapterOutput::DialogRefused { external_id: id }]);
             }
+        }
+        let form = match question(method, value) {
+            Some(form) => Some(Box::new(form)),
+            None => return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]),
         };
-        let expired = self.pending_ui.take().map(|pending| pending.id);
         self.remember_pending_ui(PendingUiRequest {
             id: id.clone(),
             method: method.to_owned(),
-            options,
             form,
-            expires: value
-                .get("timeout")
-                .is_some_and(|timeout| !timeout.is_null()),
+            received_at: self.question_now(),
+            timeout_ms: value.get("timeout").and_then(Value::as_u64).map(|timeout| {
+                timeout
+                    .min(sage_acp_protocol::intent::user_input::USER_INPUT_MAX_AUTO_RESOLUTION_MS)
+            }),
+            digest: crate::acp::transport::request_value_digest(value),
         });
-        let requested = AdapterOutput::PermissionRequested { external_id: id };
-        Ok(match expired {
-            Some(external_id) => vec![AdapterOutput::DialogExpired { external_id }, requested],
-            None => vec![requested],
-        })
+        Ok(vec![AdapterOutput::PermissionRequested { external_id: id }])
     }
 }
 
@@ -140,7 +108,24 @@ fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
         elicitation_form::display("userInputQuestion", title)?,
     );
     match method {
-        "input" => {}
+        "input" => {
+            question.question = elicitation_form::display(
+                "userInputQuestion",
+                value
+                    .get("placeholder")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+            )?;
+            question.header = elicitation_form::display("userInputHeader", title)?;
+        }
+        "confirm" => {
+            question.kind = UserInputKind::Confirm;
+            question.question = elicitation_form::display(
+                "userInputQuestion",
+                value.get("message").and_then(Value::as_str).unwrap_or(""),
+            )?;
+            question.header = elicitation_form::display("userInputHeader", title)?;
+        }
         "editor" => {
             question.kind = UserInputKind::Multiline;
             question.initial_text = match value.get("prefill").and_then(Value::as_str) {
@@ -153,6 +138,7 @@ fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
         // A label sanitising would change, or a repeated one, cannot be
         // echoed back exactly, so such a select is cancelled.
         "select" => {
+            question.kind = UserInputKind::Choice;
             question.options = Some(elicitation_form::plain_options(
                 value.get("options")?,
                 None,
@@ -162,7 +148,7 @@ fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
     }
     Some(UserInputRequest {
         questions: BoundedVec::new("userInputQuestions", vec![question]).ok()?,
-        auto_resolution_ms: None,
+        auto_resolution_ms: value.get("timeout").and_then(Value::as_u64),
         url: None,
     })
 }

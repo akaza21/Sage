@@ -98,7 +98,7 @@ export function ComposerHarnessPicker({
                 onClick={() => {
                   const state = useWorkbenchStore.getState();
                   void state.openNewChatDraft(
-                    state.project?.isInternal ? undefined : state.project?.id,
+                    state.project?.isInternal ? null : state.project?.id,
                   );
                 }}
               >

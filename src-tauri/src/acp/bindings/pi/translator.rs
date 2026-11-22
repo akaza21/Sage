@@ -1,4 +1,6 @@
 mod commands;
+mod dialog;
+pub(crate) use dialog::PendingUiRequest;
 mod events;
 mod fingerprint;
 mod initialization;
@@ -10,8 +12,6 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Map, Value};
 
-use sage_acp_protocol::intent::{PermissionOptionKind, user_input::UserInputRequest};
-
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
 use self::lifecycle::{TurnLifecycle, TurnPhase};
@@ -21,7 +21,7 @@ use super::{
     manifest::LaunchAdmission,
     protocol::{
         AdapterError, AdapterOutput, NativeCommand, NativeRequest, Operation, Outbound,
-        TerminalOutcome, ToolOutcome, is_allow_option,
+        TerminalOutcome, ToolOutcome,
     },
 };
 
@@ -147,38 +147,13 @@ pub struct PiTranslator {
     active: Option<ActiveTurn>,
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
+    #[cfg(test)]
+    pub(crate) question_clock: Option<std::sync::Arc<std::sync::Mutex<std::time::Instant>>>,
     pending_thinking: Option<(String, String)>,
     /// The auto-compaction setting asked for, by its request.
     pending_auto_compaction: Option<(String, bool)>,
     resuming: Option<String>,
     closed_config_requests: BTreeSet<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PendingUiRequest {
-    pub id: String,
-    pub method: String,
-    pub options: Vec<String>,
-    pub form: Option<Box<UserInputRequest>>,
-    /// Pi drops a dialog with a timeout on its own, without telling Sage.
-    pub expires: bool,
-}
-
-impl PendingUiRequest {
-    /// Pi has no standing approval, so "always allow" is never offered.
-    pub(crate) fn offered_option_kinds(&self) -> Vec<PermissionOptionKind> {
-        use PermissionOptionKind::{AllowOnce, RejectOnce};
-        let allows = match self.method.as_str() {
-            BRIDGE_WRITE_METHOD | "confirm" => true,
-            "select" => self.options.iter().any(|option| is_allow_option(option)),
-            _ => false,
-        };
-        if allows {
-            vec![AllowOnce, RejectOnce]
-        } else {
-            vec![RejectOnce]
-        }
-    }
 }
 
 pub(crate) const ANSWER_ID: &str = "answer";
@@ -260,6 +235,8 @@ impl PiTranslator {
             active: None,
             initialization: None,
             pending_ui: None,
+            #[cfg(test)]
+            question_clock: None,
             pending_thinking: None,
             pending_auto_compaction: None,
             resuming: None,

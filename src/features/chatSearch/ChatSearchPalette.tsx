@@ -151,7 +151,7 @@ export function ChatSearchPalette({
     if (id === NEW_PROJECT_ACTION.id) onCreateProject();
     else {
       onClose(false);
-      void useWorkbenchStore.getState().openNewChatDraft();
+      void useWorkbenchStore.getState().openNewChatDraft(null);
     }
   };
   return (

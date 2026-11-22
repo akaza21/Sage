@@ -13,6 +13,7 @@ mod fixture;
 mod images;
 mod journey;
 mod lifecycle_history;
+mod questions;
 mod refresh_capacity;
 mod review_nits;
 mod steer;
