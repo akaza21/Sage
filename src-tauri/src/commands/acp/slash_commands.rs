@@ -68,6 +68,23 @@ pub(crate) async fn list_acp_commands(
 }
 
 #[tauri::command]
+pub(crate) async fn refresh_acp_commands(
+    state: State<'_, AppState>,
+    request: ActivateAcpSessionRequest,
+) -> Result<(), AcpIpcError> {
+    list(&state, &request).await?;
+    state
+        .acp
+        .refresh_commands(RuntimeOwner {
+            project_id: request.project_id,
+            chat_id: request.chat_id,
+            session_id: request.session_id,
+            runtime_epoch: request.runtime_epoch,
+        })
+        .map_err(|_| unavailable())
+}
+
+#[tauri::command]
 pub(crate) async fn run_acp_command(
     state: State<'_, AppState>,
     request: RunCommandRequest,

@@ -1,5 +1,76 @@
 use super::*;
 impl AcpService {
+    pub(crate) fn refresh_changed_catalogs(
+        &self,
+        before: &[sage_domain::harness::HarnessDefinition],
+        after: &[sage_domain::harness::HarnessDefinition],
+    ) {
+        for lane in self.lanes() {
+            let Some(owner) = lane.runtime.owner() else {
+                continue;
+            };
+            let binding: Option<String> = self.database.connection().query_row("SELECT binding_id FROM agent_sessions WHERE id=?1 AND project_id=?2 AND chat_id=?3", rusqlite::params![owner.session_id.as_str(),owner.project_id.as_str(),owner.chat_id.as_str()], |row| row.get(0)).ok();
+            let Some(record) = binding
+                .as_deref()
+                .and_then(|binding| self.registry.route(binding).ok())
+            else {
+                continue;
+            };
+            let id = record.harness_id();
+            let previous = before
+                .iter()
+                .find(|harness| harness.id == id)
+                .and_then(|harness| harness.version.as_deref());
+            let next = after
+                .iter()
+                .find(|harness| harness.id == id)
+                .and_then(|harness| harness.version.as_deref());
+            if next.is_some() && next != previous {
+                let _ = self.refresh_commands(owner);
+            }
+        }
+    }
+    pub(super) fn catalog_recorder(&self) -> crate::acp::slash_commands::CatalogRecorder {
+        let database = self.database.clone();
+        let publisher = self.publisher.clone();
+        std::sync::Arc::new(move |owner, capabilities| {
+            let result = database
+                .write_connection()
+                .map_err(|_| StoreError::Corrupt("catalog capability storage"))
+                .and_then(|mut connection| {
+                    crate::acp::store::catalog_capabilities::update(
+                        &mut connection,
+                        owner,
+                        capabilities,
+                    )
+                });
+            match result {
+                Ok(Some(event)) => {
+                    let _ = publisher
+                        .publish_committed_with(event, crate::acp::runtime::TurnNotice::None);
+                }
+                Ok(None) => {}
+                Err(error) => tracing::warn!(?error, "catalog capabilities were not stored"),
+            }
+        })
+    }
+    pub(crate) fn refresh_commands(
+        &self,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        let lane = self
+            .lane_for(&owner)
+            .ok_or(crate::acp::runtime::HostError::Unavailable)?;
+        let host = lane
+            .runtime
+            .for_owner(&owner)
+            .map_err(|_| crate::acp::runtime::HostError::Unavailable)?;
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner,
+            request: crate::acp::goal::NativeRpcRequest::RefreshCommands,
+        })?;
+        Ok(())
+    }
     pub(crate) fn set_commands_notice_sink(
         &self,
         sink: crate::acp::slash_commands::CommandNoticeSink,

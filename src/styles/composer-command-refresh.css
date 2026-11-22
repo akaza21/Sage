@@ -1,0 +1,13 @@
+.composer-command-refresh {
+  border: 0;
+  padding: 0;
+  margin-left: var(--space-2);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer-command-refresh:hover {
+  color: var(--color-text-primary);
+}

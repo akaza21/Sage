@@ -48,6 +48,22 @@ pub(crate) struct CommandPlacement {
     pub(crate) known: bool,
 }
 
+/// Derived from the same placed catalog used by native controls. Future catalog-backed
+/// capabilities belong here so ingestion and dependency changes use one recompute path.
+pub(crate) fn catalog_capabilities(
+    commands: &[AvailableCommand],
+) -> sage_acp_protocol::intent::GoalCapabilities {
+    let goal = commands.iter().any(|command| {
+        command.source == CommandSource::Builtin
+            && command.placement.control == Some(NativeControl::GoalEditor)
+    });
+    sage_acp_protocol::intent::GoalCapabilities {
+        set: goal,
+        clear: goal,
+        ..Default::default()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct KnownCommand {

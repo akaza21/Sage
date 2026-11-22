@@ -3,19 +3,13 @@ import type {
   AcpSessionMutationIntent,
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
-import { utf8ByteLength } from "../domain/text";
 import { isRecord, safeIdentifier, safeOrdinal } from "./acpDesktopGuards";
 import {
-  isCommandPanel,
-  isCommandSource,
   type AcpCommandPanel,
   type AcpCommandSource,
 } from "../domain/acpCommand";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
-import {
-  isCommandPlacement,
-  type AcpCommandPlacement,
-} from "../domain/acpCommandPlacement";
+import type { AcpCommandPlacement } from "../domain/acpCommandPlacement";
 
 export type { AcpCommandSource };
 
@@ -32,10 +26,6 @@ export interface AvailableAcpCommand {
   placement?: AcpCommandPlacement;
 }
 
-const MAX_COMMANDS = 512;
-const MAX_COMMAND_BYTES = 256 * 1024;
-const MAX_ALIASES = 8;
-
 export interface AcpCommandList {
   revision: number;
   commands: AvailableAcpCommand[];
@@ -51,62 +41,6 @@ function invalid(): AcpDesktopError {
     kind: "internal",
     message: "Invalid bounded command response.",
   });
-}
-export function decodeCommandList(value: unknown): AcpCommandList | null {
-  if (
-    !isRecord(value) ||
-    safeOrdinal(value.revision) === null ||
-    (value.omitted !== undefined &&
-      (safeOrdinal(value.omitted) === null ||
-        (value.omitted as number) > 0xffff_ffff)) ||
-    !Array.isArray(value.commands) ||
-    value.commands.length > MAX_COMMANDS
-  )
-    return null;
-  const names = new Set<string>();
-  let bytes = 0;
-  const text = (s: unknown, cap: number): s is string => {
-    if (typeof s !== "string" || s.includes("\0")) return false;
-    const size = utf8ByteLength(s);
-    bytes += size;
-    return size <= cap;
-  };
-  const commandName = (s: unknown): s is string =>
-    text(s, 128) && s !== "" && !/[\s/]/u.test(s);
-  for (const c of value.commands) {
-    const aliases: unknown =
-      isRecord(c) && c.aliases !== undefined ? c.aliases : [];
-    if (
-      !isRecord(c) ||
-      // Four required fields plus the optional fields validated below exhaust the row.
-      Object.keys(c).length !==
-        4 +
-          +(c.sourceLabel !== undefined) +
-          +(c.panel !== undefined) +
-          +(c.aliases !== undefined) +
-          +(c.placement !== undefined) ||
-      !commandName(c.name) ||
-      !Array.isArray(aliases) ||
-      aliases.length > MAX_ALIASES ||
-      !aliases.every(commandName) ||
-      names.has(c.name) ||
-      !text(c.description, 1024) ||
-      (c.inputHint !== null && !text(c.inputHint, 256)) ||
-      !isCommandSource(c.source) ||
-      (c.sourceLabel !== undefined && !text(c.sourceLabel, 128)) ||
-      (c.panel !== undefined && !isCommandPanel(c.panel)) ||
-      (c.placement !== undefined && !isCommandPlacement(c.placement))
-    )
-      return null;
-    names.add(c.name);
-    if (bytes > MAX_COMMAND_BYTES) return null;
-  }
-  return {
-    revision: value.revision as number,
-    // Every row and key is bounded above; reuse the native array without DTO copies.
-    commands: value.commands as AvailableAcpCommand[],
-    omitted: (value.omitted as number | undefined) ?? 0,
-  };
 }
 /** Native says one live owner's command list has a new revision; no data. */
 export interface AcpCommandsChangedV1 {
@@ -153,11 +87,9 @@ export const acpCommandsDesktop = {
   async listCommands(
     request: AcpSessionMutationIntent,
   ): Promise<AcpCommandList> {
-    const list = decodeCommandList(
-      await invokeAcp("list_acp_commands", request),
-    );
-    if (!list) throw invalid();
-    return list;
+    const { acpCommandCatalogDesktop } =
+      await import("./acpCommandCatalogDesktop");
+    return acpCommandCatalogDesktop.listCommands(request);
   },
   async runCommand(request: RunAcpCommandRequest): Promise<AcpMutationResult> {
     const result = safeAcpMutationResponse(

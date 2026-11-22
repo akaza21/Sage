@@ -24,9 +24,9 @@ import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import { setQuickOpenInvoke } from "../quickOpen/quickOpenGateway";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 
-vi.mock("../../services/acpCommandsDesktop", async (original) => ({
+vi.mock("../../services/acpCommandCatalogDesktop", async (original) => ({
   ...(await original<object>()),
-  acpCommandsDesktop: {
+  acpCommandCatalogDesktop: {
     listCommands: vi.fn(async () => ({
       revision: 1,
       commands: [{ name: "review", description: "Review", inputHint: null }],

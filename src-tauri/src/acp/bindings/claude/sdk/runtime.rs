@@ -171,6 +171,19 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
         self.session.available_commands()
     }
+    fn refresh_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        let commands = self.available_commands();
+        if commands.refresh_pending() {
+            return Ok(None);
+        }
+        let sdk = self
+            .bridge()?
+            .refresh_commands()
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        let egress = self.control_egress(&sdk)?;
+        commands.begin_refresh()?;
+        Ok(Some(egress))
+    }
     fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.session.session_config()
     }

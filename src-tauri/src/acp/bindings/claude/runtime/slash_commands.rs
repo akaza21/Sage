@@ -19,7 +19,7 @@ impl ClaudeRuntime {
             Vec::new()
         };
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
-        update_commands_with(
+        let changed = update_commands_with(
             value,
             active.external_id.as_str(),
             &active.commands,
@@ -32,16 +32,24 @@ impl ClaudeRuntime {
                     &|control| self.supports_command_control(control),
                 )
             },
-        )
+        )?;
+        self.recompute_command_placement()?;
+        Ok(changed)
     }
 
-    pub(super) fn recompute_command_placement(&self) -> Result<(), AdapterRuntimeError> {
+    pub(super) fn recompute_command_placement(&mut self) -> Result<(), AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
         active.commands.recompute_placement(
             super::super::manifest::known_commands(),
             self.command_version.as_ref(),
             &|control| self.supports_command_control(control),
-        )
+        )?;
+        if self.opens_panels
+            && let Some(capabilities) = self.capabilities.as_mut()
+        {
+            capabilities.goal = active.commands.catalog_capabilities();
+        }
+        Ok(())
     }
 
     fn supports_command_control(&self, control: NativeControl) -> bool {
@@ -49,6 +57,7 @@ impl ClaudeRuntime {
             return false;
         };
         match control {
+            NativeControl::GoalEditor | NativeControl::ReloadAddOns => self.opens_panels,
             NativeControl::Compact => {
                 self.opens_panels && self.capabilities.as_ref().is_some_and(|c| c.prompt)
             }

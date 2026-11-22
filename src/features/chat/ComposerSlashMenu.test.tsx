@@ -1,3 +1,4 @@
+import { type AcpCommandCatalog as AcpCommandList } from "../../services/acpCommandCatalogDesktop";
 import {
   act,
   cleanup,
@@ -22,7 +23,6 @@ import type {
 } from "../../domain/acp";
 import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import type {
-  AcpCommandList,
   AcpCommandsChangedV1,
   AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
@@ -35,9 +35,21 @@ const native = vi.hoisted(() => ({
   hold: null as Promise<AcpCommandList> | null,
   listeners: new Set<(event: AcpCommandsChangedV1) => void>(),
 }));
-vi.mock("../../services/acpCommandsDesktop", async (original) => ({
+vi.mock("../../services/acpCommandCatalogDesktop", async (original) => ({
   ...(await original<object>()),
-  acpCommandsDesktop: {
+  acpCommandCatalogDesktop: {
+    refreshCommands: async () => {
+      native.lists = [{ revision: 2, commands, pending: true }];
+      native.listeners.forEach((listener) =>
+        listener({
+          sageProjectId: "project-a",
+          sageChatId: "chat-a",
+          sageAgentSessionId: "session-a",
+          runtimeEpoch: "3",
+          revision: 2,
+        }),
+      );
+    },
     listCommands: vi.fn(async (request: unknown) => {
       native.requests.push(request);
       if (native.hold) return native.hold;
@@ -213,6 +225,28 @@ const status = () =>
   document.querySelector(".composer__input-area > [role='status']");
 
 describe("composer slash commands", () => {
+  it("refreshes the catalog from the footer and retains rows while pending", async () => {
+    render(<Composer />);
+    const { field, listbox } = await openMenu();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh commands" }));
+    await screen.findByText("Refreshing\u2026");
+    expect(names(listbox)).toEqual(["/compact", "/review", "/mcp:docs:search"]);
+    native.lists = [
+      {
+        revision: 3,
+        commands: [{ ...commands[0]!, name: "fresh" }],
+        pending: false,
+      },
+    ];
+    announce("session-a", 3);
+    await waitFor(() => expect(names(listbox)).toEqual(["/fresh"]));
+    expect(screen.queryByText("Refreshing\u2026")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Refresh commands" }),
+    ).toBeInTheDocument();
+    expect(field).toHaveValue("/");
+  });
+
   it("lists the session's commands for its live runtime and filters by name", async () => {
     render(<Composer />);
     const field = screen.getByRole("combobox", { name: "Message agent" });

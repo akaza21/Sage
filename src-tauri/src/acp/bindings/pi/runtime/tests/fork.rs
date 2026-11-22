@@ -92,6 +92,11 @@ fn pi_advertises_forking() {
 #[test]
 fn a_fork_clones_reads_the_copy_and_moves_pi_back_to_the_chat() {
     let mut chat = saved_chat();
+    let query = chat.runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut chat.runtime, query);
+    assert_eq!(query["type"], "get_commands");
+    answer(&mut chat, &query, json!({"commands":[]}));
+    assert!(chat.runtime.discover_commands().unwrap().is_none());
     let state = cloned(&mut chat);
     assert!(chat.runtime.native_rpc_pending());
     let back = read_copy(&mut chat, &state);
@@ -101,6 +106,15 @@ fn a_fork_clones_reads_the_copy_and_moves_pi_back_to_the_chat() {
         panic!("fork reply expected");
     };
     assert_eq!(fork.as_str(), COPY);
+    let query = chat
+        .runtime
+        .discover_commands()
+        .unwrap()
+        .expect("switch back refreshes commands");
+    let query = deliver(&mut chat.runtime, query);
+    assert_eq!(query["type"], "get_commands");
+    answer(&mut chat, &query, json!({"commands":[]}));
+    assert!(!chat.runtime.available_commands().snapshot().pending);
     chat.runtime.release_fork(&fork, true).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),

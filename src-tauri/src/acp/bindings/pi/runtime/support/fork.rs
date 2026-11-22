@@ -130,6 +130,7 @@ impl PiRuntime {
                 )
             }
             (ForkStep::Returning { home, fork }, NativeCommand::ReturnToSession) => {
+                self.commands_discovered = false;
                 if cancelled != Some(Some(false)) {
                     return Err(self.lost_fork());
                 }

@@ -123,6 +123,10 @@ pub(crate) trait HarnessAdapter {
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
+    /// Explicitly re-read the harness catalog. The shared session state coalesces requests.
+    fn refresh_commands(&mut self) -> AdapterOptionalEgress {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         crate::acp::slash_commands::CommandState::unsupported()
     }

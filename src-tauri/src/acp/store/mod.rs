@@ -5,6 +5,7 @@ pub(crate) mod browser_operations;
 #[cfg(test)]
 mod browser_permission_tests;
 mod cancel;
+pub(crate) mod catalog_capabilities;
 pub(crate) mod chat_fork;
 pub(crate) mod child_transcript;
 pub(crate) mod commands;

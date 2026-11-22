@@ -13,6 +13,7 @@ pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 
 mod entry;
 pub(crate) mod placement;
+mod refresh;
 pub(crate) use entry::*;
 
 /// Curated commands survive admission ahead of other built-ins and external commands.
@@ -59,6 +60,11 @@ fn admit(mut commands: Vec<AvailableCommand>) -> (Vec<AvailableCommand>, u32) {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct CommandList {
     pub(crate) revision: u64,
+    pub(crate) pending: bool,
+    #[serde(skip)]
+    refresh_requested: bool,
+    #[serde(skip)]
+    refresh_after_turn: bool,
     pub(crate) commands: Vec<AvailableCommand>,
     pub(crate) omitted: u32,
 }
@@ -71,6 +77,7 @@ impl CommandList {
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
     ) -> Result<(), AdapterRuntimeError> {
         self.commands = Vec::new();
+        self.pending = false;
         self.omitted = 0;
         self.next_revision()?;
         (self.commands, self.omitted) = admit(parsed?);
@@ -134,13 +141,22 @@ impl CommandState {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
         let (commands, omitted) = admit(commands);
-        if list.commands == commands && list.omitted == omitted {
+        if list.commands == commands && list.omitted == omitted && !list.pending {
             return Ok(());
         }
         list.next_revision()?;
+        list.pending = false;
         list.commands = commands;
         list.omitted = omitted;
         Ok(())
+    }
+    pub(crate) fn catalog_capabilities(&self) -> sage_acp_protocol::intent::GoalCapabilities {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|list| placement::catalog_capabilities(&list.commands))
+            .unwrap_or_default()
     }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
@@ -217,6 +233,8 @@ pub(crate) struct CommandsChangedV1 {
 }
 
 pub(crate) type CommandNoticeSink = Arc<dyn Fn(CommandsChangedV1) + Send + Sync>;
+pub(crate) type CatalogRecorder =
+    Arc<dyn Fn(&RuntimeOwner, &sage_acp_protocol::intent::CapabilitySnapshotV1) + Send + Sync>;
 
 struct Slot {
     owner: RuntimeOwner,
@@ -229,8 +247,15 @@ struct Slot {
 pub(crate) struct CommandChannel {
     slot: Mutex<Option<Slot>>,
     sink: Mutex<Option<CommandNoticeSink>>,
+    recorder: Mutex<Option<CatalogRecorder>>,
 }
 impl CommandChannel {
+    pub(crate) fn set_recorder(&self, recorder: CatalogRecorder) {
+        *self
+            .recorder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
+    }
     fn slot(&self) -> std::sync::MutexGuard<'_, Option<Slot>> {
         self.slot
             .lock()
@@ -253,7 +278,16 @@ impl CommandChannel {
             announced: 0,
         });
     }
+    #[cfg(test)]
     pub(crate) fn update(&self, owner: &RuntimeOwner, list: Arc<CommandState>) {
+        self.update_catalog(owner, list, None);
+    }
+    pub(crate) fn update_catalog(
+        &self,
+        owner: &RuntimeOwner,
+        list: Arc<CommandState>,
+        capabilities: Option<sage_acp_protocol::intent::CapabilitySnapshotV1>,
+    ) {
         let revision = {
             let mut slot = self.slot();
             let Some(current) = slot.as_mut().filter(|s| &s.owner == owner) else {
@@ -275,6 +309,14 @@ impl CommandChannel {
                 _ => return,
             }
         };
+        let recorder = self
+            .recorder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some((recorder, capabilities)) = recorder.zip(capabilities) {
+            recorder(owner, &capabilities);
+        }
         let sink = self
             .sink
             .lock()

@@ -77,6 +77,9 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn request_command_refresh(&self) {
+        self.adapter.available_commands().request_refresh();
+    }
     pub(crate) fn poll_title(
         &mut self,
         cancel: bool,

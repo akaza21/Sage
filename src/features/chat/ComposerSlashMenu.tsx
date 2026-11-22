@@ -1,21 +1,5 @@
+import { useEffect, useLayoutEffect, useMemo, type RefObject } from "react";
 import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useReducer,
-  useState,
-  type RefObject,
-} from "react";
-import { useStore } from "zustand";
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import type {
-  AcpChatPage,
-  RuntimeEpoch,
-  SageAgentSessionId,
-} from "../../domain/acp";
-import {
-  acpCommandsDesktop,
-  type AcpCommandList,
   type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
@@ -28,31 +12,11 @@ import {
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
+import type { CommandLoad as Load } from "./ComposerCommandRefresh";
+import { lazyParts } from "./lazyParts";
 import { SuggestionsPart } from "./composerSuggestionsPart";
 import { SlashCommandIcon } from "./SlashCommandIcon";
-import { createClientIntentFactory } from "./acp/clientIntent";
-import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
-
-const nextIntentId = createClientIntentFactory();
-
-const LOADING: Load = { kind: "loading" };
-
-type Load =
-  | { kind: "loading" }
-  | { kind: "ready"; owner: string; list: AcpCommandList }
-  | { kind: "error"; owner: string; message: string };
-
-function liveOwnerKey(page: AcpChatPage | null): string {
-  const session = page?.sessions.find(
-    (item) => item.id === page.currentSessionId,
-  );
-  return session?.runtimeEpoch &&
-    session.residency === "hot" &&
-    (session.state === "ready" || session.state === "active")
-    ? JSON.stringify([session.id, session.runtimeEpoch])
-    : "";
-}
 
 /**
  * Rows each section shows before typing, so every source stays in view:
@@ -136,85 +100,6 @@ function suggestion(
   };
 }
 
-function useSessionCommands(boundChatId: string | undefined): Load | null {
-  const owner = useStore(acpProjectionStoreFor(boundChatId), (state) =>
-    liveOwnerKey(state.page),
-  );
-  const [load, setLoad] = useState<Load>(LOADING);
-  const [revision, changed] = useReducer((value: number) => value + 1, 0);
-  // The owner whose change listener is installed. The list is read only
-  // after it, so an update that lands during the read is not missed.
-  const [listening, setListening] = useState("");
-  useEffect(() => {
-    if (!owner) return;
-    const [sessionId, runtimeEpoch] = JSON.parse(owner) as [string, string];
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-    void acpCommandsDesktop
-      .subscribeCommandChanges((event) => {
-        if (
-          event.sageAgentSessionId === sessionId &&
-          event.runtimeEpoch === runtimeEpoch
-        )
-          changed();
-      })
-      .then(
-        (dispose) => {
-          if (disposed) return dispose();
-          unlisten = dispose;
-          setListening(owner);
-        },
-        () => !disposed && setListening(owner),
-      );
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [owner]);
-  useEffect(() => {
-    if (!owner || listening !== owner) return;
-    const [sessionId, runtimeEpoch] = JSON.parse(owner) as [
-      SageAgentSessionId,
-      RuntimeEpoch,
-    ];
-    let current = true;
-    void Promise.resolve()
-      .then(() => {
-        const context = currentContext(boundChatId);
-        if (!context) throw new Error("This chat is not ready.");
-        return acpCommandsDesktop.listCommands({
-          ...context.scope,
-          projectGeneration: context.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: nextIntentId(),
-          sessionId,
-          runtimeEpoch,
-        });
-      })
-      .then(
-        (list) => {
-          if (current) setLoad({ kind: "ready", owner, list });
-        },
-        (error: unknown) => {
-          if (current)
-            setLoad({
-              kind: "error",
-              owner,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "The command list could not be read.",
-            });
-        },
-      );
-    return () => {
-      current = false;
-    };
-  }, [boundChatId, listening, owner, revision]);
-  if (!owner) return null;
-  return load.kind === "loading" || load.owner === owner ? load : LOADING;
-}
-
 function menuState(
   load: Load | null,
   query: string,
@@ -251,7 +136,12 @@ function menuState(
   return { kind: "ready" };
 }
 
-export function ComposerSlashMenu({
+const RefreshPart = lazyParts<typeof import("./ComposerCommandRefresh")>(
+  () => import("./ComposerCommandRefresh"),
+);
+
+function MenuContent({
+  load,
   anchorRef,
   boundChatId,
   keyHandlerRef,
@@ -263,6 +153,7 @@ export function ComposerSlashMenu({
   onStatusChange,
   query,
 }: {
+  load: Load | null;
   anchorRef: RefObject<HTMLElement | null>;
   boundChatId?: string;
   keyHandlerRef: RefObject<((event: SuggestionKeyEvent) => boolean) | null>;
@@ -274,7 +165,6 @@ export function ComposerSlashMenu({
   onStatusChange: (status: string) => void;
   query: string;
 }) {
-  const load = useSessionCommands(boundChatId);
   const commands = useMemo(
     () => (load?.kind === "ready" ? load.list.commands : []),
     [load],
@@ -357,14 +247,16 @@ export function ComposerSlashMenu({
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
-        more > 0 || omitted > 0 ? (
-          <>
-            {more > 0 && <span>and {more} more, type to search</span>}
-            {more > 0 && omitted > 0 && <br />}
-            {omitted > 0 && (
-              <span>Catalog truncated: {omitted} commands not shown</span>
-            )}
-          </>
+        more > 0 || omitted > 0 || load?.kind === "ready" ? (
+          <RefreshPart
+            part="ComposerCommandRefresh"
+            more={more}
+            omitted={omitted}
+            boundChatId={boundChatId}
+            owner={load?.kind === "ready" ? load.owner : null}
+            pending={load?.kind === "ready" && load.list.pending === true}
+            onStatusChange={onStatusChange}
+          />
         ) : undefined
       }
       ariaLabel="Slash commands"
@@ -377,5 +269,15 @@ export function ComposerSlashMenu({
       onPick={pick}
       state={state}
     />
+  );
+}
+
+export function ComposerSlashMenu(
+  props: Omit<import("react").ComponentProps<typeof MenuContent>, "load">,
+) {
+  return (
+    <RefreshPart part="ComposerCommandCatalog" boundChatId={props.boundChatId}>
+      {(load) => <MenuContent {...props} load={load} />}
+    </RefreshPart>
   );
 }

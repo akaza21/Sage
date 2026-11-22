@@ -122,6 +122,7 @@ impl AppState {
         use tauri::Emitter;
         let state = app.state::<AppState>();
         crate::settings_commands::custom_acp_agents::apply_saved(&state);
+        let previous = state.harnesses.definitions();
         let presence = crate::harness_discovery::discover_installed_harness_presence();
         state.harnesses.apply_presence(presence.clone());
         let _ = app.emit(
@@ -141,6 +142,9 @@ impl AppState {
             (claude, discovered)
         });
         state.harnesses.apply_discovery(claude, discovered.clone());
+        state
+            .acp
+            .refresh_changed_catalogs(&previous, &state.harnesses.definitions());
         let _ = app.emit(
             "harness-discovery-changed-v1",
             state.harnesses.definitions(),

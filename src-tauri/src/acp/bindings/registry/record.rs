@@ -118,7 +118,6 @@ impl BindingRecord {
         }
     }
 
-    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
     }

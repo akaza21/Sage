@@ -9,6 +9,15 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
+    pub(crate) fn request_command_refresh(&mut self) -> Result<(), HostError> {
+        match self {
+            Self::Idle(idle) => idle.parts.request_command_refresh(),
+            Self::Reusable(parts) => parts.completed.request_command_refresh(),
+            Self::Active(active) => active.turn.driver.request_command_refresh(),
+            _ => return Err(HostError::State),
+        }
+        Ok(())
+    }
     pub(crate) fn poll_idle_title(&mut self, cancel: bool) -> Result<bool, HostError> {
         match self {
             Self::Idle(idle) => idle.parts.poll_title(cancel, &mut idle.transport),
@@ -97,6 +106,7 @@ where
         }
         match self {
             Self::Idle(idle) => match &intent.request {
+                crate::acp::goal::NativeRpcRequest::RefreshCommands => Err(HostError::State),
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
                     idle.parts.write_goal(&mut idle.transport, action.clone())
                 }
@@ -130,6 +140,7 @@ where
                 }
             },
             Self::Reusable(parts) => match &intent.request {
+                crate::acp::goal::NativeRpcRequest::RefreshCommands => Err(HostError::State),
                 crate::acp::goal::NativeRpcRequest::Goal(action) => parts
                     .completed
                     .write_goal(&mut parts.transport, action.clone()),

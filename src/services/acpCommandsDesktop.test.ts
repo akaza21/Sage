@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { decodeCommandList, decodeCommandsNotice } from "./acpCommandsDesktop";
+import { decodeCommandsNotice } from "./acpCommandsDesktop";
+import { decodeCommandList } from "./acpCommandCatalogDesktop";
 describe("native command list contract", () => {
   it("preserves advertised hints and empty lists", () => {
     expect(decodeCommandList({ revision: 0, commands: [] })).toEqual({
       revision: 0,
+      pending: false,
       omitted: 0,
       commands: [],
     });
     const value = {
       revision: 1,
+      pending: true,
       omitted: 88,
       commands: [
         {
@@ -48,6 +51,7 @@ describe("native command list contract", () => {
     };
     for (const value of [
       null,
+      { revision: 1, commands: [], pending: "yes" },
       { revision: 1, commands: [], omitted: -1 },
       { revision: 1, commands: [], omitted: 2 ** 32 },
       { revision: 1, commands: [], omitted: 1.5 },
