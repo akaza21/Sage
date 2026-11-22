@@ -404,6 +404,18 @@ impl HarnessAdapter for NativeRuntime {
     fn harness_turn_mode(&self) -> Option<&'static str> {
         self.0.harness_turn_mode()
     }
+    fn harness_turn_authority(&self) -> Option<super::adapter::HarnessTurnAuthority> {
+        self.0.harness_turn_authority()
+    }
+    fn next_request_deadline(&self) -> Option<std::time::Instant> {
+        self.0.next_request_deadline()
+    }
+    fn poll_request_deadlines(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.0.poll_request_deadlines(resources)
+    }
 
     fn answers_delivered(
         &mut self,

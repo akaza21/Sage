@@ -20,6 +20,7 @@ mod model;
 pub(crate) use super::standard_acp::surface::command_list as slash_commands;
 pub(crate) use model::{
     AdapterIdentity, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError, HarnessAdapter,
+    HarnessTurnAuthority,
 };
 
 /// Native-only command input. This type deliberately has no `Debug` or

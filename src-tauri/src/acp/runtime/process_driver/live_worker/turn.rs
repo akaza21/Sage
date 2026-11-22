@@ -134,7 +134,7 @@ where
                 responder.respond(Err(error));
                 return FirstTurnWorkerState::Idle(parts);
             }
-            if !parts.idle_decoder.is_frame_aligned() {
+            if !parts.idle_decoder.is_frame_aligned() || parts.parts.turn_started() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Idle(parts);
             }

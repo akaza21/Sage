@@ -81,8 +81,8 @@ export function createNewChatDraftActions(
     }
   };
   return {
-    openNewChatDraft: async (projectId) =>
-      openNewChatDraft(set, get, projectId),
+    openNewChatDraft: async (projectId, options) =>
+      openNewChatDraft(set, get, projectId, options?.requestFocus !== false),
     selectDraftHarness: (harnessId) => selectDraftHarness(set, get, harnessId),
     updateNewChatDraft: (patch) => {
       const draft = get().newChatDraft;

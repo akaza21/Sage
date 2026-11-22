@@ -22,6 +22,8 @@ async fn idle_cancelled_approval_dialogs_cannot_reopen_after_agent_start() {
         idle.accept_idle_stdout_chunk(&bytes, 30, &mut transport)
             .await
             .unwrap();
+        assert!(idle.turn_started());
+        idle.decline_started_turn(31, &mut transport).await.unwrap();
         assert_eq!(
             transport.0,
             [json!({"type":"extension_ui_response","id":"idle-cancelled","cancelled":true})]
@@ -64,7 +66,9 @@ async fn approval_dialog_cancel_pending_before_agent_start_stays_deduplicated() 
         pump.push_stdout_chunk(&reply(&transport.0[0], Value::Null), 1)
             .await
             .unwrap();
-        let bytes = line(approval_dialog("pending-cancel", method));
+        let bytes = line(
+            json!({"type":"extension_ui_request","id":"pending-cancel","method":method,"options":[]}),
+        );
         pump.push_stdout_chunk(&bytes, 2).await.unwrap();
         assert_eq!(fixture.item_count(), 1);
         pump.push_stdout_chunk(&line(json!({"type":"agent_start"})), 3)
@@ -105,7 +109,8 @@ fn cancelled_dialog_replay_does_not_replace_a_genuine_pending_approval() {
         let batch = runtime
             .ingest(&frame(approval_dialog("cancelled", method)), &Mapper)
             .unwrap();
-        let (_, mut egress) = batch.into_parts();
+        assert!(matches!(batch.events(), [AdapterEvent::TurnStarted { .. }]));
+        let mut egress = runtime.decline_turn().unwrap();
         assert_eq!(egress.len(), 1);
         let cancellation = egress.remove(0);
         runtime
@@ -123,7 +128,7 @@ fn cancelled_dialog_replay_does_not_replace_a_genuine_pending_approval() {
             },
             ..
         }] if external_request_id.as_str() == "fresh"
-            && kinds.as_slice() == [PermissionOptionKind::AllowOnce, PermissionOptionKind::RejectOnce]));
+            && kinds.as_slice() == if method == "confirm" { &[PermissionOptionKind::AllowOnce, PermissionOptionKind::RejectOnce][..] } else { &[PermissionOptionKind::RejectOnce][..] }));
         let batch = runtime
             .ingest(&frame(approval_dialog("cancelled", method)), &Mapper)
             .unwrap();
@@ -139,7 +144,16 @@ fn cancelled_dialog_replay_does_not_replace_a_genuine_pending_approval() {
         let reply = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: SageServerRequestId::parse("fresh").unwrap(),
-                decision: PermissionDecision::AllowOnce,
+                decision: if method == "confirm" {
+                    PermissionDecision::AllowOnce
+                } else {
+                    PermissionDecision::Answer(
+                        serde_json::from_value(
+                            json!([{"questionId":"answer","selectedOption":"Allow once"}]),
+                        )
+                        .unwrap(),
+                    )
+                },
             })
             .unwrap();
         assert_eq!(

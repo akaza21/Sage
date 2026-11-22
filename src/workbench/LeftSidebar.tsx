@@ -194,7 +194,7 @@ export function LeftSidebar({
           aria-label="New chat"
           aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
           disabled={projectTransitioning}
-          onClick={() => void createChat()}
+          onClick={() => void createChat(null)}
         >
           <SquarePen size={16} aria-hidden="true" />
           <span>New chat</span>

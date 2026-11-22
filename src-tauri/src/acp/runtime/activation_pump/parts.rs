@@ -15,6 +15,7 @@ pub(crate) struct IdleActivationParts<A, J, R> {
     /// Session events admitted before the first Turn. The first Turn's pump
     /// commits them; see `take_pending_session_events`.
     pending_session_events: PendingSessionEvents,
+    turn_started: bool,
 }
 
 pub(crate) struct RecoveryActivationParts<A, J, R> {
@@ -49,6 +50,7 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
             resources,
             session,
             pending_session_events: PendingSessionEvents::default(),
+            turn_started: false,
         }
     }
 
@@ -79,6 +81,22 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn request_command_refresh(&self) {
         self.adapter.available_commands().request_refresh();
+    }
+    pub(crate) fn turn_started(&self) -> bool {
+        self.turn_started
+    }
+    pub(crate) fn harness_turn_authority(
+        &self,
+    ) -> Option<crate::acp::bindings::adapter::HarnessTurnAuthority> {
+        self.adapter.harness_turn_authority()
+    }
+    pub(crate) fn decline_started_turn(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) -> Result<(), crate::acp::runtime::AdapterPumpError> {
+        let egress = self.adapter.decline_turn()?;
+        self.turn_started = false;
+        crate::acp::runtime::adapter_pump::write_idle_egress(&mut self.adapter, egress, transport)
     }
     pub(crate) fn poll_title(
         &mut self,
@@ -300,6 +318,16 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
                     ) {
                         self.pending_session_events.push(event);
                     }
+                }
+                AdapterEvent::TurnStarted { id }
+                    if id.is_exact_session(
+                        &self.session.binding_digest,
+                        self.session.runtime_epoch,
+                        &self.session.session_id,
+                        &self.session.external_session_id,
+                    ) =>
+                {
+                    self.turn_started = true;
                 }
                 AdapterEvent::IgnoredLate
                 | AdapterEvent::IgnoredDuplicate
