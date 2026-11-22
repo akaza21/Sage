@@ -7,13 +7,14 @@
 //! (`PrepareTurn`, `OpenHarnessTurn`) check the lease inside their own
 //! transaction on the same writer, so neither side can slip between the
 //! other's check and commit. The lease lives in a TEMP table on the writer
-//! connection, so it never reaches disk and cannot outlive the process, and it
-//! is cleared by `Drop` on success, error and unwind alike.
+//! connection: SQLite may page it to a temporary file, but it is never part of
+//! the profile database and cannot outlive the process. `Drop` clears it on
+//! success, error and unwind alike, except when Git may still be running.
 
 use std::future::Future;
 
 use rusqlite::{OptionalExtension, params};
-use sage_core::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use sage_db::{database::Database, error::SqliteResultExt};
 use sage_workspace::Workspace;
 
@@ -21,10 +22,31 @@ use crate::project_registry::{MAX_PROJECTS, MAX_ROOTS_PER_PROJECT};
 
 mod identity;
 
-pub(crate) const REPOSITORY_BUSY: &str =
-    "Can't switch branches while an agent is working in this repository.";
+/// What Sage does to the repository, as the verb phrase its refusals use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RepositoryOperation(&'static str);
+
+impl RepositoryOperation {
+    pub(crate) const SWITCH_BRANCHES: Self = Self("switch branches");
+
+    pub(crate) fn busy(self) -> String {
+        format!(
+            "Can't {} while an agent is working in this repository.",
+            self.0
+        )
+    }
+
+    fn refused(self, reason: &str) -> String {
+        format!("Can't {}: {reason}", self.0)
+    }
+}
+
+/// A turn start refused by any repository lease, whatever the operation.
 pub(crate) const TURN_BLOCKED: &str =
-    "Can't start a turn while Sage switches branches in this repository.";
+    "Can't start a turn while Sage is changing files in this repository.";
+/// Appended to a Git containment error when the lease outlives the call.
+pub(crate) const LEASE_KEPT: &str =
+    "Agent turns in this repository stay paused until Sage restarts.";
 
 // The registry admits at most this many roots; more means the store is
 // corrupt, and the guard fails closed rather than probe an unbounded set.
@@ -35,17 +57,29 @@ const ACTIVE_TURN_STATES: &str = "'queued','sending','running','waitingModel','w
 
 /// Runs `op` while no agent turn can run or start in a Project that reaches
 /// `workspace`'s repository. Refuses up front if one already is.
+///
+/// When `op` reports Git as possibly still running, the lease is kept until
+/// Sage restarts: sage-git offers no exit notification to release it on, and
+/// a turn must not start while Git may still be rewriting the tree.
 pub(crate) async fn with_idle_repository<T, F, Fut>(
     database: &Database,
     workspace: &Workspace,
+    operation: RepositoryOperation,
     op: F,
 ) -> AppResult<T>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = AppResult<T>>,
 {
-    let lease = acquire(database, workspace).await?;
+    let mut lease = acquire(database, workspace, operation).await?;
     let result = op().await;
+    if let Err(AppError::GitContainment {
+        state: GitContainmentState::PotentiallyRunning,
+        ..
+    }) = &result
+    {
+        lease.kept = true;
+    }
     drop(lease);
     result
 }
@@ -77,10 +111,15 @@ pub(crate) fn project_leased(
 struct Lease {
     database: Database,
     id: String,
+    kept: bool,
 }
 
 impl Drop for Lease {
     fn drop(&mut self) {
+        if self.kept {
+            tracing::warn!("repository lease kept until restart: Git may still be running");
+            return;
+        }
         let connection = self.database.connection();
         if let Err(error) = connection.execute(
             "DELETE FROM temp.repository_leases WHERE lease_id=?1",
@@ -91,9 +130,19 @@ impl Drop for Lease {
     }
 }
 
-async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease> {
-    let target = identity::identify(workspace.root()).await?;
-    let snapshot = registered_roots(&database.connection())?;
+async fn acquire(
+    database: &Database,
+    workspace: &Workspace,
+    operation: RepositoryOperation,
+) -> AppResult<Lease> {
+    let target = identity::identify_bounded(workspace.root())
+        .await
+        .ok_or_else(|| {
+            AppError::InvalidRequest(
+                operation.refused("Sage couldn't reach the repository folder."),
+            )
+        })?;
+    let snapshot = registered_roots(&database.connection(), operation)?;
     let classification = identity::classify(&target, &snapshot).await;
     let id = uuid::Uuid::new_v4().to_string();
     let mut connection = database.connection();
@@ -101,7 +150,7 @@ async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease>
     // A Project is left out of the lease only if every folder it has now was
     // verified as unrelated; one added or changed meanwhile is leased.
     let mut current = std::collections::BTreeMap::<String, Vec<String>>::new();
-    for (project, folder) in registered_roots(&transaction)? {
+    for (project, folder) in registered_roots(&transaction, operation)? {
         current.entry(project).or_default().push(folder);
     }
     let leased: Vec<&String> = current
@@ -125,7 +174,7 @@ async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease>
             continue;
         }
         if !classification.unverified.contains(&project) {
-            return Err(AppError::InvalidRequest(REPOSITORY_BUSY.into()));
+            return Err(AppError::InvalidRequest(operation.busy()));
         }
         unverified_busy.get_or_insert(row.get::<_, String>(1).db()?);
     }
@@ -133,10 +182,10 @@ async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease>
     drop(busy);
     if let Some(name) = unverified_busy {
         let name: String = name.chars().take(MAX_PROJECT_NAME_CHARS).collect();
-        return Err(AppError::InvalidRequest(format!(
-            "Can't switch branches: Sage couldn't verify the folder of project \"{name}\", \
-             where an agent is working. Reconnect or remove that folder, then retry."
-        )));
+        return Err(AppError::InvalidRequest(operation.refused(&format!(
+            "Sage couldn't verify the folder of project \"{name}\", where an agent is \
+             working. Reconnect or remove that folder, then retry."
+        ))));
     }
     transaction
         .execute_batch(
@@ -158,10 +207,14 @@ async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease>
     Ok(Lease {
         database: database.clone(),
         id,
+        kept: false,
     })
 }
 
-fn registered_roots(connection: &rusqlite::Connection) -> AppResult<Vec<(String, String)>> {
+fn registered_roots(
+    connection: &rusqlite::Connection,
+    operation: RepositoryOperation,
+) -> AppResult<Vec<(String, String)>> {
     let mut statement = connection
         .prepare("SELECT project_id,absolute_path FROM project_roots LIMIT ?1")
         .db()?;
@@ -174,7 +227,7 @@ fn registered_roots(connection: &rusqlite::Connection) -> AppResult<Vec<(String,
         .db()?;
     if roots.len() as i64 > MAX_REGISTERED_ROOTS {
         return Err(AppError::ResourceLimit(
-            "Can't switch branches: the Project registry exceeds its safety limit.".into(),
+            operation.refused("the Project registry exceeds its safety limit."),
         ));
     }
     Ok(roots)

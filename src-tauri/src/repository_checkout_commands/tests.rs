@@ -313,7 +313,7 @@ async fn turn_starts_are_refused_during_the_checkout_lease_without_holding_the_w
     )
     .await;
     assert!(matches!(refused, Err(AppError::InvalidRequest(message))
-        if message == crate::repository_mutation_guard::REPOSITORY_BUSY));
+        if message == busy()));
     assert_eq!(fixture.branch(), "topic");
 }
 
@@ -391,7 +391,7 @@ async fn repository_identity_covers_parents_subdirectories_and_linked_worktrees_
             checkout_git_local_branch_inner(&fixture.state, fixture.request.clone(), 0).await;
         if blocked {
             assert!(matches!(result, Err(AppError::InvalidRequest(message))
-                if message == crate::repository_mutation_guard::REPOSITORY_BUSY));
+                if message == busy()));
             assert_eq!(fixture.branch(), "main");
         } else {
             assert!(result.unwrap().error.is_none());
@@ -476,4 +476,227 @@ async fn a_registry_beyond_its_root_limit_fails_closed() {
         if message == "Can't switch branches: the Project registry exceeds its safety limit."));
     assert_eq!(fixture.branch(), "main");
     assert!(!fixture.leased(project));
+}
+
+/// Per-test limit, the repo's shared test wait budget: a hang fails fast.
+const TEST_LIMIT: std::time::Duration = sage_test_support::test_wait::BUDGET;
+
+fn busy() -> String {
+    crate::repository_mutation_guard::RepositoryOperation::SWITCH_BRANCHES.busy()
+}
+
+#[test]
+fn git_that_may_still_run_keeps_the_lease_until_restart() {
+    // Serialised like the other containment tests; the guard stays outside
+    // the runtime so no lock is held across an await.
+    let _serial = sage_test_support::test_wait::serial_process_guard();
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        tokio::time::timeout(TEST_LIMIT, kept_lease_after_potentially_running_git())
+            .await
+            .expect("the containment test finishes within its limit")
+    });
+}
+
+async fn kept_lease_after_potentially_running_git() {
+    let fixture = Fixture::new();
+    let project = fixture.command.project_id.as_str().to_owned();
+    let target = fixture
+        .state
+        .database
+        .root_records(&fixture.request.project_id)
+        .unwrap()
+        .remove(0);
+    let workspace =
+        Workspace::open_registered_root(&target.project_id, &target.id, &target.absolute_path)
+            .unwrap();
+    let root = fixture.base.join("repository");
+    let (policy, reaper) =
+        sage_git::process::GitProcessPolicy::potentially_running(std::time::Duration::ZERO);
+    let error = crate::repository_mutation_guard::with_idle_repository(
+        &fixture.state.database,
+        &workspace,
+        crate::repository_mutation_guard::RepositoryOperation::SWITCH_BRANCHES,
+        || async {
+            sage_git::run_git_with_policy(
+                &root,
+                &["rev-parse", "--is-inside-work-tree"],
+                1_024,
+                policy,
+            )
+            .await
+            .map(drop)
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        AppError::GitContainment {
+            state: sage_core::error::GitContainmentState::PotentiallyRunning,
+            ..
+        }
+    ));
+    assert!(
+        fixture.leased(&project),
+        "the lease outlives a Git that may still run"
+    );
+    assert!(matches!(
+        DatabaseAcpStore::new(fixture.state.database.clone())
+            .commit(&[StoreMutation::PrepareTurn(fixture.command.clone())]),
+        Err(StoreError::RepositoryBusy)
+    ));
+    let GitFileMutationCommandError::Containment { message, .. } = checkout_command_error(error)
+    else {
+        panic!("expected a containment error")
+    };
+    assert!(message.ends_with(crate::repository_mutation_guard::LEASE_KEPT));
+    reaper.release();
+    reaper
+        .wait_for_exit(sage_test_support::test_wait::BUDGET)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_prompt_sent_during_the_lease_is_refused_unsent_and_the_session_is_untouched() {
+    let fixture = Fixture::new();
+    let sessions = || -> (i64, i64) {
+        fixture
+            .state
+            .database
+            .connection()
+            .query_row(
+                "SELECT (SELECT count(*) FROM turns),
+                        (SELECT revision FROM agent_sessions WHERE id=?1)",
+                [fixture.command.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+    };
+    let before = sessions();
+    let checkout =
+        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+            let refused = crate::commands::acp::send_acp_turn_inner(
+                &fixture.state,
+                crate::acp::ipc::SendAcpTurnRequest::Session {
+                    project_id: fixture.command.project_id.clone(),
+                    project_generation: ProjectGeneration::ZERO,
+                    chat_id: fixture.command.chat_id.clone(),
+                    expected_projection_revision: fixture.command.expected_projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: fixture.command.session_id.clone(),
+                    runtime_epoch: fixture.command.runtime_epoch,
+                    prompt: Prompt::new("prompt", "edit while the branch switches").unwrap(),
+                    attached_context: Default::default(),
+                    staged: None,
+                },
+            )
+            .await;
+            assert!(matches!(
+                refused,
+                Err(crate::acp::ipc::SendAcpTurnFailure {
+                    failure: crate::acp::ipc::AcpIpcError::Rejected { message },
+                    prompt_dispatch: crate::acp::ipc::PromptDispatch::NotStarted,
+                }) if message.as_str() == crate::repository_mutation_guard::TURN_BLOCKED
+            ));
+        });
+    tokio::time::timeout(TEST_LIMIT, checkout)
+        .await
+        .expect("the send test finishes within its limit")
+        .unwrap();
+    assert_eq!(sessions(), before);
+    assert_eq!(fixture.branch(), "topic");
+}
+
+struct HarnessModeAuthority;
+
+impl crate::acp::runtime::ProjectIntentAuthority for HarnessModeAuthority {
+    fn current_snapshot(&self, _: &PrepareTurnCommand) -> Option<crate::acp::ipc::IntentSnapshot> {
+        None
+    }
+
+    fn harness_turn_mode(
+        &self,
+        _: &sage_acp_protocol::scheduler::RuntimeOwner,
+    ) -> Option<&'static str> {
+        Some("default")
+    }
+}
+
+/// Closes the journal on every exit path, a failed assertion included: the
+/// runner is a blocking task the test runtime waits for when it shuts down.
+struct ClosesJournal(crate::acp::runtime::JournalHandle);
+
+impl Drop for ClosesJournal {
+    fn drop(&mut self) {
+        self.0.close_when_drained();
+    }
+}
+
+#[tokio::test]
+async fn a_harness_started_turn_during_the_lease_is_declined_and_the_session_stays_reusable() {
+    use crate::acp::{
+        bindings::adapter::HarnessTurnAuthority,
+        runtime::{
+            CoordinatorError, JournalError, JournalHandle, ProjectionMailbox, SendCoordinator,
+        },
+    };
+    let fixture = Fixture::new();
+    let (journal, runner) =
+        JournalHandle::new(DatabaseAcpStore::new(fixture.state.database.clone()));
+    let runner = runner.spawn();
+    let closes = ClosesJournal(journal.clone());
+    let coordinator = SendCoordinator::new(
+        std::sync::Arc::new(HarnessModeAuthority),
+        journal,
+        std::sync::Arc::new(ProjectionMailbox::default()),
+    );
+    let scheduler = sage_acp_protocol::scheduler::Scheduler::new();
+    let tree = scheduler
+        .reserve_tree(sage_acp_protocol::scheduler::RuntimeOwner {
+            project_id: fixture.command.project_id.clone(),
+            chat_id: fixture.command.chat_id.clone(),
+            session_id: fixture.command.session_id.clone(),
+            runtime_epoch: fixture.command.runtime_epoch,
+        })
+        .unwrap();
+    let mode = || Some(HarnessTurnAuthority::SessionMode("default"));
+    // The journal drops commits past their deadline, so stamp real time.
+    let now = sage_core::time::now_millis;
+    tokio::time::timeout(TEST_LIMIT, async {
+        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+            let Err(failure) = coordinator.open_harness_turn(&tree, mode(), now()).await else {
+                panic!("a harness-started turn must not open during the lease")
+            };
+            // A plain refusal: nothing committed, so the runner declines the
+            // run and keeps the session instead of entering recovery.
+            assert!(failure.recovery.is_none());
+            assert!(
+                matches!(
+                    failure.error,
+                    CoordinatorError::Journal(JournalError::Store(StoreError::RepositoryBusy))
+                ),
+                "unexpected refusal: {:?}",
+                failure.error
+            );
+            assert!(!scheduler.active().unwrap().turn_reserved);
+        })
+        .await
+        .unwrap();
+        let opened = coordinator
+            .open_harness_turn(&tree, mode(), now())
+            .await
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "the session takes the next harness turn: {:?}",
+                    failure.error
+                )
+            });
+        assert!(scheduler.active().unwrap().turn_reserved);
+        drop(opened);
+    })
+    .await
+    .expect("the harness lease test finishes within its limit");
+    drop(closes);
+    runner.await.unwrap();
 }

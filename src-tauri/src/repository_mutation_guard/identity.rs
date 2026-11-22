@@ -10,6 +10,10 @@ use sage_core::{
 };
 
 const MAX_REPOSITORY_PATH_BYTES: usize = 32 * 1024;
+// An offline share or unplugged drive can stall a path probe for tens of
+// seconds while the caller holds the Project transition lock. Past this, a
+// folder counts as unverified, which the lease already handles safely.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Where a folder sits: its canonical authority key and, when it is inside a
 /// Git working tree, the canonical key of that repository's common directory.
@@ -39,7 +43,15 @@ pub(super) struct Classification {
     pub unrelated: BTreeMap<String, Vec<String>>,
 }
 
-pub(super) async fn identify(root: &Path) -> AppResult<FolderIdentity> {
+/// identify within PROBE_TIMEOUT; None when the folder can't be verified.
+pub(super) async fn identify_bounded(root: &Path) -> Option<FolderIdentity> {
+    tokio::time::timeout(PROBE_TIMEOUT, identify(root))
+        .await
+        .ok()?
+        .ok()
+}
+
+async fn identify(root: &Path) -> AppResult<FolderIdentity> {
     let canonical = tokio::fs::canonicalize(root).await?;
     let folder = PathBuf::from(authority_path_key(&canonical));
     for ancestor in canonical.ancestors() {
@@ -104,9 +116,8 @@ pub(super) async fn classify(
         let shares = match seen.get(folder.as_str()) {
             Some(known) => *known,
             None => {
-                let known = identify(Path::new(folder))
+                let known = identify_bounded(Path::new(folder))
                     .await
-                    .ok()
                     .map(|identity| identity.overlaps(target));
                 seen.insert(folder, known);
                 known
