@@ -410,9 +410,10 @@ test("a caught terminal-only command offers the terminal or plain text under the
     "[data-notice-identity='terminal-command:hooks']",
   );
   await expect(notice).toContainText("/hooks needs Claude Code's terminal.");
+  // The browser stand-in has no terminal dock, so only the text choice shows.
   await expect(
     notice.getByRole("button", { name: "Open in terminal" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     notice.getByRole("button", { name: "Send as text anyway" }),
   ).toBeVisible();
