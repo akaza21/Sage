@@ -487,11 +487,11 @@ it.each([
       ...emptyPage(state.project!.id, chatId),
       sessions: [session],
     });
+    await state.openNewChatDraft(projectless ? originalProjectId : null);
     useWorkbenchStore.setState({
       harnesses: [unavailable, otherHarness],
       selectedHarnessId: harness.id,
       agentCenter: "chat",
-      newChatDraft: null,
       error: "Project refresh failed.",
     });
     state.setChatActionState(state.captureChatOwnership(chatId)!, {
@@ -1878,6 +1878,30 @@ it("shows the draft and its error when the handoff fails after opening its chat"
     chatId,
   });
   expect(prompts).toEqual([]);
+});
+
+it("retargets a created draft without losing its unsent prompt on global New chat", async () => {
+  const originalProjectId = useWorkbenchStore.getState().project!.id;
+  const { chatId } = await createdDraft({ text: "Owned prompt" });
+  render(<LeftSidebar />);
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    targetProjectId: null,
+    text: "Owned prompt",
+    submission: { status: "created", chatId },
+  });
+  expect(screen.getByRole("button", { name: "Choose project" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Owned prompt" });
+  expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
+  await act(async () =>
+    useWorkbenchStore.getState().switchProject(originalProjectId),
+  );
+  expect(useWorkbenchStore.getState().tabs).not.toContainEqual(
+    expect.objectContaining({ id: chatId }),
+  );
 });
 
 it("opens the created chat normally once its draft is discarded", async () => {

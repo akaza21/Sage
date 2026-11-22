@@ -88,10 +88,11 @@ export function UserInputPrompt({
   onCancelTurn?: () => void;
 }) {
   const questions = userInput.questions.slice(0, USER_INPUT_MAX_QUESTIONS);
+  const confirm = questions.length === 1 && questions[0]?.kind === "confirm";
   const link = userInput.url;
   const formId = useId();
   const sectionRef = useRef<HTMLElement>(null);
-  const keyGuard = useCardKeyGuard({ ownRepeats: true });
+  const keyGuard = useCardKeyGuard({ ownRepeats: !confirm });
   // Text stays in the uncontrolled fields so a secret never enters React state
   // or the DOM text.
   const textRefs = useRef<(HTMLInputElement | HTMLTextAreaElement | null)[]>(
@@ -131,11 +132,13 @@ export function UserInputPrompt({
     // Focus is decided once per request; later renders never steal it.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pending = sent ?? approvalHold.denies.has(item.id);
-  const complete = questions.every(
-    (question, index) =>
-      isSendable(question, fields[index]!) &&
-      (question.optional || isAnswered(question, fields[index]!)),
-  );
+  const complete =
+    confirm ||
+    questions.every(
+      (question, index) =>
+        isSendable(question, fields[index]!) &&
+        (question.optional || isAnswered(question, fields[index]!)),
+    );
   const decide = (send: () => Promise<unknown>) => {
     if (pending) return;
     approvalHold.at = Date.now();
@@ -145,6 +148,10 @@ export function UserInputPrompt({
   const decline = () => decide(() => resolveApproval(item, "deny"));
   const submit = () => {
     if (!complete) return;
+    if (confirm) {
+      decide(() => resolveApproval(item, "allowOnce"));
+      return;
+    }
     const answers = questions.flatMap((question, index) =>
       isAnswered(question, fields[index]!)
         ? [answerOf(question, fields[index]!, textRefs.current[index]?.value)]
@@ -265,7 +272,8 @@ export function UserInputPrompt({
             form={formId}
             disabled={pending || !complete}
           >
-            {link ? "Open link" : "Submit"} <kbd aria-label="Enter">⏎</kbd>
+            {link ? "Open link" : confirm ? "Allow once" : "Submit"}{" "}
+            <kbd aria-label="Enter">⏎</kbd>
           </button>
         </span>
       </div>

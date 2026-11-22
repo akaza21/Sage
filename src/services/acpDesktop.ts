@@ -178,15 +178,7 @@ export const acpDesktop = {
 
   async answerUserInput(request: AnswerUserInputRequest) {
     const { answerUserInput } = await import("./acpDesktopUserInputAnswer");
-    return answerUserInput(
-      request,
-      invokeAcp,
-      () =>
-        new AcpDesktopError({
-          kind: "internal",
-          message: "Question answer returned an invalid bounded response.",
-        }),
-    );
+    return answerUserInput(request, invokeAcp);
   },
 
   async recordAgentEditDisposition(

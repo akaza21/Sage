@@ -6,6 +6,7 @@ use super::{
 
 mod harness_turn;
 mod held;
+mod request_deadlines;
 mod shape;
 mod teardown;
 use shape::IngestMode;

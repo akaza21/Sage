@@ -14,11 +14,14 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     pub(crate) async fn open_harness_turn(
         &self,
         tree: &TreeLease,
-        mode: Option<&'static str>,
+        mode: Option<crate::acp::bindings::adapter::HarnessTurnAuthority>,
         now_millis: i64,
     ) -> Result<ActiveDispatch, Box<PrepareFailure>> {
         let owner = tree.owner();
-        if mode.is_none() || self.authority.harness_turn_mode(owner) != mode {
+        use crate::acp::bindings::adapter::HarnessTurnAuthority;
+        if mode.is_none()
+            || matches!(mode, Some(HarnessTurnAuthority::SessionMode(mode)) if self.authority.harness_turn_mode(owner) != Some(mode))
+        {
             return Err(prepare_failure(CoordinatorError::Intent));
         }
         let command = TurnMutationCommand {

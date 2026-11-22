@@ -340,6 +340,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    pub(crate) fn restore_decoder(&mut self, decoder: IncrementalFrameDecoder) {
+        self.decoder_frame_aligned = decoder.is_frame_aligned();
+        self.decoder = decoder;
+    }
     /// Stdout still queued behind a durable terminal may cross the reusable
     /// handoff only when the adapter proves every frame in it, read in order
     /// as idle ingestion would, repeats that terminal and changes nothing.
