@@ -83,7 +83,9 @@ pub(crate) enum DurableAdapterEvent {
     AgentWrite {
         scope: TurnScope,
         resource: sage_acp_protocol::intent::SafeResourceRef,
-        digest: [u8; 32],
+        /// None: the bytes went unread (over a bound), so the write is
+        /// unverified and a file rewind over it refuses.
+        digest: Option<[u8; 32]>,
         now_millis: i64,
     },
     PermissionRequest {

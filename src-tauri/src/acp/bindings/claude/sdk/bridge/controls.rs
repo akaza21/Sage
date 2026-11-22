@@ -35,8 +35,8 @@ impl PassiveRequest {
     }
 }
 
-/// `filesChanged` of a dry run names the files the rewind would restore.
-fn file_plan(reply: &Value, inbound: &mut Inbound) {
+/// `filesChanged` names the files a dry run would restore, or a restore did.
+pub(super) fn file_plan(reply: &Value, inbound: &mut Inbound) {
     if reply.get("canRewind").and_then(Value::as_bool) != Some(true) {
         return SdkBridge::controlled(Ok(reply), inbound);
     }
@@ -78,9 +78,11 @@ impl SdkBridge {
             // Claude Code checkpoints files at each prompt it was sent, under
             // the prompt's `uuid`: Sage's turn id.
             SessionControl::RewindFiles { target, dry_run } => {
-                if *dry_run {
-                    pending = Pending::Passive(PassiveRequest::FilePlan);
-                }
+                pending = if *dry_run {
+                    Pending::Passive(PassiveRequest::FilePlan)
+                } else {
+                    Pending::Restore
+                };
                 json!({
                     "subtype": "rewind_files",
                     "user_message_id": message_uuid(target.turn_id.as_str())
@@ -136,7 +138,11 @@ impl SdkBridge {
         self.pending.values().any(|pending| {
             matches!(
                 pending,
-                Pending::Control | Pending::Passive(_) | Pending::Fork(_) | Pending::ForkAt(..)
+                Pending::Control
+                    | Pending::Restore
+                    | Pending::Passive(_)
+                    | Pending::Fork(_)
+                    | Pending::ForkAt(..)
             )
         })
     }

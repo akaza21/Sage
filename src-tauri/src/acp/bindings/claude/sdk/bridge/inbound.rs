@@ -72,7 +72,7 @@ impl SdkBridge {
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
             match &pending {
-                Pending::Control => Self::controlled(Err(message), inbound),
+                Pending::Control | Pending::Restore => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
                 Pending::ForkAt(_, turn) => self.forked_at(None, turn.as_str(), inbound),
@@ -152,6 +152,7 @@ impl SdkBridge {
             Pending::Interrupt => self.interrupted_idle(inbound),
             Pending::Withdraw(uuid) => self.withdrawn(&uuid, Some(reply), inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
+            Pending::Restore => super::controls::file_plan(reply, inbound),
             Pending::Passive(request) => request.answered(Ok(reply), inbound),
             Pending::Abandoned => {}
             Pending::Fork(config) => self.forked(config.as_deref(), inbound),
@@ -379,6 +380,7 @@ impl Pending {
             Self::Interrupt
             | Self::Withdraw(_)
             | Self::Control
+            | Self::Restore
             | Self::Passive(_)
             | Self::Abandoned
             | Self::Fork(_)

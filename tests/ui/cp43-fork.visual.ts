@@ -256,6 +256,9 @@ test("T11b: a preview lists the files, then files and conversation rewind", asyn
   await expect(
     dialog.getByText("Rewind does not undo shell commands", { exact: false }),
   ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Rewind conversation only" }),
+  ).toBeFocused();
   await expect(workbench).toHaveScreenshot("rewind-files-preview.png");
   await dialog
     .getByRole("button", { name: "Rewind files and conversation" })

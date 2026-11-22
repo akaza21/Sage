@@ -8,10 +8,11 @@ use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
     resource_mapper::{ConfiguredResourceRoot, ContentState, NativeResourceMapper},
+    store::agent_writes::{self, LastWrites},
 };
 use crate::project_registry::ProjectRegistryStore;
 use sage_acp_protocol::{
-    contract::{SafeText, SageRootId},
+    contract::{SafeText, SageRootId, SageTurnId},
     intent::{RewindCapability, RewindTargets},
     scheduler::RuntimeOwner,
     session_control::{ConversationTarget, SessionControl},
@@ -20,6 +21,10 @@ use sage_acp_protocol::{
 /// Paths a preview shows; the counts cover the rest.
 const PREVIEW_PATHS: usize = 200;
 const NAME_BYTES: usize = 255;
+/// Bytes one check may hash. Files past it are unverified, so they refuse.
+const CHECK_HASH_BYTES: u64 = 256 * 1024 * 1024;
+pub(crate) const RESTORED_NOT_CUT: &str =
+    "Files were restored, but the conversation was not rewound.";
 
 /// What a file rewind would restore, as root-relative paths. Absolute paths
 /// never leave the native side.
@@ -59,7 +64,7 @@ pub(crate) fn offers_file_rewind(rewind: RewindCapability) -> bool {
 pub(crate) type Control<'a> =
     &'a mut dyn FnMut(SessionControl) -> Result<NativeRpcReply, SessionControlError>;
 
-/// Why a files-and-conversation rewind stopped.
+/// Why a files-and-conversation rewind stopped after its check.
 #[derive(Debug)]
 pub(crate) enum FileRewindFailure<S> {
     /// Nothing was staged or restored.
@@ -72,6 +77,17 @@ pub(crate) enum FileRewindFailure<S> {
         restored: bool,
         error: SessionControlError,
     },
+}
+
+/// What a failure after staging tells the user: once files were restored,
+/// that is what happened, whatever failed next. Retry then has nothing to
+/// restore and only cuts the conversation.
+pub(crate) fn staged_error(restored: bool, error: SessionControlError) -> SessionControlError {
+    if restored {
+        refusal(RESTORED_NOT_CUT)
+    } else {
+        error
+    }
 }
 
 /// The dry run: the native files a rewind to `target` would restore.
@@ -89,86 +105,139 @@ pub(crate) fn plan(
     }
 }
 
-/// Dry run, then the check, then (only with no conflict) stage the cut,
-/// restore the files, and cut the conversation, in that order.
-pub(crate) fn files_then_conversation<S>(
+/// After a clean check: stage the cut, restore the planned files (skipped
+/// when there are none), then cut the conversation, in that order. The
+/// third value says whether files were restored.
+pub(crate) fn restore_then_cut<S>(
     target: &ConversationTarget,
+    planned: &[PathBuf],
+    preview: FileRewindPreview,
     control: Control<'_>,
-    check: impl FnOnce(&[PathBuf]) -> Result<FileRewindPreview, SessionControlError>,
     stage: impl FnOnce() -> Result<(S, SessionControl), SessionControlError>,
-) -> Result<(S, Option<SafeText<512>>), FileRewindFailure<S>> {
-    let files = plan(target, control).map_err(FileRewindFailure::Before)?;
-    let preview = check(&files).map_err(FileRewindFailure::Before)?;
+) -> Result<(S, Option<SafeText<512>>, bool), FileRewindFailure<S>> {
     if preview.conflict_count > 0 {
         return Err(FileRewindFailure::Conflicts(preview));
     }
     let (staged, cut) = stage().map_err(FileRewindFailure::Before)?;
-    let restore = SessionControl::RewindFiles {
-        target: target.clone(),
-        dry_run: false,
-    };
-    let summary = match controlled(control(restore)) {
-        Ok(summary) => summary,
-        Err(error) => {
-            return Err(FileRewindFailure::Staged {
-                staged,
-                restored: false,
-                error,
-            });
+    let restored = !planned.is_empty();
+    let summary = if restored {
+        let restore = control(SessionControl::RewindFiles {
+            target: target.clone(),
+            dry_run: false,
+        });
+        match restore {
+            Ok(NativeRpcReply::FileRewindPlan(files)) => restored_summary(planned, &files),
+            Ok(_) => {
+                return Err(FileRewindFailure::Staged {
+                    staged,
+                    restored: false,
+                    error: SessionControlError::RecoveryRequired,
+                });
+            }
+            Err(error) => {
+                return Err(FileRewindFailure::Staged {
+                    staged,
+                    restored: false,
+                    error,
+                });
+            }
         }
+    } else {
+        SafeText::new("controlSummary", "No files needed restoring").ok()
     };
-    match controlled(control(cut)) {
-        Ok(_) => Ok((staged, summary)),
+    match control(cut) {
+        Ok(NativeRpcReply::Controlled(_)) => Ok((staged, summary, restored)),
+        Ok(_) => Err(FileRewindFailure::Staged {
+            staged,
+            restored,
+            error: SessionControlError::RecoveryRequired,
+        }),
         Err(error) => Err(FileRewindFailure::Staged {
             staged,
-            restored: true,
+            restored,
             error,
         }),
     }
 }
 
-fn controlled(
-    reply: Result<NativeRpcReply, SessionControlError>,
-) -> Result<Option<SafeText<512>>, SessionControlError> {
-    match reply? {
-        NativeRpcReply::Controlled(summary) => Ok(summary),
-        _ => Err(SessionControlError::RecoveryRequired),
-    }
+/// The restore names what it restored; any file the preview did not list
+/// is said, never hidden.
+fn restored_summary(planned: &[PathBuf], restored: &[PathBuf]) -> Option<SafeText<512>> {
+    let unlisted = restored
+        .iter()
+        .filter(|file| !planned.contains(file))
+        .count();
+    let text = match (restored.len(), unlisted) {
+        (1, 0) => "Restored 1 file".to_owned(),
+        (count, 0) => format!("Restored {count} files"),
+        (count, unlisted) => {
+            format!("Restored {count} files, {unlisted} of them not in the preview")
+        }
+    };
+    SafeText::new("controlSummary", text).ok()
 }
 
 pub(crate) fn refusal(text: &str) -> SessionControlError {
     SessionControlError::Refused(SafeText::new("controlSummary", text).ok())
 }
 
-/// Checks each file against the agent's last recorded write to it.
-pub(crate) fn check(
-    connection: &rusqlite::Connection,
-    session: &str,
-    mapper: &NativeResourceMapper,
-    files: &[PathBuf],
-) -> Result<FileRewindPreview, SessionControlError> {
+/// One dry-run file: how it shows, its record key, and its bytes now.
+pub(crate) struct Probed {
+    shown: String,
+    key: Option<(String, String)>,
+    state: ContentState,
+}
+
+/// Maps and hashes the files within one byte budget. It reads only files:
+/// no database connection is held while it runs.
+pub(crate) fn probe(mapper: &NativeResourceMapper, files: &[PathBuf]) -> Vec<Probed> {
     use crate::acp::bindings::adapter::ResourceMapper;
+    let mut budget = CHECK_HASH_BYTES;
+    files
+        .iter()
+        .map(|file| {
+            let resource = file.to_str().and_then(|path| {
+                mapper
+                    .map_existing(path)
+                    .ok()
+                    .or_else(|| mapper.map_missing_display(path))
+            });
+            match resource {
+                Some(resource) => Probed {
+                    state: mapper
+                        .probe(&resource)
+                        .map_or(ContentState::Unreadable, |probe| probe.state(&mut budget)),
+                    shown: resource.relative_path.as_str().to_owned(),
+                    key: Some((
+                        resource.root_id.as_str().to_owned(),
+                        resource.relative_path.as_str().to_owned(),
+                    )),
+                },
+                None => Probed {
+                    shown: file_name(file),
+                    key: None,
+                    state: ContentState::Unreadable,
+                },
+            }
+        })
+        .collect()
+}
+
+/// A file conflicts unless its bytes now are the agent's recorded last write.
+pub(crate) fn compare(probed: Vec<Probed>, writes: Option<&LastWrites>) -> FileRewindPreview {
     let mut preview = FileRewindPreview::default();
-    for file in files {
-        let resource = file.to_str().and_then(|path| {
-            mapper
-                .map_existing(path)
-                .ok()
-                .or_else(|| mapper.map_missing_display(path))
-        });
-        let Some(resource) = resource else {
-            preview.add(file_name(file), true);
-            continue;
-        };
-        let recorded = crate::acp::store::agent_writes::last_write(connection, session, &resource)
-            .map_err(|_| SessionControlError::RecoveryRequired)?;
-        let conflict = match (recorded, mapper.content_state(&resource)) {
-            (Some(recorded), ContentState::Present(current)) => recorded != current,
-            _ => true,
-        };
-        preview.add(resource.relative_path.as_str().to_owned(), conflict);
+    for file in probed {
+        let recorded = file
+            .key
+            .as_ref()
+            .and_then(|key| writes?.get(key).copied().flatten());
+        let conflict = !matches!(
+            (recorded, file.state),
+            (Some(recorded), ContentState::Present(current)) if recorded == current
+        );
+        preview.add(file.shown, conflict);
     }
-    Ok(preview)
+    preview
 }
 
 fn file_name(path: &Path) -> String {
@@ -183,10 +252,7 @@ fn file_name(path: &Path) -> String {
 }
 
 impl AcpService {
-    pub(super) fn project_mapper(
-        &self,
-        project: &str,
-    ) -> Result<NativeResourceMapper, SessionControlError> {
+    fn project_mapper(&self, project: &str) -> Result<NativeResourceMapper, SessionControlError> {
         let roots = self
             .database
             .root_records(project)
@@ -206,26 +272,29 @@ impl AcpService {
         .map_err(|_| SessionControlError::Unavailable)
     }
 
-    pub(crate) fn check_files(
+    /// Hashes on the blocking pool with no connection held, then reads every
+    /// recorded write in one query.
+    pub(crate) async fn check_files(
         &self,
         owner: &RuntimeOwner,
-        files: &[PathBuf],
+        files: Vec<PathBuf>,
     ) -> Result<FileRewindPreview, SessionControlError> {
         let mapper = self.project_mapper(owner.project_id.as_str())?;
-        check(
-            &self.database.connection(),
-            owner.session_id.as_str(),
-            &mapper,
-            files,
-        )
+        let probed = tauri::async_runtime::spawn_blocking(move || probe(&mapper, &files))
+            .await
+            .map_err(|_| SessionControlError::Unavailable)?;
+        let writes =
+            agent_writes::last_writes(&self.database.connection(), owner.session_id.as_str())
+                .map_err(|_| SessionControlError::RecoveryRequired)?;
+        Ok(compare(probed, writes.as_ref()))
     }
 
     /// The preview the confirm shows, or `None` when the session cannot
     /// rewind files with the conversation.
-    pub(crate) fn preview_file_rewind(
+    pub(crate) async fn preview_file_rewind(
         &self,
         owner: &RuntimeOwner,
-        before: &sage_acp_protocol::contract::SageTurnId,
+        before: &SageTurnId,
     ) -> Result<Option<FileRewindPreview>, SessionControlError> {
         if !offers_file_rewind(self.session_rewind(owner)?) {
             return Ok(None);
@@ -234,7 +303,7 @@ impl AcpService {
         let files = plan(&target, &mut |control| {
             self.session_control_reply(owner.clone(), control)
         })?;
-        self.check_files(owner, &files).map(Some)
+        self.check_files(owner, files).await.map(Some)
     }
 
     pub(super) fn session_rewind(
@@ -258,7 +327,7 @@ impl AcpService {
     pub(super) fn rewind_target(
         &self,
         owner: &RuntimeOwner,
-        turn: &sage_acp_protocol::contract::SageTurnId,
+        turn: &SageTurnId,
     ) -> Result<ConversationTarget, SessionControlError> {
         crate::acp::store::rewind::target(
             &self.database.connection(),

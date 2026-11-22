@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import "./fork-chat.css";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
-import { invokeAcp } from "../../services/acpDesktopCommand";
+import { AcpDesktopError, invokeAcp } from "../../services/acpDesktopCommand";
 import { isRecord } from "../../services/acpDesktopGuards";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { ModalDialog } from "../../ui/ModalDialog";
@@ -74,12 +74,17 @@ export function RewindChatDialog({
   const { status, run } = useSessionControl(chatId);
   const pending = useRef(false);
   const [files, setFiles] = useState<Preview | null | undefined>();
+  const [reason, setReason] = useState("");
   const [last, setLast] = useState(false);
   useEffect(() => {
     let live = true;
     preview(chatId, turnId).then(
       (next) => live && setFiles(next),
-      () => live && setFiles(null),
+      (error: unknown) => {
+        if (!live) return;
+        setFiles(null);
+        if (error instanceof AcpDesktopError) setReason(error.message);
+      },
     );
     return () => {
       live = false;
@@ -122,7 +127,7 @@ export function RewindChatDialog({
       pending.current = false;
     }
   };
-  const busy = status.kind === "pending" || files === undefined;
+  const busy = status.kind === "pending";
   const restorable = !!files?.fileCount && !files.conflictCount;
   return (
     <ModalDialog
@@ -135,6 +140,7 @@ export function RewindChatDialog({
     >
       <h2 id={title}>Rewind conversation from here</h2>
       <p>Remove this message and later replies from the conversation.</p>
+      {files === null ? <p>{reason} Files stay as they are.</p> : null}
       {files?.conflictCount ? (
         <>
           <p role="alert">
@@ -156,7 +162,6 @@ export function RewindChatDialog({
           <button
             type="button"
             className="button--compact"
-            autoFocus
             disabled={busy}
             onClick={() => void rewind(true)}
           >
@@ -167,7 +172,7 @@ export function RewindChatDialog({
       <button
         type="button"
         className="button--compact"
-        autoFocus={!restorable}
+        autoFocus
         disabled={busy}
         onClick={() => void rewind(false)}
       >

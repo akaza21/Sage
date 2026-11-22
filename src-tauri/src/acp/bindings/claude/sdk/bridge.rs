@@ -82,6 +82,8 @@ enum Pending {
     Interrupt,
     Withdraw(String),
     Control,
+    /// A `rewind_files` that restores; its reply names the files restored.
+    Restore,
     Passive(controls::PassiveRequest),
     /// A passive request whose caller gave up: its late reply is dropped.
     Abandoned,

@@ -97,7 +97,9 @@ pub(crate) enum AdapterInboundEvent {
     /// The bytes a finished agent file change left in this Turn.
     AgentWrite {
         resource: sage_acp_protocol::intent::SafeResourceRef,
-        digest: [u8; 32],
+        /// None: the bytes went unread (over a bound), so the write is
+        /// unverified and a file rewind over it refuses.
+        digest: Option<[u8; 32]>,
         now_millis: i64,
     },
     ActivityItem(Box<AdapterActivityItemCommand>),
@@ -370,7 +372,9 @@ fn apply_event(
             resource,
             digest,
             now_millis,
-        } => super::agent_writes::record(transaction, owner, resource, digest, *now_millis),
+        } => {
+            super::agent_writes::record(transaction, owner, resource, digest.as_ref(), *now_millis)
+        }
         event @ AdapterInboundEvent::ActivityItem(_) => {
             activity_item::apply(transaction, owner, event)
         }

@@ -328,10 +328,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 .await;
         }
         for event in events {
-            if let Some(write) = self.agent_write(&event, now_millis, prospective_terminal)
+            if let Some(file) = self.written_file(&event, prospective_terminal)
                 && writes.try_reserve(1).is_ok()
             {
-                writes.push(write);
+                writes.push(file);
             }
             if let AdapterEvent::TurnStarted { id } = &event {
                 if let Err(error) = self.accept_turn_started(id, prospective_terminal) {
@@ -374,7 +374,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         // item. Those past the transaction's fact bound go unrecorded.
         let room =
             (LIMITS.queues.journal_facts_per_transaction as usize).saturating_sub(facts.len());
-        writes.truncate(room);
+        let mut writes = self.agent_writes(writes, room, now_millis).await;
         if facts.try_reserve(writes.len()).is_ok() {
             facts.append(&mut writes);
         }

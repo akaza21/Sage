@@ -143,15 +143,20 @@ impl AcpService {
                 .undo_cut(&external, turn_id.as_str())
                 .map_err(|error| error.to_string())
         };
-        let (command, summary) = if files {
+        let (command, summary, restored) = if files {
             if !conversation_only || !file_rewind::offers_file_rewind(self.session_rewind(owner)?) {
                 return Err(SessionControlError::Unavailable);
             }
             let target = self.rewind_target(owner, &turn_id)?;
-            match file_rewind::files_then_conversation(
+            let planned = file_rewind::plan(&target, &mut |control| {
+                self.session_control_reply(owner.clone(), control)
+            })?;
+            let preview = self.check_files(owner, planned.clone()).await?;
+            match file_rewind::restore_then_cut(
                 &target,
+                &planned,
+                preview,
                 &mut |control| self.session_control_reply(owner.clone(), control),
-                |paths| self.check_files(owner, paths),
                 || self.prepare_rewind(owner, turn_id.clone(), undo, true, resolve_cut),
             ) {
                 Ok(done) => done,
@@ -167,23 +172,15 @@ impl AcpService {
                     restored,
                     error,
                 }) => {
-                    return Err(match self.abandon_staged(owner, &staged, error) {
-                        SessionControlError::Refused(_) | SessionControlError::Unavailable
-                            if restored =>
-                        {
-                            file_rewind::refusal(
-                                "Files were restored, but the conversation was not rewound.",
-                            )
-                        }
-                        error => error,
-                    });
+                    let error = self.abandon_staged(owner, &staged, error);
+                    return Err(file_rewind::staged_error(restored, error));
                 }
             }
         } else {
             let (command, control) =
                 self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
             match self.control_session(owner.clone(), control) {
-                Ok(summary) => (command, summary),
+                Ok(summary) => (command, summary, false),
                 Err(error) => return Err(self.abandon_staged(owner, &command, error)),
             }
         };
@@ -196,7 +193,10 @@ impl AcpService {
             });
         let Some(recorded) = recorded else {
             self.recover_undo_runtime(owner);
-            return Err(SessionControlError::RecoveryRequired);
+            return Err(file_rewind::staged_error(
+                restored,
+                SessionControlError::RecoveryRequired,
+            ));
         };
         if let Some(projection_revision) = recorded.published {
             // Delivery is advisory: the page reloads from SQLite either way.

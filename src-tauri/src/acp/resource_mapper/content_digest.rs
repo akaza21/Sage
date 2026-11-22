@@ -12,27 +12,44 @@ const CONTENT_DIGEST_BYTES_MAX: u64 = 16 * 1024 * 1024;
 pub(crate) enum ContentState {
     Present([u8; 32]),
     Missing,
-    /// Too large, changing while read, or not a regular file.
+    /// Too large, over the caller's byte budget, changing while read, or not
+    /// a regular file.
     Unreadable,
 }
 
+/// An owned, root-anchored handle to one file, so hashing can leave the
+/// thread that mapped it. It holds no open file.
+#[derive(Debug, Clone)]
+pub(crate) struct ContentProbe {
+    root: PathBuf,
+    identity: RootIdentity,
+    relative: String,
+}
+
 impl NativeResourceMapper {
-    pub(crate) fn content_state(&self, resource: &SafeResourceRef) -> ContentState {
-        let Some(root) = self
+    pub(crate) fn probe(&self, resource: &SafeResourceRef) -> Option<ContentProbe> {
+        let root = self
             .roots
             .iter()
-            .find(|root| root.root_id == resource.root_id)
-        else {
-            return ContentState::Unreadable;
-        };
-        let relative = resource.relative_path.as_str();
-        let file = match open_workspace_text_file(&root.native_root, root.identity, relative, None)
-        {
+            .find(|root| root.root_id == resource.root_id)?;
+        Some(ContentProbe {
+            root: root.native_root.clone(),
+            identity: root.identity,
+            relative: resource.relative_path.as_str().to_owned(),
+        })
+    }
+}
+
+impl ContentProbe {
+    /// Reads at most `budget` bytes, then charges what it read. A file larger
+    /// than what is left reads as `Unreadable`.
+    pub(crate) fn state(&self, budget: &mut u64) -> ContentState {
+        let file = match open_workspace_text_file(&self.root, self.identity, &self.relative, None) {
             Ok(file) => file,
             Err(_) => {
-                let missing = root
-                    .native_root
-                    .join(relative)
+                let missing = self
+                    .root
+                    .join(&self.relative)
                     .symlink_metadata()
                     .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
                 return if missing {
@@ -42,18 +59,19 @@ impl NativeResourceMapper {
                 };
             }
         };
-        digest_stable(&file).map_or(ContentState::Unreadable, ContentState::Present)
+        digest_stable(&file, budget).map_or(ContentState::Unreadable, ContentState::Present)
     }
 }
 
-fn digest_stable(file: &std::fs::File) -> Option<[u8; 32]> {
+fn digest_stable(file: &std::fs::File, budget: &mut u64) -> Option<[u8; 32]> {
     let before = file.metadata().ok()?;
-    if !before.is_file() || before.len() > CONTENT_DIGEST_BYTES_MAX {
+    if !before.is_file() || before.len() > CONTENT_DIGEST_BYTES_MAX.min(*budget) {
         return None;
     }
+    *budget -= before.len();
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
-    let mut reader = file.take(CONTENT_DIGEST_BYTES_MAX + 1);
+    let mut reader = file.take(before.len() + 1);
     let mut read = 0_u64;
     loop {
         let count = reader.read(&mut buffer).ok()?;

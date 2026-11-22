@@ -14,7 +14,7 @@ use crate::acp::{
     goal::NativeRpcReply,
     service::{
         AcpService,
-        file_rewind::{FileRewindFailure, files_then_conversation},
+        file_rewind::{FileRewindFailure, RESTORED_NOT_CUT, plan, restore_then_cut, staged_error},
     },
     store::{AdapterStoreOwner, agent_writes, turn_undo::fixture::Fixture},
 };
@@ -70,7 +70,7 @@ fn agent_wrote_a_file() -> Rewind {
             external_session_id: ExternalId::new("externalSessionId", SESSION).unwrap(),
         },
         &SafeResourceRef::new(SageRootId::parse(&root.id).unwrap(), "a.rs").unwrap(),
-        &Sha256::digest(b"fn agent() {}\n").into(),
+        Some(&Sha256::digest(b"fn agent() {}\n").into()),
         1,
     )
     .unwrap();
@@ -92,16 +92,28 @@ fn agent_wrote_a_file() -> Rewind {
     }
 }
 
-/// Sends each control through the bridge and answers it as Claude Code
-/// 2.1.328 does, logging the request frames in order.
-fn rewind(case: &mut Rewind, log: &RefCell<Vec<String>>) -> Result<(), FileRewindFailure<()>> {
+/// How the recorded Claude Code 2.1.328 replies go in one replay.
+struct Replies {
+    /// `filesChanged` of both the dry run and the restore.
+    changed: Vec<String>,
+    /// The cut's control request is refused.
+    cut_refused: bool,
+}
+
+/// The service's own sequence (dry run, check, then stage, restore and cut),
+/// each control sent through the bridge and answered with a recorded reply
+/// frame. Refusals map as the session control path maps them.
+fn rewind(
+    case: &mut Rewind,
+    replies: &Replies,
+    log: &RefCell<Vec<String>>,
+) -> Result<bool, FileRewindFailure<()>> {
     let target = ConversationTarget {
         turn_id: SageTurnId::parse(TURN).unwrap(),
         native_turn_id: None,
         following_messages: 0,
         prompt_digest: None,
     };
-    let file = case.file.to_str().unwrap().to_owned();
     let bridge = &mut case.bridge;
     let mut control = |control: SessionControl| -> Result<NativeRpcReply, SessionControlError> {
         let sdk = bridge.session_control(&control).unwrap();
@@ -110,41 +122,47 @@ fn rewind(case: &mut Rewind, log: &RefCell<Vec<String>>) -> Result<(), FileRewin
             Value::Bool(true) => "rewind_files dry_run".to_owned(),
             _ => request["subtype"].as_str().unwrap().to_owned(),
         });
-        assert_eq!(
-            request["user_message_id"],
-            if request["subtype"] == "rewind_files" {
-                json!("6f9619ff-8b86-4011-b42d-00cf4fc964ff")
-            } else {
-                Value::Null
-            }
-        );
-        let reply = match request["subtype"].as_str() {
-            Some("rewind_files") => {
-                json!({"canRewind":true,"filesChanged":[file],"insertions":1,"deletions":1})
-            }
-            _ => json!({"applied":{}}),
+        if request["subtype"] == "rewind_files" {
+            assert_eq!(
+                request["user_message_id"],
+                "6f9619ff-8b86-4011-b42d-00cf4fc964ff"
+            );
+        }
+        let frame = match request["subtype"].as_str() {
+            Some("rewind_files") => success(
+                &sdk,
+                json!({"canRewind":true,"filesChanged":replies.changed,"insertions":1,"deletions":1}),
+            ),
+            _ if replies.cut_refused => json!({"type":"control_response","response":{
+                "subtype":"error","request_id":sdk["request_id"],"error":"Session is busy"}}),
+            _ => success(&sdk, json!({"applied":{}})),
         };
-        Ok(bridge
-            .inbound(success(&sdk, reply))
-            .unwrap()
-            .native
-            .unwrap())
+        match bridge.inbound(frame).unwrap().native.unwrap() {
+            NativeRpcReply::ControlRefused(reason) => Err(SessionControlError::Refused(reason)),
+            reply => Ok(reply),
+        }
     };
-    files_then_conversation(
-        &target,
-        &mut control,
-        |files| case.service.check_files(&case.owner, files),
-        || {
-            log.borrow_mut().push("stage".into());
-            Ok((
-                (),
-                SessionControl::RewindConversation {
-                    before: target.clone(),
-                },
-            ))
-        },
-    )
-    .map(drop)
+    let planned = plan(&target, &mut control).map_err(FileRewindFailure::Before)?;
+    let preview =
+        tauri::async_runtime::block_on(case.service.check_files(&case.owner, planned.clone()))
+            .map_err(FileRewindFailure::Before)?;
+    restore_then_cut(&target, &planned, preview, &mut control, || {
+        log.borrow_mut().push("stage".into());
+        Ok((
+            (),
+            SessionControl::RewindConversation {
+                before: target.clone(),
+            },
+        ))
+    })
+    .map(|((), _, restored)| restored)
+}
+
+fn changed(case: &Rewind) -> Replies {
+    Replies {
+        changed: vec![case.file.to_str().unwrap().to_owned()],
+        cut_refused: false,
+    }
 }
 
 #[test]
@@ -152,7 +170,8 @@ fn a_file_changed_since_the_agent_wrote_it_refuses_before_any_restore() {
     let mut case = agent_wrote_a_file();
     std::fs::write(&case.file, "fn agent() {}\n// mine\n").unwrap();
     let log = RefCell::new(Vec::new());
-    let refused = rewind(&mut case, &log);
+    let replies = changed(&case);
+    let refused = rewind(&mut case, &replies, &log);
     assert!(matches!(
         refused,
         Err(FileRewindFailure::Conflicts(preview))
@@ -166,7 +185,51 @@ fn a_file_changed_since_the_agent_wrote_it_refuses_before_any_restore() {
 fn files_rewind_after_a_dry_run_and_before_the_conversation_is_cut() {
     let mut case = agent_wrote_a_file();
     let log = RefCell::new(Vec::new());
-    assert!(rewind(&mut case, &log).is_ok());
+    let replies = changed(&case);
+    assert!(matches!(rewind(&mut case, &replies, &log), Ok(true)));
+    assert_eq!(
+        *log.borrow(),
+        [
+            "rewind_files dry_run",
+            "stage",
+            "rewind_files",
+            "get_settings"
+        ]
+    );
+}
+
+#[test]
+fn an_empty_dry_run_restores_nothing_and_only_cuts() {
+    let mut case = agent_wrote_a_file();
+    let log = RefCell::new(Vec::new());
+    let replies = Replies {
+        changed: Vec::new(),
+        cut_refused: false,
+    };
+    assert!(matches!(rewind(&mut case, &replies, &log), Ok(false)));
+    assert_eq!(
+        *log.borrow(),
+        ["rewind_files dry_run", "stage", "get_settings"]
+    );
+}
+
+#[test]
+fn a_cut_refused_after_the_restore_says_the_files_were_restored() {
+    let mut case = agent_wrote_a_file();
+    let log = RefCell::new(Vec::new());
+    let mut replies = changed(&case);
+    replies.cut_refused = true;
+    let Err(FileRewindFailure::Staged {
+        restored, error, ..
+    }) = rewind(&mut case, &replies, &log)
+    else {
+        panic!("the refused cut must fail after staging");
+    };
+    assert!(restored);
+    assert!(matches!(
+        staged_error(restored, error),
+        SessionControlError::Refused(Some(text)) if text.as_str() == RESTORED_NOT_CUT
+    ));
     assert_eq!(
         *log.borrow(),
         [

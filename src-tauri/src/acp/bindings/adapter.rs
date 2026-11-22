@@ -76,9 +76,12 @@ pub(crate) trait ResourceMapper {
         None
     }
 
-    /// The SHA-256 of the file's bytes now, when it can be read within the
-    /// mapper's bound. Agent writes are recorded with it.
-    fn content_digest(&self, _resource: &SafeResourceRef) -> Option<[u8; 32]> {
+    /// An owned handle that hashes the file's bytes off the caller's thread.
+    /// Agent writes are recorded with it.
+    fn content_probe(
+        &self,
+        _resource: &SafeResourceRef,
+    ) -> Option<crate::acp::resource_mapper::ContentProbe> {
         None
     }
 }

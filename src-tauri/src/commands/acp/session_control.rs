@@ -113,6 +113,7 @@ pub(crate) async fn control_acp_session(
             let preview = state
                 .acp
                 .preview_file_rewind(&owner, &before)
+                .await
                 .map_err(control_error)?;
             return Ok(SessionControlResponse {
                 summary: None,
