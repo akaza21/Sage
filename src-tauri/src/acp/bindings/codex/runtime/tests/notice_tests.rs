@@ -46,6 +46,7 @@ fn notice(
     diagnostic: bool,
 ) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        identity: None,
         diagnostic,
         level,
         text: RequiredText::new("text", text).unwrap(),

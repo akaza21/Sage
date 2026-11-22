@@ -1,7 +1,12 @@
-import { useId } from "react";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import { HarnessSignInPart } from "../lazyParts";
-import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
+import {
+  turnReasonErrorItem,
+  turnReasonMessage,
+  turnTerminalReasonLabels,
+} from "./statusSemantics";
+import { Notice } from "../../../ui/Notice";
+import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 
 export interface TurnFailureProps {
   turn: TurnProjection;
@@ -18,7 +23,6 @@ export function RetryTurnButton({ onRetry }: { onRetry: () => void }) {
 }
 
 export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
-  const headingId = useId();
   if (turn.state !== "failed") return null;
   const reason = turn.terminalReason;
   const message =
@@ -26,21 +30,34 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
     (reason && reason.kind !== "other"
       ? turnTerminalReasonLabels[reason.kind]
       : "The harness gave no error details.");
+  const error = turnReasonErrorItem(turn);
   return (
-    <div className="acp-turn__failure" role="group" aria-labelledby={headingId}>
-      <strong id={headingId}>Turn failed</strong>
-      <p data-turn-reason-message="">{message}</p>
-      {reason?.remediation ? (
-        <p data-turn-reason-remediation="">{reason.remediation}</p>
-      ) : null}
-      {reason?.kind === "authRequired" && page ? (
-        <HarnessSignInPart
-          part="HarnessTurnSignInRecovery"
-          page={page}
-          turn={turn}
-        />
-      ) : null}
-      {onRetry ? <RetryTurnButton onRetry={onRetry} /> : null}
+    <div role="group" aria-label="Turn failed">
+      <Notice
+        identity={JSON.stringify(["turn-failure", turn.sessionId, turn.id])}
+        severity="blocking"
+        message={
+          <>
+            <span data-turn-reason-message="">{message}</span>
+            {reason?.remediation ? (
+              <span data-turn-reason-remediation=""> {reason.remediation}</span>
+            ) : null}
+          </>
+        }
+        announce={false}
+        details={
+          reason || error ? (
+            <LazyModuleBoundary
+              label="Failure details"
+              load={HarnessSignInPart.preload}
+              render={(Details) => (
+                <Details turn={turn} page={page} error={error?.payload} />
+              )}
+            />
+          ) : undefined
+        }
+        action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
+      />
     </div>
   );
 }

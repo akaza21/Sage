@@ -8,12 +8,7 @@ import { TurnNavigator } from "./TurnNavigator";
 import { jumpToChatTurn, type TurnListHost } from "./chatScroll";
 import { useChatViewport } from "./useChatViewport";
 import { useTurnListNavigation } from "./useTurnListNavigation";
-import { lazyParts } from "./lazyParts";
-import type * as ImportChunk from "./ImportedHistory";
-
-const ImportPart = lazyParts<typeof ImportChunk>(
-  () => import("./ImportedHistory"),
-);
+import { ImportPart } from "./lazyParts";
 
 export interface ChatNavigationProps {
   turns: readonly TurnProjection[];
@@ -75,7 +70,6 @@ export function ChatNavigation({
   );
 }
 
-export {
-  AcpHistoryNotices,
-  WorkspaceTrackingNotice,
-} from "./AcpHistoryNotices";
+export { AcpHistoryNotices } from "./AcpHistoryNotices";
+
+export { WorkspaceTrackingNotice } from "./WorkspaceTrackingNotice";

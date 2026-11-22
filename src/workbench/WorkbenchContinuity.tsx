@@ -73,11 +73,15 @@ export function AgentCenterKeeper({
     if (
       projectId &&
       state.project?.id === projectId &&
+      !state.projectTransitioning &&
+      state.agentCenter !== "draft" &&
+      agentCenterNeedsDraft(state.tabs, state.activeTabId) &&
       !state.newChatDraftOpening &&
       state.newChatDraftOpenOutcome !== "failed"
     )
       void state.openNewChatDraft(
         state.project.isInternal ? undefined : projectId,
+        { requestFocus: false },
       );
   }, [projectId, newChatDraftOpenOutcome]);
 

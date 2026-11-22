@@ -20,7 +20,7 @@ import {
   harnessSignInStatus,
 } from "./harnessSignIn";
 
-export { HarnessTurnSignInRecovery } from "./HarnessTurnSignInRecovery";
+export { HarnessTurnFailureDetails as default } from "./HarnessTurnRecovery";
 export { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
 
 const MenuPart = lazyParts<typeof MenuChunk>(
