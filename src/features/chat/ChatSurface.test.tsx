@@ -2079,7 +2079,7 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
 
-    const modes = screen.getByRole("group", { name: "Session mode" });
+    const modes = screen.getByRole("group", { name: "Model and access" });
     expect(
       within(modes)
         .getAllByRole("menuitemradio")
@@ -2152,10 +2152,13 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
 
-    expect(screen.getByRole("group", { name: "Session mode" })).toBeTruthy();
+    const modes = screen.getByRole("group", { name: "Model and access" });
     expect(
-      screen.queryAllByRole("group", { name: "Session mode" }),
-    ).toHaveLength(1);
+      within(modes)
+        .getAllByRole("menuitemradio")
+        .map((mode) => mode.getAttribute("aria-label")),
+    ).toEqual(["Manual", "Plan mode"]);
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
     expect(
       screen.getByRole("menuitemcheckbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
