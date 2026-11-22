@@ -151,6 +151,53 @@ it("restores and deletes an archived project-less chat while another project is 
   expect(useWorkbenchStore.getState().unscopedChats).toEqual([]);
 });
 
+it.each([
+  { requestFocus: true, center: "draft", source: "Home" },
+  { requestFocus: false, center: "chat", source: "continuity" },
+  {
+    requestFocus: false,
+    center: "draft",
+    source: "Home during continuity",
+    home: true,
+  },
+])(
+  "honors $source intent while a project move binds its watcher",
+  async ({ requestFocus, center, home }) => {
+    const state = useWorkbenchStore.getState();
+    const target = state.project!.id;
+    await state.createChat(null);
+    const chat = useWorkbenchStore.getState().activeTabId!;
+    let bindingStarted!: () => void;
+    let releaseBinding!: () => void;
+    const started = new Promise<void>((resolve) => (bindingStarted = resolve));
+    const held = new Promise<void>((resolve) => (releaseBinding = resolve));
+    vi.spyOn(
+      getWorkbenchPorts().project,
+      "watchWorkspaceNotify",
+    ).mockImplementationOnce(async () => {
+      bindingStarted();
+      await held;
+      throw new Error("Fixture watcher unavailable");
+    });
+    const moving = state.setChatProject(target);
+    await started;
+    try {
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+      const opening = state.openNewChatDraft(undefined, { requestFocus });
+      if (home) await state.openNewChatDraft();
+      await opening;
+    } finally {
+      releaseBinding();
+      await moving;
+    }
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chat,
+      project: { id: target },
+      agentCenter: center,
+    });
+  },
+);
+
 it("new-chat entry points distinguish a project chat from a top-level chat", async () => {
   const state = useWorkbenchStore.getState();
   await state.openNewChatDraft(state.project!.id);

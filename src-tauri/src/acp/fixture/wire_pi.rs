@@ -67,6 +67,15 @@ pub(super) fn await_request(
         "piIdle" => "idle",
         _ => return Err(FixtureError::InvalidArguments),
     };
+    if kind == "piInitialize" {
+        codex::emit_json(
+            output,
+            state,
+            &json!({"type":"extension_ui_request","method":"setStatus",
+            "statusKey":"sage.pi.ready.v1","statusText":json!({"version":1,
+            "digest":crate::acp::bindings::pi::bridge::install::digest()}).to_string()}),
+        )?;
+    }
     for _ in 0..32 {
         let Some(request) = codex::read_json_line(input, state)? else {
             return if expected == "idle" {

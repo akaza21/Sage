@@ -30,6 +30,18 @@ export interface NewChatDraft {
   error: string | null;
 }
 
+export interface NewChatDraftOpenOptions {
+  /** Automatic continuity must not supersede a later explicit navigation. */
+  requestFocus?: boolean;
+}
+
+interface DraftOpenIntent {
+  projectId?: string;
+  sourceProjectId: string | null;
+  activeTabId: string | null;
+  ownershipEpoch: number;
+}
+
 export interface NewChatDraftSlice {
   agentCenter: "chat" | "draft";
   newChatDraft: NewChatDraft | null;
@@ -48,7 +60,10 @@ export interface NewChatDraftSlice {
         text: string;
       }
     | null;
-  openNewChatDraft: (projectId?: string) => Promise<unknown>;
+  openNewChatDraft: (
+    projectId?: string,
+    options?: NewChatDraftOpenOptions,
+  ) => Promise<unknown>;
   updateNewChatDraft: (
     patch: Partial<
       Pick<NewChatDraft, "text" | "access" | "effort" | "targetProjectId">
@@ -70,6 +85,8 @@ export const createNewChatDraftSlice: StateCreator<
   // Opening the draft loads its actions first. Once visible, edits and the
   // first-send guard stay synchronous, without carrying them on startup.
   let actions: ReturnType<typeof createNewChatDraftActions> | undefined;
+  // Coalesce repeated explicit opens into one latest intent while loading.
+  let queuedOpen: DraftOpenIntent | null = null;
   const load = async () =>
     (actions ??= (
       await import("./newChatDraftActions")
@@ -81,30 +98,48 @@ export const createNewChatDraftSlice: StateCreator<
     newChatDraftOpening: false,
     newChatDraftOpenOutcome: null,
     pendingFirstSend: null,
-    openNewChatDraft: async (projectId) => {
+    openNewChatDraft: async (projectId, options) => {
       const from = get();
-      if (from.newChatDraftOpening) return;
-      // Reserve the explicit open through action loading and initialization.
-      set({ newChatDraftOpening: true, newChatDraftOpenOutcome: null });
-      let outcome: NewChatDraftSlice["newChatDraftOpenOutcome"] = null;
-      try {
-        const loaded = await load();
-        const now = get();
-        // A selection made while the actions loaded supersedes this open.
-        if (
-          now.project?.id === from.project?.id &&
-          now.activeTabId === from.activeTabId &&
-          now.chatOwnershipEpoch === from.chatOwnershipEpoch
-        )
-          return await loaded.openNewChatDraft(projectId);
-        outcome = "cancelled";
-      } catch {
-        outcome = "failed";
-      } finally {
+      let request: DraftOpenIntent | null = {
+        projectId,
+        sourceProjectId: from.project?.id ?? null,
+        activeTabId: from.activeTabId,
+        ownershipEpoch: from.chatOwnershipEpoch,
+      };
+      const explicit = options?.requestFocus !== false;
+      if (explicit)
         set({
-          newChatDraftOpening: false,
-          newChatDraftOpenOutcome: outcome,
+          draftFocusRequest:
+            (from.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER,
         });
+      if (from.newChatDraftOpening) {
+        if (explicit) queuedOpen = request;
+        return;
+      }
+      set({ newChatDraftOpening: true, newChatDraftOpenOutcome: null });
+      try {
+        do {
+          queuedOpen = null;
+          let outcome: NewChatDraftSlice["newChatDraftOpenOutcome"] = null;
+          try {
+            const loaded = await load();
+            const now = get();
+            if (
+              (now.project?.id ?? null) === request.sourceProjectId &&
+              now.activeTabId === request.activeTabId &&
+              now.chatOwnershipEpoch === request.ownershipEpoch
+            )
+              await loaded.openNewChatDraft(request.projectId);
+            else outcome = "cancelled";
+          } catch {
+            outcome = "failed";
+          }
+          set({ newChatDraftOpenOutcome: outcome });
+          request = queuedOpen;
+        } while (request);
+      } finally {
+        queuedOpen = null;
+        set({ newChatDraftOpening: false });
       }
     },
     updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),

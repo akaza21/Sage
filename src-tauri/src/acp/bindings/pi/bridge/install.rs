@@ -6,15 +6,21 @@ use std::{
 
 use crate::acp::bindings::release_version::characterise_against;
 /// The Pi release whose extension API the bridge was tested against. Later
-/// releases load it too; if a release stops loading it, Pi starts with no
-/// tools rather than unguarded ones.
-const BRIDGE_PI_VERSION: &str = "1.5.0";
+/// releases load it too. Native launch requires this pinned resource.
+pub(crate) const BRIDGE_PI_VERSION: &str = "1.5.0";
 pub(crate) const SOURCE: &[u8] = include_bytes!("extension.mjs");
+pub(crate) fn digest() -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(SOURCE)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 /// The bridge's path under Sage's resource directory. `bundle.resources` in
 /// tauri.conf.json ships the file at exactly this path.
 pub(crate) const RESOURCE: &str = "src/acp/bindings/pi/bridge/extension.mjs";
 
-/// Why the bridge cannot be enabled; Pi then runs with read-only tools.
+/// Why the bridge cannot be enabled; native launch is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Unavailable {
     #[error("the Sage bridge needs Pi {BRIDGE_PI_VERSION} or later")]
@@ -43,8 +49,9 @@ pub(crate) fn installed(version: &str) -> Result<PathBuf, Unavailable> {
 
 /// A development build runs from a Cargo target directory that other checkouts may share and
 /// overwrite, so it reads the bridge from the checkout it was compiled from.
+/// Unit-test executables are not installed apps, including with `custom-protocol` enabled.
 fn resource_root() -> Option<PathBuf> {
-    if tauri::is_dev() {
+    if cfg!(test) || tauri::is_dev() {
         return Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
     }
     let package = tauri::utils::PackageInfo {
@@ -57,7 +64,7 @@ fn resource_root() -> Option<PathBuf> {
     tauri::utils::platform::resource_dir(&package, &tauri::Env::default()).ok()
 }
 
-pub(super) fn matches_install(root: &Path, path: &Path) -> Result<(), Unavailable> {
+pub(crate) fn matches_install(root: &Path, path: &Path) -> Result<(), Unavailable> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

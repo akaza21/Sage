@@ -35,7 +35,15 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
         .block_on(async {
             let epoch = RuntimeEpoch::new(7).unwrap();
             let session_id = SageAgentSessionId::parse("session-pi-wire").unwrap();
-            let adapter = PiRuntime::fixture(epoch, session_id.clone());
+            let mut adapter = PiRuntime::fixture(epoch, session_id.clone());
+            adapter.enable_bridge(
+                sage_workspace::Workspace::open(
+                    "project",
+                    "root-pi",
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
+                )
+                .unwrap(),
+            );
             let ceiling = capabilities();
             let mut pump = ActivationPump::new(
                 adapter,
@@ -86,12 +94,23 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
                     &mut Vec::new(),
                 )
                 .unwrap();
-                let reply: Value = serde_json::from_slice(&response).unwrap();
+                let replies: Vec<Value> = response
+                    .split(|byte| *byte == b'\n')
+                    .filter(|line| !line.is_empty())
+                    .map(|line| serde_json::from_slice(line).unwrap())
+                    .collect();
+                if kind == "piInitialize" {
+                    assert_eq!(replies.len(), 2);
+                    assert_eq!(replies[0]["statusKey"], "sage.pi.ready.v1");
+                } else {
+                    assert_eq!(replies.len(), 1);
+                }
+                let reply = replies.last().unwrap();
                 assert_eq!(reply["id"], value["id"]);
                 assert_eq!(reply["command"], command);
-                pump.push_stdout_chunk(&response, index as i64)
-                    .await
-                    .unwrap();
+                for line in response.split_inclusive(|byte| *byte == b'\n') {
+                    pump.push_stdout_chunk(line, index as i64).await.unwrap();
+                }
             }
             assert!(pump.completion_ready());
             assert_eq!(

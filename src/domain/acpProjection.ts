@@ -195,7 +195,7 @@ export type AcpItem =
         offeredOptionKinds?: Array<
           "allow_once" | "allow_always" | "reject_once" | "reject_always"
         > | null;
-        category?: ToolPresentation["kind"];
+        category?: ToolPresentation["kind"] | "extension";
         reason?: string | null;
         /** Questions for the user, rather than a request for approval. */
         userInput?: UserInputRequest | null;

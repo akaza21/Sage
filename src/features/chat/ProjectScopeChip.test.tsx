@@ -18,6 +18,7 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
 import { ProjectScopeChip } from "./ProjectScopeChip";
+import { AgentCenterKeeper } from "../../workbench/WorkbenchContinuity";
 
 const initial = useWorkbenchStore.getState();
 beforeEach(async () => {
@@ -119,7 +120,12 @@ it("keeps the entire unsent composer through New project creation and reparentin
     },
   });
   draftChatAccess(chat, { bindingId: "sage-simulator", mode: "fullAccess" });
-  render(<ProjectScopeChip projectName="Choose project" />);
+  render(
+    <>
+      <AgentCenterKeeper windowMode="agent" />
+      <ProjectScopeChip projectName="Choose project" />
+    </>,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
   fireEvent.click(await screen.findByRole("option", { name: "New project" }));
   fireEvent.change(
@@ -130,6 +136,7 @@ it("keeps the entire unsent composer through New project creation and reparentin
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(useWorkbenchStore.getState()).toMatchObject({
     activeTabId: chat,
+    agentCenter: "chat",
     composerText: "Keep this prompt",
     project: { name: "Local" },
   });

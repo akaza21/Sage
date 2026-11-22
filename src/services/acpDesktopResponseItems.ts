@@ -290,7 +290,7 @@ export function safeItem(value: unknown): AcpItem | null {
               offeredOptionKinds,
               category:
                 typeof payload.category === "string"
-                  ? (payload.category as ToolPresentation["kind"])
+                  ? (payload.category as ToolPresentation["kind"] | "extension")
                   : undefined,
               reason: safeNullableText(payload.reason ?? null, 2048) ?? null,
               ...(userInput ? { userInput } : {}),

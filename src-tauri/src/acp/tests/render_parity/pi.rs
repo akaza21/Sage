@@ -29,6 +29,14 @@ impl Turn {
         if let Some(root) = workspace {
             runtime
                 .enable_bridge(sage_workspace::Workspace::open("project", "root-1", root).unwrap());
+            runtime
+                .ingest(
+                    &frame(&json!({"type":"extension_ui_request","method":"setStatus",
+                "statusKey":"sage.pi.ready.v1","statusText":json!({"version":1,
+                "digest":crate::acp::bindings::pi::bridge::install::digest()}).to_string()})),
+                    &mapper,
+                )
+                .unwrap();
         }
         let mut turn = Self {
             runtime,
