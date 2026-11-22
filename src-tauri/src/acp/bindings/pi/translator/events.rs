@@ -24,9 +24,11 @@ impl PiTranslator {
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
         match kind {
             "thinking_level_changed" => return Ok(vec![AdapterOutput::ConfigurationChanged]),
-            "queue_update" | "entry_appended" => {
+            "queue_update" => {
+                self.steering_queue(value);
                 return Ok(vec![AdapterOutput::LateIgnored]);
             }
+            "entry_appended" => return Ok(vec![AdapterOutput::LateIgnored]),
             "session_info_changed" => {
                 return Ok(vec![
                     display_text(value.get("name"), SESSION_TITLE_BYTES)
@@ -79,8 +81,10 @@ impl PiTranslator {
                     self.live_turn_any_phase()?;
                     return Ok(vec![AdapterOutput::Absorbed]);
                 }
-                self.live_turn()?;
-                self.live_turn()?.reply_open = true;
+                let turn = self.live_turn()?;
+                // The run has produced output, so no prompt echo is still due.
+                turn.prompt_echo = false;
+                turn.reply_open = true;
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,
                 }])

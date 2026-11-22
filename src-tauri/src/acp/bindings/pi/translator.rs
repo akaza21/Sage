@@ -35,6 +35,7 @@ const SESSION_NAME_BYTES: usize = sage_acp_protocol::intent::session_event::SESS
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
     Configuration,
+    ConfigurationModels,
     State,
     Models,
     SetModel,
@@ -73,6 +74,7 @@ impl PendingKind {
     const fn command(self) -> &'static str {
         match self {
             Self::Configuration => "get_state",
+            Self::ConfigurationModels => "get_available_models",
             Self::State => "get_state",
             Self::Models => "get_available_models",
             Self::SetModel => "set_model",
@@ -100,8 +102,16 @@ impl PendingKind {
 struct ActiveTurn {
     /// The prompt's own user message is still to come.
     prompt_echo: bool,
-    /// Steers Sage sent and Pi has not yet echoed, by command id (at most 128).
-    user_echoes: BTreeMap<String, [u8; 32]>,
+    /// Steers Sage sent that Pi has not yet echoed, by command id (at most 128).
+    steers: BTreeSet<String>,
+    /// Digests of Pi's last steering queue (`queue_update`), as Pi expanded
+    /// it, and of entries it has since delivered: an echo matches either.
+    steer_queue: Vec<[u8; 32]>,
+    steer_echoes: Vec<[u8; 32]>,
+    /// Extension messages shown this turn; later ones are suppressed.
+    extension_messages: u8,
+    /// The `provider:model` Pi last answered with (at most 512 bytes).
+    reply_model: Option<String>,
     turn_key: String,
     prompt_command_id: String,
     lifecycle: TurnLifecycle,
@@ -253,6 +263,7 @@ impl PiTranslator {
     pub fn begin(&mut self, operation: Operation) -> Result<Vec<Outbound>, AdapterError> {
         match operation {
             Operation::RefreshConfiguration => self.one(PendingKind::Configuration, Map::new()),
+            Operation::RefreshModels => self.one(PendingKind::ConfigurationModels, Map::new()),
             Operation::Initialize => self.begin_initialize(),
             Operation::GetModels => self.one(PendingKind::Models, Map::new()),
             Operation::SetModel { provider, id } => {

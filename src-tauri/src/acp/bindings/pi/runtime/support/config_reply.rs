@@ -20,14 +20,12 @@ impl PiRuntime {
         {
             return None;
         }
-        let egress = self
-            .begin_one(
-                crate::acp::bindings::pi::Operation::RefreshConfiguration,
-                super::super::RequestKind::RefreshState,
-            )
-            .ok()?;
-        self.configuration_dirty = false;
-        Some(egress)
+        self.configuration_models_pending = false;
+        self.begin_one(
+            crate::acp::bindings::pi::Operation::RefreshConfiguration,
+            super::super::RequestKind::RefreshState,
+        )
+        .ok()
     }
     pub(super) fn state_reply(
         &mut self,

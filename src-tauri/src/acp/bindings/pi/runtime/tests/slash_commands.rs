@@ -394,6 +394,13 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         mcp.placement.control,
         Some(crate::acp::command_placement::NativeControl::McpPanel)
     );
+    // The WebView's Extensions view reads this provenance; Pi's missing
+    // `baseDir` is sent as null.
+    assert_eq!(
+        serde_json::to_value(mcp).unwrap()["sourceInfo"],
+        json!({"path":"builtin:mcp","source":"builtin","scope":"temporary",
+            "origin":"top-level","baseDir":null})
+    );
     assert_eq!(listed.commands[3].placement.control, None);
     let review = &listed.commands[3];
     assert_eq!(review.source_label.as_deref(), Some("review-tools"));

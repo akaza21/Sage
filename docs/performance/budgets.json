@@ -16,16 +16,6 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
-        "entry": "src/features/chat/ComposerExtensions.tsx",
-        "maxGzipBytes": 1750,
-        "reason": "The + menu Extensions and managed MCP views, built from the menu command load; load only when opened and keep no inventory cache."
-      },
-      {
-        "entry": "src/features/chat/acp/ExtensionMessage.tsx",
-        "maxGzipBytes": 440,
-        "reason": "A displayed Pi extension custom message with collapsed details; loads with the first one in a transcript."
-      },
-      {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
         "maxGzipBytes": 4200,
         "maxCssGzipBytes": 550,

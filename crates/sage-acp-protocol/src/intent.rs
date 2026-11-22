@@ -226,6 +226,8 @@ pub enum NormalizedPayload {
     Text {
         text: SafeText<262144>,
     },
+    /// A harness extension's displayed custom message: its type, text and
+    /// optional details, each bounded.
     ExtensionMessage {
         label: SafeText<128>,
         text: SafeText<16384>,
@@ -234,6 +236,11 @@ pub enum NormalizedPayload {
     /// A message the user steered into the running Turn. Sage journals it
     /// when the harness accepts the steer; bindings never emit it.
     UserPrompt {
+        text: SafeText<262144>,
+    },
+    /// A user message the harness added to the Turn itself, such as an
+    /// extension's injected message. Shown like a prompt; it is not a steer.
+    InjectedUserPrompt {
         text: SafeText<262144>,
     },
     ThoughtSummary {
@@ -393,9 +400,10 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. } | Self::UserPrompt { .. } | Self::ExtensionMessage { .. } => {
-                ItemKind::Text
-            }
+            Self::Text { .. }
+            | Self::UserPrompt { .. }
+            | Self::InjectedUserPrompt { .. }
+            | Self::ExtensionMessage { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,

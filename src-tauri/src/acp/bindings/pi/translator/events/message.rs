@@ -4,6 +4,10 @@ use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+/// Extension messages and injected user messages shown in one turn; the next
+/// one adds a single suppression notice and the rest are dropped.
+const EXTENSION_MESSAGES_PER_TURN: u8 = 64;
+
 pub(in crate::acp::bindings::pi::translator) fn user_digest(text: &str) -> [u8; 32] {
     Sha256::digest(text.as_bytes()).into()
 }
@@ -26,6 +30,14 @@ impl PiTranslator {
         }
         let message = value.get("message");
         let kept = |key| message.and_then(|message| message.get(key)).cloned();
+        // The model that answered; an extension may have switched it.
+        let reply_model = message
+            .and_then(|message| Some((message["provider"].as_str()?, message["model"].as_str()?)))
+            .map(|(provider, model)| format!("{provider}:{model}"))
+            .filter(|key| key.len() <= 512);
+        if reply_model.is_some() {
+            self.live_turn()?.reply_model = reply_model;
+        }
         self.live_turn()?.reply_open = false;
         self.live_turn()?.last_reply = Some(Box::new(serde_json::json!({
             "role": "assistant",
@@ -96,27 +108,34 @@ impl PiTranslator {
                 String::new()
             }
         };
+        let turn = self.live_turn_any_phase()?;
         if role == "user" {
-            let digest = user_digest(&text);
-            let turn = self.live_turn_any_phase()?;
             // Pi's first user message in a prompt turn is the prompt itself,
             // possibly expanded from a template, so it is matched by place.
             if std::mem::take(&mut turn.prompt_echo) {
                 return Ok(vec![AdapterOutput::Absorbed]);
             }
-            if let Some(id) = turn
-                .user_echoes
-                .iter()
-                .find_map(|(id, value)| (*value == digest).then(|| id.clone()))
+            // A Sage steer arrives as Pi expanded it, which its queue reported.
+            let digest = user_digest(&text);
+            if !turn.steers.is_empty()
+                && let Some(queue) = [&mut turn.steer_echoes, &mut turn.steer_queue]
+                    .into_iter()
+                    .find(|queue| queue.contains(&digest))
             {
-                turn.user_echoes.remove(&id);
+                let index = queue.iter().position(|value| *value == digest);
+                index.map(|index| queue.remove(index));
+                turn.steers.pop_first();
                 return Ok(vec![AdapterOutput::Absorbed]);
             }
         }
+        if turn.extension_messages >= EXTENSION_MESSAGES_PER_TURN {
+            return self.unknown_event("extension_messages_suppressed");
+        }
+        turn.extension_messages += 1;
         let clean =
             |text: &str, cap| clip_display(&redact_structured_text(&neutralized(text, true)), cap);
         let payload = if role == "user" {
-            NormalizedPayload::UserPrompt {
+            NormalizedPayload::InjectedUserPrompt {
                 text: SafeText::new("userText", clean(&text, 262144))
                     .map_err(|_| AdapterError::Malformed)?,
             }
@@ -143,6 +162,30 @@ impl PiTranslator {
             output.extend(self.unknown_event("message_content")?);
         }
         Ok(output)
+    }
+
+    /// Pi reports its whole steering queue, already expanded. An entry that
+    /// leaves the queue is delivered next, so its digest waits for the echo.
+    pub(super) fn steering_queue(&mut self, value: &Value) {
+        let Some(turn) = self.active.as_mut() else {
+            return;
+        };
+        let queue: Vec<[u8; 32]> = value["steering"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .take(128)
+            .map(user_digest)
+            .collect();
+        for digest in std::mem::replace(&mut turn.steer_queue, queue) {
+            if !turn.steer_queue.contains(&digest) {
+                if turn.steer_echoes.len() == 128 {
+                    turn.steer_echoes.remove(0);
+                }
+                turn.steer_echoes.push(digest);
+            }
+        }
     }
 
     pub(super) fn message_update(

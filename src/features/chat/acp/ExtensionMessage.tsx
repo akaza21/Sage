@@ -1,6 +1,23 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { AcpItem } from "../../../domain/acp";
 import { safeNullableText, safeText } from "../../../services/acpDesktopGuards";
+
+// Long or unbroken details wrap and scroll inside a bounded block.
+const detailsStyle = {
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+  maxHeight: "16rem",
+  overflow: "auto",
+} as const;
+
+/** JSON details are indented; clipped or other text is shown as it came. */
+function readable(details: string): string {
+  try {
+    return JSON.stringify(JSON.parse(details), null, 2);
+  } catch {
+    return details;
+  }
+}
 
 /**
  * A displayed extension custom message: its label, safe text, and details
@@ -13,6 +30,7 @@ export default function ExtensionMessage({
   item: Extract<AcpItem, { kind: "extensionMessage" }>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const { payload } = item;
   const label = safeText(payload.label, 128);
   const text = safeText(payload.text, 16_384);
@@ -35,11 +53,16 @@ export default function ExtensionMessage({
           <button
             type="button"
             aria-expanded={expanded}
+            aria-controls={detailsId}
             onClick={() => setExpanded(!expanded)}
           >
             Details
           </button>
-          {expanded ? <pre>{details}</pre> : null}
+          {expanded ? (
+            <pre id={detailsId} tabIndex={0} style={detailsStyle}>
+              {readable(details)}
+            </pre>
+          ) : null}
         </>
       ) : null}
     </article>

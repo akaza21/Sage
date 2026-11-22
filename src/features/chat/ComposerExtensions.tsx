@@ -1,5 +1,4 @@
 import { useId, useState, type RefObject } from "react";
-import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
@@ -28,9 +27,9 @@ export function ExtensionsPopover({
   onRunCommand: (command: AvailableAcpCommand) => void;
 }) {
   const id = useId();
-  const page = useStore(
-    acpProjectionStoreFor(boundChatId),
-    (state) => state.page,
+  // A snapshot taken on open: streaming turns do not re-render this view.
+  const [page] = useState(
+    () => acpProjectionStoreFor(boundChatId).getState().page,
   );
   return (
     <MenuPopover

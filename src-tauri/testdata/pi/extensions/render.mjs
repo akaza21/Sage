@@ -3,6 +3,11 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 export default function renderFixture(pi) {
   let inject = false;
   pi.on("before_agent_start", async (event, ctx) => {
+    // setModel alone emits no event; Sage reads it from the reply's model.
+    if (event.prompt === "model-only") {
+      await pi.setModel(ctx.modelRegistry.find("sage-render", "physical"));
+      return;
+    }
     if (event.prompt !== "render") return;
     inject = true;
     await prepare(ctx);

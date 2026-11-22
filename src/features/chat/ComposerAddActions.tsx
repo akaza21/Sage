@@ -73,3 +73,6 @@ export type ComposerAddActionsProps = {
 export function ComposerAddActions(props: ComposerAddActionsProps) {
   return <SectionPart part="ComposerSectionMenu" {...props} />;
 }
+
+// The + menu Extensions and managed MCP views load with this menu chunk.
+export { ExtensionsPopover } from "./ComposerExtensions";

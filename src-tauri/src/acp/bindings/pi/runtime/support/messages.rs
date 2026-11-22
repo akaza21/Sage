@@ -15,13 +15,19 @@ impl PiRuntime {
         &mut self,
         state: StateSnapshot,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
+        let model = state.model.as_ref().map(identity::model_key).transpose()?;
+        self.model_check_due = false;
+        if model == self.current_model && !self.configuration_dirty {
+            // Unchanged: the prompt's ordinary state read.
+            return self.state_reply(state);
+        }
         self.refresh_thinking_after_model = true;
-        self.current_model = state.model.as_ref().map(identity::model_key).transpose()?;
+        self.current_model = model;
         self.current_thinking = state.thinking_level;
         self.auto_compaction = state.auto_compaction;
-        // Optional like the read that asked for it.
+        // Optional like the read that asked for it; it stays due if skipped.
         let models = self
-            .begin_one(Operation::GetModels, super::super::RequestKind::Models)
+            .begin_one(Operation::RefreshModels, super::super::RequestKind::Models)
             .ok();
         self.configuration_models_pending = models.is_some();
         Ok((Some(AdapterEvent::IgnoredDuplicate), models))
@@ -39,8 +45,13 @@ impl PiRuntime {
                 .map_err(|_| AdapterRuntimeError::BatchCount)?;
         }
         self.available_models = models;
-        // A configuration read continues to the thinking levels.
-        let levels = if std::mem::take(&mut self.configuration_models_pending)
+        // A configuration read is done once its models arrive, and continues
+        // to the thinking levels.
+        let configuration = std::mem::take(&mut self.configuration_models_pending);
+        if configuration {
+            self.configuration_dirty = false;
+        }
+        let levels = if configuration
             && self.initialized
             && self.active_turn.is_some()
             && self.refresh_thinking_after_model
@@ -51,5 +62,17 @@ impl PiRuntime {
             None
         };
         Ok((Some(event), levels))
+    }
+
+    /// An extension may switch the model without any event; the model that
+    /// answered the Turn tells.
+    pub(super) fn note_reply_model(&mut self) {
+        if self
+            .translator
+            .reply_model()
+            .is_some_and(|model| Some(model) != self.current_model.as_deref())
+        {
+            self.model_check_due = true;
+        }
     }
 }

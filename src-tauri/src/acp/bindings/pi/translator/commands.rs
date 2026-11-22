@@ -51,7 +51,7 @@ impl PiTranslator {
         }
         self.pending.remove(command_id);
         if let Some(active) = self.active.as_mut() {
-            active.user_echoes.remove(command_id);
+            active.steers.remove(command_id);
         }
         self.closed_config_requests.remove(command_id);
         self.clear_pending_setting(kind);
@@ -68,6 +68,7 @@ impl PiTranslator {
                 }
             }
             PendingKind::Configuration
+            | PendingKind::ConfigurationModels
             | PendingKind::State
             | PendingKind::Models
             | PendingKind::SetModel
@@ -146,7 +147,11 @@ impl PiTranslator {
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
             prompt_echo,
-            user_echoes: BTreeMap::new(),
+            steers: Default::default(),
+            steer_queue: Vec::new(),
+            steer_echoes: Vec::new(),
+            extension_messages: 0,
+            reply_model: None,
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),
@@ -186,18 +191,15 @@ impl PiTranslator {
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
         let active = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
-        if active.user_echoes.len() >= 128 {
-            return Err(AdapterError::Limit("user echoes"));
+        if active.steers.len() >= 128 {
+            return Err(AdapterError::Limit("steers"));
         }
-        let digest = super::events::message::user_digest(
-            fields["message"].as_str().ok_or(AdapterError::Malformed)?,
-        );
         let outbound = self.issue(PendingKind::Steer, fields)?;
         self.active
             .as_mut()
             .ok_or(AdapterError::StaleIntent)?
-            .user_echoes
-            .insert(outbound.command_id.clone(), digest);
+            .steers
+            .insert(outbound.command_id.clone());
         Ok(vec![outbound])
     }
 

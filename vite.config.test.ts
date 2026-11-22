@@ -90,8 +90,6 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerSlashMenu.tsx",
   // `/status` and `/mcp` load their panel when first opened.
   "src/features/chat/ComposerCommandPanel.tsx",
-  // The Extensions and managed MCP views load when the + menu opens them.
-  "src/features/chat/ComposerExtensions.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
@@ -205,8 +203,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
-  // An extension's custom message loads with the first one displayed.
-  "src/features/chat/acp/ExtensionMessage.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
   // The question card loads only when a harness asks the user questions.
@@ -316,6 +312,9 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  // An extension's custom message; grouped, it lives in the markdown chunk
+  // a transcript has already loaded.
+  "src/features/chat/acp/ExtensionMessage.tsx",
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",

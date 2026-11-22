@@ -24,7 +24,19 @@ fn receive(
     panic!("Pi fixture exceeded its frame bound");
 }
 
-pub(super) fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
+#[test]
+#[ignore = "requires the installed Pi package and Node.js"]
+fn installed_pi_renders_extension_messages_and_follows_extension_models() {
+    let _serial = sage_test_support::test_wait::serial_process_guard();
+    let crate::harness_discovery::PiLaunchDiscovery::Present(launch) =
+        crate::harness_discovery::discover_pi_launch()
+    else {
+        panic!("Pi must be installed")
+    };
+    check(&launch);
+}
+
+fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
     let root = std::env::temp_dir().join(format!("sage-pi-render-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(root.join("profile/extensions")).unwrap();
     let mut j = Journey {
@@ -101,14 +113,23 @@ pub(super) fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
     assert_eq!(info.scope.as_deref(), Some("user"));
     assert_eq!(info.origin.as_deref(), Some("top-level"));
     assert!(info.path.as_ref().unwrap().ends_with("render.js"));
-    for (name, client) in [("render", "render"), ("unknown-role", "unknown")] {
+    // A configuration read waits for the next prompt: the state, then the
+    // model registry and thinking levels when the model may have changed.
+    let settled = |runtime: &PiRuntime| {
+        !runtime.configuration_dirty
+            && !runtime.model_check_due
+            && !runtime.translator.configuration_refresh_pending()
+            && runtime.thinking_request_command.is_none()
+    };
+    let prompts = ["render", "unknown-role", "model-only", "unknown-role"];
+    for (index, name) in prompts.into_iter().enumerate() {
         let mut prompt = Prompt::new("prompt", name).unwrap();
         prompt.command_revision = None;
         let send = j
             .runtime
             .command(AdapterCommand::Prompt {
                 prompt,
-                client_message_id: RequiredText::new("client", client).unwrap(),
+                client_message_id: RequiredText::new("client", format!("render-{index}")).unwrap(),
                 access_mode: SessionAccessMode::ReadOnly,
             })
             .unwrap();
@@ -116,7 +137,7 @@ pub(super) fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
         let events = receive(&mut j.runtime, &mut pi, |runtime, value| {
             runtime.active_turn.is_none() && value["type"] == "agent_settled"
         });
-        if client == "render" {
+        if name == "render" {
             assert_eq!(
                 events
                     .iter()
@@ -131,29 +152,33 @@ pub(super) fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
                 1
             );
             assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::ExtensionMessage { label, text, details: Some(details) }, .. } if label.as_str() == "fixture-report" && text.as_str() == "<script>safe text</script>" && details.as_str().len() <= 16384)));
-            assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::UserPrompt { text }, .. } if text.as_str() == "Injected request")));
+            assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::InjectedUserPrompt { text }, .. } if text.as_str() == "Injected request")));
+        }
+        if name != "unknown-role" {
+            continue;
+        }
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, AdapterEvent::Unsupported(_))),
+            "unknown augmented roles must be disclosed"
+        );
+        if !settled(&j.runtime) {
+            receive(&mut j.runtime, &mut pi, |runtime, _| settled(runtime));
+        }
+        if index == 1 {
+            // The render turn's setModel and setThinkingLevel.
+            assert_eq!(
+                j.runtime.current_model.as_deref(),
+                Some("sage-router:virtual")
+            );
+            assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
         } else {
-            assert!(
-                events
-                    .iter()
-                    .any(|event| matches!(event, AdapterEvent::Unsupported(_))),
-                "unknown augmented roles must be disclosed"
+            // setModel alone: no event, read from the model that answered.
+            assert_eq!(
+                j.runtime.current_model.as_deref(),
+                Some("sage-render:physical")
             );
         }
     }
-    // The render turn's setModel and setThinkingLevel are read with the next
-    // prompt: state, then the model registry, then the thinking levels.
-    let settled = |runtime: &PiRuntime| {
-        !runtime.configuration_dirty
-            && !runtime.translator.configuration_refresh_pending()
-            && runtime.thinking_request_command.is_none()
-    };
-    if !settled(&j.runtime) {
-        receive(&mut j.runtime, &mut pi, |runtime, _| settled(runtime));
-    }
-    assert_eq!(
-        j.runtime.current_model.as_deref(),
-        Some("sage-router:virtual")
-    );
-    assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
 }

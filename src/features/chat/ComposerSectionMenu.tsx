@@ -25,15 +25,15 @@ import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { lazyParts } from "./lazyParts";
 import type * as PanelChunk from "./ComposerCommandPanel";
+import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
-import type * as ExtensionsChunk from "./ComposerExtensions";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
-const ExtensionsPart = lazyParts<typeof ExtensionsChunk>(
-  () => import("./ComposerExtensions"),
-);
+const ExtensionsPart = lazyParts<
+  Pick<typeof AddActionsChunk, "ExtensionsPopover">
+>(() => import("./ComposerAddActions"));
 
 function ComposerOptionsBrowser({
   load,

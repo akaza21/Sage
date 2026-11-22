@@ -24,7 +24,8 @@ it("shows get_commands provenance without attributing unrelated resources and se
         inputHint: null,
       })),
       // Pi 1.5.0's `builtin:mcp` /mcp entry as the host lists it: shipped
-      // with Pi, placed on the MCP row, still run as Pi's command.
+      // with Pi, placed on the MCP row, still run as Pi's command. Its
+      // omitted `baseDir` must not reject the list.
       {
         name: "mcp",
         description: "Manage MCP servers",
@@ -36,7 +37,6 @@ it("shows get_commands provenance without attributing unrelated resources and se
           source: "builtin",
           scope: "temporary",
           origin: "top-level",
-          baseDir: null,
         },
         placement: { section: "connections", control: "mcpPanel" },
       },
