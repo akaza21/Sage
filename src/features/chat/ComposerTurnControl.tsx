@@ -22,8 +22,8 @@ export function ComposerTurnControl({
   disabledReasonId?: string;
 }) {
   const reason = sendDisabled ? (disabledReason ?? undefined) : undefined;
-  const microphone = !activeTurn && !hasContent;
-  const Icon = microphone ? Mic : activeTurn ? Square : ArrowUp;
+  const microphone = dictation.listening || !hasContent;
+  const Icon = activeTurn ? Square : microphone ? Mic : ArrowUp;
   const action: ButtonHTMLAttributes<HTMLButtonElement> = activeTurn
     ? {
         className: "send-button send-button--cancel",
@@ -35,11 +35,11 @@ export function ComposerTurnControl({
     : microphone
       ? {
           className: "composer__mic",
-          "aria-label": !dictation.supported
-            ? "Voice input unavailable"
-            : dictation.listening
-              ? "Stop dictation"
-              : "Start dictation",
+          "aria-label": dictation.listening
+            ? "Stop dictation"
+            : dictation.supported
+              ? "Start dictation"
+              : "Voice input unavailable",
           title: dictation.supported
             ? "May use an online service"
             : "Voice input is unavailable in this WebView",

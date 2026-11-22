@@ -6042,15 +6042,17 @@ describe("ChatSurface composer context", () => {
       }),
     );
     expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
+    expect(
+      screen.getByRole("button", { name: "Stop dictation" }),
+    ).toBeVisible();
+    expect(mic).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+    expect(FakeRecognition.current.stop).toHaveBeenCalledOnce();
+    expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
     expect(screen.getByRole("button", { name: "Send message" })).toBeVisible();
     fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "" },
     });
-    expect(
-      screen.getByRole("button", { name: "Stop dictation" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
-    expect(FakeRecognition.current.stop).toHaveBeenCalledOnce();
     expect(
       screen.getByRole("button", { name: "Start dictation" }),
     ).toBeVisible();
@@ -6112,7 +6114,7 @@ describe("ChatSurface composer context", () => {
     });
     const sending = FakeRecognition.current;
     fireEvent.submit(
-      screen.getByRole("button", { name: "Send message" }).closest("form")!,
+      screen.getByRole("button", { name: "Stop dictation" }).closest("form")!,
     );
     expect(sending.abort).toHaveBeenCalledOnce();
     const sentDraft = useWorkbenchStore.getState().composerText;

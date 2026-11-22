@@ -11,13 +11,44 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { useComposerDictation } from "./composerChrome";
 import type { BrowserRecognition } from "./composerDictationRuntime";
+import type * as NativeInvoke from "../../ports/nativeInvoke";
+
+const native = vi.hoisted(() => ({
+  enabled: false,
+  id: "",
+  emit: null as null | ((payload: unknown) => void),
+}));
+vi.mock("../../ports/nativeInvoke", async (importOriginal) => {
+  const actual = await importOriginal<typeof NativeInvoke>();
+  return {
+    ...actual,
+    isTauriRuntime: () => native.enabled,
+    invokeNative: async (_command: string, args: { id: string }) => {
+      native.id = args.id;
+    },
+  };
+});
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (
+    _name: string,
+    callback: (event: { payload: unknown }) => void,
+  ) => {
+    native.emit = (payload) => callback({ payload });
+    return () => {
+      native.emit = null;
+    };
+  },
+}));
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  native.enabled = false;
+  native.emit = null;
 });
 
-it("changes one control from mic to send to stop and disables dictation during the turn", async () => {
+it("keeps dictation on one control until stopped and disables it during the turn", async () => {
   class Speech implements BrowserRecognition {
     static latest: Speech;
     continuous = false;
@@ -82,6 +113,10 @@ it("changes one control from mic to send to stop and disables dictation during t
   act(() => Speech.latest.emit("Review the composer"));
   const input = screen.getByRole("textbox", { name: "Prompt" });
   expect(input).toHaveValue("Review the composer");
+  expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
+  expect(control).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(control);
+  expect(input).toHaveValue("Review the composer");
   expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
   fireEvent.click(control);
   expect(screen.getByRole("button", { name: "Cancel turn" })).toBe(control);
@@ -103,4 +138,63 @@ it("changes one control from mic to send to stop and disables dictation during t
   fireEvent.change(input, { target: { value: "" } });
   expect(screen.getByRole("button", { name: "Start dictation" })).toBe(control);
   expect(control).toBeEnabled();
+});
+
+it("keeps a native partial speech draft when stopped and sends it only on Send", async () => {
+  native.enabled = true;
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+  function Composer() {
+    const input = useRef<HTMLTextAreaElement>(null);
+    const [text, setText] = useState("");
+    const [sent, setSent] = useState("");
+    const dictation = useComposerDictation(text, setText, "chat", false, input);
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSent(text);
+          setText("");
+        }}
+      >
+        <textarea ref={input} aria-label="Prompt" value={text} readOnly />
+        <output aria-label="Sent prompt">{sent}</output>
+        <ComposerTurnControl
+          dictation={dictation}
+          activeTurn={false}
+          hasContent={Boolean(text.trim())}
+          onCancelTurn={null}
+          cancelDisabled={false}
+          sendDisabled={!text.trim()}
+        />
+      </form>
+    );
+  }
+  render(<Composer />);
+  const control = screen.getByRole("button", { name: "Start dictation" });
+  fireEvent.click(control);
+  await screen.findByRole("button", { name: "Stop dictation" });
+  act(() =>
+    native.emit?.({
+      id: native.id,
+      kind: "partial",
+      text: "Review the composer",
+    }),
+  );
+  const input = screen.getByRole("textbox", { name: "Prompt" });
+  expect(input).toHaveValue("Review the composer");
+  expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
+  expect(control).toHaveClass("composer__mic");
+  expect(control).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(control);
+  expect(input).toHaveValue("Review the composer");
+  expect(
+    screen.getByRole("status", { name: "Sent prompt" }),
+  ).toBeEmptyDOMElement();
+  expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
+  expect(control).not.toHaveAttribute("aria-pressed");
+  fireEvent.click(control);
+  expect(screen.getByRole("status", { name: "Sent prompt" })).toHaveTextContent(
+    "Review the composer",
+  );
+  expect(input).toHaveValue("");
 });
