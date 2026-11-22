@@ -60,7 +60,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Sage can't start this harness.",
+      "Codex can't start yet.",
     );
   });
 
@@ -168,7 +168,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "The installed Node.js is older than this harness requires.",
+      "Claude Code needs a newer Node.js version.",
     );
   });
 
@@ -195,7 +195,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Sage can't start this harness.",
+      "Claude Code can't start yet.",
     );
     expect(screen.queryByText("someFutureReason")).toBeNull();
   });
@@ -224,7 +224,7 @@ describe("HarnessDiscoveryNotice", () => {
 
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Sage hasn't finished checking this harness",
+      "Codex is still being checked.",
     );
   });
 });

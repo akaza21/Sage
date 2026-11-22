@@ -24,11 +24,11 @@ export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
   const { workbenchError, chatError, imageStatus, children } = props;
-  const problems = resolveComposerProblems(
-    [imageStatus, workbenchError, chatError].filter(
-      (problem): problem is ComposerProblem => !!problem,
-    ),
-  );
+  const problems = resolveComposerProblems([
+    imageStatus,
+    workbenchError,
+    chatError,
+  ]);
   return problems.length || children ? (
     <div
       className="composer__notices"
@@ -88,21 +88,27 @@ export function composerProblem(
 }
 
 /** The nearest owner wins; equal copy on different resources stays separate. */
-function resolveComposerProblems(problems: readonly ComposerProblem[]) {
+function resolveComposerProblems(
+  problems: readonly (ComposerProblem | null)[],
+) {
   const resolved = new Map<string, ComposerProblem>();
   for (const problem of problems) {
+    if (!problem) continue;
     const id = problem.identity;
     const previous = resolved.get(id);
-    if (!previous) resolved.set(id, problem);
-    else
-      resolved.set(id, {
-        ...(problem.subject === "attachment" ? problem : previous),
-        // Blocking wins; incoming information cannot downgrade a problem.
-        severity:
-          previous.severity === "blocking" || problem.severity === "info"
-            ? previous.severity
-            : problem.severity,
-      });
+    resolved.set(
+      id,
+      previous
+        ? {
+            ...(problem.subject === "attachment" ? problem : previous),
+            // Blocking wins; incoming information cannot downgrade a problem.
+            severity:
+              previous.severity === "blocking" || problem.severity === "info"
+                ? previous.severity
+                : problem.severity,
+          }
+        : problem,
+    );
   }
   return [...resolved.values()];
 }

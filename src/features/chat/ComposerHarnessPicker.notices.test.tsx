@@ -100,16 +100,14 @@ it.each([
       harnessDiscoveryPhase: phase,
     });
     const { container } = render(<Picker />);
-    expect(screen.queryByText(/ACP adapter isn't installed/)).toBeNull();
+    expect(screen.queryByText(/Fixture isn't set up for Sage yet/)).toBeNull();
     expect(
       container.querySelector(".composer__notice, .composer__error"),
     ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     const notice = await screen.findByRole("alert");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(notice).toHaveTextContent(
-      "This harness's ACP adapter isn't installed.",
-    );
+    expect(notice).toHaveTextContent("Fixture isn't set up for Sage yet.");
     expect(
       screen.queryByText(/stores credentials|Checking the Fixture account/),
     ).toBeNull();
@@ -155,13 +153,19 @@ it("owns one missing-binding explanation with one recovery action", async () => 
         bindingId: null,
         unavailableReason: "adapterAbsent",
       },
+      { ...harness, id: "available", name: "Available harness" },
     ],
     harnessDiscoveryPhase: "ready",
   });
   render(<Picker />);
   fireEvent.click(screen.getByRole("button", { name: "Harness" }));
   const notice = await screen.findByRole("alert");
-  expect(notice).toHaveTextContent("ACP adapter isn't installed");
+  expect(notice).toHaveTextContent("Fixture isn't set up for Sage yet");
   expect(within(notice).getAllByRole("button")).toHaveLength(1);
-  expect(screen.getAllByText(/ACP adapter isn't installed/)).toHaveLength(1);
+  expect(
+    within(notice).getByRole("button", { name: "Open Settings" }),
+  ).toBeVisible();
+  expect(screen.getAllByText(/Fixture isn't set up for Sage yet/)).toHaveLength(
+    1,
+  );
 });

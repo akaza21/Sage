@@ -49,11 +49,26 @@ it("distinguishes a known model context window from an unknown one", () => {
   expect(unknown.contextWindow).toBeUndefined();
 });
 
-it("uses the admission refusal text for unavailable harness controls", () => {
-  expect(harnessUnavailableReason("nodeEngineMismatch")).toBe(
-    "The installed Node.js is older than this harness requires.",
-  );
-  expect(harnessUnavailableReason("unknown" as never)).toBe(
-    "Sage can't start this harness.",
-  );
+it.each([
+  ["admissionIncomplete", "Codex is still being checked."],
+  ["adapterAbsent", "Codex isn't set up for Sage yet."],
+  ["adapterVersionUnreadable", "Codex has a version Sage can't read."],
+  ["candidateInvalid", "Codex didn't pass Sage's checks."],
+  [
+    "capabilityProjectionUnavailable",
+    "Codex has features Sage couldn't check.",
+  ],
+  ["developmentOnly", "Codex needs a development build."],
+  ["driftDetected", "Codex changed since Sage checked it."],
+  ["nodeAbsent", "Codex needs Node.js installed."],
+  ["nodeEngineMismatch", "Codex needs a newer Node.js version."],
+  ["nodeVersionUnreadable", "Codex needs a Node.js version Sage can read."],
+  ["observationOnly", "Codex can't be verified on this computer."],
+  ["platformUnsupported", "Codex isn't supported on this computer."],
+  ["versionTooOld", "Codex needs an update for Sage."],
+  ["unknown", "Codex can't start yet."],
+  ["constructor", "Codex can't start yet."],
+  ["__proto__", "Codex can't start yet."],
+] as const)("explains %s using the harness display name", (kind, message) => {
+  expect(harnessUnavailableReason(kind as never, "Codex")).toBe(message);
 });

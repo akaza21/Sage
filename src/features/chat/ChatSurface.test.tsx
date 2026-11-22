@@ -512,11 +512,11 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Sage can't start this harness.",
+      "Unavailable harness can't start yet.",
     );
     expect(
       screen.getByRole("button", { name: "Send message" }),
-    ).toHaveAccessibleDescription("The selected harness is unavailable.");
+    ).toHaveAccessibleDescription("Unavailable harness is unavailable.");
     expect(
       screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
@@ -533,9 +533,9 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.getByLabelText("Harness status: Unavailable"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Sage can't start this harness.")).toHaveLength(
-      1,
-    );
+    expect(
+      screen.getAllByText("Unavailable harness can't start yet."),
+    ).toHaveLength(1);
     expect(
       screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
@@ -543,9 +543,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
       "unavailable-binding:absent-binding",
     );
-    expect(
-      screen.getByRole("button", { name: "Continue in a new chat" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeEnabled();
   });
 
   it.each([
@@ -3218,7 +3216,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — unavailable. Sage can't start this harness.",
+      "Codex — unavailable. Codex can't start yet.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
@@ -3303,11 +3301,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.queryByRole("button", { name: "Permission mode" }),
     ).toBeNull();
-    expect(
-      screen.queryByText(
-        "No reviewed local binding is available for this harness.",
-      ),
-    ).toBeNull();
+    expect(screen.queryByText("Codex isn't set up for Sage yet.")).toBeNull();
   });
 
   it("shows an available ACP binding as ready before a session starts", async () => {
@@ -4244,11 +4238,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Codex launch failed safely; retry the session.",
     );
-    expect(
-      screen.queryByText(
-        "No reviewed local binding is available for this harness.",
-      ),
-    ).toBeNull();
+    expect(screen.queryByText("Codex isn't set up for Sage yet.")).toBeNull();
   });
 
   it("keeps model selection and prompting disabled while Codex discovery checks", async () => {
@@ -4292,7 +4282,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — unavailable. Sage can't start this harness.",
+        name: "Unavailable harness — unavailable. Unavailable harness can't start yet.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));

@@ -3,7 +3,6 @@ import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import {
   harnessUnavailableReason,
-  preferredAvailableHarness,
   type HarnessDefinition,
 } from "../../domain/harness";
 import { Notice, type NoticeProps } from "../../ui/Notice";
@@ -33,7 +32,6 @@ export function HarnessDiscoveryNotice({
     retryHarnessDiscovery: retry,
     confirmHarnessSignIn: confirm,
     cancelHarnessSignIn: cancel,
-    openNewChatDraft,
   } = useWorkbenchStore.getState();
   const [dismissedBuild, dismissBuild] = useState("");
   const [dismissedRelease, dismissRelease] = useState("");
@@ -62,7 +60,10 @@ export function HarnessDiscoveryNotice({
     const pending = (harness ? [harness] : harnesses).some(
       (h) => h.installState === "detecting" || h.installState === "installing",
     );
-    const message = harnessUnavailableReason(harness?.unavailableReason);
+    const message = harnessUnavailableReason(
+      harness?.unavailableReason,
+      harness?.name ?? "This harness",
+    );
     const binding: NoticeProps = {
       identity: id,
       severity: pending ? "info" : "blocking",
@@ -70,15 +71,10 @@ export function HarnessDiscoveryNotice({
       message: pending ? "Checking…" : harness ? message : "Choose a harness.",
       action: pending
         ? undefined
-        : preferredAvailableHarness(harnesses)
-          ? {
-              label: "Continue in a new chat",
-              onClick: openNewChatDraft,
-            }
-          : {
-              label: "Open Settings",
-              onClick: () => useAgentSettingsState.getState().open("Harnesses"),
-            },
+        : {
+            label: "Open Settings",
+            onClick: () => useAgentSettingsState.getState().open("Harnesses"),
+          },
       details: update?.command,
     };
     return present({ binding });

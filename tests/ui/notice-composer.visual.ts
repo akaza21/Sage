@@ -130,9 +130,7 @@ test("a cold missing binding has one explanation and keyboard recovery", async (
       exact: true,
     });
     await expect(send).toBeDisabled();
-    await expect(send).toHaveAccessibleDescription(
-      "The selected harness is unavailable.",
-    );
+    await expect(send).toHaveAccessibleDescription("Codex is unavailable.");
     const trigger = page.getByRole("button", { name: "Harness", exact: true });
     await trigger.focus();
     await page.keyboard.press("Enter");
@@ -140,10 +138,10 @@ test("a cold missing binding has one explanation and keyboard recovery", async (
     await expect(dialog).toBeFocused();
     release();
     await expect(dialog.getByRole("alert")).toHaveText(
-      /ACP adapter isn't installed/,
+      /Codex isn't set up for Sage yet/,
     );
     await expect(
-      page.getByText("This harness's ACP adapter isn't installed.", {
+      page.getByText("Codex isn't set up for Sage yet.", {
         exact: true,
       }),
     ).toHaveCount(1);

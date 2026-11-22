@@ -92,7 +92,6 @@ export function useChatHarnessSelection(chatId?: string): {
   page: AcpChatPage | null;
   selectedHarnessId: string | null;
   selectedModelId: string | null;
-  harnessDefinition: HarnessDefinition | null;
   discoveryPhase: HarnessDiscoveryPhase;
   chooseHarness: (harnessId: string) => Promise<void>;
   chooseModel: (modelId: string) => void;
@@ -250,7 +249,6 @@ export function useChatHarnessSelection(chatId?: string): {
     page,
     selectedHarnessId,
     selectedModelId,
-    harnessDefinition,
     discoveryPhase,
     chooseHarness,
     chooseModel,

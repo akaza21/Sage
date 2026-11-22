@@ -22,11 +22,13 @@ it("separates compatibility warning from update information", () => {
 });
 const currentNotice = () =>
   screen
-    .getByText(/Fixture agent [0-9]|This version is too old|Sage can't start/)
+    .getByText(
+      /Fixture agent [0-9]|Fixture agent needs an update|Fixture agent can't start/,
+    )
     .closest(".notice")!;
 const absentNotice = () =>
   screen.queryByText(
-    /Fixture agent [0-9]|This version is too old|Sage can't start/,
+    /Fixture agent [0-9]|Fixture agent needs an update|Fixture agent can't start/,
   );
 
 const harness: HarnessDefinition = {
@@ -63,7 +65,7 @@ it("keeps an unavailable harness explanation visible after dismissing a build", 
       harness={{ ...harness, installState: "unavailable" }}
     />,
   );
-  expect(currentNotice()).toHaveTextContent("Sage can't start this harness");
+  expect(currentNotice()).toHaveTextContent("Fixture agent can't start yet.");
   expect(
     screen.queryByRole("button", { name: "Dismiss build notice" }),
   ).toBeNull();
@@ -119,7 +121,7 @@ it("tells the user to update a release older than Sage supports", () => {
     />,
   );
   expect(currentNotice()).toHaveTextContent(
-    "This version is too old for Sage.",
+    "Fixture agent needs an update for Sage.",
   );
 });
 
@@ -168,7 +170,7 @@ it("tells a too-old install the exact update command when one is known", () => {
     />,
   );
   expect(currentNotice()).toHaveTextContent(
-    "This version is too old for Sage.",
+    "Fixture agent needs an update for Sage.",
   );
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
   expect(screen.getByText(update.command)).toBeVisible();

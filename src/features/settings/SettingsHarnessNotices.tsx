@@ -26,7 +26,10 @@ export function SettingsHarnessNotices({
             {binding.message} {howToUpdate}
           </>
         ) : (
-          harnessUnavailableReason(harness?.unavailableReason)
+          harnessUnavailableReason(
+            harness?.unavailableReason,
+            harness?.name ?? "This harness",
+          )
         )}
       </div>
     );
