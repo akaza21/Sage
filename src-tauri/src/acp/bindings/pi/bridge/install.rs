@@ -34,18 +34,21 @@ static COPY_WRITE: Mutex<()> = Mutex::new(());
 
 /// A binary run without its bundle resources (a lone `sage.exe`) still carries
 /// the bridge bytes; Pi then loads an exact copy kept under the Sage profile.
-/// Called once this process holds the profile lock: it sweeps staging
-/// leftovers and writes the copy when there is no bundled resource, so later
-/// checks only verify it.
+/// Called once this process holds the profile lock. A bundled resource costs
+/// one metadata check here (launch verifies its bytes); only without one are
+/// staging leftovers swept and the copy written, so later checks only verify.
 pub(crate) fn use_profile_copy(dir: PathBuf) {
     start_profile_copy(resource_root(), dir);
 }
 
 pub(crate) fn start_profile_copy(resources: Option<PathBuf>, dir: PathBuf) {
     let dir = PROFILE_COPY_DIR.get_or_init(|| dir);
+    if resources.is_some_and(|root| std::fs::symlink_metadata(root.join(RESOURCE)).is_ok()) {
+        return;
+    }
     sweep_staged(dir);
-    if let Err(error) = locate(resources, Some(dir)) {
-        tracing::warn!(?error, "the Pi bridge is not available at startup");
+    if let Err(error) = write_profile_copy(dir) {
+        tracing::warn!(?error, "the Pi bridge profile copy was not written");
     }
 }
 
@@ -146,6 +149,8 @@ fn resource_root() -> Option<PathBuf> {
 /// Keeps one copy per profile. Sage holds the profile lock and this process
 /// serialises its writers, so one fixed staging file is renamed over the copy
 /// once fully written. A writer that waited re-checks and finds it correct.
+/// The staging name is cleared first and then created new, so a file or link
+/// planted there between the two steps is refused rather than written through.
 fn write_profile_copy(dir: &Path) -> Result<PathBuf, Unavailable> {
     let _writing = COPY_WRITE
         .lock()
@@ -156,7 +161,8 @@ fn write_profile_copy(dir: &Path) -> Result<PathBuf, Unavailable> {
         return Ok(path);
     }
     let staged = dir.join(STAGED_COPY);
-    let written = std::fs::File::create(&staged)
+    let _ = std::fs::remove_file(&staged);
+    let written = std::fs::File::create_new(&staged)
         .and_then(|mut file| file.write_all(SOURCE).and_then(|()| file.sync_all()))
         .and_then(|()| std::fs::rename(&staged, &path));
     if written.is_err() {

@@ -249,7 +249,7 @@ for (const width of [1888, 720, 480]) {
         ).toHaveText(String(index + 1));
       }
     });
-    test("a blocking error is the one visible explanation; the reason stays described", async ({
+    test("a launch failure is the one visible explanation; the reason stays described", async ({
       page,
     }) => {
       await render(page, "Pi", "refused");
@@ -257,13 +257,26 @@ for (const width of [1888, 720, 480]) {
       await expect(
         composer.getByText("Native launch failed safely", { exact: false }),
       ).toBeVisible();
-      const reason = composer.getByText("This session can't accept prompts.", {
-        exact: true,
-      });
+      const reason = composer.getByText(
+        "The selected harness cannot accept prompts in this session.",
+        { exact: true },
+      );
       await expect(reason).toHaveClass("sr-only");
       await expect(
         composer.getByRole("combobox", { name: "Message agent" }),
-      ).toHaveAccessibleDescription(/This session can't accept prompts\./);
+      ).toHaveAccessibleDescription(/cannot accept prompts in this session\./);
+    });
+    test("an unrelated error never hides a local reason", async ({ page }) => {
+      await render(page, "Pi", "refused-locally");
+      const composer = page.locator("form.composer");
+      await expect(
+        composer.getByText("Steer acknowledgement timed out", {
+          exact: false,
+        }),
+      ).toBeVisible();
+      await expect(
+        composer.getByText("Queue is full (5 messages).", { exact: true }),
+      ).toBeVisible();
     });
     test("a harness toggle row lines its label up with the other rows", async ({
       page,

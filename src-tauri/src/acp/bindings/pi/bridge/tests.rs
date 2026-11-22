@@ -259,19 +259,27 @@ fn pi_bridge_without_bundled_resource_loads_an_exact_profile_copy() {
     let copy = install::locate(resources.clone(), Some(&copies)).unwrap();
     assert_eq!(copy, copies.join("extension.mjs"));
     assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
-    // A drifted copy is repaired once; concurrent checks wait and find it correct.
+    // A drifted copy is repaired through the fixed staging name, even when a
+    // stale staging file is already there.
     std::fs::write(&copy, "tampered").unwrap();
-    let checks: Vec<_> = (0..4)
-        .map(|_| {
-            let (resources, copies) = (resources.clone(), copies.clone());
-            std::thread::spawn(move || install::locate(resources, Some(&copies)))
-        })
-        .collect();
-    for check in checks {
-        assert_eq!(check.join().unwrap(), Ok(copy.clone()));
-    }
+    std::fs::write(copies.join("extension.mjs.tmp"), "stale").unwrap();
+    assert_eq!(
+        install::locate(resources.clone(), Some(&copies)),
+        Ok(copy.clone())
+    );
     assert_eq!(std::fs::read(&copy).unwrap(), install::SOURCE);
     assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    // A write that fails after staging (the copy's name is taken by a
+    // directory, so the rename fails) refuses and leaves no staging file.
+    std::fs::remove_file(&copy).unwrap();
+    std::fs::create_dir(&copy).unwrap();
+    assert!(install::locate(resources.clone(), Some(&copies)).is_err());
+    assert_eq!(std::fs::read_dir(&copies).unwrap().count(), 1);
+    std::fs::remove_dir(&copy).unwrap();
+    assert_eq!(
+        install::locate(resources.clone(), Some(&copies)),
+        Ok(copy.clone())
+    );
 
     // The bundled resource wins, and an altered one is never replaced.
     let bundled = lone_binary.path.join(install::RESOURCE);

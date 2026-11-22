@@ -29,10 +29,11 @@ pub(crate) enum CodexSessionError {
 }
 
 impl CodexSessionError {
-    /// A runtime that could not be constructed never launched. Its own
-    /// refusals keep their meaning; any other failure is a launch that could
-    /// not be prepared, never a stale or foreign session identity.
-    pub(crate) fn from_construction(
+    /// A runtime that could not be constructed, or whose launch could not be
+    /// specified, never launched. Sign-in, a pending undo and the approval
+    /// bridge map to their own errors; any other failure is a launch that
+    /// could not be prepared, never a stale or foreign session identity.
+    pub(crate) fn from_launch_preparation(
         error: crate::acp::bindings::adapter::AdapterRuntimeError,
     ) -> Self {
         use crate::acp::bindings::adapter::AdapterRuntimeError;

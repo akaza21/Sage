@@ -8,6 +8,7 @@ import type { AcpSessionConfig } from "../../../src/domain/acpSessionConfig";
 import { ChatComposerRegion } from "../../../src/features/chat/ChatComposerRegion";
 import { ChatTranscript } from "../../../src/features/chat/ChatTranscript";
 import { composerProblem } from "../../../src/features/chat/ComposerStatusNotices";
+import { SESSION_PROMPT_REFUSAL } from "../../../src/features/chat/composerDisabledReason";
 import { textItem } from "../../../src/features/chat/acp/acpProjection.fixture";
 import { agentWorkbenchLayout } from "../../../src/workbench/agentWorkbenchLayout";
 // Same stylesheets, in the same order, as src/main.tsx so the fixture
@@ -42,7 +43,8 @@ export type ParityState =
   | "model-collisions"
   | "access"
   | "menu-keyboard"
-  | "refused";
+  | "refused"
+  | "refused-locally";
 const noop = async () => {};
 const project = {
   id: "project-a",
@@ -51,6 +53,8 @@ const project = {
 };
 const refusedLaunch =
   "Native launch failed safely while preparing the harness; retry the session.";
+const steerTimeout =
+  "Steer acknowledgement timed out. The message may have been delivered.";
 const harnessNames = ["Codex", "Claude Code", "Pi", "OpenCode", "Oh My Pi"];
 const root = createRoot(document.getElementById("root")!);
 let config: AcpSessionConfig;
@@ -138,7 +142,9 @@ export function Host({ state }: { state: ParityState }) {
                 chatError={
                   state === "refused"
                     ? composerProblem("chat", "chat-a", refusedLaunch)
-                    : null
+                    : state === "refused-locally"
+                      ? composerProblem("chat", "chat-a", steerTimeout)
+                      : null
                 }
                 availableBinding
                 accessTarget={
@@ -154,7 +160,7 @@ export function Host({ state }: { state: ParityState }) {
                 selectedModelId={
                   state === "pre-turn" ? "claude-sonnet-4-5-20250929" : null
                 }
-                sessionPromptUnavailable={false}
+                sessionPromptUnavailable={state === "refused"}
                 sessionConfig={
                   state === "unknown" || state === "pre-turn" ? null : config
                 }
@@ -190,8 +196,10 @@ export function Host({ state }: { state: ParityState }) {
                 missingBindingNotice={false}
                 disabledReason={
                   state === "refused"
-                    ? "This session can't accept prompts."
-                    : null
+                    ? SESSION_PROMPT_REFUSAL
+                    : state === "refused-locally"
+                      ? "Queue is full (5 messages)."
+                      : null
                 }
                 newChat={home}
                 project={project}

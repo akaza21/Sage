@@ -411,7 +411,7 @@ mod tests {
             (
                 // Regression: a harness that could not be prepared read as a
                 // stale or foreign session identity.
-                crate::acp::service::CodexSessionError::from_construction(
+                crate::acp::service::CodexSessionError::from_launch_preparation(
                     crate::acp::bindings::adapter::AdapterRuntimeError::LaunchUnavailable,
                 ),
                 "Native launch failed safely while preparing the harness (its installed files or the project folder are missing or changed); retry the session.",

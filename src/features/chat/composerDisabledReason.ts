@@ -19,6 +19,10 @@ interface ComposerAvailability {
   useNativeAcp: boolean;
 }
 
+/** The refusal a failed launch or session itself explains. */
+export const SESSION_PROMPT_REFUSAL =
+  "The selected harness cannot accept prompts in this session.";
+
 export function composerDisabledReason({
   actionBusy,
   activeTurn,
@@ -45,8 +49,7 @@ export function composerDisabledReason({
     return harnessUnavailableReason("adapterAbsent", selectedHarness.name);
   if (chatLoadFailed)
     return "This chat failed to load. Retry to send a prompt.";
-  if (!canPrompt)
-    return "The selected harness cannot accept prompts in this session.";
+  if (!canPrompt) return SESSION_PROMPT_REFUSAL;
   return null;
 }
 
