@@ -384,11 +384,13 @@ test("a caught terminal-only command offers the terminal or plain text under the
 }) => {
   const field = await openComposer(page);
   await field.fill("/hooks");
+  // The field's command controller is loaded once its menu shows.
+  await expect(page.locator(".composer-slash-menu")).toBeVisible();
   await page.keyboard.press("Escape");
   // The send route with the native list a curated binding returns.
   const taken = await page.evaluate(async () => {
     const { routeTerminalCommand } =
-      await import("/src/features/chat/terminalCommandRoute.ts");
+      await import("/src/features/chat/ComposerTerminalCommand.tsx");
     const chatId = document.querySelector<HTMLElement>(
       ".acp-chat-projection[data-chat-id]",
     )!.dataset.chatId!;

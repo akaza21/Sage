@@ -57,7 +57,7 @@ export async function slashCommandTurn(
   }
   // A curated terminal-only command waits for the user's choice.
   if (list?.terminalHandoff && !reported) {
-    const route = await import("./terminalCommandRoute");
+    const route = await import("./ComposerTerminalCommand");
     if (route.routeTerminalCommand(request.chatId, prompt, command.name, list))
       return false;
   }

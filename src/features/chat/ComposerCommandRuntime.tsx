@@ -49,9 +49,9 @@ const MenuPart = lazyParts<typeof MenuChunk>(
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
-const TerminalPart = lazyParts<typeof TerminalChunk>(
-  () => import("./ComposerTerminalCommand"),
-);
+const TerminalPart = lazyParts<
+  Pick<typeof TerminalChunk, "ComposerTerminalCommand">
+>(() => import("./ComposerTerminalCommand"));
 
 const plainEnter = (event: SuggestionKeyEvent) =>
   event.key === "Enter" &&
