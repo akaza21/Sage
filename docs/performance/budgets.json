@@ -295,7 +295,7 @@
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
         "maxGzipBytes": 2445,
         "maxCssGzipBytes": 737,
-        "reason": "Session notices, activities, Undo and the prompt actions trigger with its rewind/fork eligibility check. Measured JS 2282 B, CSS 405 B, plus 7%; cap moved from ConversationActions."
+        "reason": "Session notices, activities, Undo and the prompt actions trigger with its rewind/fork eligibility check. Measured JS 2310 B, CSS 449 B; cap moved from ConversationActions."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -594,7 +594,7 @@
         "entry": "src/features/chat/ConversationActions.tsx",
         "maxGzipBytes": 4400,
         "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork menus, confirmations, legacy last-turn controls and inherited fork history. Measured JS 3842 B; 600 B of cap moved to SessionNoticeStrip. Dialogs retain no hidden DOM."
+        "reason": "Prompt rewind/fork menus, confirmations, legacy last-turn controls and inherited fork history. Measured JS 3848 B; 600 B of cap moved to SessionNoticeStrip. Dialogs retain no hidden DOM."
       }
     ],
     "windowsInstallerMb": 45,

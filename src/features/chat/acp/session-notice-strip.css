@@ -36,22 +36,31 @@
   justify-self: start;
 }
 
-/* Each user message sits in an unclassed row (TurnPrompts); its lazy actions
-   style that row only once they mount. The row reserves a footer under the
-   bubble, never a transcript grid row of its own, so revealing the actions
-   moves nothing. The row stays a full-width grid item: the bubble keeps its
-   own width and breakpoints, and right: 0 lines the trigger up with the
-   bubble's right edge. Opacity, not visibility, keeps the button in the Tab
-   order while it is hidden. */
+/* The trigger hangs below its prompt row (the unclassed wrapper in
+   TurnPrompts) into the space the turn summary already keeps above itself
+   (the item gap plus its heading margin, 38px against the 24px button). So
+   mounting, unmounting or revealing it never moves the transcript, even when
+   a turn starts or ends. right: 0 lines it up with the bubble's right edge.
+   Opacity, not visibility, keeps the button in the Tab order while hidden. */
 .acp-turn__items > :has(> .acp-prompt-actions) {
   position: relative;
+}
+
+/* Without a summary below, there is no space to hang into: reserve it. */
+.acp-turn__items
+  > :has(> .acp-prompt-actions):not(:has(+ .chat-transcript-work)) {
   padding-bottom: var(--space-6);
+}
+
+.acp-turn__items > :not(:has(+ .chat-transcript-work)) > .acp-prompt-actions {
+  top: auto;
+  bottom: 0;
 }
 
 .acp-prompt-actions {
   position: absolute;
+  top: 100%;
   right: 0;
-  bottom: 0;
   min-height: 0;
   opacity: 0;
   animation: none;

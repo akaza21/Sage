@@ -6,10 +6,7 @@ import { lazyParts } from "./lazyParts";
 import type { AnswerMoreActions } from "./ForkChat";
 import type * as ConversationChunk from "./ConversationActions";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
-import {
-  conversationActions,
-  conversationState,
-} from "./conversationActionAvailability";
+import { pageConversationActions } from "./conversationActionAvailability";
 import { PromptPageContext } from "./acp/TurnPrompts";
 
 const ConversationPart = lazyParts<typeof ConversationChunk>(
@@ -32,13 +29,17 @@ export function ConversationView({ view, ...props }: ConversationViewProps) {
   );
 }
 
-// Every prompt re-checks on each page update; fold each page once. Weak keys
-// retain nothing after a page is replaced.
-const folded = new WeakMap<AcpChatPage, ReturnType<typeof conversationState>>();
-const foldedState = (page: AcpChatPage) => {
-  let state = folded.get(page);
-  if (!state) folded.set(page, (state = conversationState(page)));
-  return state;
+// Every prompt re-renders on each page update; the page is folded once into
+// its offered turns, so each prompt is a lookup. Weak keys retain nothing
+// after a page is replaced.
+const folded = new WeakMap<
+  AcpChatPage,
+  ReturnType<typeof pageConversationActions>
+>();
+const offeredTurns = (page: AcpChatPage) => {
+  let offered = folded.get(page);
+  if (!offered) folded.set(page, (offered = pageConversationActions(page)));
+  return offered;
 };
 
 /** The trigger shows only when its menu would offer rewind or fork. */
@@ -50,11 +51,10 @@ export function PromptActions({
   turn: TurnProjection;
 }) {
   const page = useContext(PromptPageContext);
-  const actions = page && conversationActions(page, turn, foldedState(page));
-  return item.kind === "text" &&
+  return page &&
+    item.kind === "text" &&
     item.payload.role === "user" &&
-    actions &&
-    (actions.rewind || actions.fork) ? (
+    offeredTurns(page).has(turn.id) ? (
     <MessageActionsTrigger page={page} turn={turn} text={item.payload.text} />
   ) : null;
 }
@@ -100,13 +100,7 @@ export function MessageActionsTrigger(
     </>
   );
   return props.turn ? (
-    <div
-      className="chat-transcript-actions acp-prompt-actions"
-      role="group"
-      aria-label="Prompt actions"
-    >
-      {content}
-    </div>
+    <div className="chat-transcript-actions acp-prompt-actions">{content}</div>
   ) : (
     content
   );

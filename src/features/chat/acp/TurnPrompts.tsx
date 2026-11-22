@@ -13,7 +13,7 @@ export function renderTurnPrompts(
   turn: TurnProjection,
   interactive: boolean,
 ) {
-  // Each row stays unclassed: its lazy actions style it once they mount.
+  // Rows stay unclassed: the lazy actions style them once they mount.
   return items.map((item) => (
     <div key={item.id}>
       <ItemView

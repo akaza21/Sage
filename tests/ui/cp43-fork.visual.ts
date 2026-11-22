@@ -159,7 +159,7 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     return fixture.installConversationRewindFixture();
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   await actions
     .first()
@@ -213,9 +213,7 @@ test("T22: a cold session's completed turns carry no ellipsis actions row", asyn
   });
   const turns = page.locator('.acp-turn[data-turn-state="completed"]');
   await expect(turns).toHaveCount(2);
-  await expect(page.getByRole("group", { name: "Prompt actions" })).toHaveCount(
-    0,
-  );
+  await expect(page.locator(".acp-prompt-actions")).toHaveCount(0);
   // Between each prompt and its "Worked" heading nothing but the prompt renders.
   for (const turn of await turns.all())
     await expect(
@@ -242,10 +240,7 @@ test("T22b: prompt actions reveal on hover and Tab without moving the transcript
   });
   await expect(trigger).toHaveCount(1);
   await page.mouse.move(0, 0);
-  await expect(prompt.getByRole("group", { name: "Prompt actions" })).toHaveCSS(
-    "opacity",
-    "0",
-  );
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
   const following = page.locator(".acp-turn__items > *, .acp-virtual-turn-row");
   const boxes = () =>
     following.evaluateAll((items) =>
@@ -253,38 +248,26 @@ test("T22b: prompt actions reveal on hover and Tab without moving the transcript
     );
   const before = await boxes();
   await prompt.locator(".acp-message--user").hover();
-  await expect(prompt.getByRole("group", { name: "Prompt actions" })).toHaveCSS(
-    "opacity",
-    "1",
-  );
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "1");
   expect(await boxes()).toEqual(before);
   const bubble = (await prompt.locator(".acp-message--user").boundingBox())!;
   const button = (await trigger.boundingBox())!;
   expect(button.y).toBeGreaterThanOrEqual(bubble.y + bubble.height);
   expect(button.x + button.width).toBe(bubble.x + bubble.width);
   await page.mouse.move(0, 0);
-  await expect(prompt.getByRole("group", { name: "Prompt actions" })).toHaveCSS(
-    "opacity",
-    "0",
-  );
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
   // Enter from the preceding workbench control using real keyboard navigation.
   await trigger.focus();
   await page.keyboard.press("Shift+Tab");
   await expect(trigger).not.toBeFocused();
-  await expect(prompt.getByRole("group", { name: "Prompt actions" })).toHaveCSS(
-    "opacity",
-    "0",
-  );
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
   await page.keyboard.press("Tab");
   await expect(trigger).toBeFocused();
-  await expect(prompt.getByRole("group", { name: "Prompt actions" })).toHaveCSS(
-    "opacity",
-    "1",
-  );
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "1");
   expect(await boxes()).toEqual(before);
 });
 
-test("T22b: unchanged prompts follow session and sibling-turn eligibility updates", async ({
+test("T22b: unchanged prompts follow eligibility updates without moving", async ({
   page,
 }) => {
   await openForkableAnswer(page);
@@ -293,8 +276,26 @@ test("T22b: unchanged prompts follow session and sibling-turn eligibility update
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture();
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
+  // The earlier prompt, its summary and its answer never move. Offsets are
+  // turn-relative: the transcript may scroll as the later turn changes.
+  const earlierLayout = () =>
+    page
+      .locator(".acp-turn")
+      .first()
+      .evaluate((turn) => {
+        const origin = turn.getBoundingClientRect();
+        return [
+          ...turn.querySelectorAll(
+            ".acp-turn__items > :has(> .acp-message--user), .acp-message--user, .chat-transcript-work, .acp-message--assistant",
+          ),
+        ].map((item) => {
+          const box = item.getBoundingClientRect();
+          return [box.x - origin.x, box.y - origin.y, box.width, box.height];
+        });
+      });
+  const settled = await earlierLayout();
   for (const availability of [
     "busy",
     "all",
@@ -348,6 +349,7 @@ test("T22b: unchanged prompts follow session and sibling-turn eligibility update
     }, availability);
     expect(retained).toBe(true);
     await expect(actions).toHaveCount(availability === "all" ? 2 : 0);
+    expect(await earlierLayout(), availability).toEqual(settled);
   }
   await expect(page.locator(".acp-turn")).toHaveCount(2);
 });
@@ -363,9 +365,7 @@ test("T22b: latest-turn actions appear only at the offered undo prompt", async (
   });
   const turns = page.locator(".acp-turn");
   await expect(turns).toHaveCount(2);
-  await expect(
-    turns.first().getByRole("group", { name: "Prompt actions" }),
-  ).toHaveCount(0);
+  await expect(turns.first().locator(".acp-prompt-actions")).toHaveCount(0);
   const prompt = turns
     .last()
     .locator(".acp-turn__items > :has(.acp-message--user)");
@@ -391,7 +391,7 @@ test.describe("T22b: no-hover devices", () => {
       true,
     );
     await page.mouse.move(0, 0);
-    const actions = page.getByRole("group", { name: "Prompt actions" }).first();
+    const actions = page.locator(".acp-prompt-actions").first();
     await expect(actions).toHaveCSS("opacity", "1");
     await actions
       .getByRole("button", { name: "Message actions", exact: true })
@@ -411,7 +411,7 @@ test("T11a: a fork-only offer has no in-place rewind and explains the shared fol
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture(false);
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   await actions
     .first()
@@ -445,7 +445,7 @@ test("T11a: message actions load only after their menu opens", async ({
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture();
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   expect([...requested]).toEqual([]);
   await actions
