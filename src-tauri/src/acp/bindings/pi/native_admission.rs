@@ -23,34 +23,14 @@ use sage_domain::harness::HarnessCharacterisation;
 
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
-/// Read-only launch arguments after the entrypoint. Prompt templates, skills
-/// and saved sessions load as they do in Pi's own CLI; user extensions stay
-/// off, because their tools would act outside Sage's approvals.
-pub(crate) const PI_READ_ONLY_ARGS: [&str; 6] = [
-    "--mode",
-    "rpc",
-    "--tools",
-    "read",
-    "--no-extensions",
-    "--no-themes",
-];
 /// Launch arguments with the pinned bridge. Pi's `--tools` allowlist also
 /// filters extension tools, so the bridge's managed write, edit and bash would
 /// never register under `--tools read`. Built-in tools instead start disabled;
-/// the bridge then activates only built-in `read` beside its own tools, and a
-/// bridge that fails to load leaves Pi with no tools at all.
-const PI_BRIDGE_ARGS: [&str; 5] = [
-    "--mode",
-    "rpc",
-    "--no-builtin-tools",
-    "--no-extensions",
-    "--no-themes",
-];
+/// the bridge registers read and managed tools. Sage enforces access mode on
+/// each request, while every discovered extension tool requires approval.
+const PI_BRIDGE_ARGS: [&str; 4] = ["--mode", "rpc", "--no-builtin-tools", "--no-themes"];
 
-pub(crate) fn pi_launch_args(bridge: Option<PathBuf>) -> Vec<OsString> {
-    let Some(bridge) = bridge else {
-        return PI_READ_ONLY_ARGS.map(OsString::from).into();
-    };
+pub(crate) fn pi_launch_args(bridge: PathBuf) -> Vec<OsString> {
     let mut args: Vec<OsString> = PI_BRIDGE_ARGS.map(OsString::from).into();
     args.extend([OsString::from("--extension"), bridge.into_os_string()]);
     args
@@ -95,14 +75,9 @@ fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
     crate::acp::bindings::node_engine::satisfies(engine, node)
 }
 
-/// The first release of the Pi package Sage launches. It already honours
-/// every launch flag Sage relies on for read-only mode (`--tools`,
-/// `--no-builtin-tools`, `--no-extensions`, `--no-themes`) and answers every
-/// RPC command Sage sends, so nothing older can exist under this package.
-const PI_READ_ONLY_MINIMUM: &str = "0.74.0";
-
 pub(crate) fn version_admitted(version: &str) -> bool {
-    characterise_against(version, PI_READ_ONLY_MINIMUM).runs_tested_features()
+    // Every access mode now needs the bridge's tool-call interception API.
+    characterise_against(version, super::bridge::install::BRIDGE_PI_VERSION).runs_tested_features()
 }
 
 impl AdmittedPiBinding {
@@ -191,7 +166,8 @@ impl AdmittedPiBinding {
         let identity = uuid::Uuid::from_bytes(identity);
         let mut fixed_args = vec![self.launch.entrypoint_path.clone().into_os_string()];
         fixed_args.extend(pi_launch_args(
-            super::bridge::install::installed(self.harness_version()).ok(),
+            super::bridge::install::installed(self.harness_version())
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
         ));
         Ok(LaunchSpec {
             binding_id: identity,

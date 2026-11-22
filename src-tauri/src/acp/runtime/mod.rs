@@ -34,6 +34,7 @@ pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
 pub(crate) use adapter_pump::PumpIntent;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use adapter_pump::normalized_payload_bytes;
+pub(crate) use adapter_pump::permission_payload_fits;
 #[cfg(test)]
 pub(crate) use adapter_pump::steer::steered_prompt_item;
 pub(crate) use adapter_pump::{

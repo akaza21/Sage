@@ -407,6 +407,12 @@ mod tests {
         for (error, expected) in [
             (
                 crate::acp::service::CodexSessionError::LaunchSetup(
+                    crate::acp::service::CodexLaunchSetupError::RunnerStartApprovalBridge,
+                ),
+                "Native launch failed safely while initializing the approval bridge (missing or mismatched handshake; no prompt sent); retry the session.",
+            ),
+            (
+                crate::acp::service::CodexSessionError::LaunchSetup(
                     crate::acp::service::CodexLaunchSetupError::RunnerStartSessionResume,
                 ),
                 "Native launch failed safely while resuming the harness session; retry the session.",

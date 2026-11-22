@@ -1,19 +1,19 @@
 use super::*;
 
 #[test]
-fn every_pi_release_of_the_launched_package_is_admitted() {
-    for admitted in [
+fn pi_admission_requires_the_extension_gate_api() {
+    for admitted in ["1.5.0", "1.5.2", "1.6.0", "2.0.0-beta.1"] {
+        assert!(version_admitted(admitted), "{admitted}");
+    }
+    for refused in [
         "0.74.0",
         "0.74.2",
         "1.4.9",
-        "1.5.0",
-        "1.5.2",
-        "1.6.0",
-        "2.0.0-beta.1",
+        "1.5.0-rc.1",
+        "1.5",
+        "garbage",
+        "",
     ] {
-        assert!(version_admitted(admitted), "{admitted}");
-    }
-    for refused in ["0.73.9", "0.74.0-rc.1", "1.5", "garbage", ""] {
         assert!(!version_admitted(refused), "{refused}");
     }
 }
@@ -33,41 +33,23 @@ fn node_engine_is_checked_against_the_discovered_runtime() {
 }
 
 #[test]
-fn launch_is_read_only_by_construction() {
-    assert_eq!(
-        &PI_READ_ONLY_ARGS[..4],
-        ["--mode", "rpc", "--tools", "read"]
-    );
-    assert!(PI_READ_ONLY_ARGS.contains(&"--no-extensions"));
-    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
-        assert!(!PI_READ_ONLY_ARGS.contains(&loaded), "{loaded}");
-    }
-    assert!(
-        !PI_READ_ONLY_ARGS
-            .iter()
-            .any(|arg| ["bash", "edit", "write"].contains(arg))
-    );
-}
-
-#[test]
-fn bridge_launch_registers_its_tools_without_enabling_builtin_writers() {
-    assert_eq!(
-        pi_launch_args(None),
-        PI_READ_ONLY_ARGS.map(OsString::from).to_vec()
-    );
+fn both_access_modes_launch_the_gate_with_extensions_and_without_builtin_writers() {
+    // Access mode is enforced per turn by Sage; both modes use this launch.
     let bridge = PathBuf::from("bridge").join("extension.mjs");
-    let args = pi_launch_args(Some(bridge.clone()));
-    assert!(!args.iter().any(|arg| arg == "--tools"));
-    assert!(args.iter().any(|arg| arg == "--no-builtin-tools"));
-    for disabled in ["--no-extensions", "--no-themes"] {
-        assert!(args.iter().any(|arg| arg == disabled), "{disabled}");
-    }
-    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
-        assert!(!args.iter().any(|arg| arg == loaded), "{loaded}");
-    }
+    let args = pi_launch_args(bridge.clone());
     assert_eq!(
-        &args[args.len() - 2..],
-        [OsString::from("--extension"), bridge.into_os_string()]
+        args,
+        [
+            "--mode",
+            "rpc",
+            "--no-builtin-tools",
+            "--no-themes",
+            "--extension"
+        ]
+        .map(OsString::from)
+        .into_iter()
+        .chain([bridge.into_os_string()])
+        .collect::<Vec<_>>()
     );
 }
 
@@ -115,7 +97,7 @@ fn an_installed_pi_in_range_is_admitted_and_drift_revokes_it() {
 
 #[test]
 fn older_and_newer_pi_releases_are_admitted_and_an_unreadable_or_too_old_one_is_not() {
-    for version in ["0.74.2", "1.6.0"] {
+    for version in ["1.5.0", "1.6.0"] {
         let (discovery, root) = discovered(version);
         let registration = PiBindingRegistration::from_discovery_for_test(discovery);
         assert_eq!(registration.unavailable(), None, "{version}");

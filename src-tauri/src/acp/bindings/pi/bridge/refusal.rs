@@ -28,12 +28,12 @@ impl Refusal {
         match self {
             Self::Denied => "Sage denied the operation",
             Self::Withdrawn => "Sage withdrew the unanswered approval request",
-            Self::Inactive => "Sage refused: this session is not taking edits",
+            Self::Inactive => "Sage refused: this session is not taking tool calls",
             Self::ReadOnly => "Sage refused: this chat has read-only access",
             Self::WriteLimit => "Sage refused: this Turn reached its approval limit",
             Self::Busy => "Sage refused: another request is awaiting approval",
             Self::Undisplayable => "Sage refused: the command cannot be shown as it runs",
-            Self::Unsupported => "Sage refused: not a supported edit or command",
+            Self::Unsupported => "Sage refused: not a supported tool request",
             Self::Replayed => "Sage refused: this tool call was already handled",
             Self::NotApproved => "Sage refused: the edit was not approved",
             Self::OutsideWorkspace => "Sage refused: the path is outside the workspace",
@@ -41,7 +41,7 @@ impl Refusal {
             Self::MissingParent => "Sage refused: the parent is not an existing folder",
             Self::Unreadable => "Sage refused: the file is not a regular text file",
             Self::NoUniqueMatch => "Sage refused: oldText must match exactly once",
-            Self::TooLarge => "Sage refused: the file exceeds the size limit",
+            Self::TooLarge => "Sage refused: the operation exceeds the size limit",
             Self::Changed => "Sage refused: the file changed after approval",
             Self::WriteFailed => "Sage could not write the approved file",
         }

@@ -172,7 +172,11 @@ fn shipped_runtime(install: &std::path::Path) -> crate::acp::bindings::runtime::
 fn the_shipped_pi_runtime_forks_and_releases_the_copy() {
     let install = std::env::temp_dir().join(format!("sage-pi-install-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&install).unwrap();
-    let mut chat = saved_chat_on(shipped_runtime(&install));
+    let mut runtime = shipped_runtime(&install);
+    runtime
+        .ingest(&frame(super::bridge_ready::announcement()), &Mapper)
+        .unwrap();
+    let mut chat = saved_chat_on(runtime);
     assert!(chat.runtime.capabilities().unwrap().native_session_fork);
     let state = cloned(&mut chat);
     let back = read_copy(&mut chat, &state);

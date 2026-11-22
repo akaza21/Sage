@@ -59,6 +59,10 @@ pub(crate) enum AdapterRuntimeError {
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
     #[error(
+        "The harness approval bridge did not initialise or its handshake did not match. No prompt was sent."
+    )]
+    ApprovalBridgeUnavailable,
+    #[error(
         "The pending undo could not be applied; activation stopped and the rewind remains pending."
     )]
     RewindUnavailable,

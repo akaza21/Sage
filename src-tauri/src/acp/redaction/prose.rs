@@ -25,6 +25,8 @@ pub(crate) fn redact_prose(
 
 pub(crate) struct RedactedProse {
     pub(crate) text: String,
+    /// A bounded scan omitted a suffix, rather than just replacing secrets.
+    pub(crate) truncated: bool,
     /// Nothing at the end waits for text after it: no key, flag or header for
     /// a value, no open quote and no home folder name that may go on.
     pub(crate) settled: bool,
@@ -36,7 +38,7 @@ pub(crate) fn redact_prose_settling(
     maximum_output: usize,
     path_display: ProsePaths,
 ) -> Result<RedactedProse, ContractError> {
-    let (text, settled) = redact_secrets(field, input, maximum_output, path_display)?;
+    let (text, settled, truncated) = redact_secrets(field, input, maximum_output, path_display)?;
     let shortened = super::home::HomePrefix::current()
         .filter(|_| path_display == ProsePaths::Shown)
         .and_then(|home| match home.shorten(&text) {
@@ -44,7 +46,11 @@ pub(crate) fn redact_prose_settling(
             Cow::Borrowed(_) => None,
         });
     let text = shortened.unwrap_or(text);
-    Ok(RedactedProse { text, settled })
+    Ok(RedactedProse {
+        text,
+        settled,
+        truncated,
+    })
 }
 
 fn redact_secrets(
@@ -52,9 +58,9 @@ fn redact_secrets(
     input: &str,
     maximum_output: usize,
     path_display: ProsePaths,
-) -> Result<(String, bool), ContractError> {
-    let pem = super::pem::redact_pem(input);
-    let input = pem.as_ref();
+) -> Result<(String, bool, bool), ContractError> {
+    let pem = super::pem::redact_pem_with_status(input);
+    let input = pem.text.as_ref();
     let scanned = super::values::redact_values(field, input, maximum_output, PathMode::Prose)?;
     let input = &scanned.text;
     let mut output = String::new();
@@ -137,7 +143,7 @@ fn redact_secrets(
                 maximum_output,
                 field,
             )?;
-            return Ok((output, false));
+            return Ok((output, false, true));
         }
         if value.quote.is_none() {
             budget = super::values::ValueBudget::default();
@@ -154,7 +160,7 @@ fn redact_secrets(
     }
     let settled =
         !scanned.exhausted && secrets.settled() && value.quote.is_none() && paths.settled();
-    Ok((output, settled))
+    Ok((output, settled, scanned.exhausted || pem.truncated))
 }
 
 #[derive(Default)]

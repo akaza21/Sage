@@ -103,12 +103,13 @@ fn pi_replay_correlates_string_ids_and_handles_config_before_events() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(frames.len(), 6);
-    assert_eq!(frames[0]["id"], "pi-7-1");
-    assert_eq!(frames[1]["command"], "get_available_models");
-    assert_eq!(frames[5]["id"], "pi-7-6");
+    assert_eq!(frames.len(), 7);
+    assert_eq!(frames[0]["statusKey"], "sage.pi.ready.v1");
+    assert_eq!(frames[1]["id"], "pi-7-1");
+    assert_eq!(frames[2]["command"], "get_available_models");
+    assert_eq!(frames[6]["id"], "pi-7-6");
     assert_eq!(
-        frames[5]["data"]["levels"],
+        frames[6]["data"]["levels"],
         json!(["off", "low", "medium", "high"])
     );
 }

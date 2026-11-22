@@ -237,9 +237,7 @@ impl PiTranslator {
             128,
         )?
         .ok_or(AdapterError::Malformed)?;
-        if name != "read"
-            && !(self.bridge_tools && matches!(name.as_str(), "write" | "edit" | "bash"))
-        {
+        if name != "read" && !self.bridge_tools {
             self.live_turn()?.authority_denied = true;
             return Ok(vec![AdapterOutput::AuthorityBlocked {
                 external_id: id,
@@ -248,20 +246,19 @@ impl PiTranslator {
         }
         let path = value
             .get("args")
+            .filter(|_| matches!(name.as_str(), "read" | "write" | "edit"))
             .and_then(|args| args.get("path"))
-            .map(|path| {
-                let path = path.as_str().ok_or(AdapterError::Malformed)?;
-                if path.len()
-                    > sage_core::limits::LIMITS
+            .and_then(Value::as_str)
+            // Resource hints are disposable presentation metadata. An extension
+            // can reuse these tool names with an entirely different schema.
+            .filter(|path| {
+                path.len()
+                    <= sage_core::limits::LIMITS
                         .wire
                         .absolute_path_bytes_native_only as usize
-                    || path.contains('\0')
-                {
-                    return Err(AdapterError::Limit("tool path bytes"));
-                }
-                Ok(path.to_owned())
+                    && !path.contains('\0')
             })
-            .transpose()?;
+            .map(str::to_owned);
         let turn = self.live_turn()?;
         if turn.tools.contains_key(&id) {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
