@@ -1,9 +1,6 @@
 import { useState } from "react";
 import type { AcpItem } from "../../../domain/acp";
-import {
-  safeNullableText,
-  safeText,
-} from "../../../services/acpDesktopGuards";
+import { safeNullableText, safeText } from "../../../services/acpDesktopGuards";
 
 /**
  * A displayed extension custom message: its label, safe text, and details

@@ -129,7 +129,11 @@ it("renders a projected custom message as safe text with disposable details", ()
 });
 
 it("shows an over-cap custom message as a notice instead of its text", () => {
-  const item = projected({ label: "x".repeat(129), text: "body", details: null });
+  const item = projected({
+    label: "x".repeat(129),
+    text: "body",
+    details: null,
+  });
   if (item?.kind !== "extensionMessage") throw new Error("Invalid projection");
   render(<ExtensionMessage item={item} />);
   expect(
