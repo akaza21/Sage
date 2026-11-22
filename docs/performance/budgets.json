@@ -87,12 +87,6 @@
         "reason": "Composer `/` menu: source groups, labels, searchable overflow, catalog truncation, name/alias search and panels. Loads with the first `/`. Measured 2180 B JS plus 250 B headroom."
       },
       {
-        "entry": "src/features/chat/ComposerCommandRefresh.tsx",
-        "maxGzipBytes": 1500,
-        "maxCssGzipBytes": 420,
-        "reason": "Fire-and-forget refresh footer. Loads only with the slash menu and unmounts with it. No first-paint or Agent startup bytes."
-      },
-      {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",
         "maxGzipBytes": 2730,
         "maxCssGzipBytes": 520,

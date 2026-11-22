@@ -1,4 +1,4 @@
-import type * as RefreshChunk from "./ComposerCommandRefresh";
+import { ComposerCommandRefresh } from "./ComposerCommandRefresh";
 import type * as CommandRuntime from "./ComposerCommandRuntime";
 import { lazyParts } from "./lazyParts";
 import {
@@ -31,9 +31,6 @@ import type { SessionCommandsLoad } from "./useSessionCommands";
  * seven sources of seven rows fit the list's 50 rendered rows.
  */
 const SECTION_ROWS = 7;
-const RefreshPart = lazyParts<typeof RefreshChunk>(
-  () => import("./ComposerCommandRefresh"),
-);
 
 const commandSourceGroups = {
   builtin: "Commands",
@@ -255,8 +252,7 @@ function ComposerSlashList({
       anchorRef={anchorRef}
       footer={
         more > 0 || omitted > 0 || load?.kind === "ready" ? (
-          <RefreshPart
-            part="ComposerCommandRefresh"
+          <ComposerCommandRefresh
             more={more}
             omitted={omitted}
             boundChatId={boundChatId}

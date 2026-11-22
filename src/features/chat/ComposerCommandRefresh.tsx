@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { acpCommandCatalogDesktop } from "../../services/acpCommandCatalogDesktop";
 import { commandCatalogRequest } from "./composerCommandCatalogRequest";
-import "../../styles/composer-command-refresh.css";
 
 export function ComposerCommandRefresh({
   boundChatId,
@@ -45,7 +44,7 @@ export function ComposerCommandRefresh({
       )}
       {owner && (
         <button
-          className="composer-command-refresh"
+          className="text-field-suggestions__action"
           type="button"
           disabled={sending}
           onMouseDown={(event) => event.preventDefault()}

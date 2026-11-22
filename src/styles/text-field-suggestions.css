@@ -48,6 +48,25 @@
   margin-left: var(--space-1);
 }
 
+.text-field-suggestions__action {
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-field-suggestions__action:hover {
+  color: var(--color-text-primary);
+}
+
+.text-field-suggestions__action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .text-field-suggestions__footer {
   flex: 0 0 auto;
   margin: var(--space-1) var(--space-2);
