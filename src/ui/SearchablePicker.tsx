@@ -59,6 +59,10 @@ type SearchablePickerProps = {
   disabled?: boolean;
   emptyLabel?: string;
   footer?: string;
+  /** Local guidance outside the listbox; mounted only while the picker is open. */
+  children?: ReactNode;
+  /** Mixed selection and recovery controls use ordinary dialog Tab navigation. */
+  popoverRole?: "dialog" | "none";
   onOptionRender?: (id: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -118,6 +122,7 @@ export function SearchablePicker(props: SearchablePickerProps) {
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
+  const dialog = props.popoverRole === "dialog";
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -195,8 +200,12 @@ export function SearchablePicker(props: SearchablePickerProps) {
         aria-description={selectedLabel}
         title={stateTitle ?? selectedLabel}
         aria-expanded={expanded}
-        aria-haspopup="listbox"
-        aria-controls={Loaded && expanded ? `${id}-listbox` : undefined}
+        aria-haspopup={dialog ? "dialog" : "listbox"}
+        aria-controls={
+          Loaded && expanded
+            ? `${id}-${dialog ? "popover" : "listbox"}`
+            : undefined
+        }
         role={triggerRole}
         data-selected-id={selectedId ?? ""}
         disabled={disabled}
@@ -225,7 +234,7 @@ export function SearchablePicker(props: SearchablePickerProps) {
             event.preventDefault();
             event.stopPropagation();
             close("escape");
-          } else if (event.key === "Tab") close("tab");
+          } else if (event.key === "Tab" && !dialog) close("tab");
         }}
       >
         {selected?.logo || selected?.icon ? (

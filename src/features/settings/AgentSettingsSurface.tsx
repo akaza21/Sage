@@ -30,6 +30,8 @@ import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPage
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
+import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
+import { SettingsHarnessNotices } from "./SettingsHarnessNotices";
 import { HarnessDiagnostics } from "./HarnessDiagnostics";
 import {
   returnFocusToAgentSettingsOpener,
@@ -45,8 +47,11 @@ const loadBrowserSettings = () =>
 // The Harnesses page loads on demand, and Settings keeps the current page
 // on screen until it is ready rather than flashing a loading line. It is
 // fetched ahead when Settings goes idle, or when its section is pointed at.
-let HarnessSettings: ComponentType | null = null;
-let harnessRequest: Promise<ComponentType> | null = null;
+type HarnessSettingsView = ComponentType<{
+  presentation: HarnessNoticePresentation;
+}>;
+let HarnessSettings: HarnessSettingsView | null = null;
+let harnessRequest: Promise<HarnessSettingsView> | null = null;
 const loadHarnessSettings = () =>
   (harnessRequest ??= import("./AgentHarnessSettings").then(
     ({ AgentHarnessSettings }) => (HarnessSettings = AgentHarnessSettings),
@@ -283,16 +288,20 @@ export function AgentSettingsSurface({
               ) : null}
               {shownPage === "Harnesses" ? (
                 HarnessSettings ? (
-                  <HarnessSettings />
+                  <HarnessSettings presentation={SettingsHarnessNotices} />
                 ) : (
                   <LazyModuleBoundary
                     label="Harness settings"
                     load={loadHarnessModule}
-                    render={(Surface) => <Surface />}
+                    render={(Surface) => (
+                      <Surface presentation={SettingsHarnessNotices} />
+                    )}
                   />
                 )
               ) : null}
-              {shownPage === "Chats" ? <AgentChatSettings /> : null}
+              {shownPage === "Chats" ? (
+                <AgentChatSettings presentation={SettingsHarnessNotices} />
+              ) : null}
               {shownPage === "Harnesses" ? <HarnessDiagnostics /> : null}
               {shownPage === "Browser" ? (
                 <LazyModuleBoundary

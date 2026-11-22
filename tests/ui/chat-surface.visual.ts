@@ -23,7 +23,7 @@ for (const { width, height } of [
       fixture.installChatSurfaceFixture(true);
     });
     await expect(
-      page.getByRole("button", { name: "Dismiss build notice" }),
+      page.getByRole("button", { name: "Harness", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Rename chat", exact: true }),
@@ -64,12 +64,17 @@ for (const { width, height } of [
         height: headerBox.height,
       },
     });
-    await expect(page.locator(".build-notice")).toHaveScreenshot(
+    await page.getByRole("button", { name: "Harness", exact: true }).click();
+    const compatibility = page
+      .getByRole("dialog", { name: "Harness", exact: true })
+      .locator(".notice--warning");
+    await expect(compatibility).toHaveScreenshot(
       `chat-surface-notice-${width}.png`,
       pixels,
     );
     await page.getByRole("button", { name: "Dismiss build notice" }).click();
-    await expect(page.locator(".build-notice")).toHaveCount(0);
+    await expect(compatibility).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await settleTranscriptAtStart(page);
     await expect(page.locator(".message-list")).toHaveScreenshot(
       `chat-surface-rows-${width}.png`,

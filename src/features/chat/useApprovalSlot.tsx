@@ -15,6 +15,7 @@ import type {
 } from "../../domain/acp";
 import { acpDesktop } from "../../services/acpDesktop";
 import { awaitingPermission } from "./acp/statusSemantics";
+import { Notice } from "../../ui/Notice";
 import { setChatAwaitingApproval } from "./acp/awaitingApproval";
 import { ApprovalPart, QuestionPart } from "./lazyParts";
 
@@ -197,10 +198,11 @@ export function useApprovalSlot(
   return {
     awaiting: holdsSlot,
     slot: !first ? null : failed ? (
-      <p className="composer__notice" role="alert">
-        The approval could not load. Stop the turn, or reopen the chat to try
-        again.
-      </p>
+      <Notice
+        identity={`approval-load:${first.id}`}
+        severity="blocking"
+        message="The approval could not load. Stop the turn, or reopen the chat to try again."
+      />
     ) : (
       <ApprovalBoundary key={first.id} onError={giveWay}>
         {first.payload.userInput ? (

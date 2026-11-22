@@ -5,6 +5,27 @@
   flex: none;
 }
 
+.composer__harness-attention {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-muted);
+}
+
+.composer__harness-status {
+  padding: var(--space-2);
+  white-space: normal;
+}
+
+.composer__harness-status:empty {
+  display: none;
+}
+
+.composer__harness-menu:has(.notice) {
+  --picker-harness-menu-width: 360px;
+}
+
 .composer-access-menu.menu-popover {
   width: min(420px, calc(100vw - 16px));
   max-width: min(420px, calc(100vw - 16px));

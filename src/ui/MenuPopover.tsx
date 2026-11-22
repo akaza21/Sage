@@ -357,7 +357,11 @@ export function MenuPopover({
       }
       return;
     }
-    if (role === "dialog") return;
+    if (
+      role === "dialog" &&
+      !(event.target as HTMLElement).matches('[role="option"]')
+    )
+      return;
     if (MENU_KEYS.has(event.key)) {
       if (items.length === 0 || hasNavigationModifier(event)) return;
       event.preventDefault();
