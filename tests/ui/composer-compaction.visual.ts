@@ -96,6 +96,16 @@ for (const width of [1888, 720, 480]) {
             ...session,
             capabilities: {
               ...session.capabilities,
+              goal: profile.goal
+                ? {
+                    observes: true,
+                    set: false,
+                    pause: true,
+                    resume: false,
+                    tokenBudget: false,
+                    clear: true,
+                  }
+                : undefined,
               protocolVersion: profile.goal
                 ? "codex-app-server-observed-0.167.0"
                 : "1.0",

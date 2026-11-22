@@ -14,8 +14,8 @@ mod tool_execution;
 pub mod user_input;
 
 pub use activity_provenance::{ActivityProvenanceV1, ActivitySourceKind};
-pub use capability::CapabilitySnapshotV1;
 pub use capability::offers_prompt_capability;
+pub use capability::{CapabilitySnapshotV1, GoalCapabilities};
 pub use error_kind::ErrorKind;
 pub use file_change::FileChangeOperation;
 pub use file_change::{FileChangeFacts, line_delta};

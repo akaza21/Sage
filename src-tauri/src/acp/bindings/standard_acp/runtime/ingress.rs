@@ -351,6 +351,7 @@ fn capabilities() -> Result<CapabilitySnapshotV1, AdapterRuntimeError> {
         native_session_import: false,
         native_review: false,
         native_background_terminals: false,
+        goal: Default::default(),
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
