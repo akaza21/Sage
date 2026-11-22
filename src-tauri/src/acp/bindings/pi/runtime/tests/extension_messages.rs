@@ -60,7 +60,10 @@ fn extension_thinking_change_is_read_with_the_next_prompt() {
         .unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
     assert!(batch.egress().is_empty());
-    for end in [json!({"type":"agent_end","messages":[]}), json!({"type":"agent_settled"})] {
+    for end in [
+        json!({"type":"agent_end","messages":[]}),
+        json!({"type":"agent_settled"}),
+    ] {
         runtime.ingest(&frame(end), &Mapper).unwrap();
     }
     let prompt = runtime
