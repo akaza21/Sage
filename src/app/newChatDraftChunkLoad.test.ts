@@ -34,6 +34,7 @@ it("keeps the draft editable and sendable after its send module fails to load", 
   });
 
   state.updateNewChatDraft({ text: "Keep this prompt, edited" });
+  await state.applyHarnessDiscovery([]);
   chunkLoad.fail = false;
   await state.sendNewChatDraft();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
