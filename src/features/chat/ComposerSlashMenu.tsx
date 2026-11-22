@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  type ComponentProps,
+  type RefObject,
+} from "react";
 import {
   type AcpCommandSource,
   type AvailableAcpCommand,
@@ -13,6 +19,7 @@ import {
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
 import type { CommandLoad as Load } from "./ComposerCommandRefresh";
+import type * as RefreshChunk from "./ComposerCommandRefresh";
 import { lazyParts } from "./lazyParts";
 import { SuggestionsPart } from "./composerSuggestionsPart";
 import { SlashCommandIcon } from "./SlashCommandIcon";
@@ -136,7 +143,7 @@ function menuState(
   return { kind: "ready" };
 }
 
-const RefreshPart = lazyParts<typeof import("./ComposerCommandRefresh")>(
+const RefreshPart = lazyParts<typeof RefreshChunk>(
   () => import("./ComposerCommandRefresh"),
 );
 
@@ -273,7 +280,7 @@ function MenuContent({
 }
 
 export function ComposerSlashMenu(
-  props: Omit<import("react").ComponentProps<typeof MenuContent>, "load">,
+  props: Omit<ComponentProps<typeof MenuContent>, "load">,
 ) {
   return (
     <RefreshPart part="ComposerCommandCatalog" boundChatId={props.boundChatId}>
