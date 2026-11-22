@@ -53,7 +53,7 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
       <p>Recent pages visited by this live tab.</p>
       {error ? (
         <Notice
-          identity={`settings:browser-history:${tabId}`}
+          identity={`history:${tabId}`}
           severity="warning"
           message={error}
         />
@@ -228,7 +228,7 @@ export function AgentBrowserSettings() {
           notice={
             error ? (
               <Notice
-                identity="settings:browser-live-tabs"
+                identity="browser-tabs"
                 severity="warning"
                 message={error}
               />
