@@ -7,6 +7,7 @@ mod discovery_state;
 mod install_state;
 mod persisted_binding;
 mod published_releases;
+mod version_details;
 use catalog_definition::{CuratedProtocol, definition, safe_display_version};
 use discovery_state::DiscoveryState;
 use published_releases::PublishedReleases;
@@ -133,6 +134,10 @@ impl HarnessCatalog {
         found: Option<Vec<crate::harness_discovery::PublishedRelease>>,
     ) {
         self.published.finish_check(found);
+    }
+
+    pub(crate) fn forget_published_releases(&self) {
+        self.published.forget();
     }
 
     #[cfg(test)]
@@ -303,9 +308,7 @@ impl HarnessCatalog {
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
-            definition.update = self
-                .published
-                .update_for(&definition.id, definition.version.as_deref());
+            version_details::annotate(definition, spec, &self.published, &self.registry);
             definition.version_checking = self.discovered.is_version_checking(&definition.id);
             let Some(record) = self.registry.for_harness(&definition.id) else {
                 continue;
@@ -832,7 +835,10 @@ mod tests {
                     "unavailableReason",
                     "signIn",
                     "brand",
-                    "update"
+                    "update",
+                    "latestVersion",
+                    "runsVersion",
+                    "directFromVersion"
                 ]
                 .into_iter()
                 .collect()

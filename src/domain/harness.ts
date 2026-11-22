@@ -70,7 +70,18 @@ interface HarnessDefinitionBase {
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: HarnessSignIn | null;
   brand?: HarnessBrand | null;
-  update?: { latestVersion: string; command: string } | null;
+  /** `unlocks`: curated known commands newer than the installed release. */
+  update?: {
+    latestVersion: string;
+    command: string;
+    unlocks?: readonly string[];
+  } | null;
+  /** The newest published release from the last npm check, if any ran. */
+  latestVersion?: string | null;
+  /** The release Sage runs when it is not the installed one. */
+  runsVersion?: string | null;
+  /** Sage runs a fallback until the installed release reaches this one. */
+  directFromVersion?: string | null;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

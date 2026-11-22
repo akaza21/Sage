@@ -1,5 +1,12 @@
 import type { HarnessDefinition } from "../../domain/harness";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { CodexAccountSettings } from "./CodexAccountSettings";
+
+// One chunk with the npm switch, loaded only on Settings › Harnesses.
+const loadVersionDetails = () =>
+  import("./HarnessVersions").then(({ HarnessVersionDetails }) => ({
+    default: HarnessVersionDetails,
+  }));
 
 export default function HarnessAccountDetails({
   harness,
@@ -17,13 +24,12 @@ export default function HarnessAccountDetails({
       {selected && harness.accountModelDiscovery && available ? (
         <CodexAccountSettings disabled={disabled} />
       ) : null}
-      {harness.update ? (
-        <p>
-          Update available: {harness.version} → {harness.update.latestVersion}.
-          Run <code>{harness.update.command}</code> in a terminal, then choose
-          Refresh discovery.
-        </p>
-      ) : null}
+      <LazyModuleBoundary
+        label="Harness versions"
+        fallback={null}
+        load={loadVersionDetails}
+        render={(Versions) => <Versions harness={harness} />}
+      />
       {harness.signIn && available ? (
         <p>
           {harness.signIn.command ? (

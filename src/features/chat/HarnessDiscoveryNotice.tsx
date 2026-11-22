@@ -87,15 +87,18 @@ export function HarnessDiscoveryNotice({
   const build = JSON.stringify([id, harness.boundVersion]);
   const release = JSON.stringify([id, update?.latestVersion]);
   const newer = harness.characterisation === "newerThanTested";
+  const direct = harness.directFromVersion;
   const builds: NoticeProps[] = [];
   if (
-    (newer || harness.characterisation === "uncharacterised") &&
+    (direct || newer || harness.characterisation === "uncharacterised") &&
     dismissed.build !== build
   )
     builds.push({
       identity: build,
-      severity: "warning",
-      message: `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
+      severity: direct ? "info" : "warning",
+      message: direct
+        ? `Sage runs ${harness.name} ${harness.runsVersion ?? ""} bundled with its adapter. Update ${harness.name} to ${direct} or newer and Sage runs it directly.`
+        : `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
       action: {
         label: "Dismiss build notice",
         onClick: dismiss("build", build),

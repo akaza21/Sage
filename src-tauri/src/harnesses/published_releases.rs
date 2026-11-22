@@ -54,6 +54,21 @@ impl PublishedReleases {
         }
     }
 
+    /// Turning checks off drops what earlier checks found, so nothing stale
+    /// shows, and lets the next enabled refresh check at once.
+    pub(super) fn forget(&self) {
+        *self.0.write().unwrap_or_else(|error| error.into_inner()) = Checked::default();
+    }
+
+    pub(super) fn latest_for(&self, harness_id: &str) -> Option<String> {
+        let checked = self.0.read().unwrap_or_else(|error| error.into_inner());
+        checked
+            .releases
+            .iter()
+            .find(|release| release.harness_id == harness_id)
+            .map(|release| release.version.clone())
+    }
+
     pub(super) fn update_for(
         &self,
         harness_id: &str,
@@ -68,6 +83,7 @@ impl PublishedReleases {
         (ReleaseVersion::parse(&release.version)? > installed).then(|| HarnessUpdate {
             latest_version: release.version.clone(),
             command: release.command.clone(),
+            unlocks: Vec::new(),
         })
     }
 }

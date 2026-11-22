@@ -96,15 +96,46 @@ fn the_lookup_reads_what_npm_reports_and_nothing_else() {
             ),
         );
         assert_eq!(
-            latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex").as_deref(),
+            latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex", &run_lookup).as_deref(),
             expected,
             "{printed}"
         );
     }
     write(&npm_cli, "exit 1\n");
     assert_eq!(
-        latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex"),
+        latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex", &run_lookup),
         None
     );
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_runner_sees_no_npm_call_while_checking_is_off() {
+    let sources = [UpdateSource {
+        harness_id: "codex",
+        package: "@openai/codex",
+        command: "npm install -g @openai/codex@latest".into(),
+    }];
+    fn npm() -> Option<(PathBuf, PathBuf)> {
+        Some((
+            PathBuf::from("/runtime/node"),
+            PathBuf::from("/runtime/lib/node_modules/npm/bin/npm-cli.js"),
+        ))
+    }
+    let calls = std::cell::RefCell::new(Vec::new());
+    let run = |_: &Path, args: &[&OsStr], _: &Path| {
+        calls.borrow_mut().push(
+            args.iter()
+                .skip(1)
+                .take(3)
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+        );
+        Some(b"0.168.0\n".to_vec())
+    };
+    assert_eq!(lookup_releases(&sources, false, npm, &run), None);
+    assert!(calls.borrow().is_empty());
+    let found = lookup_releases(&sources, true, npm, &run).unwrap();
+    assert_eq!(found[0].version, "0.168.0");
+    assert_eq!(*calls.borrow(), [["view", "@openai/codex", "version"]]);
 }

@@ -60,16 +60,35 @@ pub(crate) fn update_sources(installed: &[InstalledHarness]) -> Vec<UpdateSource
         .collect()
 }
 
-/// `None` when no lookup could run or every lookup failed (offline, no npm), so the caller can try
-/// again rather than wait out the check interval.
-pub(crate) fn published_releases(sources: &[UpdateSource]) -> Option<Vec<PublishedRelease>> {
-    let (node, npm_cli) = npm_cli()?;
+/// Runs one npm lookup: `(node, arguments, working folder)` to its stdout.
+type LookupRunner<'a> = &'a dyn Fn(&Path, &[&OsStr], &Path) -> Option<Vec<u8>>;
+
+/// `None` when checking is off, no lookup could run or every lookup failed
+/// (offline, no npm), so the caller can try again rather than wait out the
+/// check interval. While `npm_check` is off no npm process starts.
+pub(crate) fn published_releases(
+    sources: &[UpdateSource],
+    npm_check: bool,
+) -> Option<Vec<PublishedRelease>> {
+    lookup_releases(sources, npm_check, npm_cli, &run_lookup)
+}
+
+fn lookup_releases(
+    sources: &[UpdateSource],
+    npm_check: bool,
+    locate_npm: fn() -> Option<(PathBuf, PathBuf)>,
+    run: LookupRunner<'_>,
+) -> Option<Vec<PublishedRelease>> {
+    if !npm_check {
+        return None;
+    }
+    let (node, npm_cli) = locate_npm()?;
     let found: Vec<_> = sources
         .iter()
         .filter_map(|source| {
             Some(PublishedRelease {
                 harness_id: source.harness_id,
-                version: latest_version(&node, &npm_cli, source.package)?,
+                version: latest_version(&node, &npm_cli, source.package, run)?,
                 command: source.command.clone(),
             })
         })
@@ -138,7 +157,12 @@ fn npm_cli() -> Option<(PathBuf, PathBuf)> {
 }
 
 /// npm's `latest` tag, only if it is a final release.
-fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> {
+fn latest_version(
+    node: &Path,
+    npm_cli: &Path,
+    package: &str,
+    run: LookupRunner<'_>,
+) -> Option<String> {
     let args = [
         npm_cli.as_os_str(),
         OsStr::new("view"),
@@ -155,8 +179,12 @@ fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> 
     // `.npmrc` (and its registry tokens), nor a file another user planted in
     // a shared temporary folder. The user's own and global config still apply.
     let npm_root = npm_cli.ancestors().nth(4)?;
-    let output = run_bounded_command(node, &args, Some(npm_root), LOOKUP_LIMITS)?;
-    parse_published_version(&output.stdout.bytes)
+    parse_published_version(&run(node, &args, npm_root)?)
+}
+
+fn run_lookup(node: &Path, args: &[&OsStr], directory: &Path) -> Option<Vec<u8>> {
+    run_bounded_command(node, args, Some(directory), LOOKUP_LIMITS)
+        .map(|output| output.stdout.bytes)
 }
 
 fn parse_published_version(stdout: &[u8]) -> Option<String> {

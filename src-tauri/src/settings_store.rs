@@ -19,6 +19,7 @@ mod browser_site_permissions;
 mod chat_read_marks;
 mod custom_acp_agents;
 mod editor_settings;
+mod harness_update_check;
 mod new_chat_defaults;
 mod side_chat;
 mod terminal_dock;
@@ -136,6 +137,7 @@ impl SettingsStore {
             browser_preferences::migrate(&migration)?;
             browser_developer::migrate(&migration)?;
             agent_rail_view::migrate(&migration)?;
+            harness_update_check::migrate(&migration)?;
             chat_read_marks::migrate(&migration)?;
             browser_download_folder::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
