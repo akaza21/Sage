@@ -16,8 +16,6 @@ type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
 export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
-export { ToolKindIcon } from "./ToolKindIcon";
-
 export interface ToolItemProps {
   item: ToolProjectionItem;
   compact?: boolean;
@@ -33,8 +31,8 @@ export function ToolItem({
 }: ToolItemProps) {
   const descriptionId = useId();
   const { commandLine, output: outputSummary } = toolCommandContent(item);
-  const inputSummary = item.payload.inputSummary;
-  const kind = item.payload.presentation.kind;
+  const { inputSummary, presentation } = item.payload;
+  const kind = presentation.kind;
   const detail =
     kind === "mcp" || kind === "webSearch"
       ? null
@@ -42,9 +40,8 @@ export function ToolItem({
         ? outputSummary
         : (outputSummary ?? inputSummary);
   const visualState = item.toolState;
-  const presentation = item.payload.presentation;
   const label =
-    presentation.kind === "mcp"
+    kind === "mcp"
       ? presentation.serverLabel === "MCP"
         ? presentation.toolLabel
         : `${presentation.serverLabel} · ${presentation.toolLabel}`
@@ -56,12 +53,12 @@ export function ToolItem({
     kind === "execute" || kind === "fetch" || detail === null
       ? null
       : outputSummary;
-  const inlineOutput = kind === "fetch" ? false : outputSummary !== null;
+  const inlineOutput = kind !== "fetch" && outputSummary !== null;
   const duration = terminal
     ? toolDurationLabel(item.createdAt, item.terminalAt ?? null)
     : null;
   const browse =
-    presentation.kind === "fetch"
+    kind === "fetch"
       ? (extractAdmittedBrowseUrl(presentation.url ?? "") ??
         extractAdmittedBrowseUrl(presentation.summary ?? "") ??
         extractAdmittedBrowseUrl(inputSummary ?? "") ??
