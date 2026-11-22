@@ -50,6 +50,9 @@ struct InstalledPi {
 }
 
 impl PiLaunch for InstalledPi {
+    fn harness_version(&self) -> Option<&str> {
+        Some(self.binding.harness_version())
+    }
     fn revalidate_title(&self) -> Result<(), AdapterRuntimeError> {
         self.binding
             .revalidate()

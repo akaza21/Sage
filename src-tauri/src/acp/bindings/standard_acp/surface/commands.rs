@@ -21,9 +21,9 @@ pub(crate) fn update_commands(
 pub(crate) fn update_commands_with(
     value: &Value,
     session: &str,
-    commands: &mut Arc<CommandState>,
+    commands: &CommandState,
     first: &[AvailableCommand],
-    classify: impl Fn(AvailableCommand) -> AvailableCommand,
+    decorate: impl Fn(Vec<AvailableCommand>) -> Vec<AvailableCommand>,
 ) -> Result<bool, AdapterRuntimeError> {
     if value["params"]["update"]["sessionUpdate"] != "available_commands_update" {
         return Ok(false);
@@ -39,9 +39,9 @@ pub(crate) fn update_commands_with(
     }
     let parsed = super::command_list::parse_acp(&value["params"]["update"]["availableCommands"]);
     commands.replace(parsed.map(|listed| {
-        let mut listed: Vec<_> = listed.into_iter().map(classify).collect();
+        let mut listed = listed;
         if first.is_empty() {
-            return listed;
+            return decorate(listed);
         }
         let routed: Vec<_> = first
             .iter()
@@ -59,7 +59,7 @@ pub(crate) fn update_commands_with(
                 }
             })
             .collect();
-        routed.into_iter().chain(listed).collect()
+        decorate(routed.into_iter().chain(listed).collect())
     }))?;
     Ok(true)
 }

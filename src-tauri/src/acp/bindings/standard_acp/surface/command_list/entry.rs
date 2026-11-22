@@ -79,6 +79,7 @@ pub(crate) struct AvailableCommand {
     pub(crate) description: String,
     pub(crate) input_hint: Option<String>,
     pub(crate) source: CommandSource,
+    pub(crate) placement: crate::acp::command_placement::CommandPlacement,
     #[serde(
         rename = "panel",
         serialize_with = "serialize_panel",
@@ -168,6 +169,7 @@ impl AvailableCommand {
                 .map(|hint| bounded(hint, HINT_BYTES))
                 .transpose()?,
             source,
+            placement: Default::default(),
             dispatch,
             aliases: Vec::new(),
             source_label: None,

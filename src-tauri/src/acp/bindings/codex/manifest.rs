@@ -1,5 +1,14 @@
 use std::path::{Path, PathBuf};
 
+pub(crate) fn known_commands() -> &'static crate::acp::command_placement::KnownCommandTable {
+    static TABLE: std::sync::OnceLock<crate::acp::command_placement::KnownCommandTable> =
+        std::sync::OnceLock::new();
+    crate::acp::command_placement::KnownCommandTable::load(
+        &TABLE,
+        include_bytes!("known_commands.json"),
+    )
+}
+
 use serde::Deserialize;
 
 use super::{

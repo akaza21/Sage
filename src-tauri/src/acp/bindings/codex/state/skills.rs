@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::{
     bindings::{codex::request::OutgoingRequest, standard_acp::surface::panel},
+    command_placement::{NativeControl, place_commands},
     slash_commands::{
         AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
     },
@@ -213,10 +214,25 @@ impl CodexAdapter {
             .as_ref()
             .map(|methods| builtins(&methods.snapshot))
             .unwrap_or_default();
-        let _ = self
-            .skills
-            .list
-            .replace_if_changed(builtins.into_iter().chain(skills).collect());
+        let version =
+            crate::acp::bindings::release_version::ReleaseVersion::parse(&self.runtime_version);
+        let supports = |control| {
+            self.negotiated
+                .as_ref()
+                .is_some_and(|methods| match control {
+                    NativeControl::Compact => methods.snapshot.native_session_compact,
+                    NativeControl::Review => methods.snapshot.native_review,
+                    NativeControl::UsagePanel | NativeControl::McpPanel => true,
+                    _ => false,
+                })
+        };
+        let commands = place_commands(
+            builtins.into_iter().chain(skills).collect(),
+            super::super::manifest::known_commands(),
+            version.as_ref(),
+            &supports,
+        );
+        let _ = self.skills.list.replace_if_changed(commands);
     }
 
     pub(crate) fn skills_read_pending(&self) -> bool {
