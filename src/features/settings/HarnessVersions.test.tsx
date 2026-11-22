@@ -31,7 +31,9 @@ describe("HarnessVersionDetails", () => {
   it("explains the Claude fallback and lists what the update adds", () => {
     render(<HarnessVersionDetails harness={claude} />);
     expect(
-      screen.getByText("Installed 2.1.250 · Sage runs 2.1.257 · Latest 2.1.330"),
+      screen.getByText(
+        "Installed 2.1.250 · Sage runs 2.1.257 · Latest 2.1.330",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
