@@ -463,11 +463,18 @@ it("explains an unavailable draft in the picker and opens harness settings", asy
   ).toBeNull();
 });
 
-it.each(["bindingUnavailable", "capabilityUnavailable"] as const)(
-  "keeps unavailable chat history and independent errors (%s) with one recovery action",
-  async (reason) => {
+it.each([
+  ["bindingUnavailable", false],
+  ["capabilityUnavailable", false],
+  ["bindingUnavailable", true],
+] as const)(
+  "keeps unavailable chat history, errors and project on recovery (%s, projectless: %s)",
+  async (reason, projectless) => {
     const chatId = await existingSessionlessChat();
+    const originalProjectId = useWorkbenchStore.getState().project!.id;
+    if (projectless) await useWorkbenchStore.getState().setChatProject(null);
     const state = useWorkbenchStore.getState();
+    const targetProjectId = projectless ? null : state.project!.id;
     const unavailable = { ...harness, installState: "unavailable" as const };
     const session = agentSessionFixture({
       bindingId:
@@ -520,11 +527,43 @@ it.each(["bindingUnavailable", "capabilityUnavailable"] as const)(
     );
     await waitFor(() =>
       expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+        targetProjectId,
         harnessId: otherHarness.id,
         error: null,
       }),
     );
     expect(pages.get(chatId)?.sessions[0].bindingId).toBe(harness.bindingId);
+    fireEvent.change(composer(), {
+      target: { value: "Continue work with the available harness" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(prompts).toHaveLength(1));
+    const snapshot = await ports.project.getBootstrapSnapshot();
+    const newChatId = prompts[0].chatId;
+    expect(newChatId).not.toBe(chatId);
+    expect(snapshot.tabs).toContainEqual(
+      expect.objectContaining({ id: newChatId, kind: "chat" }),
+    );
+    if (projectless) {
+      expect(snapshot.project?.isInternal).toBe(true);
+      expect(
+        useWorkbenchStore
+          .getState()
+          .unscopedChats.flatMap((scope) => scope.railChats ?? [])
+          .map((chat) => chat.id),
+      ).toContain(newChatId);
+    } else {
+      expect(snapshot.project?.id).toBe(targetProjectId);
+    }
+    expect(prompts[0]).toMatchObject({
+      projectId: snapshot.project!.id,
+      prompt: "Continue work with the available harness",
+    });
+    if (projectless) {
+      // The browser fixture reset retains root selection across tests.
+      cleanup();
+      await useWorkbenchStore.getState().switchProject(originalProjectId);
+    }
   },
 );
 

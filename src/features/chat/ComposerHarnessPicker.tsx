@@ -95,9 +95,12 @@ export function ComposerHarnessPicker({
               <button
                 type="button"
                 className="button button--compact"
-                onClick={() =>
-                  void useWorkbenchStore.getState().openNewChatDraft()
-                }
+                onClick={() => {
+                  const state = useWorkbenchStore.getState();
+                  void state.openNewChatDraft(
+                    state.project?.isInternal ? undefined : state.project?.id,
+                  );
+                }}
               >
                 Continue in a new chat
               </button>
