@@ -87,7 +87,7 @@ pub(crate) enum RequestKind {
     Interrupt,
     Unsubscribe,
     GoalGet,
-    GoalSet,
+    GoalResume,
     GoalPause,
     GoalClear,
     RateLimitsRead,
@@ -108,7 +108,7 @@ pub(crate) enum RequestKind {
 
 impl RequestKind {
     pub(crate) fn is_goal_mutation(self) -> bool {
-        matches!(self, Self::GoalSet | Self::GoalPause | Self::GoalClear)
+        matches!(self, Self::GoalResume | Self::GoalPause | Self::GoalClear)
     }
 
     pub(crate) fn starts_turn(self) -> bool {
@@ -163,7 +163,7 @@ impl OutgoingRequest {
             RequestKind::Unsubscribe | RequestKind::ForkRelease => "thread/unsubscribe",
             RequestKind::ForkDelete => "thread/delete",
             RequestKind::GoalGet => "thread/goal/get",
-            RequestKind::GoalSet | RequestKind::GoalPause => "thread/goal/set",
+            RequestKind::GoalResume | RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
             RequestKind::TerminalsList => "thread/backgroundTerminals/list",
@@ -424,8 +424,6 @@ pub(crate) enum RequestError {
     UnsupportedAccessMode,
     #[error("request id is outside the admitted integer range")]
     InvalidId,
-    #[error("goal objective is outside the admitted range")]
-    InvalidGoal,
     #[error("native project path is not absolute and normalized")]
     InvalidNativePath,
     #[error("request serialization failed")]

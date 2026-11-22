@@ -310,7 +310,7 @@
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
         "maxGzipBytes": 3100,
         "maxCssGzipBytes": 850,
-        "reason": "Capability-driven goal set, pause, resume, budget and clear controls and mutations. Includes six status labels; editor and details remain demand-loaded. Reserves at least 250 B headroom."
+        "reason": "Capability-driven native goal controls with identity-checked Resume, budget and usage display. Includes six status labels; editor and details remain demand-loaded. Reserves at least 250 B headroom."
       },
       {
         "entry": "src/services/acpGoalSubscription.ts",
@@ -319,7 +319,7 @@
       },
       {
         "entry": "src/features/chat/GoalDetails.tsx",
-        "maxGzipBytes": 1200,
+        "maxGzipBytes": 1100,
         "maxCssGzipBytes": 650,
         "reason": "Shared native goal details and objective editor load only on request and unmount when closed. The strip and content have separate caps."
       },

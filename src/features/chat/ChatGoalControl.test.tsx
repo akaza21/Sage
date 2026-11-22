@@ -185,7 +185,14 @@ it.each([
     actions: ["Edit goal"],
   },
   ...(
-    ["active", "paused", "usageLimited", "budgetLimited", "complete"] as const
+    [
+      "active",
+      "paused",
+      "blocked",
+      "usageLimited",
+      "budgetLimited",
+      "complete",
+    ] as const
   ).flatMap((status) =>
     [true, false].map((enabled) => ({
       capability: {
@@ -202,7 +209,7 @@ it.each([
         "Delete goal",
         ...(status === "active" ? ["Pause goal"] : []),
         ...(enabled &&
-        ["paused", "usageLimited", "budgetLimited"].includes(status)
+        ["paused", "blocked", "usageLimited", "budgetLimited"].includes(status)
           ? ["Resume goal"]
           : []),
       ],

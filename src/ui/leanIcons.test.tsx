@@ -5,9 +5,8 @@ import * as Lucide from "lucide-react";
 import { expect, it } from "vitest";
 import * as LeanBarrel from "./leanIcons";
 import * as LeanLazy from "./leanIconNodesLazy";
-import * as LeanGoal from "./goalIcons";
 
-const Lean = { ...LeanBarrel, ...LeanLazy, ...LeanGoal };
+const Lean = { ...LeanBarrel, ...LeanLazy };
 
 it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
   "preserves SVG refs and children for %s",

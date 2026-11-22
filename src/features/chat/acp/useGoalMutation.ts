@@ -1,4 +1,7 @@
-import { goalMutations } from "../../../services/acpGoalMutations";
+import {
+  goalMutations,
+  type GoalResumeIntent,
+} from "../../../services/acpGoalMutations";
 import type { GoalMutationAction, GoalIdentity } from "../../../domain/acpGoal";
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
@@ -22,10 +25,9 @@ export function createGoalMutationController(deps: {
   set?: (
     request: AcpSessionMutationIntent & {
       objective: string;
-      expectedGoal?: GoalIdentity | null;
     },
   ) => Promise<AcpMutationResult>;
-  resume?: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
+  resume?: (request: GoalResumeIntent) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   apply: (context: AcpActionContext, result: AcpMutationResult) => boolean;
@@ -43,7 +45,7 @@ export function createGoalMutationController(deps: {
   return async (
     action: Action,
     objective?: string,
-    expectedGoal?: GoalIdentity | null,
+    expectedGoal?: GoalIdentity,
   ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
@@ -68,7 +70,8 @@ export function createGoalMutationController(deps: {
     }
     if (
       action === "resume" &&
-      (captured.page.goal?.kind !== "goal" ||
+      (!expectedGoal ||
+        captured.page.goal?.kind !== "goal" ||
         !isResumableGoalStatus(captured.page.goal.snapshot.status))
     ) {
       return { kind: "refused", message: "This Goal cannot be resumed." };
@@ -113,22 +116,24 @@ export function createGoalMutationController(deps: {
           message: "Native Goal resume is unavailable for this session.",
         };
       }
-      const baseline = expectedGoal && {
-        objective: expectedGoal.objective,
-        createdAt: expectedGoal.createdAt,
-      };
       const result =
         action === "set"
           ? await deps.set!({
               ...request,
               objective: objective!,
-              expectedGoal: baseline,
             })
-          : await {
-              pause: deps.pause,
-              resume: deps.resume!,
-              clear: deps.clear,
-            }[action](request);
+          : action === "resume"
+            ? await deps.resume!({
+                ...request,
+                expectedGoal: {
+                  objective: expectedGoal!.objective,
+                  createdAt: expectedGoal!.createdAt,
+                },
+              })
+            : await {
+                pause: deps.pause,
+                clear: deps.clear,
+              }[action](request);
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }

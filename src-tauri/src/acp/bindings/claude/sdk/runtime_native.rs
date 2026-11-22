@@ -19,7 +19,7 @@ impl ClaudeSdkRuntime {
         let bridge = self.bridge.as_ref().ok_or(AdapterRuntimeError::Operation)?;
         let capabilities = bridge.goal_capabilities();
         let input = match action {
-            GoalAction::Set { objective, .. }
+            GoalAction::Set { objective }
                 if capabilities.set
                     && valid_objective(objective)
                     && objective.trim() != "clear" =>

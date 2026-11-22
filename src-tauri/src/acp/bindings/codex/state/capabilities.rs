@@ -69,7 +69,7 @@ impl CodexAdapter {
         snapshot.goal = if self.goal_supported() {
             sage_acp_protocol::intent::GoalCapabilities {
                 observes: true,
-                set: true,
+                set: false,
                 resume: true,
                 token_budget: false,
                 pause: true,

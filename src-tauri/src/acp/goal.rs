@@ -8,16 +8,13 @@ use sage_acp_protocol::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GoalAction {
-    Set {
-        objective: String,
-        expected_goal: Option<GoalIdentity>,
-    },
+    Set { objective: String },
     PauseExisting,
-    ResumeExisting,
+    ResumeExisting { expected_goal: GoalIdentity },
     ClearExisting,
 }
 
-/// Identity captured when an editor opens; usage and status changes do not
+/// Identity captured by the displayed Resume control; usage and status changes do not
 /// replace a goal. Text remains bounded at the IPC and runtime queue seams.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -208,11 +205,10 @@ impl NativeRpcIntent {
             + self.owner.session_id.as_str().len()
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
-                NativeRpcRequest::Goal(GoalAction::Set {
-                    objective,
-                    expected_goal,
-                    ..
-                }) => objective.len() + 1 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes),
+                NativeRpcRequest::Goal(GoalAction::Set { objective }) => objective.len() + 1,
+                NativeRpcRequest::Goal(GoalAction::ResumeExisting { expected_goal }) => {
+                    expected_goal.bytes() + 1
+                }
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
@@ -279,6 +275,15 @@ pub(crate) enum GoalStatus {
     UsageLimited,
     BudgetLimited,
     Complete,
+}
+
+impl GoalStatus {
+    pub(crate) fn is_resumable(&self) -> bool {
+        matches!(
+            self,
+            Self::Paused | Self::Blocked | Self::UsageLimited | Self::BudgetLimited
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

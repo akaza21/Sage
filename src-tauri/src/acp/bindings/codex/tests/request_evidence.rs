@@ -59,15 +59,7 @@ fn outgoing_request_evidence_matches_real_serializers() {
     send(OutgoingRequest::rate_limits_read(1));
     send(OutgoingRequest::goal_get(1, &thread));
     send(OutgoingRequest::goal_pause(1, &thread));
-    for action in [
-        crate::acp::goal::GoalAction::Set {
-            expected_goal: None,
-            objective: "Ship safely".into(),
-        },
-        crate::acp::goal::GoalAction::ResumeExisting,
-    ] {
-        send(OutgoingRequest::goal_set(1, &thread, &action));
-    }
+    send(OutgoingRequest::goal_resume(1, &thread));
     send(OutgoingRequest::goal_clear(1, &thread));
     send(OutgoingRequest::thread_revert(1, &thread, "turn-1"));
     send(OutgoingRequest::mcp_list(1, &thread));

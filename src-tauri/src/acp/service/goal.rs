@@ -61,13 +61,9 @@ impl AcpService {
             return Err(crate::acp::runtime::HostError::Intent);
         }
         let admitted = match &action {
-            GoalAction::Set { objective, .. } => {
-                capabilities.goal.set
-                    && crate::acp::goal::valid_objective(objective)
-                    && !objective.trim().is_empty()
-            }
+            GoalAction::Set { .. } => capabilities.goal.set,
             GoalAction::PauseExisting => capabilities.goal.pause,
-            GoalAction::ResumeExisting => capabilities.goal.resume,
+            GoalAction::ResumeExisting { .. } => capabilities.goal.resume,
             GoalAction::ClearExisting => capabilities.goal.clear,
         };
         if !admitted {

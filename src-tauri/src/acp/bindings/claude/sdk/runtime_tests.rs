@@ -1711,7 +1711,6 @@ fn a_custom_goal_command_does_not_enable_or_dispatch_native_goals() {
         assert_eq!(sdk.goal_state(), Some(&GoalState::Unsupported));
         for action in [
             GoalAction::Set {
-                expected_goal: None,
                 objective: "Ship the release".into(),
             },
             GoalAction::ClearExisting,
@@ -1745,8 +1744,7 @@ fn a_native_goal_cannot_dispatch_through_a_custom_catalog_entry() {
         .unwrap();
     assert!(matches!(
         sdk.prepare_goal_command(&GoalAction::Set {
-            expected_goal: None,
-            objective: "Ship the release".into(),
+            objective: "Ship the release".into()
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));
@@ -1805,8 +1803,7 @@ fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
     assert!(
         runtime
             .prepare_goal_command(&GoalAction::Set {
-                expected_goal: None,
-                objective: "Ship the release".into(),
+                objective: "Ship the release".into()
             })
             .unwrap()
     );
@@ -1860,7 +1857,6 @@ fn active_goal_replay_publishes_progress_and_clear_to_the_runtime_owner() {
     for (action, expected) in [
         (
             GoalAction::Set {
-                expected_goal: None,
                 objective: "Ship the release".into(),
             },
             "Ship the release",

@@ -1,37 +1,26 @@
 import { useState } from "react";
-import type { AcpGoalSnapshot, GoalIdentity } from "../../domain/acpGoal";
 
 export function GoalEditor({
-  snapshot,
+  objective,
   disabled,
   onSave,
   onClose,
 }: {
-  snapshot?: AcpGoalSnapshot;
+  objective: string;
   disabled: boolean;
-  onSave: (
-    objective: string | undefined,
-    expectedGoal?: GoalIdentity,
-  ) => Promise<boolean>;
+  onSave: (objective: string) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const [baseline, setBaseline] = useState(snapshot);
-  const [editedText, setText] = useState<string>();
-  const text = editedText ?? snapshot?.objective ?? "";
-  const changed =
-    baseline?.objective !== snapshot?.objective ||
-    baseline?.createdAt !== snapshot?.createdAt ||
-    baseline?.progress?.setAt !== snapshot?.progress?.setAt;
-  const textLength = [...text].length;
+  const [text, setText] = useState(objective);
   const valid =
-    text.trim() !== "" && textLength <= 4000 && !text.includes("\0");
+    text.trim().length > 0 && [...text].length <= 4000 && !text.includes("\0");
   return (
     <div className="chat-goal-editor" role="group" aria-label="Edit goal">
-      {changed && <p role="alert">The goal changed while you were editing</p>}
       <label>
         Goal objective
         <textarea
           autoFocus
+          aria-label="Goal objective"
           value={text}
           maxLength={8000}
           disabled={disabled}
@@ -40,27 +29,21 @@ export function GoalEditor({
           }
         />
       </label>
-      <span>{textLength.toLocaleString()} / 4,000</span>
+      <span>{[...text].length.toLocaleString()} / 4,000</span>
       <button
         type="button"
-        disabled={disabled || !valid || changed}
-        onClick={async () => {
-          if (await onSave(editedText, baseline)) onClose();
+        disabled={disabled || !valid}
+        onClick={() => {
+          if (!disabled && valid)
+            void onSave(text).then((applied) => {
+              if (applied) onClose();
+            });
         }}
       >
         Save goal
       </button>
-      {changed && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setBaseline(snapshot)}
-        >
-          Keep editing
-        </button>
-      )}
       <button type="button" disabled={disabled} onClick={onClose}>
-        {changed ? "Discard" : "Cancel"}
+        Cancel
       </button>
     </div>
   );

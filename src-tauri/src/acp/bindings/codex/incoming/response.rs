@@ -268,7 +268,7 @@ pub(super) fn response<M: ResourceMapper>(
         }
         RequestKind::Models
         | RequestKind::GoalGet
-        | RequestKind::GoalSet
+        | RequestKind::GoalResume
         | RequestKind::GoalPause
         | RequestKind::GoalClear
         | RequestKind::TurnsList

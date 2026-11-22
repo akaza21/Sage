@@ -2,13 +2,15 @@ use serde_json::Value;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::{characterisation::Characterisation, codex::request::OutgoingRequest};
-use crate::acp::goal::{GoalAction, GoalSnapshot, GoalState, GoalStatus, valid_objective};
+use crate::acp::goal::{
+    GoalAction, GoalIdentity, GoalSnapshot, GoalState, GoalStatus, valid_objective,
+};
 
 #[derive(Clone, PartialEq)]
 pub(super) struct PendingGoalMutation {
     id: u64,
     generation: u64,
-    objective: Option<String>,
+    identity: Option<GoalIdentity>,
     status: Option<GoalStatus>,
 }
 
@@ -17,24 +19,24 @@ impl PendingGoalMutation {
         let mut pending = Self {
             id,
             generation,
-            objective: None,
+            identity: None,
             status: None,
         };
         match action {
-            GoalAction::Set { objective, .. } => {
-                pending.objective = Some(objective.clone());
+            GoalAction::ResumeExisting { expected_goal } => {
+                pending.identity = Some(expected_goal.clone());
+                pending.status = Some(GoalStatus::Active);
             }
-            GoalAction::ResumeExisting => pending.status = Some(GoalStatus::Active),
             GoalAction::PauseExisting => pending.status = Some(GoalStatus::Paused),
-            GoalAction::ClearExisting => {}
+            GoalAction::ClearExisting | GoalAction::Set { .. } => {}
         }
         pending
     }
 
     fn matches(&self, snapshot: &GoalSnapshot) -> bool {
-        self.objective
+        self.identity
             .as_ref()
-            .is_none_or(|objective| *objective == snapshot.objective)
+            .is_none_or(|identity| identity.matches(snapshot))
             && self
                 .status
                 .as_ref()
@@ -110,40 +112,35 @@ impl CodexAdapter {
         self.goal_mutation(id, &GoalAction::ClearExisting, OutgoingRequest::goal_clear)
     }
 
-    pub(crate) fn goal_set(
+    pub(crate) fn goal_resume(
         &mut self,
         id: u64,
-        action: &crate::acp::goal::GoalAction,
+        expected_goal: &GoalIdentity,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if let GoalAction::Set { expected_goal, .. } = action {
-            let matches = match (&self.goal_state, expected_goal) {
-                (GoalState::Goal { snapshot }, Some(expected)) => expected.matches(snapshot),
-                (GoalState::NoGoal, None) => true,
-                _ => false,
-            };
-            if !matches {
-                return Err(AdapterError::GoalChanged);
-            }
+        if !matches!(&self.goal_state, GoalState::Goal { snapshot }
+            if expected_goal.matches(snapshot) && snapshot.status.is_resumable())
+        {
+            return Err(AdapterError::GoalChanged);
         }
-        self.goal_mutation(id, action, |id, thread| {
-            OutgoingRequest::goal_set(id, thread, action)
-        })
+        self.goal_mutation(
+            id,
+            &GoalAction::ResumeExisting {
+                expected_goal: expected_goal.clone(),
+            },
+            OutgoingRequest::goal_resume,
+        )
     }
 
     fn goal_mutation(
         &mut self,
         id: u64,
         action: &GoalAction,
-        build: impl FnOnce(
+        build: fn(
             u64,
             &sage_acp_protocol::contract::RequiredText<512>,
         ) -> Result<OutgoingRequest, super::super::request::RequestError>,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if !self.goal_supported()
-            || !(matches!(self.goal_state, GoalState::Goal { .. })
-                || matches!(action, GoalAction::Set { .. })
-                    && matches!(self.goal_state, GoalState::NoGoal))
-        {
+        if !self.goal_supported() || !matches!(self.goal_state, GoalState::Goal { .. }) {
             return Err(AdapterError::CapabilityUnavailable);
         }
         if self.goal_mutation_fence.is_some() {
@@ -196,7 +193,7 @@ impl CodexAdapter {
             return false;
         }
         let next = match kind {
-            super::super::request::RequestKind::GoalSet
+            super::super::request::RequestKind::GoalResume
             | super::super::request::RequestKind::GoalPause => result
                 .and_then(|value| value.get("goal"))
                 .and_then(|value| goal_snapshot(value).ok())

@@ -5,8 +5,8 @@ import type {
 import { decodeAcpGoal, type GoalIdentity } from "../domain/acpGoal";
 import { invokeAcpMutation } from "./acpDesktop";
 
-type GoalEditIntent = AcpSessionMutationIntent & {
-  expectedGoal?: GoalIdentity | null;
+export type GoalResumeIntent = AcpSessionMutationIntent & {
+  expectedGoal: GoalIdentity;
 };
 
 // Goal mutation commands load with their controls, separately from chat reads.
@@ -17,9 +17,9 @@ function mutation<Request extends AcpSessionMutationIntent>(command: string) {
 
 export const goalMutations = {
   pauseExistingGoal: mutation<AcpSessionMutationIntent>("pause_existing_goal"),
-  setGoal: mutation<GoalEditIntent & { objective: string }>("set_goal"),
-  resumeExistingGoal: mutation<AcpSessionMutationIntent>(
-    "resume_existing_goal",
+  setGoal: mutation<AcpSessionMutationIntent & { objective: string }>(
+    "set_goal",
   ),
+  resumeExistingGoal: mutation<GoalResumeIntent>("resume_existing_goal"),
   clearExistingGoal: mutation<AcpSessionMutationIntent>("clear_existing_goal"),
 };

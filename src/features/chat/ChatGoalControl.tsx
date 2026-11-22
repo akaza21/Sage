@@ -1,7 +1,6 @@
 import { isResumableGoalStatus } from "./acp/goalMutability";
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
-import { RotateCw, Target } from "../../ui/leanIconNodesLazy";
-import { Pause } from "../../ui/goalIcons";
+import { Pause, RotateCw, Target } from "../../ui/leanIconNodesLazy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
@@ -65,7 +64,7 @@ export function ChatGoalControl({
   onMutation?: (
     action: GoalMutationAction,
     objective?: string,
-    expectedGoal?: GoalIdentity | null,
+    expectedGoal?: GoalIdentity,
   ) => Promise<GoalMutationOutcome>;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -130,11 +129,9 @@ export function ChatGoalControl({
     controls && capabilities?.set && (editing || editorOpen) ? (
       <GoalContent
         part="GoalEditor"
-        snapshot={state.kind === "goal" ? state.snapshot : undefined}
+        objective={state.kind === "goal" ? state.snapshot.objective : ""}
         disabled={locked}
-        onSave={async (objective, expectedGoal) =>
-          objective === undefined ? true : run("set", objective, expectedGoal)
-        }
+        onSave={(objective) => run("set", objective)}
         onClose={closeEditor}
       />
     ) : null;
@@ -182,7 +179,12 @@ export function ChatGoalControl({
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        void run(action);
+        if (action === "resume")
+          void run(action, undefined, {
+            objective: snapshot.objective,
+            createdAt: snapshot.createdAt,
+          });
+        else void run(action);
       }}
     >
       <Icon size={13} aria-hidden="true" />
