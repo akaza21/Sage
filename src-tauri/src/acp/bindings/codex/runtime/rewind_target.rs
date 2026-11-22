@@ -133,7 +133,7 @@ impl CodexRuntime {
                     digest.update(text.as_bytes());
                 }
                 let digest: [u8; 32] = digest.finalize().into();
-                if digest != read.target.prompt_digest {
+                if Some(digest) != read.target.prompt_digest {
                     return self.target_refused();
                 }
                 let Some(native) = turn["id"]

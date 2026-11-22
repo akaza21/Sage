@@ -127,7 +127,12 @@ impl AcpService {
             owner.session_id.as_str(),
             turn_id.as_str(),
         )
-        .map_err(|_| SessionControlError::Unavailable)?;
+        .map_err(|error| match error {
+            StoreError::RewindUnavailable { reason } => SessionControlError::Refused(
+                sage_acp_protocol::contract::SafeText::new("controlSummary", reason).ok(),
+            ),
+            _ => SessionControlError::Unavailable,
+        })?;
         let (binding, external): (String, String) = self
             .database
             .connection()

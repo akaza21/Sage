@@ -34,7 +34,7 @@ mod requests;
 mod residency;
 pub(crate) mod rewind;
 #[cfg(test)]
-mod rewind_tests;
+pub(crate) mod rewind_tests;
 mod send;
 mod session_close;
 mod session_duplicates;
@@ -143,6 +143,8 @@ pub(crate) use turn_undo::{
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum StoreError {
+    #[error("{reason}")]
+    RewindUnavailable { reason: &'static str },
     #[error("database operation failed")]
     Database(#[from] rusqlite::Error),
     #[error("durable history capacity reached for {resource}; existing history is preserved")]

@@ -270,8 +270,12 @@ pub async fn fork_chat(
     let source = {
         let epoch = state.project_transitions.lock().await;
         stale(*epoch, expected_transition_epoch, "forking the chat")?;
-        fork_source(&state.database.connection(), &project, &chat, &turn)
-            .map_err(|_| "This chat can't be forked from this answer".to_owned())?
+        fork_source(&state.database.connection(), &project, &chat, &turn).map_err(|error| {
+            match error {
+                crate::acp::store::StoreError::RewindUnavailable { reason } => reason.to_owned(),
+                _ => "This chat can't be forked from this answer".to_owned(),
+            }
+        })?
     };
     let handle = app.clone();
     let native_source = source.clone();

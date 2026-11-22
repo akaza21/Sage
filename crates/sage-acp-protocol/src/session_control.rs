@@ -9,7 +9,8 @@ pub struct ConversationTarget {
     pub turn_id: SageTurnId,
     pub native_turn_id: Option<ExternalId>,
     pub following_messages: u32,
-    pub prompt_digest: [u8; 32],
+    /// Required for position-based lookup; a durable native ID can stand alone.
+    pub prompt_digest: Option<[u8; 32]>,
 }
 
 impl ConversationTarget {
@@ -19,7 +20,8 @@ impl ConversationTarget {
                 .native_turn_id
                 .as_ref()
                 .map_or(0, |id| id.as_str().len())
-            + 36
+            + 4
+            + self.prompt_digest.map_or(0, |_| 32)
     }
 }
 

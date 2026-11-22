@@ -1,9 +1,10 @@
 //! Durable native turn correlations and admission of conversation targets.
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sage_acp_protocol::{intent::ExternalId, session_control::ConversationTarget};
-use sha2::{Digest, Sha256};
 
 use super::{AdapterStoreOwner, StoreError, facts};
+
+mod prompt;
 
 pub(crate) fn record_native_turn(
     tx: &Transaction<'_>,
@@ -76,14 +77,14 @@ pub(crate) fn target(
         .optional()?;
     let following: i64 = connection.query_row(concat!(
         "SELECT COUNT(*) FROM items i JOIN turns t ON t.id=i.turn_id WHERE t.session_id=?1
-         AND t.ordinal>=?2 AND (i.kind='userPrompt' OR (i.kind='text' AND json_extract(i.payload_json,'$.payload.role')='user'
+         AND t.ordinal>=?2 AND i.kind='text' AND (json_extract(i.payload_json,'$.kind')='userPrompt' OR (json_extract(i.payload_json,'$.payload.role')='user'
          AND t.ordinal>?2)) AND ",super::turn_undo::visible_turn!("t.session_id","t.id")
     ),params![session,ordinal],|r|r.get(0))?;
-    let prompt: String = connection.query_row(
-        "SELECT json_extract(payload_json,'$.payload.text') FROM items WHERE session_id=?1 AND turn_id=?2
-         AND kind='text' AND json_extract(payload_json,'$.payload.role')='user' ORDER BY ordinal LIMIT 1",
-        params![session,turn],|r|r.get(0),
-    )?;
+    let prompt_digest = match prompt::digest(connection, session, turn) {
+        Ok(digest) => Some(digest),
+        Err(StoreError::RewindUnavailable { .. }) if native.is_some() => None,
+        Err(error) => return Err(error),
+    };
     Ok(ConversationTarget {
         turn_id: sage_acp_protocol::contract::SageTurnId::parse(turn)
             .map_err(|_| StoreError::Corrupt("rewind turn"))?,
@@ -94,7 +95,7 @@ pub(crate) fn target(
             .transpose()?,
         following_messages: u32::try_from(following)
             .map_err(|_| StoreError::Corrupt("rewind position"))?,
-        prompt_digest: Sha256::digest(prompt.as_bytes()).into(),
+        prompt_digest,
     })
 }
 

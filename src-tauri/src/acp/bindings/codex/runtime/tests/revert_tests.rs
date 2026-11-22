@@ -9,7 +9,7 @@ fn earlier_target() -> sage_acp_protocol::session_control::ConversationTarget {
         turn_id: SageTurnId::parse(TURN).unwrap(),
         native_turn_id: Some(ExternalId::new("nativeTurnId", "turn-1").unwrap()),
         following_messages: 1,
-        prompt_digest: [0; 32],
+        prompt_digest: None,
     }
 }
 
@@ -56,7 +56,7 @@ fn an_old_prompt_without_a_native_receipt_resolves_from_the_native_suffix() {
     ready(&mut runtime);
     let mut target = earlier_target();
     target.native_turn_id = None;
-    target.prompt_digest = Sha256::digest(b"Inspect only").into();
+    target.prompt_digest = Some(Sha256::digest(b"Inspect only").into());
     let control = SessionControl::RewindConversation { before: target };
     let egress = runtime.session_control(&control).unwrap();
     let id = request_id(&egress);

@@ -23,7 +23,7 @@ fn a_targeted_fork_carries_the_chosen_turn_and_cuts_only_the_new_thread() {
                 turn_id: SageTurnId::parse("turn-6f9619ff-8b86-d011-b42d-00cf4fc964ff").unwrap(),
                 native_turn_id: Some(ExternalId::new("nativeTurnId", "chosen-turn").unwrap()),
                 following_messages: 2,
-                prompt_digest: [0; 32],
+                prompt_digest: None,
             },
         })
         .unwrap();

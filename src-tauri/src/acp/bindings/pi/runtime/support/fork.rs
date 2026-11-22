@@ -352,7 +352,7 @@ fn fork_entry(
         .rev()
         .nth(target.following_messages as usize)?;
     let digest: [u8; 32] = Sha256::digest(row.get("text")?.as_str()?.as_bytes()).into();
-    if digest != target.prompt_digest {
+    if Some(digest) != target.prompt_digest {
         return None;
     }
     let entry = row.get("entryId")?.as_str()?;

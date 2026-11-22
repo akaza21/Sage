@@ -182,7 +182,11 @@ impl Fixture {
 }
 
 fn capabilities(protocol: &str) -> String {
-    PENDING_CAPABILITIES_JSON.replace("\"pending\"", &format!("\"{protocol}\""))
+    let mut capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
+        serde_json::from_str(PENDING_CAPABILITIES_JSON).unwrap();
+    capabilities.protocol_version =
+        sage_acp_protocol::contract::RequiredText::new("protocolVersion", protocol).unwrap();
+    serde_json::to_string(&capabilities).unwrap()
 }
 
 #[test]
