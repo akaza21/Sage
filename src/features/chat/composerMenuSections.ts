@@ -17,25 +17,9 @@ export const sectionLabels = {
   more: "More",
 } satisfies Record<AcpCommandSection, string>;
 
-/** What a row needs before it acts: a live session, or nothing. */
+/** What a row needs before it acts. Undeclared rows, and every catalog
+ * command, need a live session: the requirement fails closed. */
 export type ComposerRowRequirement = "session" | "none";
-
-/** Each section's requirement; a native row may declare its own. */
-const sectionRequirements = {
-  addToMessage: "none",
-  session: "session",
-  connections: "session",
-  addOns: "session",
-  skillsAndCommands: "none",
-  modelAndAccess: "none",
-  usage: "session",
-  more: "session",
-} satisfies Record<AcpCommandSection, ComposerRowRequirement>;
-
-export const rowRequirement = (row: {
-  section?: AcpCommandSection;
-  requires?: ComposerRowRequirement;
-}) => row.requires ?? sectionRequirements[row.section ?? "more"];
 
 const sourceLabels = {
   builtin: "Commands",
@@ -54,7 +38,7 @@ export interface ComposerNativeRow {
   label: string;
   description?: string;
   control?: AcpNativeCommandControl;
-  /** Overrides the section's requirement. */
+  /** Absent means "session". */
   requires?: ComposerRowRequirement;
   content: ReactNode;
 }
@@ -72,19 +56,18 @@ export interface ComposerMenuSection {
 
 /** Inputs are bounded by the command/config decoders. Only 50 matching rows
  * per section reach React; searching still considers the complete catalog.
- * Before a session exists (the new-chat draft) only rows needing none stay. */
+ * Before a session exists (the new-chat draft) only rows declaring that they
+ * need none stay, and no catalog command does. */
 export function composerMenuSections(
   allNative: readonly ComposerNativeRow[],
   allCatalog: readonly AvailableAcpCommand[],
   query: string,
   sessionless = false,
 ): ComposerMenuSection[] {
-  const admitted = <T>(rows: readonly T[], requirement: (row: T) => string) =>
-    sessionless ? rows.filter((row) => requirement(row) === "none") : rows;
-  const native = admitted(allNative, rowRequirement);
-  const catalog = admitted(allCatalog, (command) =>
-    rowRequirement({ section: command.placement?.section }),
-  );
+  const native = sessionless
+    ? allNative.filter((row) => row.requires === "none")
+    : allNative;
+  const catalog = sessionless ? [] : allCatalog;
   const needle = query.trim().toLocaleLowerCase();
   const controls = new Set(native.map((row) => row.control).filter(Boolean));
   const matches = (...text: (string | undefined | null)[]) =>

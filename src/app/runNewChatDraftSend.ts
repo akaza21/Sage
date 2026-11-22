@@ -7,6 +7,7 @@ import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { DraftCreation, NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
+import type * as DraftImages from "../features/chat/draftImages";
 
 export async function runNewChatDraftSend(
   set: StoreApi<WorkbenchState>["setState"],
@@ -19,6 +20,7 @@ export async function runNewChatDraftSend(
     };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
+  uploadImages?: typeof DraftImages.uploadDraftImages,
 ) {
   let creation = attempt.submission.creation;
   let opening = false;
@@ -141,6 +143,9 @@ export async function runNewChatDraftSend(
     }
     if (get().activeTabId !== chatId)
       await get().activateTab(chatId, submission);
+    // Images move into the created chat's composer before the prompt does,
+    // so a first send that is then cancelled keeps them there with it.
+    await uploadImages?.(chatId);
     const { state, draft } = current();
     const owner = state.captureChatOwnership(chatId, draft.id);
     if (!owner || state.activeTabId !== chatId)
@@ -165,8 +170,7 @@ export async function runNewChatDraftSend(
           effort: choice.effort,
         },
       });
-    const { text, images } = draft;
-    state.setChatComposer(owner, text);
+    state.setChatComposer(owner, draft.text);
     set({
       newChatDraft: null,
       agentCenter: "chat",
@@ -176,8 +180,7 @@ export async function runNewChatDraftSend(
               ...submission,
               projectId: owner.projectId,
               chatId,
-              text,
-              images,
+              text: draft.text,
             }
           : null,
     });

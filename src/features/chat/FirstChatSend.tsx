@@ -52,15 +52,11 @@ export function FirstChatSend({
       return;
     if (harness.transport === "legacySimulator") {
       void state.sendPrompt();
-    } else if (pending.images?.length) {
-      // The draft's images load their own upload-then-send step.
-      void import("./draftImages").then((draft) =>
-        draft.sendDraftImages(pending, actions),
-      );
     } else if (harness.bindingId) {
+      // Images a draft handed over are already in this composer.
       void actions.submit(
         entry.composerText.trim(),
-        [],
+        entry.attachedContext,
         harness.bindingId as CuratedBindingId,
         (entry.modelId ?? null) as CuratedModelId | null,
       );

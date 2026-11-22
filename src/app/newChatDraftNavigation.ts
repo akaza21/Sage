@@ -43,7 +43,7 @@ export async function openNewChatDraft(
       (holdsWork && !explicit))
       ? draft
       : draft && holdsWork
-        ? { ...draft, targetProjectId: projectId, images: undefined }
+        ? { ...draft, targetProjectId: projectId }
         : null;
   const draftFocusRequest = state.draftFocusRequest;
   const preferred = preferredAvailableHarness(

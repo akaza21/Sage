@@ -5,19 +5,51 @@ import type { AcpChatPage, ProjectionRevision } from "../../../src/domain/acp";
 import type { SendAcpTurnRequest } from "../../../src/services/acpDesktop";
 import { acpDesktop } from "../../../src/services/acpDesktop";
 
-const MAX_CAPTURED = 8;
+const MAX_CAPTURED = 16;
+
+const deferred = () => {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => (release = resolve));
+  return { promise, release };
+};
 
 /**
  * On the agent-single scenario: gives its ACP harness a Plan access mode,
- * answers native image uploads, and lets a new-chat draft create a chat
- * whose first turn request is captured on `window.draftPlusSent`.
+ * answers native image uploads and chat access writes, and lets a new-chat
+ * draft create a chat with no session. Its first send starts a session and
+ * sends a turn; both are captured on `window.draftPlus`, with switches to
+ * hold or fail uploads and to hold the created chat's page.
  */
 export function installDraftPlusFixture() {
   useSessionAccessModeStore.setState({ ready: true });
   const state = useWorkbenchStore.getState();
   const chat = state.tabs.find((tab) => tab.kind === "chat");
   const source = chat && acpProjectionStoreFor(chat.id).getState().page;
-  if (!source) throw new Error("Draft fixture requires a loaded chat page");
+  const session = source?.sessions.find(
+    (item) => item.id === source.currentSessionId,
+  );
+  if (!source || !session)
+    throw new Error("Draft fixture requires a loaded chat session");
+  const control = {
+    creates: 0,
+    uploads: [] as string[],
+    failUpload: null as string | null,
+    uploadHold: null as ReturnType<typeof deferred> | null,
+    pageHold: null as ReturnType<typeof deferred> | null,
+    sessions: 0,
+    sent: [] as SendAcpTurnRequest[],
+    access: [] as unknown[],
+    holdUploads() {
+      control.uploadHold = deferred();
+    },
+    holdPage() {
+      control.pageHold = deferred();
+    },
+  };
+  Object.assign(window, { draftPlus: control });
+  const bounded = (list: unknown[]) => {
+    if (list.length >= MAX_CAPTURED) throw new Error("Capture limit reached");
+  };
   useWorkbenchStore.setState({
     harnesses: state.harnesses.map((harness) => ({
       ...harness,
@@ -32,6 +64,7 @@ export function installDraftPlusFixture() {
       ],
     })),
     createChat: async (_target, chatId) => {
+      control.creates += 1;
       const id = chatId ?? crypto.randomUUID();
       useWorkbenchStore.setState((current) => ({
         tabs: [
@@ -54,35 +87,50 @@ export function installDraftPlusFixture() {
     },
   });
   const pages = new Map<string, AcpChatPage>([[source.chatId, source]]);
+  // A created chat has no session until its first send starts one.
   const pageFor = (chatId: string) =>
     pages.get(chatId) ??
     pages
-      .set(chatId, { ...structuredClone(source), chatId, turns: [] } as never)
+      .set(chatId, {
+        ...structuredClone(source),
+        chatId,
+        sessions: [],
+        currentSessionId: null,
+        turns: [],
+      } as never)
       .get(chatId)!;
-  const loadPage = acpDesktop.getChatPage;
-  acpDesktop.getChatPage = async (request, ...rest) =>
-    request.chatId === source.chatId
-      ? loadPage(request, ...rest)
-      : structuredClone(pageFor(request.chatId));
-  const sent: SendAcpTurnRequest[] = [];
-  let uploads = 0;
-  Object.assign(window, {
-    draftPlusSent: sent,
-    draftPlusUploads: () => uploads,
-  });
-  acpDesktop.sendTurn = async (request) => {
-    if (sent.length >= MAX_CAPTURED) throw new Error("Capture limit reached");
-    sent.push(structuredClone(request));
-    const next = structuredClone(pageFor(request.chatId));
+  const revised = (chatId: string, change: (page: AcpChatPage) => void) => {
+    const next = structuredClone(pageFor(chatId));
+    change(next);
     next.projectionRevision = String(
       Number(next.projectionRevision) + 1,
     ) as ProjectionRevision;
-    pages.set(next.chatId, next);
+    pages.set(chatId, next);
     return { projection: structuredClone(next) } as never;
   };
-  // Listeners the mocked runtime hands out unregister without a native side.
+  const loadPage = acpDesktop.getChatPage;
+  acpDesktop.getChatPage = async (request, ...rest) => {
+    if (request.chatId === source.chatId) return loadPage(request, ...rest);
+    await control.pageHold?.promise;
+    return structuredClone(pageFor(request.chatId));
+  };
+  acpDesktop.startSession = async (request) => {
+    if (control.sessions >= MAX_CAPTURED)
+      throw new Error("Capture limit reached");
+    control.sessions += 1;
+    return revised(request.chatId, (page) => {
+      page.sessions = [structuredClone(session)];
+      page.currentSessionId = session.id;
+    });
+  };
+  acpDesktop.sendTurn = async (request) => {
+    bounded(control.sent);
+    control.sent.push(structuredClone(request));
+    return revised(request.chatId, () => {});
+  };
   Object.defineProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__", {
     configurable: true,
+    writable: true,
     value: { unregisterListener: () => undefined },
   });
   Object.defineProperty(window, "__TAURI_INTERNALS__", {
@@ -91,19 +139,33 @@ export function installDraftPlusFixture() {
       transformCallback: () => 0,
       invoke: async (
         command: string,
-        args: { request?: { label?: string; dataBase64?: string } },
+        args: {
+          request?: { label?: string; dataBase64?: string; mode?: string };
+        },
       ) => {
+        if (command === "set_chat_access") {
+          bounded(control.access);
+          control.access.push(args.request);
+          return null;
+        }
         if (command !== "upload_chat_image") return null;
-        uploads += 1;
+        const label = args.request?.label ?? "image.png";
+        await control.uploadHold?.promise;
+        if (control.failUpload === label) {
+          control.failUpload = null;
+          throw new Error(`Could not upload ${label}.`);
+        }
+        bounded(control.uploads);
+        control.uploads.push(label);
         return {
           kind: "image",
-          artifactId: `5a1f0c3e-2b4d-4c6e-8f10-${String(uploads).padStart(12, "0")}`,
+          artifactId: `5a1f0c3e-2b4d-4c6e-8f10-${String(control.uploads.length).padStart(12, "0")}`,
           mediaType: "image/png",
           width: 1,
           height: 1,
           byteLength: atob(args.request?.dataBase64 ?? "").length,
           sha256: "b".repeat(64),
-          label: args.request?.label ?? "image.png",
+          label,
         };
       },
     },

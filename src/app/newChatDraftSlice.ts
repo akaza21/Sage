@@ -22,7 +22,7 @@ export interface NewChatDraft {
   targetProjectId?: string | null;
   text: string;
   /** Images for the first turn, at most MAX_PROMPT_IMAGES. They stay in the
-   * WebView until the created chat uploads them; a retarget drops them. */
+   * WebView until the handoff uploads them into the created chat's composer. */
   images?: readonly DraftImage[];
   harnessId: string | null;
   modelId: string | null;
@@ -67,8 +67,6 @@ export interface NewChatDraftSlice {
         ownershipEpoch: number;
         /** The text handed to the chat; a different composer text cancels. */
         text: string;
-        /** The draft's images, uploaded to the chat before the send. */
-        images?: readonly DraftImage[];
       }
     | null;
   openNewChatDraft: (

@@ -101,9 +101,7 @@ export function NewChatDraftSurface({
     draft.error || unconfirmed ? (
       <>
         {draft.error ??
-          (unconfirmed
-            ? "Chat creation is unconfirmed. Reload chats before trying again."
-            : null)}
+          "Chat creation is unconfirmed. Reload chats before trying again."}
         {unconfirmed ? (
           <button
             type="button"
@@ -173,7 +171,7 @@ export function NewChatDraftSurface({
             harness?.bindingId
               ? (files) =>
                   void import("./draftImages").then((images) =>
-                    images.addDraftImages(files),
+                    images.addDraftImages(draft.id, files),
                   )
               : undefined
           }

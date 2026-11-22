@@ -51,15 +51,17 @@ export function createNewChatDraftActions(
     try {
       // Every module the send needs loads before anything is created, so a
       // failed chunk load cannot strand the draft mid-creation.
-      const [send] = await Promise.all([
+      const [send, , images] = await Promise.all([
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
+        draft.images?.length && import("../features/chat/draftImages"),
       ]);
       released = await send.runNewChatDraftSend(
         set,
         get,
         submittingDraft,
         submission,
+        images ? images.uploadDraftImages : undefined,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));

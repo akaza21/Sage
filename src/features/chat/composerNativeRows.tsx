@@ -128,19 +128,12 @@ export function composerNativeRows(
       >
         <span>Add images</span>
       </button>,
+      undefined,
+      undefined,
+      "none",
     );
   if (props.projectAction)
-    // It moves the chat it belongs to; a draft chooses its project in its
-    // location strip.
-    add(
-      "project",
-      "addToMessage",
-      "Work in a project",
-      props.projectAction,
-      undefined,
-      undefined,
-      "session",
-    );
+    add("project", "addToMessage", "Work in a project", props.projectAction);
   action(
     "goal",
     "session",
@@ -189,6 +182,9 @@ export function composerNativeRows(
         disabled={disabled}
         onClose={onClose}
       />,
+      undefined,
+      undefined,
+      "none",
     );
   for (const mode of sessionModeActions(sessionConfig)) {
     const plan = mode.name.toLocaleLowerCase() === "plan";
@@ -230,8 +226,6 @@ export function composerNativeRows(
         {selected ? <Check size={14} aria-hidden="true" /> : null}
       </button>,
       description,
-      undefined,
-      "session",
     );
   }
   // This action switches the toolbar's active popover itself.

@@ -117,7 +117,7 @@ export function ChatHarnessControls({
   // Both unsaved drafts and existing chats without a head draft the choices
   // consumed by the next native start. Only unsaved drafts control them here;
   // existing chats retain the native-bound chat access and effort stores.
-  const drafting = !!draftPickers || !!draftChatId;
+  const drafting = !!(draftPickers || draftChatId);
   const modelsLoading = drafting && (modelsPending || !knownModels);
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
@@ -196,10 +196,11 @@ export function ChatHarnessControls({
 
   const contextWindow = formatContextWindow(currentModel?.contextWindow);
   const chooseModel = (modelId: string) => {
-    const changed = modelId !== unchangedModelId;
-    if (changed && modelOption?.type === "select")
-      void onSetSessionConfigOption(modelOption.id, { value: modelId });
-    else if (changed) onSelectModel(modelId);
+    if (modelId !== unchangedModelId) {
+      if (modelOption?.type === "select")
+        void onSetSessionConfigOption(modelOption.id, { value: modelId });
+      else onSelectModel(modelId);
+    }
     dismiss();
     modelTrigger.current?.focus();
   };
@@ -217,8 +218,9 @@ export function ChatHarnessControls({
     !draftPickers && canSelectEffort,
     active !== null && active !== "options",
   );
+  // A draft picks its project in its location strip, so its "+" offers none.
   const projectAction =
-    (projectName && hasProjects) || internalProject ? (
+    !draftPickers && ((projectName && hasProjects) || internalProject) ? (
       <ProjectScopeChip
         projectName={projectName ?? "Choose project"}
         variant="menuItem"
@@ -291,7 +293,7 @@ export function ChatHarnessControls({
           />
         ) : null}
         <ComposerHarnessPicker
-          canContinueInNewChat={!draftPickers && !availableBinding}
+          canContinueInNewChat={!(draftPickers || availableBinding)}
           discoveryPhase={discoveryPhase}
           open={active === "harness"}
           onOpenChange={setHarnessOpen}

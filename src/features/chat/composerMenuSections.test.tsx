@@ -219,16 +219,23 @@ it.each([
 it.each([
   {
     sessionless: false,
-    rows: ["files", "project", "goal", "mode:plan", "effort", "usage"],
+    rows: [
+      "files",
+      "images",
+      "project",
+      "goal",
+      "plan",
+      "mode:plan",
+      "effort",
+      "usage",
+    ],
     commands: ["link", "recipe", "tune", "status"],
   },
-  {
-    sessionless: true,
-    rows: ["files", "effort"],
-    commands: ["link", "recipe", "tune"],
-  },
+  // Fails closed: rows that do not declare needing nothing (files, effort)
+  // and every catalog command stay hidden before a session exists.
+  { sessionless: true, rows: ["images", "plan"], commands: [] },
 ])(
-  "before a session exists keeps only rows that need none (sessionless $sessionless)",
+  "before a session exists keeps only rows declaring they need none (sessionless $sessionless)",
   ({ sessionless, rows, commands }) => {
     const native = composerNativeRows({
       sessionConfig: {
@@ -248,6 +255,12 @@ it.each([
       onSetSessionMode: async () => {},
       onSetSessionConfigOption: async () => {},
       onAttachFiles: noop,
+      imageAction: { disabled: false, onChoose: noop },
+      planAccess: {
+        bindingId: "binding",
+        capabilities: [],
+        onOpenAccess: noop,
+      },
       onOpenGoal: noop,
       onOpenEffort: noop,
       onOpenUsage: noop,
