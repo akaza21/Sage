@@ -97,7 +97,7 @@ it("creates a new chat for a project draft even when an empty chat exists", asyn
 });
 
 it.each(["current", "foreign"])(
-  "preserves an unsent draft when New chat explicitly targets a different %s project",
+  "preserves unsent text when New chat explicitly targets a different %s project",
   async (target) => {
     const state = useWorkbenchStore.getState();
     state.updateNewChatDraft({ text: "Keep this prompt", effort: "high" });
@@ -109,7 +109,11 @@ it.each(["current", "foreign"])(
     expect(useWorkbenchStore.getState()).toMatchObject({
       agentCenter: "draft",
       project: { id: state.project!.id },
-      newChatDraft: draft,
+      newChatDraft: {
+        ...draft,
+        targetProjectId:
+          target === "current" ? state.project!.id : "another-project",
+      },
     });
   },
 );

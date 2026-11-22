@@ -204,8 +204,7 @@ it("new-chat entry points distinguish a project chat from a top-level chat", asy
   expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
     state.project!.id,
   );
-  state.discardNewChatDraft();
-  await state.openNewChatDraft();
+  await state.openNewChatDraft(null);
   expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBeNull();
   expect(currentProjectLayout(useWorkbenchStore.getState())?.projectId).toBe(
     state.project!.id,

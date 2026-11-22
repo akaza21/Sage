@@ -36,7 +36,7 @@ export interface NewChatDraftOpenOptions {
 }
 
 interface DraftOpenIntent {
-  projectId?: string;
+  projectId?: string | null;
   sourceProjectId: string | null;
   activeTabId: string | null;
   ownershipEpoch: number;
@@ -61,7 +61,7 @@ export interface NewChatDraftSlice {
       }
     | null;
   openNewChatDraft: (
-    projectId?: string,
+    projectId?: string | null,
     options?: NewChatDraftOpenOptions,
   ) => Promise<unknown>;
   updateNewChatDraft: (
