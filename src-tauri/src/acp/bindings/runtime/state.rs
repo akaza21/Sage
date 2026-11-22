@@ -17,7 +17,7 @@ impl NativeRuntime {
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()
         {
-            channel.update(owner, goal);
+            channel.update_observed(owner, goal);
         }
     }
 }

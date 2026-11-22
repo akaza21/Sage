@@ -1,6 +1,9 @@
 import { expect, it, vi } from "vitest";
 import type { AcpActionContext } from "./acpActionController";
-import { agentSessionFixture } from "../../../domain/acpProjection.fixture";
+import {
+  capabilitySetFixture,
+  agentSessionFixture,
+} from "../../../domain/acpProjection.fixture";
 import { AcpDesktopError } from "../../../services/acpDesktop";
 import { canMutateGoal } from "./goalMutability";
 import { createGoalMutationController } from "./useGoalMutation";
@@ -22,6 +25,16 @@ function context(runtimeEpoch: string | null = "9"): AcpActionContext {
         agentSessionFixture({
           id: "session-1" as never,
           runtimeEpoch: runtimeEpoch as never,
+          capabilities: capabilitySetFixture({
+            goal: {
+              observes: true,
+              set: false,
+              pause: true,
+              resume: false,
+              tokenBudget: false,
+              clear: true,
+            },
+          }),
         }),
       ],
       goal: {

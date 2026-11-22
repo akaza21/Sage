@@ -104,8 +104,8 @@ impl HarnessAdapter for CodexRuntime {
         }
     }
 
-    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
-        Some(self.inner.goal_state().clone())
+    fn goal_state(&self) -> Option<&crate::acp::goal::GoalState> {
+        Some(self.inner.goal_state())
     }
 
     fn goal_pending(&self) -> bool {
@@ -217,6 +217,9 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
         match action {
+            crate::acp::goal::GoalAction::Set { .. } => {
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            }
             crate::acp::goal::GoalAction::PauseExisting => self.request(CodexAdapter::goal_pause),
             crate::acp::goal::GoalAction::ClearExisting => self.request(CodexAdapter::goal_clear),
         }
