@@ -142,9 +142,7 @@ export function RenameResourceControl({
               <span>{kind} name</span>
               <input
                 autoFocus
-                aria-describedby={
-                  fieldError ? `${id}-preview ${id}-error` : `${id}-preview`
-                }
+                aria-describedby={`${id}-preview ${id}-error`}
                 aria-invalid={fieldError ? true : undefined}
                 disabled={inFlight}
                 maxLength={255}
@@ -159,7 +157,7 @@ export function RenameResourceControl({
             {fieldError ? (
               <div id={`${id}-error`}>
                 <Notice
-                  identity={`${id}:name`}
+                  identity={id}
                   severity="warning"
                   message={fieldError}
                 />

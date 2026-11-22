@@ -158,9 +158,7 @@ function NewEntryControl({
               <span>{label} name</span>
               <input
                 autoFocus
-                aria-describedby={
-                  fieldError ? `${previewId} ${errorId}` : previewId
-                }
+                aria-describedby={`${previewId} ${errorId}`}
                 aria-invalid={fieldError ? true : undefined}
                 disabled={inFlight}
                 maxLength={255}
@@ -175,7 +173,7 @@ function NewEntryControl({
             {fieldError ? (
               <div id={errorId}>
                 <Notice
-                  identity={`new-${kind}:name`}
+                  identity={errorId}
                   severity="warning"
                   message={fieldError}
                 />
