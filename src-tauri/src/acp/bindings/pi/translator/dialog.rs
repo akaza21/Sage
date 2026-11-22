@@ -1,5 +1,15 @@
 use sage_acp_protocol::intent::{PermissionOptionKind, user_input::UserInputRequest};
 
+impl super::PiTranslator {
+    pub(crate) fn question_now(&self) -> std::time::Instant {
+        #[cfg(test)]
+        if let Some(clock) = &self.question_clock {
+            return *clock.lock().expect("question clock");
+        }
+        std::time::Instant::now()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingUiRequest {
     pub id: String,
@@ -28,9 +38,9 @@ impl PendingUiRequest {
         self.received_at
             .checked_add(std::time::Duration::from_millis(self.timeout_ms?))
     }
-    pub(crate) fn remaining_ms(&self) -> Option<u64> {
+    pub(crate) fn remaining_ms(&self, now: std::time::Instant) -> Option<u64> {
         let deadline = self.deadline()?;
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let remaining = deadline.saturating_duration_since(now);
         Some(u64::try_from(remaining.as_nanos().div_ceil(1_000_000)).unwrap_or(u64::MAX))
     }
 }

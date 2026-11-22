@@ -84,7 +84,7 @@ impl PiTranslator {
             id: id.clone(),
             method: method.to_owned(),
             form,
-            received_at: std::time::Instant::now(),
+            received_at: self.question_now(),
             timeout_ms: value.get("timeout").and_then(Value::as_u64).map(|timeout| {
                 timeout
                     .min(sage_acp_protocol::intent::user_input::USER_INPUT_MAX_AUTO_RESOLUTION_MS)

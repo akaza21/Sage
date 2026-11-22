@@ -184,7 +184,7 @@ impl PiRuntime {
             .as_deref()
             .map(|form| {
                 let mut form = form.clone();
-                form.auto_resolution_ms = pending.remaining_ms();
+                form.auto_resolution_ms = pending.remaining_ms(self.translator.question_now());
                 elicitation_form::question_payload("Answer the Pi extension's question", None, form)
                     .map(|mut payload| {
                         if confirmation

@@ -32,11 +32,13 @@ fn gate(id: &str) -> Value {
 #[test]
 fn pi_timed_out_gate_does_not_hide_observed_authority_violation() {
     let mut runtime = fixture_runtime(72);
+    let clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     running(&mut runtime);
     runtime
         .ingest(&frame(gate("gate-expired")), &Mapper)
         .unwrap();
+    clock.advance_ms(1);
     let batch = runtime
         .ingest(
             &frame(json!({
@@ -69,13 +71,23 @@ fn pi_timed_out_gate_does_not_hide_observed_authority_violation() {
 #[test]
 fn pi_second_extension_gate_after_timeout_can_receive_a_reply() {
     let mut runtime = fixture_runtime(73);
+    let clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     running(&mut runtime);
     runtime
         .ingest(&frame(gate("gate-expired")), &Mapper)
         .unwrap();
-    let batch = runtime.ingest(&frame(gate("gate-next")), &Mapper).unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(
+                json!({"type":"extension_ui_request","id":"gate-next","method":"confirm",
+                "title":"Allow tool?","message":"Allow write?"}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    clock.advance_ms(1);
     let expired = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("gate-expired").unwrap(),

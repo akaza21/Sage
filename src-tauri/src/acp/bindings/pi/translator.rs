@@ -147,6 +147,8 @@ pub struct PiTranslator {
     active: Option<ActiveTurn>,
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
+    #[cfg(test)]
+    pub(crate) question_clock: Option<std::sync::Arc<std::sync::Mutex<std::time::Instant>>>,
     pending_thinking: Option<(String, String)>,
     /// The auto-compaction setting asked for, by its request.
     pending_auto_compaction: Option<(String, bool)>,
@@ -233,6 +235,8 @@ impl PiTranslator {
             active: None,
             initialization: None,
             pending_ui: None,
+            #[cfg(test)]
+            question_clock: None,
             pending_thinking: None,
             pending_auto_compaction: None,
             resuming: None,

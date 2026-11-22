@@ -163,15 +163,22 @@ fn cancelling_an_idle_question_cancels_parallel_arrivals_before_the_reply_is_wri
 #[test]
 fn deadlines_expire_queued_questions_without_waiting_for_the_visible_answer() {
     let mut runtime = fixture_runtime(90);
+    let clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     running(&mut runtime);
     runtime.ingest(&frame(dialog("visible")), &Mapper).unwrap();
     for at in 0..4 {
         let mut timed = dialog(&format!("timed-{at}"));
-        timed["timeout"] = json!(0);
+        timed["timeout"] = json!(20);
         runtime.ingest(&frame(timed), &Mapper).unwrap();
     }
-    assert!(runtime.next_request_deadline().is_some());
+    assert_eq!(
+        runtime.next_request_deadline(),
+        Some(clock.now() + std::time::Duration::from_millis(20))
+    );
+    clock.advance_ms(19);
+    assert!(runtime.poll_request_deadlines(&Mapper).unwrap().is_none());
+    clock.advance_ms(1);
     let expired = runtime.poll_request_deadlines(&Mapper).unwrap().unwrap();
     assert_eq!(expired.egress().len(), 4);
     for reply in expired.into_parts().1 {
@@ -197,12 +204,48 @@ fn deadlines_expire_queued_questions_without_waiting_for_the_visible_answer() {
 }
 
 #[test]
+fn an_expired_queued_question_is_cancelled_before_the_next_card_opens() {
+    let mut runtime = fixture_runtime(93);
+    let clock = QuestionClock::new(&mut runtime);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime.ingest(&frame(dialog("visible")), &Mapper).unwrap();
+    let mut timed = dialog("expired");
+    timed["timeout"] = json!(20);
+    runtime.ingest(&frame(timed), &Mapper).unwrap();
+    runtime.ingest(&frame(dialog("next")), &Mapper).unwrap();
+    clock.advance_ms(20);
+    let reply = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("visible").unwrap(),
+            decision: PermissionDecision::Answer(
+                serde_json::from_value(json!([{"questionId":"answer","text":"Ada"}])).unwrap(),
+            ),
+        })
+        .unwrap();
+    deliver(&mut runtime, reply);
+    let next = runtime.answers_delivered(&Mapper).unwrap().unwrap();
+    assert!(
+        matches!(next.events(), [AdapterEvent::PermissionRequest { external_request_id, .. }] if external_request_id.as_str() == "next")
+    );
+    assert_eq!(next.egress().len(), 1);
+    let expired = next.into_parts().1.remove(0);
+    runtime.commit_mandatory_egress(expired.token()).unwrap();
+    assert_eq!(
+        deliver(&mut runtime, expired),
+        json!({"type":"extension_ui_response","id":"expired","cancelled":true})
+    );
+}
+
+#[test]
 fn a_dialog_that_expired_before_idle_adoption_never_opens_a_card() {
     let mut runtime = fixture_runtime(92);
+    let clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     let mut timed = dialog("expired");
-    timed["timeout"] = json!(0);
+    timed["timeout"] = json!(20);
     runtime.ingest(&frame(timed), &Mapper).unwrap();
+    clock.advance_ms(20);
     let adopted = runtime
         .adopt_turn(
             RequiredText::new("client", "expired-idle").unwrap(),

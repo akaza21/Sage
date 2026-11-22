@@ -67,6 +67,24 @@ fn fixture_runtime(epoch: u64) -> PiRuntime {
     )
 }
 
+struct QuestionClock(std::sync::Arc<std::sync::Mutex<std::time::Instant>>);
+
+impl QuestionClock {
+    fn new(runtime: &mut PiRuntime) -> Self {
+        let clock = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+        runtime.translator.question_clock = Some(std::sync::Arc::clone(&clock));
+        Self(clock)
+    }
+
+    fn now(&self) -> std::time::Instant {
+        *self.0.lock().unwrap()
+    }
+
+    fn advance_ms(&self, millis: u64) {
+        *self.0.lock().unwrap() += std::time::Duration::from_millis(millis);
+    }
+}
+
 fn frame(value: Value) -> Frame {
     let mut bytes = serde_json::to_vec(&value).expect("json");
     bytes.push(b'\n');

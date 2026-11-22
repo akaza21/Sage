@@ -28,7 +28,8 @@ impl PiRuntime {
         let mut replies = Vec::new();
         let mut index = 0;
         while index < self.questions.queued.len() {
-            if self.questions.queued[index].remaining_ms() == Some(0) {
+            if self.questions.queued[index].remaining_ms(self.translator.question_now()) == Some(0)
+            {
                 let pending = self
                     .questions
                     .queued
@@ -125,7 +126,7 @@ impl PiRuntime {
         if self
             .translator
             .pending_ui()
-            .is_some_and(|pending| pending.remaining_ms() == Some(0))
+            .is_some_and(|pending| pending.remaining_ms(self.translator.question_now()) == Some(0))
         {
             let reply = self.cancel_pending_question(&id)?;
             return AdapterBatch::new(Vec::new(), vec![reply]);
@@ -150,7 +151,7 @@ impl PiRuntime {
                 egress.extend(reply);
                 continue;
             }
-            if next.remaining_ms() == Some(0) {
+            if next.remaining_ms(self.translator.question_now()) == Some(0) {
                 egress.extend(self.cancel_dialog(next.id)?.1);
                 continue;
             }

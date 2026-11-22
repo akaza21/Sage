@@ -28,11 +28,15 @@ fn the_first_idle_question_is_adopted_before_reading_the_stdout_behind_it() {
 #[tokio::test]
 async fn a_pi_timeout_cancels_through_the_store_without_another_wire_frame() {
     let fixture = Fixture::new();
-    let mut pump = fixture.pump(ready_adapter());
+    let mut adapter = ready_adapter();
+    let clock = QuestionClock::new(&mut adapter.inner);
+    let mut pump = fixture.pump(adapter);
     start(&mut pump).await;
     pump.push_stdout_chunk(&line(json!({"type":"extension_ui_request","method":"confirm","id":"deadline","title":"Continue?","message":"Apply the change?","timeout":20})), 10).await.unwrap();
     assert_eq!(pump.next_auto_resolution_deadline_millis(), Some(30));
+    clock.advance_ms(19);
     assert!(!pump.auto_resolve_due(29).await.unwrap());
+    clock.advance_ms(1);
     assert!(pump.auto_resolve_due(30).await.unwrap());
     let mut transport = Capture::default();
     pump.flush_one(&mut transport).unwrap();

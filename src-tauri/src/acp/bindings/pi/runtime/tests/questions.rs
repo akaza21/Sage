@@ -208,6 +208,7 @@ fn a_second_dialog_waits_out_the_open_card_and_the_first_still_answers() {
 #[test]
 fn a_timed_question_waits_for_its_deadline_and_then_releases_the_next_dialog() {
     let mut runtime = fixture_runtime(85);
+    let _clock = QuestionClock::new(&mut runtime);
     ready(&mut runtime);
     running(&mut runtime);
     let form = ask(
