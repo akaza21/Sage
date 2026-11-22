@@ -19,7 +19,7 @@ const LocationPart = lazyParts<typeof LocationChunk>(
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
-import { SESSION_PROMPT_REFUSAL } from "./composerDisabledReason";
+import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
@@ -311,12 +311,11 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               compact={
                 // A visible error explains the session's own refusal; a local
                 // reason (size, queue, access) stays visible.
-                (!!chatError && disabledReason === SESSION_PROMPT_REFUSAL) ||
+                (!!chatError && sessionPromptUnavailable) ||
                 missingBindingNotice ||
                 (!availableBinding && !canPrompt) ||
-                ["signInRequired", "consent", "waiting", "checking"].includes(
-                  discoveryPhase,
-                )
+                discoveryPhase === "checking" ||
+                SIGN_IN_PHASES.includes(discoveryPhase)
               }
             />
             {otherContext.length > 0 ? (

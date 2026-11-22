@@ -10,24 +10,30 @@ interface ComposerAvailability {
   actionBusy: boolean;
   activeTurn: boolean;
   availableBinding: boolean;
-  canPrompt: boolean;
   chatLoadFailed: boolean;
   harnessAvailable: boolean;
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   projectTransitioning: boolean;
-  selectedHarness: Pick<HarnessDefinition, "name"> | null;
+  selectedHarness?: Pick<HarnessDefinition, "name"> | null;
   useNativeAcp: boolean;
 }
 
-/** The refusal a failed launch or session itself explains. */
+/** Discovery phases that wait for the user to finish signing in. */
+export const SIGN_IN_PHASES: readonly HarnessDiscoveryPhase[] = [
+  "signInRequired",
+  "consent",
+  "waiting",
+];
+
+/** The session's own refusal, given when no reason below applies. */
 export const SESSION_PROMPT_REFUSAL =
   "The selected harness cannot accept prompts in this session.";
 
+/** Why the composer is refused before the session's own refusal applies. */
 export function composerDisabledReason({
   actionBusy,
   activeTurn,
   availableBinding,
-  canPrompt,
   chatLoadFailed,
   harnessAvailable,
   harnessDiscoveryPhase,
@@ -42,14 +48,13 @@ export function composerDisabledReason({
   if (!selectedHarness) return "Choose an available harness before sending.";
   if (harnessDiscoveryPhase === "checking")
     return "Wait while Sage checks the selected harness.";
-  if (["signInRequired", "consent", "waiting"].includes(harnessDiscoveryPhase))
+  if (SIGN_IN_PHASES.includes(harnessDiscoveryPhase))
     return "Finish signing in before sending.";
   if (!harnessAvailable) return `${selectedHarness.name} is unavailable.`;
   if (useNativeAcp && !availableBinding)
     return harnessUnavailableReason("adapterAbsent", selectedHarness.name);
-  if (chatLoadFailed)
+  if (useNativeAcp && chatLoadFailed)
     return "This chat failed to load. Retry to send a prompt.";
-  if (!canPrompt) return SESSION_PROMPT_REFUSAL;
   return null;
 }
 
