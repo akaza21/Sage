@@ -241,11 +241,9 @@ describe("DiffSurface resource states", () => {
       });
     });
     expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Could not load this diff",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    // The reason is the visible sentence, not a detail.
     expect(screen.getByRole("alert")).toHaveTextContent("Diff unavailable.");
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
 
     act(() => {
       useWorkbenchStore.setState({

@@ -109,7 +109,7 @@ export async function exerciseResourceStates(
     hasText:
       resource === "file"
         ? "Could not open src/workbench/AgentChatPanes.tsx"
-        : "Could not load this diff",
+        : "The comparison is temporarily unavailable.",
   });
   await expect(alert).toBeVisible();
   await expectInsideResourceCanvas(alert);

@@ -33,10 +33,6 @@ const DELETION_CONFLICT = {
 /** Matches the native refusal of a recovery copy whose base the disk has left. */
 const DISK_MISMATCH = /no longer matches disk/i;
 
-function changedOnDisk(error: unknown): boolean {
-  return DISK_MISMATCH.test(errorMessage(error));
-}
-
 function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   const editor = bridge.getActiveEditor();
   return editor?.phase === "ready" ? editor : null;
@@ -166,7 +162,7 @@ export function actionFailed(
       saving: false,
       // The conflict, with any lost copy, already explains this failure.
       message:
-        active.document.conflict && changedOnDisk(error)
+        active.document.conflict && DISK_MISMATCH.test(errorMessage(error))
           ? active.message
           : message,
     });

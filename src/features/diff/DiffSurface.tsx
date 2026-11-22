@@ -240,8 +240,9 @@ function DiffDocument({
         <Notice
           identity={`diff-load:${tab.id}`}
           severity="blocking"
-          message="Could not load this diff."
-          details={diff.message}
+          // The reason (no Git baseline, a session's saved edit gone) is the
+          // explanation of this Diff, so it is the sentence, not a detail.
+          message={diff.message || "Could not load this diff."}
           action={
             tab.diffRef && tabResource && !unavailable
               ? {

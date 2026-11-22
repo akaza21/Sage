@@ -85,8 +85,8 @@ export default function FileConflictNotice({
   const { pending, run } = useConflictAction();
   const off = busy || pending;
   const { conflict } = document;
-  const deletedKey =
-    conflict?.kind === "deleted" ? resourceKey(document.resource) : null;
+  const key = resourceKey(document.resource);
+  const deletedKey = conflict?.kind === "deleted" ? key : null;
   useEffect(() => {
     if (!deletedKey) return;
     const state = useWorkbenchStore.getState();
@@ -95,7 +95,6 @@ export default function FileConflictNotice({
     // Once per deletion of this File.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletedKey]);
-  const key = resourceKey(document.resource);
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     return (

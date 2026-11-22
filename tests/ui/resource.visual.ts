@@ -832,9 +832,7 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await expect(
       page.getByText("Saved agent change", { exact: true }),
     ).toBeVisible();
-    const unavailable = page.getByRole("alert");
-    await unavailable.getByRole("button", { name: "Details" }).click();
-    await expect(unavailable).toContainText(
+    await expect(page.getByRole("alert")).toContainText(
       "The saved edit is unavailable for this Chat session.",
     );
     await expect(
@@ -994,11 +992,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-diff-loading.png");
     await setResourceState(page, "diff-error");
-    const diffError = page
-      .getByRole("alert")
-      .filter({ hasText: "Could not load this diff" });
-    await diffError.getByRole("button", { name: "Details" }).click();
-    await expect(diffError).toContainText(
+    await expect(page.getByRole("alert")).toContainText(
       "The comparison is temporarily unavailable.",
     );
     await expectNoViewportOverflow(page);

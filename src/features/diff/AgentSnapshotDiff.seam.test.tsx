@@ -5,7 +5,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
@@ -451,10 +450,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
       }),
     );
     expect(screen.queryByText("-old")).toBeNull();
-    const failure = screen.getByRole("alert");
-    expect(failure).toHaveTextContent("Could not load this diff.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
-    expect(failure).toHaveTextContent("current chat session");
+    expect(screen.getByRole("alert")).toHaveTextContent("current chat session");
     expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
   });
   it("adds a line comment only to the exact pinned Chat composer", async () => {
