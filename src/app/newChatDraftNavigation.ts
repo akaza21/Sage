@@ -11,6 +11,7 @@ export async function openNewChatDraft(
   set: Set,
   get: Get,
   projectId?: string | null,
+  explicit = true,
 ) {
   let state = get();
   if (state.projectTransitioning) return;
@@ -21,10 +22,14 @@ export async function openNewChatDraft(
     state = get();
     if (!state.project || state.projectTransitioning) return;
   }
-  // An omitted target reopens the draft. Explicit targets preserve unsent
-  // text and created-chat ownership. In-flight or unconfirmed creation stays
-  // frozen until its outcome is known.
+  // An omitted target reopens the draft. A different target replaces an
+  // empty draft. Only the user's explicit open moves unsent text or a created
+  // chat to it; automatic continuity keeps the target the user chose.
+  // In-flight or unconfirmed creation stays frozen until its outcome is known.
   const draft = state.newChatDraft;
+  const holdsWork =
+    !!draft &&
+    (draft.text.length > 0 || draft.submission.status !== "released");
   const retainedDraft =
     draft &&
     (projectId === undefined ||
@@ -32,10 +37,10 @@ export async function openNewChatDraft(
         ? draft.projectId
         : draft.targetProjectId) === projectId ||
       draft.submission.status === "submitting" ||
-      draft.submission.status === "unconfirmed")
+      draft.submission.status === "unconfirmed" ||
+      (holdsWork && !explicit))
       ? draft
-      : draft &&
-          (draft.text.length > 0 || draft.submission.status === "created")
+      : draft && holdsWork
         ? { ...draft, targetProjectId: projectId }
         : null;
   const draftFocusRequest = state.draftFocusRequest;

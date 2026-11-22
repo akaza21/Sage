@@ -118,6 +118,65 @@ it.each(["current", "foreign"])(
   },
 );
 
+it.each([
+  { holds: "unsent text", target: null },
+  { holds: "unsent text", target: "another-project" },
+  { holds: "a created chat", target: null },
+])(
+  "keeps a draft holding $holds aimed at $target when continuity reopens it automatically",
+  async ({ holds, target }) => {
+    const state = useWorkbenchStore.getState();
+    if (holds === "unsent text") state.updateNewChatDraft({ text: "Mine" });
+    else
+      useWorkbenchStore.setState({
+        newChatDraft: {
+          ...state.newChatDraft!,
+          submission: { status: "created", chatId: state.activeTabId! },
+        },
+      });
+    state.updateNewChatDraft({ targetProjectId: target });
+    const draft = useWorkbenchStore.getState().newChatDraft;
+    await state.activateTab(state.activeTabId!);
+    expect(useWorkbenchStore.getState().agentCenter).toBe("chat");
+    // The call AgentCenterKeeper makes for a named project with no chats.
+    await state.openNewChatDraft(state.project!.id, { requestFocus: false });
+    expect(useWorkbenchStore.getState().agentCenter).toBe("draft");
+    expect(useWorkbenchStore.getState().newChatDraft).toBe(draft);
+    expect(draft?.targetProjectId).toBe(target);
+  },
+);
+
+it.each(["submitting", "unconfirmed"] as const)(
+  "leaves a %s draft unchanged when New chat targets elsewhere",
+  async (status) => {
+    const state = useWorkbenchStore.getState();
+    const chatId = crypto.randomUUID();
+    useWorkbenchStore.setState({
+      newChatDraft: {
+        ...state.newChatDraft!,
+        text: "In flight",
+        submission:
+          status === "submitting"
+            ? { status, chatId, creation: { status: "released" } }
+            : {
+                status,
+                chatId,
+                reconcile: async () => ({ status: "not-created" as const }),
+              },
+      },
+    });
+    const draft = useWorkbenchStore.getState().newChatDraft;
+    const target = draft?.targetProjectId;
+    for (const projectId of [null, "another-project"]) {
+      await state.openNewChatDraft(projectId);
+      expect(useWorkbenchStore.getState().newChatDraft).toBe(draft);
+      expect(useWorkbenchStore.getState().newChatDraft?.targetProjectId).toBe(
+        target,
+      );
+    }
+  },
+);
+
 it("starts a fresh draft for an explicit different target when the draft is empty", async () => {
   const state = useWorkbenchStore.getState();
   const draft = state.newChatDraft;
