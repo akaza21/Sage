@@ -97,7 +97,7 @@ impl SessionTreeLease {
     pub(crate) async fn open_harness_turn<A: ProjectIntentAuthority>(
         &self,
         coordinator: &SendCoordinator<A>,
-        mode: Option<&'static str>,
+        mode: Option<crate::acp::bindings::adapter::HarnessTurnAuthority>,
         now_millis: i64,
     ) -> Result<crate::acp::runtime::ActiveDispatch, Box<crate::acp::runtime::PrepareFailure>> {
         let tree = self.tree.as_ref().ok_or_else(|| {

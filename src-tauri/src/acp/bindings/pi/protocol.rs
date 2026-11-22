@@ -1,7 +1,3 @@
-pub(super) fn is_allow_option(option: &str) -> bool {
-    option.eq_ignore_ascii_case("allow") || option.eq_ignore_ascii_case("allow once")
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
     RefreshConfiguration,
@@ -336,8 +332,11 @@ pub enum AdapterOutput {
     DialogCancelled {
         external_id: String,
     },
-    /// A dialog Pi timed out on its own, replaced by a newer one.
-    DialogExpired {
+    DialogRefused {
+        external_id: String,
+    },
+    /// A supported question that arrived while its question turn was stopping.
+    QuestionCancelled {
         external_id: String,
     },
     AuthorityBlocked {

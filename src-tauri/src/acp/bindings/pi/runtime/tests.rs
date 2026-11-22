@@ -12,6 +12,7 @@ mod native_rpc;
 mod oversize_end;
 mod prompt_images;
 mod pump_contract;
+mod question_queue;
 mod questions;
 mod regressions;
 mod retry_and_settings;
@@ -65,6 +66,24 @@ fn fixture_runtime(epoch: u64) -> PiRuntime {
         RuntimeEpoch::new(epoch).expect("epoch"),
         SageAgentSessionId::parse(format!("session-pi-{epoch}")).expect("session"),
     )
+}
+
+struct QuestionClock(std::sync::Arc<std::sync::Mutex<std::time::Instant>>);
+
+impl QuestionClock {
+    fn new(runtime: &mut PiRuntime) -> Self {
+        let clock = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+        runtime.translator.question_clock = Some(std::sync::Arc::clone(&clock));
+        Self(clock)
+    }
+
+    fn now(&self) -> std::time::Instant {
+        *self.0.lock().unwrap()
+    }
+
+    fn advance_ms(&self, millis: u64) {
+        *self.0.lock().unwrap() += std::time::Duration::from_millis(millis);
+    }
 }
 
 fn frame(value: Value) -> Frame {
@@ -1223,7 +1242,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
 }
 
 #[test]
-fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
+fn a_pi_choice_answer_does_not_emit_denial_and_records_resolved_allowed() {
     let mut runtime = fixture_runtime(7);
     ready(&mut runtime);
     running(&mut runtime);
@@ -1258,7 +1277,10 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("write-1").expect("request"),
-            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Answer(
+                serde_json::from_value(json!([{"questionId":"answer","selectedOption":"Allow"}]))
+                    .unwrap(),
+            ),
         })
         .expect("allow once");
     assert!(!allow.token().is_mandatory());

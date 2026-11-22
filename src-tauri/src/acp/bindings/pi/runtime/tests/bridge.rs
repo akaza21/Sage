@@ -427,6 +427,16 @@ fn pi_bridge_refuses_protected_aliases_and_paths_the_prompt_cannot_show() {
 fn pi_bridge_expired_prompt_is_withdrawn_durably_and_frees_the_turn() {
     let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
     j.prepare("write", json!({"path":"a.txt","content":"first"}));
+    let waiting = j
+        .runtime
+        .ingest(
+            &frame(json!({
+                "type":"extension_ui_request", "method":"input", "id":"waiting", "title":"Name?"
+            })),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(waiting.events(), [AdapterEvent::Absorbed]));
     let withdrawn = j.dialog("withdraw-1", "sage.pi.withdraw.v1", "tool-1");
     assert!(matches!(
         withdrawn.events(),
@@ -439,6 +449,40 @@ fn pi_bridge_expired_prompt_is_withdrawn_durably_and_frees_the_turn() {
         Refusal::Withdrawn.message()
     );
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+    assert!(j.runtime.answers_delivered(&Mapper).unwrap().is_none());
+    let reply = withdrawn.into_parts().1.remove(0);
+    if reply.token().is_mandatory() {
+        j.runtime.commit_mandatory_egress(reply.token()).unwrap();
+    }
+    j.runtime
+        .resolve_egress(reply.token().clone(), EgressResolution::Queued)
+        .unwrap();
+    assert!(j.runtime.answers_delivered(&Mapper).unwrap().is_none());
+    j.runtime
+        .resolve_egress(reply.into_token(), EgressResolution::Written)
+        .unwrap();
+    let next = j
+        .runtime
+        .answers_delivered(&Mapper)
+        .unwrap()
+        .expect("withdrawal releases the waiting question");
+    assert!(
+        matches!(next.events(), [AdapterEvent::PermissionRequest { external_request_id, .. }] if external_request_id.as_str() == "waiting")
+    );
+    let reply = j
+        .runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("waiting").unwrap(),
+            decision: PermissionDecision::Answer(
+                serde_json::from_value(json!([{"questionId":"answer","text":"Ada"}])).unwrap(),
+            ),
+        })
+        .unwrap();
+    assert_eq!(
+        deliver(&mut j.runtime, reply),
+        json!({"type":"extension_ui_response","id":"waiting","value":"Ada"})
+    );
+    assert!(j.runtime.answers_delivered(&Mapper).unwrap().is_none());
     assert!(
         j.runtime
             .command(AdapterCommand::ResolvePermission {

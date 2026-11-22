@@ -32,6 +32,8 @@ mod image;
 mod messages;
 mod native;
 mod permission;
+mod questions;
+pub(super) use questions::Questions;
 mod requests;
 mod retry;
 mod session;
@@ -39,6 +41,7 @@ mod steer;
 pub(super) use steer::Steering;
 mod stream;
 mod thought;
+mod title;
 mod tool_cache;
 mod tool_output;
 use capabilities::capabilities;
@@ -221,6 +224,7 @@ impl PiRuntime {
                     bridge.pending = None;
                     bridge.used.clear();
                 }
+                self.finish_questions();
                 self.active_turn = None;
                 self.clear_thinking_request();
                 self.deny = None;
@@ -365,14 +369,18 @@ impl PiRuntime {
                 None,
             ),
             AdapterOutput::PermissionRequested { external_id } => (
-                Some(self.permission_event(external_id, request_digest)?),
+                Some(self.question_arrived(external_id, request_digest)?),
                 None,
             ),
             AdapterOutput::AuthorityBlocked { external_id, tool } => {
                 self.block_authority(external_id, tool, resources)?
             }
             AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
-            AdapterOutput::DialogExpired { external_id } => self.expire_dialog(external_id)?,
+            AdapterOutput::DialogRefused { external_id } => self.refuse_dialog(external_id)?,
+            AdapterOutput::QuestionCancelled { external_id } => (
+                Some(AdapterEvent::Absorbed),
+                Some(self.cancel_waiting_question(external_id)?),
+            ),
             AdapterOutput::Image { media_type, data } => {
                 (Some(self.image_event(media_type, data)?), None)
             }

@@ -1,5 +1,13 @@
 use super::*;
 
+/// Authority needed to adopt work the harness started without a prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HarnessTurnAuthority {
+    SessionMode(&'static str),
+    /// Only user questions; adoption grants no model or tool authority.
+    Questions,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct AdapterIdentity {
     pub(crate) binding_digest: [u8; 32],
@@ -147,6 +155,16 @@ pub(crate) trait HarnessAdapter {
     /// Turn binds. False when the harness has nothing to hold it for.
     fn defer_cancel(&mut self) -> bool {
         false
+    }
+    /// Deadline of retained requests that have not opened a visible card yet.
+    fn next_request_deadline(&self) -> Option<std::time::Instant> {
+        None
+    }
+    fn poll_request_deadlines(
+        &mut self,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
     }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
@@ -310,6 +328,10 @@ pub(crate) trait HarnessAdapter {
     /// announced runs in.
     fn harness_turn_mode(&self) -> Option<&'static str> {
         None
+    }
+    fn harness_turn_authority(&self) -> Option<super::HarnessTurnAuthority> {
+        self.harness_turn_mode()
+            .map(super::HarnessTurnAuthority::SessionMode)
     }
     /// What the harness reports once the answers Sage wrote reached it: a
     /// Turn that only waited on them ends. None when nothing changed.
