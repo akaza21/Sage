@@ -68,10 +68,8 @@ export function safeResourceLocation(
     path.includes("\\") ||
     path.includes(":") ||
     path.split("/").some((part) => !part || part === "." || part === "..") ||
-    Array.from(path).some((character) => {
-      const code = character.charCodeAt(0);
-      return code < 32 || (code >= 127 && code <= 159);
-    })
+    // eslint-disable-next-line no-control-regex
+    /[\0-\x1f\x7f-\x9f]/.test(path)
   ) {
     return null;
   }
