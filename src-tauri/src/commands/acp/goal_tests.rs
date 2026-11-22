@@ -43,9 +43,7 @@ impl RuntimeEngine for GoalEngine {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.result.is_ok() {
             let next = match &intent.request {
-                crate::acp::goal::NativeRpcRequest::Goal(
-                    GoalAction::Set { .. } | GoalAction::ResumeExisting { .. },
-                ) => {
+                crate::acp::goal::NativeRpcRequest::Goal(GoalAction::Set { .. }) => {
                     return Err(HostError::Intent);
                 }
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::PauseExisting) => {

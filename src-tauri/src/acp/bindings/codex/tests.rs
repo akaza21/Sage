@@ -256,100 +256,29 @@ fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() 
 }
 
 #[test]
-fn goal_resume_encodes_only_status_and_applies_confirmed_native_replies() {
-    use crate::acp::goal::GoalIdentity;
-    for status in ["paused", "blocked", "usageLimited", "budgetLimited"] {
-        let mut adapter = adapter();
-        observed_goal_ready(&mut adapter);
-        let capabilities = adapter.effective_capabilities().unwrap();
-        assert!(!capabilities.goal.set);
-        assert!(capabilities.goal.resume);
-        adapter.goal_updated(&json!({"objective":"Ship safely","status":status,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}));
-        let identity: GoalIdentity =
-            serde_json::from_value(json!({"objective":"Ship safely","createdAt":"1795300000"}))
-                .unwrap();
-        let before = adapter.goal_state().clone();
-        let request = adapter.goal_resume(80, &identity).unwrap();
-        let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
-        assert_eq!(
-            wire,
-            json!({"id":80,"method":"thread/goal/set","params":{"threadId":"thread-1","status":"active"}})
-        );
-        assert_eq!(adapter.goal_state(), &before);
-        assert!(adapter.goal_resume(81, &identity).is_err());
-        let reply = json!({"id":80,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}});
-        assert_eq!(
-            adapter
-                .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
-                .unwrap(),
-            IngressDisposition::GoalMutationApplied
-        );
-        assert!(adapter.active_observed_goal());
-        let projected = serde_json::to_value(adapter.goal_state()).unwrap();
-        assert_eq!(projected["snapshot"]["createdAt"], "1795300000");
-        assert_eq!(projected["snapshot"]["updatedAt"], "1795300005");
-        assert!(!adapter.has_active_turn());
-    }
-}
+fn native_goal_replies_decode_integer_timestamps_for_get_and_pause() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(80).unwrap();
+    let reply = br#"{"id":80,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"active","tokenBudget":40000,"tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}}"#;
+    adapter.ingest(reply, &Mapper).unwrap();
+    let projected = serde_json::to_value(adapter.goal_state()).unwrap();
+    assert_eq!(projected["snapshot"]["createdAt"], "1795300000");
+    assert_eq!(projected["snapshot"]["updatedAt"], "1795300005");
+    assert_eq!(projected["snapshot"]["status"], "active");
+    assert_eq!(projected["snapshot"]["tokenBudget"], 40000);
 
-#[test]
-fn refused_resume_reconciles_snapshots_without_overwriting_newer_notifications() {
-    use crate::acp::goal::GoalIdentity;
-    for (notified, status) in [
-        (false, "blocked"),
-        (true, "blocked"),
-        (false, "active"),
-        (true, "active"),
-    ] {
-        let mut adapter = adapter();
-        observed_goal_ready(&mut adapter);
-        adapter.goal_updated(&json!({
-            "objective":"Original", "status":"paused", "tokenBudget":40000,
-            "tokensUsed":3, "timeUsedSeconds":5,
-            "createdAt":1795300000, "updatedAt":1795300005
-        }));
-        let identity: GoalIdentity =
-            serde_json::from_value(json!({"objective":"Original","createdAt":"1795300000"}))
-                .unwrap();
-        adapter.goal_resume(80, &identity).unwrap();
-        if notified {
-            adapter.goal_updated(&json!({
-                "objective":"Newer notification", "status":"complete", "tokenBudget":40000,
-                "tokensUsed":12, "timeUsedSeconds":10,
-                "createdAt":1795300000, "updatedAt":1795300010
-            }));
-        }
-        let reply = json!({"id":80,"result":{"goal":{
-            "threadId":"thread-1", "objective":"Observed", "status":status,
-            "tokenBudget":40000, "tokensUsed":8, "timeUsedSeconds":9,
-            "createdAt":1795300000, "updatedAt":1795300009
-        }}});
-        assert_eq!(
-            adapter
-                .ingest(&serde_json::to_vec(&reply).unwrap(), &Mapper)
-                .unwrap(),
-            IngressDisposition::GoalMutationRejected
-        );
-        let observed = serde_json::to_value(adapter.goal_state()).unwrap();
-        assert_eq!(
-            observed["snapshot"]["objective"],
-            if notified {
-                "Newer notification"
-            } else {
-                "Observed"
-            }
-        );
-        assert_eq!(
-            observed["snapshot"]["status"],
-            if notified { "complete" } else { status }
-        );
-        assert_eq!(
-            observed["snapshot"]["tokensUsed"],
-            if notified { 12 } else { 8 }
-        );
-        assert!(!adapter.goal_mutation_pending());
-        assert!(!adapter.has_active_turn());
-    }
+    adapter.goal_pause(81).unwrap();
+    let reply = br#"{"id":81,"result":{"goal":{"threadId":"thread-1","objective":"Ship safely","status":"paused","tokenBudget":40000,"tokensUsed":8,"timeUsedSeconds":9,"createdAt":1795300000,"updatedAt":1795300009}}}"#;
+    assert_eq!(
+        adapter.ingest(reply, &Mapper).unwrap(),
+        IngressDisposition::GoalMutationApplied
+    );
+    let projected = serde_json::to_value(adapter.goal_state()).unwrap();
+    assert_eq!(projected["snapshot"]["createdAt"], "1795300000");
+    assert_eq!(projected["snapshot"]["updatedAt"], "1795300009");
+    assert_eq!(projected["snapshot"]["status"], "paused");
+    assert_eq!(projected["snapshot"]["tokensUsed"], 8);
 }
 
 #[test]
@@ -420,19 +349,16 @@ fn newer_goal_notification_wins_over_late_pause_reply_and_refusal_is_nonfatal() 
 }
 
 #[test]
-fn refused_pause_postcondition_still_reconciles_the_observed_goal() {
+fn malformed_pause_reply_is_refused_without_changing_the_observed_goal() {
     let mut adapter = adapter();
     observed_goal_ready(&mut adapter);
     adapter.goal_updated(&json!({
         "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005
     }));
     adapter.goal_pause(66).unwrap();
-    let refusal = adapter.ingest(br#"{"id":66,"result":{"goal":{"objective":"Observed","status":"blocked","tokensUsed":8,"timeUsedSeconds":9,"createdAt":1795300000,"updatedAt":1795300009}}}"#, &Mapper).unwrap();
+    let refusal = adapter.ingest(br#"{"id":66,"result":{"goal":{"objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5,"createdAt":1795300000,"updatedAt":1795300005}}}"#, &Mapper).unwrap();
     assert_eq!(refusal, IngressDisposition::GoalMutationRejected);
-    let observed = serde_json::to_value(adapter.goal_state()).unwrap();
-    assert_eq!(observed["snapshot"]["objective"], "Observed");
-    assert_eq!(observed["snapshot"]["status"], "blocked");
-    assert_eq!(observed["snapshot"]["tokensUsed"], 8);
+    assert_eq!(adapter.goal_state().objective(), Some("Original"));
 }
 
 #[test]

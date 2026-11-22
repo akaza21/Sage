@@ -607,32 +607,6 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
-  it("loads goal policy with the deferred goal controls", async () => {
-    const graph = graphInventory(await build(desktopGraphConfig(true)));
-    const owner = graph.moduleFiles.get(
-      "src/features/chat/BoundChatGoalControl.tsx",
-    );
-    expect(owner).toBeDefined();
-    for (const module of [
-      "src/features/chat/goalStatus.ts",
-      "src/features/chat/acp/goalMutability.ts",
-      "src/features/chat/acp/useGoalMutation.ts",
-    ]) {
-      const file = graph.moduleFiles.get(module);
-      expect(file, module).toBeDefined();
-      expect(file, module).toBe(owner);
-      for (const facade of [
-        "src/workbench/Workbench.tsx",
-        "src/workbench/AgentWorkbenchBody.tsx",
-      ]) {
-        expect(
-          closureForModule(graph, facade).some((id) => id.endsWith(module)),
-          `${facade}: ${module}`,
-        ).toBe(false);
-      }
-    }
-  }, 90_000);
-
   it("loads transcript decoders with Chat rather than harness discovery", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     for (const module of [

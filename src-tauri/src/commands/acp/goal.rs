@@ -33,29 +33,6 @@ pub(crate) async fn clear_existing_goal(
     mutate(&state, request, GoalAction::ClearExisting).await
 }
 
-#[tauri::command]
-pub(crate) async fn resume_existing_goal(
-    state: State<'_, AppState>,
-    request: ResumeGoalRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    mutate(
-        &state,
-        request.session,
-        GoalAction::ResumeExisting {
-            expected_goal: request.expected_goal,
-        },
-    )
-    .await
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ResumeGoalRequest {
-    #[serde(flatten)]
-    pub session: ExistingGoalRequest,
-    pub expected_goal: crate::acp::goal::GoalIdentity,
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SetGoalRequest {
@@ -167,11 +144,6 @@ async fn mutate(
 
 fn goal_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
     match error {
-        crate::acp::runtime::HostError::GoalChanged => AcpIpcError::Rejected {
-            message: safe_message(
-                "The goal changed before Resume could start. Refresh the goal before resuming.",
-            ),
-        },
         crate::acp::runtime::HostError::GoalMutationRejected => AcpIpcError::Rejected {
             message: safe_message("The harness did not apply the native Goal action."),
         },
@@ -208,9 +180,6 @@ mod tests {
         let mut set = request();
         set["objective"] = json!("Ship the release");
         assert!(serde_json::from_value::<SetGoalRequest>(set.clone()).is_ok());
-        let mut budget = set.clone();
-        budget["tokenBudget"] = json!(2000);
-        assert!(serde_json::from_value::<SetGoalRequest>(budget).is_err());
         set["objective"] = json!("x".repeat(16001));
         assert!(serde_json::from_value::<SetGoalRequest>(set).is_err());
         for (key, value) in [
@@ -226,45 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn resume_ipc_requires_bounded_displayed_identity_and_rejects_set_fields() {
-        assert!(serde_json::from_value::<ResumeGoalRequest>(request()).is_err());
-        let mut resume = request();
-        resume["expectedGoal"] = json!({"objective":"Original", "createdAt":"1795300000"});
-        assert!(serde_json::from_value::<ResumeGoalRequest>(resume.clone()).is_ok());
-        for (key, value) in [
-            ("objective", json!("x".repeat(16001))),
-            ("createdAt", json!("x".repeat(65))),
-        ] {
-            let mut invalid = resume.clone();
-            invalid["expectedGoal"][key] = value;
-            assert!(serde_json::from_value::<ResumeGoalRequest>(invalid).is_err());
-        }
-        for (key, value) in [
-            ("objective", json!("Edited")),
-            ("tokenBudget", json!(2000)),
-            ("status", json!("active")),
-        ] {
-            let mut invalid = resume.clone();
-            invalid[key] = value;
-            assert!(serde_json::from_value::<ResumeGoalRequest>(invalid).is_err());
-        }
-        let mut set = request();
-        set["objective"] = json!("Ship");
-        set["expectedGoal"] = resume["expectedGoal"].clone();
-        assert!(serde_json::from_value::<SetGoalRequest>(set).is_err());
-    }
-
-    #[test]
     fn correlated_goal_refusal_is_not_reported_as_success() {
-        let changed =
-            serde_json::to_value(goal_error(crate::acp::runtime::HostError::GoalChanged)).unwrap();
-        assert_eq!(changed["kind"], "rejected");
-        assert!(
-            changed["message"]
-                .as_str()
-                .unwrap()
-                .contains("goal changed")
-        );
         assert!(matches!(
             goal_error(crate::acp::runtime::HostError::GoalMutationRejected),
             AcpIpcError::Rejected { .. }

@@ -247,39 +247,6 @@ describe("safeAcpMutationResponse", () => {
     ).toBeUndefined();
   });
 
-  it.each([
-    ["ASCII objective limit", "objective", "x".repeat(4000), true],
-    ["Unicode objective limit", "objective", "🚀".repeat(4000), true],
-    ["over-limit objective", "objective", "🚀".repeat(4001), false],
-    ["NUL objective", "objective", "x\0", false],
-    ["ASCII timestamp limit", "createdAt", "x".repeat(64), true],
-    ["over-limit timestamp", "createdAt", "x".repeat(65), false],
-    ["Unicode timestamp limit", "createdAt", "é".repeat(32), true],
-    ["over-limit UTF-8 timestamp", "createdAt", "é".repeat(33), false],
-    ["unpaired surrogate timestamp", "createdAt", "\ud800".repeat(22), false],
-    ["NUL timestamp", "createdAt", "\0", false],
-    ["control timestamp", "createdAt", "\n", false],
-    ["null timestamp", "createdAt", null, true],
-  ] as const)("preserves the native Goal's %s", (_, field, value, accepted) => {
-    const goal = {
-      kind: "goal",
-      snapshot: {
-        objective: "Ship safely",
-        status: "active",
-        tokenBudget: null,
-        tokensUsed: 0,
-        timeUsedSeconds: 0,
-        createdAt: null,
-        updatedAt: null,
-        [field]: value,
-      },
-    };
-    expect(
-      safeAcpMutationResponse(mutation({ goal }), decodeAcpGoal)?.projection
-        .goal,
-    ).toEqual(accepted ? goal : { kind: "unavailable" });
-  });
-
   it("carries a bounded fork parent and rejects a malformed one", () => {
     expect(
       safeAcpMutationResponse(mutation({ forkedFrom: "chat-parent" }))

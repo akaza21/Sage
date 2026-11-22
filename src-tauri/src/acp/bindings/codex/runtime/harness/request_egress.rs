@@ -12,7 +12,7 @@ impl CodexRuntime {
         if resolution == EgressResolution::DeliveryUnknown {
             match self.inner.pending_kind(request_id) {
                 Some(RequestKind::GoalGet) => self.inner.goal_get_delivery_unknown(request_id),
-                Some(kind) if kind.is_goal_mutation() => {
+                Some(RequestKind::GoalPause | RequestKind::GoalClear) => {
                     self.inner.goal_mutation_delivery_unknown(request_id)
                 }
                 _ => {}

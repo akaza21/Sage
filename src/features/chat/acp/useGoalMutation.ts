@@ -1,8 +1,5 @@
-import {
-  goalMutations,
-  type GoalResumeIntent,
-} from "../../../services/acpGoalMutations";
-import type { GoalMutationAction, GoalIdentity } from "../../../domain/acpGoal";
+import { goalMutations } from "../../../services/acpGoalMutations";
+import type { GoalMutationAction } from "../../../domain/acpGoal";
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import type {
@@ -16,19 +13,14 @@ import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
 import { canMutateGoal } from "./goalMutability";
-import { isResumableGoalStatus } from "../goalStatus";
-import { currentSession } from "./acpTurnState";
 
 type Action = GoalMutationAction;
 
 export function createGoalMutationController(deps: {
   getContext: () => AcpActionContext | null;
   set?: (
-    request: AcpSessionMutationIntent & {
-      objective: string;
-    },
+    request: AcpSessionMutationIntent & { objective: string },
   ) => Promise<AcpMutationResult>;
-  resume?: (request: GoalResumeIntent) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   apply: (context: AcpActionContext, result: AcpMutationResult) => boolean;
@@ -46,7 +38,6 @@ export function createGoalMutationController(deps: {
   return async (
     action: Action,
     objective?: string,
-    expectedGoal?: GoalIdentity,
   ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
@@ -61,7 +52,9 @@ export function createGoalMutationController(deps: {
         message: "Native Goal mutation is unavailable for this session.",
       };
     }
-    const session = currentSession(captured.page)!;
+    const session = captured.page.sessions.find(
+      (item) => item.id === captured.page.currentSessionId,
+    )!;
     if (
       action === "pause" &&
       captured.page.goal?.kind === "goal" &&
@@ -69,21 +62,14 @@ export function createGoalMutationController(deps: {
     ) {
       return { kind: "refused", message: "This Goal is not active." };
     }
-    if (
-      action === "resume" &&
-      (!expectedGoal ||
-        captured.page.goal?.kind !== "goal" ||
-        !isResumableGoalStatus(captured.page.goal.snapshot.status))
-    ) {
-      return { kind: "refused", message: "This Goal cannot be resumed." };
-    }
     pending = true;
     try {
       const current = deps.getContext();
       if (
         !sameScope(current, captured) ||
         current.page.currentSessionId !== session.id ||
-        currentSession(current.page)?.runtimeEpoch !== session.runtimeEpoch ||
+        current.page.sessions.find((item) => item.id === session.id)
+          ?.runtimeEpoch !== session.runtimeEpoch ||
         !canMutateGoal(current.page, action)
       ) {
         return {
@@ -111,30 +97,11 @@ export function createGoalMutationController(deps: {
           message: "Enter a goal of 1 to 4,000 characters.",
         };
       }
-      if (action === "resume" && !deps.resume) {
-        return {
-          kind: "refused",
-          message: "Native Goal resume is unavailable for this session.",
-        };
-      }
-      const result =
-        action === "set"
-          ? await deps.set!({
-              ...request,
-              objective: objective!,
-            })
-          : action === "resume"
-            ? await deps.resume!({
-                ...request,
-                expectedGoal: {
-                  objective: expectedGoal!.objective,
-                  createdAt: expectedGoal!.createdAt,
-                },
-              })
-            : await {
-                pause: deps.pause,
-                clear: deps.clear,
-              }[action](request);
+      const result = await (action === "set"
+        ? deps.set!({ ...request, objective: objective! })
+        : action === "pause"
+          ? deps.pause(request)
+          : deps.clear(request));
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }
@@ -164,15 +131,18 @@ export function useGoalMutation(boundChatId?: string | null) {
         getContext: () => currentContext(boundChatId),
         set: goalMutations.setGoal,
         pause: goalMutations.pauseExistingGoal,
-        resume: goalMutations.resumeExistingGoal,
         clear: goalMutations.clearExistingGoal,
         apply: (captured, result) => {
           const current = currentContext(boundChatId);
           if (
             !sameScope(current, captured) ||
             current.page.currentSessionId !== captured.page.currentSessionId ||
-            currentSession(current.page)?.runtimeEpoch !==
-              currentSession(captured.page)?.runtimeEpoch
+            current.page.sessions.find(
+              (session) => session.id === current.page.currentSessionId,
+            )?.runtimeEpoch !==
+              captured.page.sessions.find(
+                (session) => session.id === captured.page.currentSessionId,
+              )?.runtimeEpoch
           )
             return false;
           return (

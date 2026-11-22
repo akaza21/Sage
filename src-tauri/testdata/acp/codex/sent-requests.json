@@ -283,14 +283,6 @@
           "threadId": "thread-1",
           "status": "paused"
         }
-      },
-      {
-        "id": 1,
-        "method": "thread/goal/set",
-        "params": {
-          "threadId": "thread-1",
-          "status": "active"
-        }
       }
     ],
     "client:thread/list": [

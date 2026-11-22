@@ -5,16 +5,6 @@ use sage_acp_protocol::contract::RequiredText;
 use super::{OutgoingRequest, RequestError, RequestKind};
 
 impl OutgoingRequest {
-    pub(crate) fn goal_resume(
-        id: u64,
-        thread_id: &RequiredText<512>,
-    ) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalResume,
-            json!({"threadId": thread_id.as_str(), "status": "active"}),
-        )
-    }
     pub(crate) fn goal_get(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
         Self::build(
             id,

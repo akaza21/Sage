@@ -160,7 +160,7 @@ async function openOptions() {
 
 it("offers the + menu's Goal only once the Goal control is there to open", async () => {
   mutableGoalChat();
-  const view = render(<ChatComposerRegion {...props} />);
+  render(<ChatComposerRegion {...props} />);
   await openOptions();
   // The Goal chunk is still loading, so there are no details to open.
   expect(
@@ -174,15 +174,6 @@ it("offers the + menu's Goal only once the Goal control is there to open", async
   await openOptions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
   expect(screen.getByLabelText("Goal details")).toHaveFocus();
-  view.rerender(
-    <ChatComposerRegion
-      {...props}
-      goal={{ kind: "unsupported" }}
-      goalCapabilities={undefined}
-    />,
-  );
-  await openOptions();
-  expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
 });
 
 it("opens the shared editor from + Goal before any goal exists", async () => {

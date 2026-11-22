@@ -44,8 +44,6 @@ impl AdapterModel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum AdapterRuntimeError {
-    #[error("the goal changed before the mutation started")]
-    GoalChanged,
     #[error("adapter operation is unavailable or invalid in the current state")]
     Operation,
     #[error("the harness rejected the correlated session configuration mutation")]

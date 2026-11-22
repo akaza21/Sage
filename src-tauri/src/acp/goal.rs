@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 
 use sage_acp_protocol::{
@@ -10,33 +10,7 @@ use sage_acp_protocol::{
 pub(crate) enum GoalAction {
     Set { objective: String },
     PauseExisting,
-    ResumeExisting { expected_goal: GoalIdentity },
     ClearExisting,
-}
-
-/// Identity captured by the displayed Resume control; usage and status changes do not
-/// replace a goal. Text remains bounded at the IPC and runtime queue seams.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct GoalIdentity {
-    pub(crate) objective: sage_acp_protocol::contract::RequiredText<16000>,
-    pub(crate) created_at: Option<sage_acp_protocol::contract::SafeText<64>>,
-}
-
-impl GoalIdentity {
-    pub(crate) fn matches(&self, snapshot: &GoalSnapshot) -> bool {
-        self.objective.as_str() == snapshot.objective
-            && self.created_at.as_ref().map(|value| value.as_str())
-                == snapshot.created_at.as_deref()
-    }
-
-    fn bytes(&self) -> usize {
-        self.objective.as_str().len()
-            + self
-                .created_at
-                .as_ref()
-                .map_or(0, |value| value.as_str().len())
-    }
 }
 
 pub(crate) const MAX_GOAL_OBJECTIVE_CHARS: usize = 4_000;
@@ -206,9 +180,6 @@ impl NativeRpcIntent {
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
                 NativeRpcRequest::Goal(GoalAction::Set { objective }) => objective.len() + 1,
-                NativeRpcRequest::Goal(GoalAction::ResumeExisting { expected_goal }) => {
-                    expected_goal.bytes() + 1
-                }
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
@@ -275,15 +246,6 @@ pub(crate) enum GoalStatus {
     UsageLimited,
     BudgetLimited,
     Complete,
-}
-
-impl GoalStatus {
-    pub(crate) fn is_resumable(&self) -> bool {
-        matches!(
-            self,
-            Self::Paused | Self::Blocked | Self::UsageLimited | Self::BudgetLimited
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

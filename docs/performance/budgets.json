@@ -314,9 +314,9 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 3100,
+        "maxGzipBytes": 2696,
         "maxCssGzipBytes": 850,
-        "reason": "Capability-driven native goal controls with identity-checked Resume, budget and usage display. Includes six status labels; editor and details remain demand-loaded. Reserves at least 250 B headroom."
+        "reason": "Capability-driven native Goal actions, mutations and six status labels: 2446 B JS, 595 B CSS, with at least 250 B headroom. Editor and details load only on request."
       },
       {
         "entry": "src/services/acpGoalSubscription.ts",

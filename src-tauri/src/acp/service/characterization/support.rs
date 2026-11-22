@@ -168,7 +168,7 @@ pub(super) fn map_host_error(
 
 fn classify_host_error(error: HostError) -> CharacterizationError {
     match error {
-        HostError::GoalChanged | HostError::Intent
+        HostError::Intent
         | HostError::ConfigMutationRejected
         | HostError::GoalMutationRejected
         | HostError::SignInRequired => CharacterizationError::Intent,

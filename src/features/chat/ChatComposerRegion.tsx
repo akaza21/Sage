@@ -23,7 +23,7 @@ import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
-import type { GoalControls } from "./goalControls";
+import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
@@ -92,7 +92,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || projectTransitioning;
   const actionDisabled = actionBusy || projectTransitioning;
-  const [goalControls, setGoalControls] = useState<GoalControls>();
+  const goalDetails = useBoundGoalDetails(
+    availableBinding && sessionHarnessId === selectedHarnessId,
+  );
   const otherContext = attachedContext.filter((c) => !isTranscriptQuote(c));
   const imageInput = useComposerImageInput({
     contexts: attachedContext,
@@ -198,7 +200,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 key={dictationScope}
                 state={goal}
                 chatId={dictationScope}
-                onControlsChange={setGoalControls}
+                details={goalDetails}
                 capabilities={goalCapabilities}
               />
             ) : null}
@@ -370,9 +372,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   onAttachFiles: files.attach,
                   imageAction: imageInput.action,
                   attachRefusalChatId: files.refusalChatId,
-                  ...(availableBinding && sessionHarnessId === selectedHarnessId
-                    ? goalControls
-                    : undefined),
+                  ...goalDetails.actions,
                   onCompact,
                 }}
                 optionsTriggerId={optionsTriggerId}

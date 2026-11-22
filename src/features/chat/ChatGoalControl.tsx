@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
-import { Pause, RotateCw, Target } from "../../ui/leanIconNodesLazy";
+import { Pause, Target } from "../../ui/leanIconNodesLazy";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AcpGoalCapabilities,
   AcpGoalSnapshot,
   AcpGoalState,
   GoalMutationAction,
-  GoalIdentity,
 } from "../../domain/acpGoal";
 import { formatElapsedSeconds } from "../../domain/duration";
 import "../../styles/chat-goal.css";
@@ -16,8 +15,7 @@ const GoalContent = lazyParts<typeof GoalContentChunk>(
   () => import("./GoalDetails"),
 );
 
-import type { GoalControlsChange } from "./goalControls";
-import { isResumableGoalStatus } from "./goalStatus";
+import type { GoalControls } from "./useBoundGoalDetails";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
@@ -51,7 +49,7 @@ export function ChatGoalControl({
   capabilities,
   editorOpen = false,
   onEditorClose,
-  onControlsChange,
+  onReady,
   canMutate = false,
   onMutation,
 }: {
@@ -59,12 +57,11 @@ export function ChatGoalControl({
   capabilities?: AcpGoalCapabilities;
   editorOpen?: boolean;
   onEditorClose?: () => void;
-  onControlsChange?: GoalControlsChange;
+  onReady?: (controls: GoalControls) => () => void;
   canMutate?: boolean;
   onMutation?: (
     action: GoalMutationAction,
     objective?: string,
-    expectedGoal?: GoalIdentity,
   ) => Promise<GoalMutationOutcome>;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -79,13 +76,16 @@ export function ChatGoalControl({
     mutation.kind === "pending" || mutation.kind === "outcomeUnknown";
   const run = useCallback(
     async (
-      ...args: Parameters<NonNullable<typeof onMutation>>
+      action: GoalMutationAction,
+      objective?: string,
     ): Promise<boolean> => {
-      const [action] = args;
       if (!controls || locked || !capabilities?.[action]) return false;
       setMutation({ kind: "pending" });
       try {
-        const outcome = await controls(...args);
+        const outcome = await controls(
+          action,
+          ...(action === "set" ? [objective] : []),
+        );
         setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
         return outcome.kind === "applied";
       } catch {
@@ -98,28 +98,29 @@ export function ChatGoalControl({
     },
     [controls, locked, capabilities],
   );
-  useEffect(() => {
-    onControlsChange?.({
-      goalUnobserved: capabilities?.observes === false,
-      onOpenGoal:
-        capabilities?.set || state.kind === "goal"
-          ? () => {
-              if (capabilities?.set) setEditing(true);
-              else if (detailsRef.current) {
-                detailsRef.current.open = true;
-                detailsRef.current.querySelector("summary")?.focus();
+  useEffect(
+    () =>
+      onReady?.({
+        goalUnobserved: capabilities?.observes === false,
+        onOpenGoal:
+          capabilities?.set || state.kind === "goal"
+            ? () => {
+                if (capabilities?.set) setEditing(true);
+                else if (detailsRef.current) {
+                  detailsRef.current.open = true;
+                  detailsRef.current.querySelector("summary")?.focus();
+                }
               }
-            }
-          : undefined,
-      onClearGoal:
-        !capabilities?.observes && capabilities?.clear
-          ? () => {
-              void run("clear");
-            }
-          : undefined,
-    });
-    return () => onControlsChange?.();
-  }, [onControlsChange, capabilities, state.kind, run]);
+            : undefined,
+        onClearGoal:
+          !capabilities?.observes && capabilities?.clear
+            ? () => {
+                void run("clear");
+              }
+            : undefined,
+      }),
+    [onReady, capabilities, state.kind, run],
+  );
   const closeEditor = () => {
     setEditing(false);
     onEditorClose?.();
@@ -165,7 +166,7 @@ export function ChatGoalControl({
   }
   const { snapshot } = state;
   const actionButton = (
-    action: "pause" | "resume" | "clear",
+    action: "pause" | "clear",
     label: string,
     Icon: typeof Pause,
   ) => (
@@ -178,12 +179,7 @@ export function ChatGoalControl({
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (action === "resume")
-          void run(action, undefined, {
-            objective: snapshot.objective,
-            createdAt: snapshot.createdAt,
-          });
-        else void run(action);
+        void run(action);
       }}
     >
       <Icon size={13} aria-hidden="true" />
@@ -233,10 +229,6 @@ export function ChatGoalControl({
               snapshot.status === "active" &&
               actionButton("pause", "Pause goal", Pause)}
             {controls &&
-              capabilities?.resume &&
-              isResumableGoalStatus(snapshot.status) &&
-              actionButton("resume", "Resume goal", RotateCw)}
-            {controls &&
               capabilities?.clear &&
               actionButton("clear", "Delete goal", Trash2)}
             <button
@@ -259,7 +251,6 @@ export function ChatGoalControl({
           <GoalContent
             part="GoalDetails"
             snapshot={snapshot}
-            statusLabel={goalStatusLabels[snapshot.status]}
             canMutate={canMutate}
           />
         )}

@@ -23,52 +23,6 @@ use crate::acp::bindings::adapter::RefusalDetail;
 use crate::acp::bindings::codex::{CodexRuntime, Platform};
 
 #[test]
-fn replacement_or_completion_rejects_resume_before_any_native_bytes_are_written() {
-    for (objective, created_at, status) in [
-        ("Continue bounded work", 1795300001_i64, "paused"),
-        ("Replacement objective", 1795300000, "paused"),
-        ("Continue bounded work", 1795300000, "complete"),
-        ("Continue bounded work", 1795300000, "active"),
-    ] {
-        runtime().block_on(async {
-            use crate::acp::goal::{GoalAction, GoalIdentity};
-            let (mut pump, _, _) = goal_active_codex_pump();
-            // Same objective, different creation time: the notification replaces A
-            // with B, or completes A, before its queued Resume reaches dispatch.
-            pump.push_stdout_chunk(
-                &codex_line(serde_json::json!({
-                    "method":"thread/goal/updated","params":{"threadId":"thread-1","goal":{
-                        "threadId":"thread-1", "objective":objective,
-                        "status":status, "tokensUsed":0, "timeUsedSeconds":0,
-                        "tokenBudget":null, "createdAt":created_at,"updatedAt":1795300001
-                    }}
-                })),
-                1,
-            )
-            .await
-            .unwrap();
-            let action = GoalAction::ResumeExisting {
-                expected_goal: serde_json::from_value::<GoalIdentity>(serde_json::json!({
-                    "objective":"Continue bounded work", "createdAt":"1795300000"
-                }))
-                .unwrap(),
-            };
-            let mut output = CaptureTransport(Vec::new());
-            assert_eq!(
-                pump.write_goal(&mut output, action),
-                Err(crate::acp::runtime::HostError::GoalChanged)
-            );
-            assert!(output.0.is_empty(), "a stale Resume must be NotStarted");
-            let state = serde_json::to_value(pump.adapter.goal_state().unwrap()).unwrap();
-            assert_eq!(state["snapshot"]["createdAt"], created_at.to_string());
-            assert_eq!(state["snapshot"]["status"], status);
-            assert_eq!(state["snapshot"]["objective"], objective);
-            assert_eq!(state["snapshot"]["tokenBudget"], serde_json::Value::Null);
-        });
-    }
-}
-
-#[test]
 fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
     runtime().block_on(async {
         let (mut pump, shared, prompt_id) = goal_active_codex_pump();

@@ -211,7 +211,7 @@ pub(crate) struct CodexAdapter {
     goal_state: GoalState,
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
-    goal_mutation_fence: Option<goal::PendingGoalMutation>,
+    goal_mutation_fence: Option<(u64, u64)>,
     pending_read: Option<(u64, crate::acp::goal::NativeRead)>,
     child_read_tombstone: Option<u64>,
     /// Import reads whose caller gave up; their late answers are dropped.
@@ -285,7 +285,7 @@ impl CodexAdapter {
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);
         }
-        if kind.is_goal_mutation() {
+        if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
             self.goal_mutation_fence = None;
         }
         if kind.is_native_read() {

@@ -63,7 +63,6 @@ impl AcpService {
         let admitted = match &action {
             GoalAction::Set { .. } => capabilities.goal.set,
             GoalAction::PauseExisting => capabilities.goal.pause,
-            GoalAction::ResumeExisting { .. } => capabilities.goal.resume,
             GoalAction::ClearExisting => capabilities.goal.clear,
         };
         if !admitted {
