@@ -22,6 +22,9 @@ export function StatusBar({
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
   const recoveryNotice = useWorkbenchStore((state) => state.recoveryNotice);
+  const browserClearNotice = useWorkbenchStore(
+    (state) => state.browserClearNotice,
+  );
   const sidebarLabel = `${sidebarOpen ? "Hide" : "Show"} ${railLeading ? "left sidebar" : "artifact pane"}`;
 
   return (
@@ -35,6 +38,9 @@ export function StatusBar({
           <SourceBranchStatus />
         </Suspense>
         {recoveryNotice ? <span role="status">{recoveryNotice}</span> : null}
+        {browserClearNotice ? (
+          <span role="status">{browserClearNotice}</span>
+        ) : null}
       </div>
       <div className="status-bar__group">
         {terminalControls}
