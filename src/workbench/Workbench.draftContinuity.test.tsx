@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -65,7 +66,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("opens an editable draft after switching to an empty project while New chat actions load", async () => {
+it("sends the first simulator prompt after switching to an empty project while New chat actions load", async () => {
   const state = useWorkbenchStore.getState();
   const originalProjectId = state.project!.id;
   expect(
@@ -101,4 +102,30 @@ it("opens an editable draft after switching to an empty project while New chat a
     targetProjectId: emptyProjectId,
     text: "Work in this project",
   });
+  const catalog = useWorkbenchStore.getState();
+  expect(
+    catalog.harnesses.filter((harness) => harness.installState === "available"),
+  ).toMatchObject([{ transport: "legacySimulator", bindingId: null }]);
+  const send = within(draft).getByRole("button", { name: "Send message" });
+  expect(send).toBeEnabled();
+  fireEvent.click(send);
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", text: "Work in this project" }),
+        expect.objectContaining({ role: "assistant" }),
+      ]),
+    ),
+  );
+  const sent = useWorkbenchStore.getState();
+  expect(sent.project?.id).toBe(emptyProjectId);
+  expect(sent.newChatDraft).toBeNull();
+  expect(sent.pendingFirstSend).toBeNull();
+  expect(sent.sessionId).toBeTruthy();
+  expect(sent.composerText).toBe("");
+  expect(sent.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(1);
+  expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+    "",
+  );
+  expect(screen.getByText("Work in this project")).toBeVisible();
 });
