@@ -41,8 +41,9 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    // Shared page-layer state belongs to the shell, not Agent UI.
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
+    // Shared page-layer state and the shared Notice belong to the shell, not
+    // Agent UI, so Editor notices never load the Agent chunk.
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:Notice|ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
   },
   {
     name: "modal-dialog",
@@ -60,14 +61,6 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     // searchable picker's open list and its rows join it: they load only
     // where a MenuPopover opens, so one chunk saves a request.
     test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
-  },
-  {
-    name: "notice",
-    priority: 2,
-    includeDependenciesRecursively: false,
-    // The shared Notice serves Agent, Editor settings and dialogs alike, so
-    // an Editor surface never pulls Agent UI in just to show a warning.
-    test: /src[\/]ui[\/]Notice\.tsx$/,
   },
   {
     name: "file-kind-icons",
