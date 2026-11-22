@@ -62,6 +62,14 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
   },
   {
+    name: "notice",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // The shared Notice serves Agent, Editor settings and dialogs alike, so
+    // an Editor surface never pulls Agent UI in just to show a warning.
+    test: /src[\/]ui[\/]Notice\.tsx$/,
+  },
+  {
     name: "file-kind-icons",
     priority: 2,
     includeDependenciesRecursively: false,
