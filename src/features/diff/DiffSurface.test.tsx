@@ -219,7 +219,8 @@ describe("DiffSurface resource states", () => {
   });
   it("moves from an announced load through an alert to a ready read-only diff", () => {
     const gitFailure =
-      "Git operation failed: fatal: bad object deadbeef\nerror: could not read the index";
+      "Git operation failed: fatal: bad object deadbeef\nerror: could not read the index " +
+      "diagnostic ".repeat(200);
     const loadDiff = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       tabs: [tab],
@@ -249,6 +250,9 @@ describe("DiffSurface resource states", () => {
     expect(failure).not.toHaveTextContent("Git operation failed");
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(failure).toHaveTextContent("fatal: bad object deadbeef");
+    expect(failure.querySelector(".notice__details")?.textContent).toBe(
+      gitFailure.slice(0, 1024),
+    );
 
     act(() => {
       useWorkbenchStore.setState({

@@ -11,7 +11,6 @@ import {
   CHAT_CHANGED_WHILE_LOADING,
   isSnapshotDiffTab,
 } from "../../domain/agentDiffIdentity";
-import { boundedError } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -249,9 +248,9 @@ function DiffDocument({
           identity={`diff-load:${tab.id}`}
           severity="blocking"
           // A reason Sage wrote is the explanation; any other failure text
-          // is a bounded diagnostic under Details.
+          // is a diagnostic under Details, capped at 1024 UTF-16 code units.
           message={appReason ? failure : "Could not load this diff."}
-          details={appReason ? undefined : boundedError(failure, 1024, "utf16")}
+          details={appReason ? undefined : failure.slice(0, 1024)}
           action={
             tab.diffRef && tabResource && !unavailable
               ? {
