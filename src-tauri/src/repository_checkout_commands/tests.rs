@@ -220,67 +220,89 @@ async fn shared_repository_refuses_queued_and_running_turns_until_terminal() {
     assert_eq!(fixture.branch(), "topic");
 }
 
-#[tokio::test]
-async fn checkout_serializes_harness_turn_start_through_the_git_mutation() {
-    let fixture = Fixture::new();
-    let (entered, waiting) = tokio::sync::oneshot::channel();
-    let (release, released) = tokio::sync::oneshot::channel();
-    let checkout =
-        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async move {
-            entered.send(()).unwrap();
-            released.await.unwrap();
-        });
-    let start = async {
-        waiting.await.unwrap();
-        let database = fixture.state.database.clone();
-        let command = TurnMutationCommand {
-            project_id: fixture.command.project_id.clone(),
-            chat_id: fixture.command.chat_id.clone(),
-            session_id: fixture.command.session_id.clone(),
-            runtime_epoch: fixture.command.runtime_epoch,
+impl Fixture {
+    fn leased(&self, project_id: &str) -> bool {
+        crate::repository_mutation_guard::project_leased(
+            &self.state.database.connection(),
+            project_id,
+        )
+        .unwrap()
+    }
+
+    fn harness_turn(&self) -> TurnMutationCommand {
+        TurnMutationCommand {
+            project_id: self.command.project_id.clone(),
+            chat_id: self.command.chat_id.clone(),
+            session_id: self.command.session_id.clone(),
+            runtime_epoch: self.command.runtime_epoch,
             turn_id: SageTurnId::new(),
             expected_revision: EntityRevision::ZERO,
             now_millis: 4,
-        };
-        let root = fixture.base.join("repository");
-        let (attempting, attempted) = tokio::sync::oneshot::channel();
-        let opening = tokio::task::spawn_blocking(move || {
-            attempting.send(()).unwrap();
-            let commit = DatabaseAcpStore::new(database)
-                .commit(&[StoreMutation::OpenHarnessTurn(command)])
-                .unwrap();
-            let branch = sage_git::process::fixture_git()
-                .arg("-C")
-                .arg(root)
-                .args(["branch", "--show-current"])
-                .output()
-                .unwrap();
-            (commit, branch)
-        });
-        attempted.await.unwrap();
-        let connection = fixture
+        }
+    }
+
+    fn set_active_root(&self, path: &str) {
+        let root = self
             .state
             .database
-            .connection_ownership_probe()
-            .upgrade()
+            .root_records(self.command.project_id.as_str())
+            .unwrap()[0]
+            .id
+            .clone();
+        self.state
+            .database
+            .connection()
+            .execute(
+                "UPDATE project_roots SET absolute_path=?1 WHERE id=?2",
+                rusqlite::params![path, root],
+            )
             .unwrap();
-        assert!(
-            connection.try_lock().is_err(),
-            "checkout released store authority before Git"
-        );
-        assert!(!opening.is_finished());
-        assert_eq!(fixture.branch(), "main");
-        release.send(()).unwrap();
-        let (commit, branch) = opening.await.unwrap();
-        let [StoreMutationResult::Turn(turn)] = commit.results.as_slice() else {
-            panic!("expected a committed harness turn")
-        };
-        assert_eq!(turn.state, TurnState::Running);
-        assert!(branch.status.success());
-        assert_eq!(String::from_utf8(branch.stdout).unwrap().trim(), "topic");
-    };
-    let (result, _) = tokio::join!(checkout, start);
-    assert!(result.unwrap().error.is_none());
+    }
+}
+
+#[tokio::test]
+async fn turn_starts_are_refused_during_the_checkout_lease_without_holding_the_writer() {
+    let fixture = Fixture::new();
+    let project = fixture.command.project_id.as_str().to_owned();
+    let result =
+        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+            // Git runs with the store writer free: other writes are not stalled.
+            let writer = fixture
+                .state
+                .database
+                .connection_ownership_probe()
+                .upgrade()
+                .unwrap();
+            assert!(
+                writer.try_lock().is_ok(),
+                "the lease must not hold the writer"
+            );
+            assert!(fixture.leased(&project));
+            let mut store = DatabaseAcpStore::new(fixture.state.database.clone());
+            for mutation in [
+                StoreMutation::PrepareTurn(fixture.command.clone()),
+                StoreMutation::OpenHarnessTurn(fixture.harness_turn()),
+            ] {
+                assert!(matches!(
+                    store.commit(&[mutation]),
+                    Err(StoreError::RepositoryBusy)
+                ));
+            }
+            assert_eq!(fixture.branch(), "main");
+        })
+        .await
+        .unwrap();
+    assert!(result.error.is_none());
+    assert_eq!(fixture.branch(), "topic");
+    assert!(!fixture.leased(&project));
+    let mut store = DatabaseAcpStore::new(fixture.state.database.clone());
+    let opened = store
+        .commit(&[StoreMutation::OpenHarnessTurn(fixture.harness_turn())])
+        .unwrap();
+    assert!(matches!(
+        opened.results.as_slice(),
+        [StoreMutationResult::Turn(turn)] if turn.state == TurnState::Running
+    ));
     let refused = checkout_git_local_branch_inner(
         &fixture.state,
         GitRepositoryCheckoutRequest {
@@ -290,53 +312,168 @@ async fn checkout_serializes_harness_turn_start_through_the_git_mutation() {
         0,
     )
     .await;
-    assert!(refused.is_err());
+    assert!(matches!(refused, Err(AppError::InvalidRequest(message))
+        if message == crate::repository_mutation_guard::REPOSITORY_BUSY));
     assert_eq!(fixture.branch(), "topic");
 }
 
 #[tokio::test]
-async fn repository_identity_covers_subdirectories_and_linked_worktrees_but_not_other_repositories()
-{
+async fn the_lease_clears_after_a_failed_and_a_panicking_checkout() {
+    let fixture = Fixture::new();
+    let project = fixture.command.project_id.as_str().to_owned();
+    // `main` is the current branch, so Git refuses the switch.
+    let failed = checkout_git_local_branch_inner(
+        &fixture.state,
+        GitRepositoryCheckoutRequest {
+            branch: "main".into(),
+            ..fixture.request.clone()
+        },
+        0,
+    )
+    .await;
+    assert!(failed.is_err());
+    assert!(!fixture.leased(&project));
+    let panicked = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(checkout_git_local_branch_with(
+                        &fixture.state,
+                        fixture.request.clone(),
+                        0,
+                        async { panic!("checkout worker panicked mid-lease") },
+                    ))
+            })
+            .join()
+    });
+    assert!(panicked.is_err());
+    assert!(!fixture.leased(&project));
+    assert_eq!(fixture.branch(), "main");
+    fixture.prepare();
+}
+
+#[tokio::test]
+async fn repository_identity_covers_parents_subdirectories_and_linked_worktrees_only() {
     let fixture = Fixture::new();
     fixture.prepare();
     let root = fixture.base.join("repository");
     let nested = root.join("nested");
     fs::create_dir_all(&nested).unwrap();
     let linked = fixture.base.join("linked");
-    let linked_text = linked.to_str().unwrap();
     git(
         &root,
-        &["worktree", "add", "-q", "-b", "linked", linked_text, "main"],
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "linked",
+            linked.to_str().unwrap(),
+            "main",
+        ],
     );
     let other = fixture.base.join("other");
     fs::create_dir_all(&other).unwrap();
     git(&other, &["init", "-q", "-b", "main"]);
-    let active_root = fixture
-        .state
-        .database
-        .root_records(fixture.command.project_id.as_str())
-        .unwrap()[0]
-        .id
-        .clone();
-    for (path, blocked) in [(&nested, true), (&linked, true), (&other, false)] {
-        fixture
-            .state
-            .database
-            .connection()
-            .execute(
-                "UPDATE project_roots SET absolute_path=?1 WHERE id=?2",
-                rusqlite::params![path.canonicalize().unwrap().to_str().unwrap(), active_root],
-            )
-            .unwrap();
+    // An agent at the parent folder (not a repository) reaches every file
+    // the checkout rewrites.
+    for (path, blocked) in [
+        (&fixture.base, true),
+        (&nested, true),
+        (&linked, true),
+        (&other, false),
+    ] {
+        fixture.set_active_root(path.canonicalize().unwrap().to_str().unwrap());
         let result =
             checkout_git_local_branch_inner(&fixture.state, fixture.request.clone(), 0).await;
         if blocked {
             assert!(matches!(result, Err(AppError::InvalidRequest(message))
-                if message == "Can't switch branches while an agent is working in this repository."));
+                if message == crate::repository_mutation_guard::REPOSITORY_BUSY));
             assert_eq!(fixture.branch(), "main");
         } else {
             assert!(result.unwrap().error.is_none());
             assert_eq!(fixture.branch(), "topic");
         }
     }
+}
+
+#[tokio::test]
+async fn an_unverifiable_busy_folder_is_named_and_an_idle_one_is_leased() {
+    let fixture = Fixture::new();
+    let missing = fixture.base.join("missing");
+    fixture.set_active_root(missing.to_str().unwrap());
+    let project = fixture.command.project_id.as_str().to_owned();
+    let name: String = fixture
+        .state
+        .database
+        .connection()
+        .query_row("SELECT name FROM projects WHERE id=?1", [&project], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    // Idle, the unverifiable Project is leased for the switch, not refused.
+    let checkout =
+        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+            assert!(fixture.leased(&project));
+        })
+        .await
+        .unwrap();
+    assert!(checkout.error.is_none());
+    fixture.prepare();
+    let refused = checkout_git_local_branch_inner(
+        &fixture.state,
+        GitRepositoryCheckoutRequest {
+            branch: "main".into(),
+            ..fixture.request.clone()
+        },
+        0,
+    )
+    .await
+    .unwrap_err();
+    let GitFileMutationCommandError::Failed { message } = checkout_command_error(refused) else {
+        panic!("expected a refusal")
+    };
+    assert_eq!(
+        message,
+        format!(
+            "Can't switch branches: Sage couldn't verify the folder of project \"{name}\", \
+             where an agent is working. Reconnect or remove that folder, then retry."
+        )
+    );
+    assert_eq!(fixture.branch(), "topic");
+}
+
+#[tokio::test]
+async fn a_registry_beyond_its_root_limit_fails_closed() {
+    let fixture = Fixture::new();
+    let project = fixture.command.project_id.as_str();
+    let limit =
+        crate::project_registry::MAX_PROJECTS * crate::project_registry::MAX_ROOTS_PER_PROJECT;
+    {
+        let connection = fixture.state.database.connection();
+        for index in 0..limit {
+            connection
+                .execute(
+                    "INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal)
+                     VALUES(?1,?2,?3,?3,?4)",
+                    rusqlite::params![
+                        format!("overflow-{index}"),
+                        project,
+                        format!("/overflow/{index}"),
+                        index + 100
+                    ],
+                )
+                .unwrap();
+        }
+    }
+    let refused = checkout_git_local_branch_inner(&fixture.state, fixture.request.clone(), 0)
+        .await
+        .unwrap_err();
+    assert!(matches!(refused, AppError::ResourceLimit(message)
+        if message == "Can't switch branches: the Project registry exceeds its safety limit."));
+    assert_eq!(fixture.branch(), "main");
+    assert!(!fixture.leased(project));
 }

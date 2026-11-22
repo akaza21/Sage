@@ -68,6 +68,7 @@ mod repository_cherry_pick_commands;
 mod repository_commit_commands;
 mod repository_git_base_commands;
 mod repository_mutation_commands;
+mod repository_mutation_guard;
 mod repository_pull_commands;
 mod repository_rebase_commands;
 mod repository_ref_commands;

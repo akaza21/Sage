@@ -111,6 +111,7 @@ pub(super) fn prepare_turn_in(
         return Ok(existing);
     }
     validate_prepare_owner(transaction, &command)?;
+    ensure_repository_unleased(transaction, command.project_id.as_str())?;
     ensure_turn_capacity(
         transaction,
         command.project_id.as_str(),
@@ -414,6 +415,18 @@ pub(super) fn ensure_turn_capacity(
         LIMITS.durable.shared_payload_bytes_global,
         "globalPayload",
     )
+}
+
+/// A Turn never opens in a Project while Sage changes its repository's
+/// working tree; the lease and this check share the store writer.
+pub(super) fn ensure_repository_unleased(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+) -> Result<(), StoreError> {
+    if crate::repository_mutation_guard::project_leased(transaction, project_id)? {
+        return Err(StoreError::RepositoryBusy);
+    }
+    Ok(())
 }
 
 pub(super) fn ensure_one(changed: usize, resource: &'static str) -> Result<(), StoreError> {

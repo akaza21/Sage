@@ -7,7 +7,10 @@ use sage_acp_protocol::{
 
 use super::{
     MutationDisposition, StoreError, TurnMutation, TurnMutationCommand,
-    commands::{TurnFootprint, ensure_one, ensure_turn_capacity, require_current_runtime},
+    commands::{
+        TurnFootprint, ensure_one, ensure_repository_unleased, ensure_turn_capacity,
+        require_current_runtime,
+    },
     facts::{
         append_fact, entity_revision_from_i64, next_projection_revision, projection_from_i64,
         publish_projection,
@@ -64,6 +67,9 @@ fn open_harness_turn_in(
         command.session_id.as_str(),
         command.runtime_epoch,
     )?;
+    // Recording the Turn cannot stop an out-of-process harness, but declining
+    // it here makes the runner cancel it instead of adopting it mid-switch.
+    ensure_repository_unleased(transaction, command.project_id.as_str())?;
     ensure_turn_capacity(
         transaction,
         command.project_id.as_str(),

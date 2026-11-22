@@ -145,8 +145,9 @@ where
 
 /// The Turn was refused before anything opened: it would run in another
 /// mode than the chat's access allows now, the runtime holds a Turn the
-/// user undid or no longer runs, or the session's history or Turn slot is
-/// full. The run is declined and the session stays.
+/// user undid or no longer runs, the session's history or Turn slot is
+/// full, or Sage is switching branches in the Project's repository. The run
+/// is declined and the session stays.
 fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
     failure.recovery.is_none()
         && matches!(
@@ -156,6 +157,7 @@ fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
                     | CoordinatorError::Scheduler(SchedulerError::TurnCapacity)
                     | CoordinatorError::Journal(JournalError::Store(
                         StoreError::Capacity { .. }
+                            | StoreError::RepositoryBusy
                             | StoreError::Conflict {
                                 resource: "sessionEpoch"
                             }

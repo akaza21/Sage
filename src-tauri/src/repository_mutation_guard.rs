@@ -1,0 +1,181 @@
+//! A short lease that keeps agent turns out of a repository while Sage changes
+//! its working tree (a checkout today; a pull, rebase or stash can reuse it).
+//!
+//! Repository identity is resolved with no lock held. The store writer is then
+//! held only to check for active turns and record the lease, both in one
+//! transaction. The Git work runs after that lock is released. Turn openings
+//! (`PrepareTurn`, `OpenHarnessTurn`) check the lease inside their own
+//! transaction on the same writer, so neither side can slip between the
+//! other's check and commit. The lease lives in a TEMP table on the writer
+//! connection, so it never reaches disk and cannot outlive the process, and it
+//! is cleared by `Drop` on success, error and unwind alike.
+
+use std::future::Future;
+
+use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
+use sage_db::{database::Database, error::SqliteResultExt};
+use sage_workspace::Workspace;
+
+use crate::project_registry::{MAX_PROJECTS, MAX_ROOTS_PER_PROJECT};
+
+mod identity;
+
+pub(crate) const REPOSITORY_BUSY: &str =
+    "Can't switch branches while an agent is working in this repository.";
+pub(crate) const TURN_BLOCKED: &str =
+    "Can't start a turn while Sage switches branches in this repository.";
+
+// The registry admits at most this many roots; more means the store is
+// corrupt, and the guard fails closed rather than probe an unbounded set.
+const MAX_REGISTERED_ROOTS: i64 = MAX_PROJECTS * MAX_ROOTS_PER_PROJECT;
+const MAX_PROJECT_NAME_CHARS: usize = 80;
+const ACTIVE_TURN_STATES: &str = "'queued','sending','running','waitingModel','waitingTool',\
+     'waitingApproval','waitingUser','cancelling'";
+
+/// Runs `op` while no agent turn can run or start in a Project that reaches
+/// `workspace`'s repository. Refuses up front if one already is.
+pub(crate) async fn with_idle_repository<T, F, Fut>(
+    database: &Database,
+    workspace: &Workspace,
+    op: F,
+) -> AppResult<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = AppResult<T>>,
+{
+    let lease = acquire(database, workspace).await?;
+    let result = op().await;
+    drop(lease);
+    result
+}
+
+/// True while a repository lease covers `project_id`. Turn openings call this
+/// inside their transaction on the store writer.
+pub(crate) fn project_leased(
+    connection: &rusqlite::Connection,
+    project_id: &str,
+) -> rusqlite::Result<bool> {
+    let table: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM temp.sqlite_master
+             WHERE type='table' AND name='repository_leases'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if table.is_none() {
+        return Ok(false);
+    }
+    connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM temp.repository_leases WHERE project_id=?1)",
+        [project_id],
+        |row| row.get(0),
+    )
+}
+
+struct Lease {
+    database: Database,
+    id: String,
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        let connection = self.database.connection();
+        if let Err(error) = connection.execute(
+            "DELETE FROM temp.repository_leases WHERE lease_id=?1",
+            [&self.id],
+        ) {
+            tracing::error!(?error, "repository lease could not be cleared");
+        }
+    }
+}
+
+async fn acquire(database: &Database, workspace: &Workspace) -> AppResult<Lease> {
+    let target = identity::identify(workspace.root()).await?;
+    let snapshot = registered_roots(&database.connection())?;
+    let classification = identity::classify(&target, &snapshot).await;
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut connection = database.connection();
+    let transaction = connection.transaction().db()?;
+    // A Project is left out of the lease only if every folder it has now was
+    // verified as unrelated; one added or changed meanwhile is leased.
+    let mut current = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for (project, folder) in registered_roots(&transaction)? {
+        current.entry(project).or_default().push(folder);
+    }
+    let leased: Vec<&String> = current
+        .iter_mut()
+        .filter_map(|(project, folders)| {
+            folders.sort();
+            (classification.unrelated.get(project) != Some(&*folders)).then_some(project)
+        })
+        .collect();
+    let mut busy = transaction
+        .prepare(&format!(
+            "SELECT DISTINCT t.project_id,p.name FROM turns t JOIN projects p ON p.id=t.project_id
+             WHERE t.state IN ({ACTIVE_TURN_STATES})"
+        ))
+        .db()?;
+    let mut rows = busy.query([]).db()?;
+    let mut unverified_busy = None;
+    while let Some(row) = rows.next().db()? {
+        let project: String = row.get(0).db()?;
+        if !leased.contains(&&project) {
+            continue;
+        }
+        if !classification.unverified.contains(&project) {
+            return Err(AppError::InvalidRequest(REPOSITORY_BUSY.into()));
+        }
+        unverified_busy.get_or_insert(row.get::<_, String>(1).db()?);
+    }
+    drop(rows);
+    drop(busy);
+    if let Some(name) = unverified_busy {
+        let name: String = name.chars().take(MAX_PROJECT_NAME_CHARS).collect();
+        return Err(AppError::InvalidRequest(format!(
+            "Can't switch branches: Sage couldn't verify the folder of project \"{name}\", \
+             where an agent is working. Reconnect or remove that folder, then retry."
+        )));
+    }
+    transaction
+        .execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS repository_leases(
+               lease_id TEXT NOT NULL,
+               project_id TEXT NOT NULL,
+               PRIMARY KEY (lease_id, project_id))",
+        )
+        .db()?;
+    for project in leased {
+        transaction
+            .execute(
+                "INSERT INTO temp.repository_leases(lease_id,project_id) VALUES(?1,?2)",
+                params![id, project],
+            )
+            .db()?;
+    }
+    transaction.commit().db()?;
+    Ok(Lease {
+        database: database.clone(),
+        id,
+    })
+}
+
+fn registered_roots(connection: &rusqlite::Connection) -> AppResult<Vec<(String, String)>> {
+    let mut statement = connection
+        .prepare("SELECT project_id,absolute_path FROM project_roots LIMIT ?1")
+        .db()?;
+    let roots = statement
+        .query_map([MAX_REGISTERED_ROOTS + 1], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .db()?
+        .collect::<Result<Vec<(String, String)>, _>>()
+        .db()?;
+    if roots.len() as i64 > MAX_REGISTERED_ROOTS {
+        return Err(AppError::ResourceLimit(
+            "Can't switch branches: the Project registry exceeds its safety limit.".into(),
+        ));
+    }
+    Ok(roots)
+}

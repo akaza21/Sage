@@ -11,8 +11,6 @@ use sage_workspace::Workspace;
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
 
-mod guard;
-
 #[tauri::command]
 pub async fn checkout_git_local_branch(
     state: State<'_, AppState>,
@@ -61,7 +59,7 @@ async fn checkout_git_local_branch_with(
     state: &AppState,
     request: GitRepositoryCheckoutRequest,
     expected_transition_epoch: u64,
-    before_checkout: impl std::future::Future<Output = ()> + Send + 'static,
+    before_checkout: impl std::future::Future<Output = ()>,
 ) -> AppResult<GitRepositoryCheckoutResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -110,22 +108,17 @@ async fn checkout_git_local_branch_with(
             (root.id.clone(), workspace)
         })
         .collect();
-    let database = state.database.clone();
-    let branch = request.branch.clone();
-    let runtime = tokio::runtime::Handle::current();
-    let checkout_result = tauri::async_runtime::spawn_blocking(move || {
-        // All turn openings, including harness-initiated follow-on turns, commit
-        // through this connection. Keep its existing store lock from the idle
-        // check through Git's bounded mutation; never hold it for the refresh.
-        let connection = database.connection();
-        runtime.block_on(async {
-            guard::ensure_repository_idle(&connection, &workspace).await?;
+    // No agent turn runs or starts in this repository during the switch; the
+    // status refresh below runs after the lease is released.
+    let checkout_result = crate::repository_mutation_guard::with_idle_repository(
+        &state.database,
+        &workspace,
+        || async {
             before_checkout.await;
-            sage_git::checkout::checkout_listed_local_branch(&workspace, &branch).await
-        })
-    })
-    .await
-    .map_err(|_| AppError::TaskInterrupted("Git checkout worker did not complete".into()))?;
+            sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await
+        },
+    )
+    .await;
     let error = match checkout_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
