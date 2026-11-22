@@ -4,7 +4,7 @@ use sage_core::{
     error::{AppError, AppResult},
     win32_path::authority_path_key,
 };
-use sage_db::{database::Database, error::SqliteResultExt};
+use sage_db::error::SqliteResultExt;
 use sage_workspace::Workspace;
 
 // A corrupt or unrecovered activity set must fail closed, never start an
@@ -14,11 +14,10 @@ const MAX_REPOSITORY_PATH_BYTES: usize = 32 * 1024;
 const BUSY: &str = "Can't switch branches while an agent is working in this repository.";
 
 pub(super) async fn ensure_repository_idle(
-    database: &Database,
+    connection: &rusqlite::Connection,
     workspace: &Workspace,
 ) -> AppResult<()> {
     let roots = {
-        let connection = database.connection();
         let mut statement = connection
             .prepare(
                 "SELECT DISTINCT r.absolute_path,length(CAST(r.absolute_path AS BLOB))

@@ -61,7 +61,7 @@ async fn checkout_git_local_branch_with(
     state: &AppState,
     request: GitRepositoryCheckoutRequest,
     expected_transition_epoch: u64,
-    before_checkout: impl std::future::Future<Output = ()>,
+    before_checkout: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> AppResult<GitRepositoryCheckoutResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -110,12 +110,22 @@ async fn checkout_git_local_branch_with(
             (root.id.clone(), workspace)
         })
         .collect();
-    // Prompt dispatch holds this same transition guard until its queued turn
-    // is durable. Keep it through Git's mutation so neither ordering can race.
-    guard::ensure_repository_idle(&state.database, &workspace).await?;
-    before_checkout.await;
-    let checkout_result =
-        sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await;
+    let database = state.database.clone();
+    let branch = request.branch.clone();
+    let runtime = tokio::runtime::Handle::current();
+    let checkout_result = tauri::async_runtime::spawn_blocking(move || {
+        // All turn openings, including harness-initiated follow-on turns, commit
+        // through this connection. Keep its existing store lock from the idle
+        // check through Git's bounded mutation; never hold it for the refresh.
+        let connection = database.connection();
+        runtime.block_on(async {
+            guard::ensure_repository_idle(&connection, &workspace).await?;
+            before_checkout.await;
+            sage_git::checkout::checkout_listed_local_branch(&workspace, &branch).await
+        })
+    })
+    .await
+    .map_err(|_| AppError::TaskInterrupted("Git checkout worker did not complete".into()))?;
     let error = match checkout_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
