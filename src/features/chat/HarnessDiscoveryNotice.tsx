@@ -38,8 +38,9 @@ export function HarnessDiscoveryNotice({
   } = useWorkbenchStore.getState();
   const localDismissal = useState<HarnessNoticeDismissal[0]>({});
   const [dismissed, setDismissed] = dismissal ?? localDismissal;
-  const dismiss = (kind: "build" | "release", identity: string) => () =>
-    setDismissed((current) => ({ ...current, [kind]: identity }));
+  const dismiss =
+    (kind: "build" | "release" | "direct", identity: string) => () =>
+      setDismissed((current) => ({ ...current, [kind]: identity }));
   const harness =
     provided === undefined
       ? harnesses.find((h) => h.id === selectedId)
@@ -88,17 +89,27 @@ export function HarnessDiscoveryNotice({
   const release = JSON.stringify([id, update?.latestVersion]);
   const newer = harness.characterisation === "newerThanTested";
   const direct = harness.directFromVersion;
+  const fallback = JSON.stringify([id, "direct", direct]);
   const builds: NoticeProps[] = [];
+  // Settings explains the fallback in the harness's own version rows.
+  if (direct && !SettingsPresentation && dismissed.direct !== fallback)
+    builds.push({
+      identity: fallback,
+      severity: "info",
+      message: `Sage runs ${harness.runsVersion ? `${harness.name} ${harness.runsVersion}` : "the release"} bundled with its adapter. Update ${harness.name} to ${direct} or newer and Sage runs it directly.`,
+      action: {
+        label: "Dismiss adapter notice",
+        onClick: dismiss("direct", fallback),
+      },
+    });
   if (
-    (direct || newer || harness.characterisation === "uncharacterised") &&
+    (newer || harness.characterisation === "uncharacterised") &&
     dismissed.build !== build
   )
     builds.push({
       identity: build,
-      severity: direct ? "info" : "warning",
-      message: direct
-        ? `Sage runs ${harness.name} ${harness.runsVersion ?? ""} bundled with its adapter. Update ${harness.name} to ${direct} or newer and Sage runs it directly.`
-        : `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
+      severity: "warning",
+      message: `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
       action: {
         label: "Dismiss build notice",
         onClick: dismiss("build", build),

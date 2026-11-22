@@ -34,7 +34,7 @@ export function HarnessUpdateCheckSetting() {
     <div className="agent-settings__card">
       <SettingsRow
         title="Check npm for new harness versions"
-        description="Every 6 hours Sage asks npm, through your own Node.js, for the latest release of each installed harness. Off: Sage runs no npm command."
+        description="When Sage starts or you refresh (at most every 6 hours), Sage asks npm, through your own Node.js, for the latest release of each installed harness. Off: Sage runs no npm command."
       >
         <input
           className="switch"
@@ -64,8 +64,13 @@ export function HarnessVersionDetails({
     <>
       <p>
         Installed {version} · Sage runs{" "}
-        {available ? (runsVersion ?? version) : "nothing yet"} · Latest{" "}
-        {harness.latestVersion ?? "not checked"}
+        {!available
+          ? "nothing yet"
+          : (runsVersion ??
+            (directFromVersion
+              ? "the adapter's bundled release"
+              : version))}{" "}
+        · Latest {harness.latestVersion ?? "not checked"}
       </p>
       {available && directFromVersion ? (
         <p>

@@ -19,8 +19,14 @@ pub(super) fn annotate(
     published: &PublishedReleases,
     registry: &BindingRegistry,
 ) {
-    definition.latest_version = published.latest_for(&definition.id);
-    definition.update = published.update_for(&definition.id, definition.version.as_deref());
+    // npm output is untrusted: project only a bounded version token.
+    definition.latest_version = published
+        .latest_for(&definition.id)
+        .as_deref()
+        .and_then(safe_display_version);
+    definition.update = published
+        .update_for(&definition.id, definition.version.as_deref())
+        .filter(|update| definition.latest_version.as_ref() == Some(&update.latest_version));
     if let (Some(update), Some(known_commands)) = (
         definition.update.as_mut(),
         spec.and_then(|spec| spec.known_commands),

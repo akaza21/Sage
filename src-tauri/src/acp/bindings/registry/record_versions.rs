@@ -9,7 +9,13 @@ impl BindingRecord {
     pub(crate) fn runs_version(&self) -> Option<String> {
         match &self.admission {
             Admission::Claude(admission) => admission.admitted()?.runs_version().map(Into::into),
-            _ => None,
+            Admission::Codex(_)
+            | Admission::ClaudeSdk(_)
+            | Admission::OpenCode(_)
+            | Admission::CustomAcp(_)
+            | Admission::PiNative(_) => None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(_) => None,
         }
     }
 
@@ -18,7 +24,15 @@ impl BindingRecord {
     fn refused_below(&self) -> Option<&'static str> {
         match &self.admission {
             Admission::ClaudeSdk(admission) => admission.refused_below(),
-            _ => None,
+            // These admit or refuse the installed release without a fallback
+            // binding for the same harness to run meanwhile.
+            Admission::Codex(_)
+            | Admission::Claude(_)
+            | Admission::OpenCode(_)
+            | Admission::CustomAcp(_)
+            | Admission::PiNative(_) => None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(_) => None,
         }
     }
 }

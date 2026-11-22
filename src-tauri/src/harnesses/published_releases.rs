@@ -10,6 +10,8 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[derive(Debug, Default)]
 struct Checked {
+    /// Bumped by `forget`, so a check begun before it cannot write back.
+    epoch: u64,
     started: Option<Instant>,
     covered: Vec<&'static str>,
     releases: Vec<PublishedRelease>,
@@ -19,20 +21,32 @@ struct Checked {
 pub(super) struct PublishedReleases(Arc<RwLock<Checked>>);
 
 impl PublishedReleases {
-    /// False while a check started within the interval already covers them.
-    pub(super) fn begin_check(&self, harness_ids: &[&'static str]) -> bool {
-        let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
+    /// `None` while a check started within the interval already covers them;
+    /// otherwise the epoch `finish_check` must present.
+    pub(super) fn begin_check(&self, harness_ids: &[&'static str]) -> Option<u64> {
+        let mut checked = self.0.write().unwrap_or_else(|    /// harness missing from `found` keeps its earlier result and is retried too.
+    /// A check from before the last `forget` is dropped.
+    pub(super) fn finish_check(&self, epoch: u64, found: Option<Vec<PublishedRelease>>) {
+        let mut checked = self.0.write().unwrap_or_else(|        let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
+        *checked = Checked {
+            epoch: checked.epoch.wrapping_add(1),
+            ..Checked::default()
+        };| error.into_inner());
+        if checked.epoch != epoch {
+            return;
+        }
+| error.into_inner());
         let recent = checked
             .started
             .is_some_and(|started| started.elapsed() < CHECK_INTERVAL);
         if harness_ids.is_empty()
             || (recent && harness_ids.iter().all(|id| checked.covered.contains(id)))
         {
-            return false;
+            return None;
         }
         checked.started = Some(Instant::now());
         checked.covered = harness_ids.to_vec();
-        true
+        Some(checked.epoch)
     }
 
     /// `None` (failed) keeps earlier results and lets the next refresh retry; a
@@ -102,8 +116,8 @@ mod tests {
 
     fn published(version: &str) -> PublishedReleases {
         let releases = PublishedReleases::default();
-        assert!(releases.begin_check(&["codex"]));
-        releases.finish_check(Some(vec![release("codex", version)]));
+        let epoch = releases.begin_check(&["codex"]).unwrap();
+        releases.finish_check(epoch, Some(vec![release("codex", version)]));
         releases
     }
 
@@ -125,24 +139,36 @@ mod tests {
     #[test]
     fn one_check_runs_per_interval_unless_a_harness_is_new() {
         let releases = PublishedReleases::default();
-        assert!(!releases.begin_check(&[]));
-        assert!(releases.begin_check(&["codex"]));
-        assert!(!releases.begin_check(&["codex"]));
-        assert!(releases.begin_check(&["codex", "pi"]));
-        assert!(!releases.begin_check(&["pi"]));
+        assert!(releases.begin_check(&[]).is_none());
+        assert!(releases.begin_check(&["codex"]).is_some());
+        assert!(releases.begin_check(&["codex"]).is_none());
+        assert!(releases.begin_check(&["codex", "pi"]).is_some());
+        assert!(releases.begin_check(&["pi"]).is_none());
     }
 
     #[test]
     fn a_failed_check_keeps_what_was_known_and_can_run_again() {
         let releases = published("0.168.0");
-        assert!(releases.begin_check(&["codex", "pi"]));
-        releases.finish_check(None);
+        let epoch = releases.begin_check(&["codex", "pi"]).unwrap();
+        releases.finish_check(epoch, None);
         assert!(releases.update_for("codex", Some("0.167.1")).is_some());
-        assert!(releases.begin_check(&["codex", "pi"]));
-        releases.finish_check(Some(vec![release("pi", "0.75.0")]));
+        let epoch = releases.begin_check(&["codex", "pi"]).unwrap();
+        releases.finish_check(epoch, Some(vec![release("pi", "0.75.0")]));
         assert!(releases.update_for("codex", Some("0.167.1")).is_some());
         assert!(releases.update_for("pi", Some("0.74.2")).is_some());
-        assert!(!releases.begin_check(&["pi"]));
-        assert!(releases.begin_check(&["codex", "pi"]));
+        assert!(releases.begin_check(&["pi"]).is_none());
+        assert!(releases.begin_check(&["codex", "pi"]).is_some());
+    }
+
+    #[test]
+    fn a_check_begun_before_checking_turned_off_writes_nothing_back() {
+        let releases = PublishedReleases::default();
+        let epoch = releases.begin_check(&["codex"]).unwrap();
+        releases.forget();
+        releases.finish_check(epoch, Some(vec![release("codex", "0.168.0")]));
+        assert_eq!(releases.latest_for("codex"), None);
+        let epoch = releases.begin_check(&["codex"]).unwrap();
+        releases.finish_check(epoch, Some(vec![release("codex", "0.168.0")]));
+        assert_eq!(releases.latest_for("codex").as_deref(), Some("0.168.0"));
     }
 }

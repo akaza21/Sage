@@ -65,34 +65,38 @@ type LookupRunner<'a> = &'a dyn Fn(&Path, &[&OsStr], &Path) -> Option<Vec<u8>>;
 
 /// `None` when checking is off, no lookup could run or every lookup failed
 /// (offline, no npm), so the caller can try again rather than wait out the
-/// check interval. While `npm_check` is off no npm process starts.
+/// check interval. `npm_check` reads the switch: it is asked before each
+/// package, so once it turns off no further npm process starts.
 pub(crate) fn published_releases(
     sources: &[UpdateSource],
-    npm_check: bool,
+    npm_check: &dyn Fn() -> bool,
 ) -> Option<Vec<PublishedRelease>> {
     lookup_releases(sources, npm_check, npm_cli, &run_lookup)
 }
 
 fn lookup_releases(
     sources: &[UpdateSource],
-    npm_check: bool,
+    npm_check: &dyn Fn() -> bool,
     locate_npm: fn() -> Option<(PathBuf, PathBuf)>,
     run: LookupRunner<'_>,
 ) -> Option<Vec<PublishedRelease>> {
-    if !npm_check {
+    if !npm_check() {
         return None;
     }
     let (node, npm_cli) = locate_npm()?;
-    let found: Vec<_> = sources
-        .iter()
-        .filter_map(|source| {
-            Some(PublishedRelease {
+    let mut found = Vec::new();
+    for source in sources {
+        if !npm_check() {
+            return None;
+        }
+        if let Some(version) = latest_version(&node, &npm_cli, source.package, run) {
+            found.push(PublishedRelease {
                 harness_id: source.harness_id,
-                version: latest_version(&node, &npm_cli, source.package, run)?,
+                version,
                 command: source.command.clone(),
-            })
-        })
-        .collect();
+            });
+        }
+    }
     (!found.is_empty()).then_some(found)
 }
 

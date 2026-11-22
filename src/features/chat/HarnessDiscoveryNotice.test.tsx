@@ -64,7 +64,7 @@ describe("HarnessDiscoveryNotice", () => {
     );
   });
 
-  it("shows why Sage runs the adapter's Claude Code apart from the update", () => {
+  it("shows the adapter fallback, the untested build and the update as separate notices", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -78,7 +78,7 @@ describe("HarnessDiscoveryNotice", () => {
           bindingId: "claude-agent-acp",
           version: "2.1.250",
           boundVersion: "0.76.0",
-          characterisation: "characterised",
+          characterisation: "uncharacterised",
           runsVersion: "2.1.257",
           directFromVersion: "2.1.300",
           update: {
@@ -97,6 +97,9 @@ describe("HarnessDiscoveryNotice", () => {
     expect(notices.map((notice) => notice.textContent)).toEqual([
       expect.stringContaining(
         "Sage runs Claude Code 2.1.257 bundled with its adapter. Update Claude Code to 2.1.300 or newer and Sage runs it directly.",
+      ),
+      expect.stringContaining(
+        "Claude Code 0.76.0 hasn't been tested with Sage yet, so some features are off.",
       ),
       expect.stringContaining("Claude Code 2.1.330 is available."),
     ]);

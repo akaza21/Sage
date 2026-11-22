@@ -124,16 +124,17 @@ impl HarnessCatalog {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// False while a recent check covers them.
-    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
+    /// `None` while a recent check covers them; otherwise the check's epoch.
+    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> Option<u64> {
         self.published.begin_check(harness_ids)
     }
 
     pub(crate) fn finish_update_check(
         &self,
+        epoch: u64,
         found: Option<Vec<crate::harness_discovery::PublishedRelease>>,
     ) {
-        self.published.finish_check(found);
+        self.published.finish_check(epoch, found);
     }
 
     pub(crate) fn forget_published_releases(&self) {

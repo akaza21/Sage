@@ -51,3 +51,25 @@ impl SettingsStore {
         Ok(enabled)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SettingsStore;
+
+    #[test]
+    fn checking_defaults_on_and_a_choice_survives_reopening_the_store() {
+        let directory = std::env::temp_dir().join(format!(
+            "sage-harness-update-check-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.db");
+        let store = SettingsStore::open(&path).unwrap();
+        assert!(store.harness_update_check().unwrap());
+        assert!(!store.set_harness_update_check(false).unwrap());
+        assert!(!store.harness_update_check().unwrap());
+        drop(store);
+        assert!(!SettingsStore::open(&path).unwrap().harness_update_check().unwrap());
+        std::fs::remove_dir_all(directory).ok();
+    }
+}
