@@ -801,6 +801,11 @@ test("New project preserves the unsent composer through creation and reparenting
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().createChat(null);
+    // Native creation persists the chat; explicitly open its composer rather
+    // than the unsaved draft shown while the initial project was empty.
+    await useWorkbenchStore
+      .getState()
+      .activateTab(useWorkbenchStore.getState().activeTabId!);
     const state = useWorkbenchStore.getState();
     const chat = state.activeTabId!;
     const owner = state.captureChatOwnership(chat)!;
@@ -821,6 +826,9 @@ test("New project preserves the unsent composer through creation and reparenting
       throw new Error("context refused");
     return chat;
   });
+  await expect(
+    page.getByRole("combobox", { name: "Message agent", exact: true }),
+  ).toHaveValue("Keep my prompt and reference");
   await page
     .getByRole("button", { name: "Composer options", exact: true })
     .click();
@@ -883,6 +891,9 @@ for (const when of ["before creation", "during creation"]) {
       resetBrowserDesktopForTests();
       await useWorkbenchStore.getState().initialize();
       await useWorkbenchStore.getState().createChat(null);
+      await useWorkbenchStore
+        .getState()
+        .activateTab(useWorkbenchStore.getState().activeTabId!);
       const state = useWorkbenchStore.getState();
       const owner = state.captureChatOwnership()!;
       state.setChatComposer(owner, "Keep this unsent prompt");
@@ -978,6 +989,9 @@ test("active project-less chat can be archived and restored from Recents", async
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().createChat(null);
+    await useWorkbenchStore
+      .getState()
+      .activateTab(useWorkbenchStore.getState().activeTabId!);
     useWorkbenchStore.setState({
       tabs: useWorkbenchStore
         .getState()

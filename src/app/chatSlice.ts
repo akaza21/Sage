@@ -74,7 +74,7 @@ export const createChatSlice: StateCreator<
           get().nativeTransitionEpoch !== source.nativeTransitionEpoch
         )
           return;
-        await runSetChatProject(
+        const movedChatId = await runSetChatProject(
           get,
           chat,
           runChatTransition,
@@ -82,6 +82,13 @@ export const createChatSlice: StateCreator<
           sourceLayout,
           sourceComposer,
         );
+        // Reopen the moved chat unless a newer navigation request won.
+        if (
+          movedChatId &&
+          get().activeTabId === movedChatId &&
+          get().draftFocusRequest === source.draftFocusRequest
+        )
+          set({ agentCenter: "chat" });
       } catch (error) {
         set({ error: errorMessage(error) });
       }

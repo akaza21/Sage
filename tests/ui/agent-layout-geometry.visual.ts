@@ -300,6 +300,21 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
     "rgba(0, 0, 0, 0)",
   );
 
+  // Native discovery supplies the curated brand independently of the name.
+  const selectedId = await trigger.getAttribute("data-selected-id");
+  await page.evaluate(async (id) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    useWorkbenchStore.setState(({ harnesses }) => ({
+      harnesses: harnesses.map((harness) =>
+        harness.id === id ? { ...harness, brand: "codex" } : harness,
+      ),
+    }));
+  }, selectedId);
+  await expect(logo).toHaveAttribute("data-harness-icon", "codex");
+  expect(await logo.locator("use").getAttribute("href")).toContain(
+    "/harness-codex.svg#mark",
+  );
+
   // The chat's harness is no longer among the discovered candidates while
   // others are still listed (detecting): the trigger shows the generic
   // harness mark, never a candidate's brand and never a settings gear.
