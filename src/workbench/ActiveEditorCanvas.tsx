@@ -6,7 +6,6 @@ import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
-import "./active-editor-canvas.css";
 
 const loadSettingsSurface = () =>
   import("./SettingsSurface").then(({ SettingsSurface }) => ({
