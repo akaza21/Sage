@@ -7,13 +7,13 @@ use sage_acp_protocol::{
 
 use super::{
     MutationDisposition, StoreError, TurnMutation, TurnMutationCommand,
-    commands::{
-        TurnFootprint, ensure_one, ensure_repository_unleased, ensure_turn_capacity,
-        require_current_runtime,
-    },
+    commands::ensure_one,
     facts::{
         append_fact, entity_revision_from_i64, next_projection_revision, projection_from_i64,
         publish_projection,
+    },
+    turn_admission::{
+        TurnFootprint, ensure_repository_unleased, ensure_turn_capacity, require_current_runtime,
     },
 };
 

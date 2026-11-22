@@ -45,10 +45,12 @@ pub(crate) mod session_surface;
 mod sessions;
 mod snapshots;
 mod state;
+mod store_error;
 mod terminal;
 mod terminal_reason;
 mod terminalize;
 mod turn_activity_facts;
+mod turn_admission;
 pub(crate) mod turn_undo;
 
 use serde::{Deserialize, Serialize};
@@ -132,6 +134,7 @@ pub(crate) use sessions::{
     activate_session, start_session,
 };
 pub(crate) use snapshots::{FilePairCommand, read_snapshot};
+pub(crate) use store_error::StoreError;
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
@@ -140,35 +143,6 @@ pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
 pub(crate) use turn_undo::{
     TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
 };
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum StoreError {
-    #[error("{reason}")]
-    RewindUnavailable { reason: &'static str },
-    #[error("database operation failed")]
-    Database(#[from] rusqlite::Error),
-    #[error("durable history capacity reached for {resource}; existing history is preserved")]
-    Capacity { resource: &'static str, limit: u64 },
-    #[error("stale or foreign {resource} intent")]
-    Conflict { resource: &'static str },
-    #[error("invalid durable transition for {resource}")]
-    InvalidTransition { resource: &'static str },
-    #[error("conflicting terminal update for {resource}")]
-    TerminalConflict { resource: &'static str },
-    #[error("durable data is corrupt: {0}")]
-    Corrupt(&'static str),
-    #[error("normalized payload exceeds the frozen limit")]
-    PayloadTooLarge,
-    #[error("journal transaction shape is unsupported")]
-    BatchShape,
-    #[error("SQLite commit outcome is unknown; authoritative bootstrap is required")]
-    CommitUnknown,
-    #[error("a monotonic SQLite counter is exhausted")]
-    CounterExhausted,
-    /// Sage holds a repository lease (a branch switch) over this Project.
-    #[error("{}", crate::repository_mutation_guard::TURN_BLOCKED)]
-    RepositoryBusy,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PrepareTurnCommand {
