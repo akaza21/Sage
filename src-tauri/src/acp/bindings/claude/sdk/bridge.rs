@@ -12,6 +12,7 @@ use super::config::SessionSettings;
 mod commands;
 mod controls;
 pub(super) use controls::message_uuid;
+mod goal;
 mod inbound;
 mod notices;
 mod outbound;
@@ -114,6 +115,8 @@ pub(super) struct SdkBridge {
     launch_model: Option<String>,
     settings: Option<SessionSettings>,
     commands: Value,
+    goal: crate::acp::goal::GoalState,
+    goals_enabled: bool,
     pending: BTreeMap<String, Pending>,
     next_request: u64,
     prompt: Option<Value>,
@@ -195,6 +198,8 @@ impl SdkBridge {
             launch_model,
             settings: None,
             commands: Value::Array(Vec::new()),
+            goal: crate::acp::goal::GoalState::Unsupported,
+            goals_enabled: false,
             pending: BTreeMap::new(),
             next_request: 0,
             prompt: None,

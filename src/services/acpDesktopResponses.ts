@@ -13,7 +13,7 @@ import type {
   AcpMutationResult,
   AgentSessionProjection,
 } from "../domain/acp";
-import type { AcpGoalState } from "../domain/acpGoal";
+import { decodeGoalCapabilities, type AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
 import { safeSessionNotices } from "./acpSessionNotices";
 
@@ -69,6 +69,7 @@ function safeCapabilities(
     schemaVersion: 1,
     protocolVersion,
     rewind: safeRewind(value.rewind),
+    goal: decodeGoalCapabilities(value.goal),
     multiRootExtensionSchemaId: extensionSchemaId,
     modelCount,
     configCount,

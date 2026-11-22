@@ -1,0 +1,47 @@
+.chat-goal-strip__details {
+  max-height: min(200px, 25vh);
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--composer-border);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.chat-goal-strip__details p {
+  margin: 0 0 var(--space-2);
+}
+.chat-goal-strip__details dl {
+  margin: 0;
+}
+.chat-goal-strip__details dl > div {
+  display: flex;
+  gap: var(--space-2);
+}
+.chat-goal-strip__details dt {
+  color: var(--color-text-muted);
+}
+.chat-goal-strip__details dd {
+  margin: 0;
+}
+
+.chat-goal-editor {
+  padding: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.chat-goal-editor label {
+  display: block;
+}
+.chat-goal-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  max-height: 180px;
+  resize: vertical;
+  margin: var(--space-2) 0;
+  background: var(--color-plane-raised);
+  color: var(--color-text-primary);
+}
+.chat-goal-editor button {
+  margin-left: var(--space-2);
+}

@@ -208,6 +208,7 @@ fn capabilities() -> String {
         native_session_import: false,
         native_review: false,
         native_background_terminals: false,
+        goal: Default::default(),
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,

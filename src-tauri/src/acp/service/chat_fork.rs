@@ -112,6 +112,7 @@ fn fork_reply(result: Result<NativeRpcReply, HostError>) -> Result<ExternalId, C
         Ok(NativeRpcReply::Rejected) => Err(ChatForkError::Rejected),
         Ok(
             NativeRpcReply::GoalApplied
+            | NativeRpcReply::GoalCommand(_)
             | NativeRpcReply::TurnsPage(_)
             | NativeRpcReply::SessionsPage(_)
             | NativeRpcReply::Released

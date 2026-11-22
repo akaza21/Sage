@@ -46,6 +46,7 @@ impl SdkBridge {
             Some("assistant") => self.assistant(&sdk, &mut inbound),
             Some("result") => self.result(&sdk, &mut inbound),
             Some("system") => self.system(&sdk, &mut inbound),
+            Some("active_goal") => self.active_goal(&sdk),
             Some("rate_limit_event") => Self::rate_limit(&sdk, &mut inbound),
             Some("command_lifecycle") => self.lifecycle(&sdk, &mut inbound),
             Some(_) => {}
@@ -95,6 +96,7 @@ impl SdkBridge {
                     return Ok(());
                 }
                 self.commands = super::commands::commands(reply);
+                self.refresh_goal_capability();
                 inbound.acp.push(acp_result(
                     id,
                     json!({

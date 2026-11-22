@@ -59,6 +59,10 @@ pub(super) fn intersect(
         native_background_terminals: curated.native_background_terminals
             && advertised.native_background_terminals
             && policy.native_background_terminals,
+        goal: curated
+            .goal
+            .intersect(advertised.goal)
+            .intersect(policy.goal),
         active_turn_steer: curated.active_turn_steer
             && advertised.active_turn_steer
             && policy.active_turn_steer,
@@ -113,6 +117,7 @@ mod tests {
             native_session_import: false,
             native_review: false,
             native_background_terminals: false,
+            goal: Default::default(),
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: false,

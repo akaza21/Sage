@@ -113,6 +113,12 @@ pub(crate) fn write_goal<A: HarnessAdapter>(
     action: GoalAction,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
+    if adapter
+        .prepare_goal_command(&action)
+        .map_err(|_| HostError::Intent)?
+    {
+        return Ok(());
+    }
     let egress = adapter.mutate_goal(action).map_err(|_| HostError::Intent)?;
     write_egress(adapter, transport, egress)
 }
