@@ -8,20 +8,8 @@ import {
 } from "../../ports/nativeHarnessUpdateCheckPort";
 import { SettingsRow } from "./SettingsRow";
 
-/** Settings › Harnesses: one harness's versions, or with no harness the npm switch. */
-export default function HarnessVersions({
-  harness,
-}: {
-  harness?: HarnessDefinition;
-}) {
-  return harness ? (
-    <HarnessVersionDetails harness={harness} />
-  ) : (
-    <HarnessUpdateCheckSetting />
-  );
-}
-
-function HarnessUpdateCheckSetting() {
+/** The npm check switch at the top of Settings › Harnesses. */
+export function HarnessUpdateCheckSetting() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

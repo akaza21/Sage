@@ -242,13 +242,8 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1850,
-        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary, the account block and the version-details boundary. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%; T13 adds its lazy version boundary."
-      },
-      {
-        "entry": "src/features/settings/HarnessVersions.tsx",
-        "maxGzipBytes": 1100,
-        "reason": "T13 Installed / Sage runs / Latest rows, the fallback reason, the update unlock list and the npm check switch; loaded only by Settings > Harnesses. Measured 1015 B."
+        "maxGzipBytes": 2900,
+        "reason": "Harnesses page: install, versions (T13 installed/runs/latest, unlocks, npm switch) and sign-in per harness, custom agent and account blocks. Loaded only by Settings > Harnesses."
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",

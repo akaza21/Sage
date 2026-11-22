@@ -1,7 +1,6 @@
 import type { HarnessDefinition } from "../../domain/harness";
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { CodexAccountSettings } from "./CodexAccountSettings";
-import { loadHarnessVersions } from "./loadHarnessVersions";
+import { HarnessVersionDetails } from "./HarnessVersions";
 
 export default function HarnessAccountDetails({
   harness,
@@ -19,12 +18,7 @@ export default function HarnessAccountDetails({
       {selected && harness.accountModelDiscovery && available ? (
         <CodexAccountSettings disabled={disabled} />
       ) : null}
-      <LazyModuleBoundary
-        label="Harness versions"
-        fallback={null}
-        load={loadHarnessVersions}
-        render={(Versions) => <Versions harness={harness} />}
-      />
+      <HarnessVersionDetails harness={harness} />
       {harness.signIn && available ? (
         <p>
           {harness.signIn.command ? (

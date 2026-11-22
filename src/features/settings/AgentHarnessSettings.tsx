@@ -7,7 +7,7 @@ import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { SettingsRow } from "./SettingsRow";
 import HarnessAccountDetails from "./HarnessAccountDetails";
-import { loadHarnessVersions } from "./loadHarnessVersions";
+import { HarnessUpdateCheckSetting } from "./HarnessVersions";
 import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
 
 // The user-defined agent editor loads only when Harnesses is open, below
@@ -68,12 +68,7 @@ export function AgentHarnessSettings({
         </button>
       </div>
       {error ? <p role="alert">{error}</p> : null}
-      <LazyModuleBoundary
-        label="Harness update check"
-        fallback={null}
-        load={loadHarnessVersions}
-        render={(UpdateCheck) => <UpdateCheck />}
-      />
+      <HarnessUpdateCheckSetting />
       <div className="agent-settings__card">
         {harnesses.slice(0, 32).map((harness) => {
           const availability = harnessAvailability(harness);
