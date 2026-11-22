@@ -102,6 +102,20 @@ impl KnownCommandTable {
         }
         Ok(Self(entries))
     }
+
+    /// Known commands whose curated `since` is newer than `installed` and no
+    /// newer than `latest`: what that upgrade unlocks. Entries without `since`
+    /// are never listed, so nothing is guessed.
+    pub(crate) fn introduced_between<'a>(
+        &'a self,
+        installed: &'a ReleaseVersion,
+        latest: &'a ReleaseVersion,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.0.iter().filter_map(move |entry| {
+            let since = ReleaseVersion::parse(entry.since.as_deref()?)?;
+            (&since > installed && &since <= latest).then_some(entry.name.as_str())
+        })
+    }
 }
 
 /// Minimum versions gate native controls, never the harness's advertised command.
