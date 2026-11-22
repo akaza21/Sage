@@ -36,7 +36,6 @@ import {
   admitSiteSettingsView,
   MAX_SITE_SETTINGS,
 } from "./browserSiteSettingsModel";
-import { findWarning, getWarning, queryWarning } from "../../test/notice";
 
 const camera = {
   origin: "https://a.example",
@@ -93,7 +92,7 @@ it("lists every saved site answer with its setting", async () => {
       name: "Location for https://b.example:8443",
     }),
   ).toHaveValue("deny");
-  expect(queryWarning()).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 it("changes a site's answer through Rust and shows the stored list", async () => {
@@ -184,7 +183,7 @@ it("shows the sites Rust still reports stale and reloads them on request", async
   renderSettings();
   const select = await cameraSelect();
   fireEvent.change(select, { target: { value: "deny" } });
-  const alert = await findWarning();
+  const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent(STALE);
   expect(select).toHaveValue("deny");
   fireEvent.click(within(alert).getByRole("button", { name: "Reload tabs" }));
@@ -192,9 +191,9 @@ it("shows the sites Rust still reports stale and reloads them on request", async
   await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "Reload tabs" })).toBeEnabled(),
   );
-  expect(getWarning()).toHaveTextContent(STALE);
+  expect(screen.getByRole("alert")).toHaveTextContent(STALE);
   fireEvent.click(screen.getByRole("button", { name: "Reload tabs" }));
-  await vi.waitFor(() => expect(queryWarning()).toBeNull());
+  await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 });
 
 it("keeps showing stale sites that a later change still reports", async () => {
@@ -203,13 +202,13 @@ it("keeps showing stale sites that a later change still reports", async () => {
     view([camera, { ...location, decision: "allow" }], ["https://a.example"]),
   );
   renderSettings();
-  expect(await findWarning()).toHaveTextContent(STALE);
+  expect(await screen.findByRole("alert")).toHaveTextContent(STALE);
   const other = screen.getByRole("combobox", {
     name: "Location for https://b.example:8443",
   });
   fireEvent.change(other, { target: { value: "allow" } });
   await vi.waitFor(() => expect(other).toHaveValue("allow"));
-  expect(getWarning()).toHaveTextContent(STALE);
+  expect(screen.getByRole("alert")).toHaveTextContent(STALE);
 });
 
 it("clears the stale warning when Rust reports the page reloaded", async () => {
@@ -221,9 +220,9 @@ it("clears the stale warning when Rust reports the page reloaded", async () => {
   });
   list.mockResolvedValue(view([camera], ["https://a.example"]));
   renderSettings();
-  expect(await findWarning()).toHaveTextContent(STALE);
+  expect(await screen.findByRole("alert")).toHaveTextContent(STALE);
   act(() => deliver(view([camera])));
-  expect(queryWarning()).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 it("says when nothing is saved", async () => {
@@ -240,7 +239,7 @@ it("keeps the list and reports a failed save", async () => {
   renderSettings();
   const select = await cameraSelect();
   fireEvent.change(select, { target: { value: "deny" } });
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "The site permission could not be changed.",
   );
   expect(select).toHaveValue("allow");
@@ -250,12 +249,12 @@ it("keeps the list and reports a failed save", async () => {
 it("offers Retry when loading fails", async () => {
   list.mockRejectedValueOnce(new Error("unavailable"));
   renderSettings();
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "Site permissions could not be loaded.",
   );
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByRole("table")).toBeVisible();
-  expect(queryWarning()).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 it("follows changes made from a browser tab", async () => {

@@ -53,7 +53,7 @@ test.describe("Explorer actions on the open File", () => {
     await menu.getByRole("menuitem", { name: /^Move to/u }).click();
     const confirm = page.getByRole("dialog", { name: /^Move to/u });
     await confirm.getByRole("button", { name: /^Move to/u }).click();
-    await expect(confirm.locator(".notice--warning")).toContainText(
+    await expect(confirm.getByRole("alert")).toContainText(
       "requires the native Sage desktop",
     );
     await confirm.getByRole("button", { name: "Cancel" }).click();

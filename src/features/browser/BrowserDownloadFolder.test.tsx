@@ -35,7 +35,6 @@ vi.mock("../../ports/nativeBrowserDownloadFolderPort", async (actual) => ({
 
 import { admitDownloadFolder } from "../../ports/nativeBrowserDownloadFolderPort";
 import { BrowserDownloadFolder } from "./BrowserDownloadFolder";
-import { findWarning } from "../../test/notice";
 
 const FOLDER = "/downloads/remembered";
 
@@ -97,7 +96,7 @@ it("keeps the old folder and reports a refused change", async () => {
   render(<BrowserDownloadFolder />);
   await screen.findByText(FOLDER);
   fireEvent.click(change());
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "That folder can't be used for downloads.",
   );
   expect(screen.getByText(FOLDER)).toBeVisible();
@@ -106,7 +105,7 @@ it("keeps the old folder and reports a refused change", async () => {
 it("reports a failed load and still lets the user choose a folder", async () => {
   port.get.mockRejectedValue(new Error("unavailable"));
   render(<BrowserDownloadFolder />);
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "The download folder could not be loaded.",
   );
   await waitFor(() => expect(change()).toBeEnabled());

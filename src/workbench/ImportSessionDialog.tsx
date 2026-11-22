@@ -15,7 +15,6 @@ import {
   type NativeSessionSummary,
 } from "../services/nativeSessionImport";
 import { ModalDialog } from "../ui/ModalDialog";
-import { Notice } from "../ui/Notice";
 
 async function openSession(
   session: NativeSessionSummary,
@@ -129,23 +128,13 @@ export function ImportSessionDialog() {
             Load more
           </button>
         ) : cursor ? (
-          <Notice
-            identity="import-session:cap"
-            severity="warning"
-            message="Only the most recently active sessions are listed."
-          />
+          <p>Only the most recently active sessions are listed.</p>
         ) : null}
       </div>
       {!busy && !error && sessions.length === 0 ? (
         <p>No Codex CLI sessions for this project.</p>
       ) : null}
-      {error ? (
-        <Notice
-          identity="import-session:open"
-          severity="warning"
-          message={error}
-        />
-      ) : null}
+      {error ? <p role="alert">{error}</p> : null}
     </ModalDialog>
   );
 }

@@ -148,7 +148,7 @@ it("reports a partial clear failure after reconciling closed tabs", async () => 
   ).toBe(false);
 });
 
-it("explains a failed clear once, at the control that started it", async () => {
+it("explains a failed clear once, at its control", async () => {
   browserClearData.mockResolvedValue({
     closedTabIds: [],
     cleared: false,
@@ -156,9 +156,6 @@ it("explains a failed clear once, at the control that started it", async () => {
   });
   render(
     <>
-      <section aria-label="Settings">
-        <BrowserClearData />
-      </section>
       <section aria-label="History">
         <BrowserClearData />
       </section>
@@ -268,7 +265,7 @@ it("keeps an early completion when it arrives before the command reply", async (
   expect(useWorkbenchStore.getState().error).toBeNull();
 });
 
-it("reports a late failure after the closed browser surface unmounts", async () => {
+it("keeps a late failure for the control after the browser surface unmounts", async () => {
   browserClearData.mockResolvedValue({
     closedTabIds: ["browser-clear-test"],
     cleared: false,
@@ -284,7 +281,10 @@ it("reports a late failure after the closed browser surface unmounts", async () 
   act(() =>
     clearDataEvent?.({ cleared: false, error: "WebView2 clearing failed" }),
   );
-  expect(useWorkbenchStore.getState().error).toBe("WebView2 clearing failed");
+  // The outcome waits for the control instead of repeating it elsewhere.
+  expect(useWorkbenchStore.getState().error).toBeNull();
+  render(<BrowserClearData />);
+  expect(await warning()).toHaveTextContent("WebView2 clearing failed");
 });
 
 it("reconciles every closed tab before activating the next Chat", async () => {

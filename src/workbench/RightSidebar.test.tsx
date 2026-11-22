@@ -1514,7 +1514,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
     expect(trashProjectResource).toHaveBeenLastCalledWith(source, "file");
-    expect(await findWarning()).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Trash operation is unavailable.",
     );
 

@@ -1,13 +1,9 @@
-import { useEffect, useId, useState } from "react";
+import { useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Notice } from "../../ui/Notice";
-import {
-  clearControlMounted,
-  mountClearControl,
-  useClearProgress,
-} from "./browserClearProgress";
+import { useClearProgress } from "./browserClearProgress";
 import { reconcileNativeClosedBrowserTabs } from "../../app/tabClosing";
 import {
   browserClearData,
@@ -15,13 +11,8 @@ import {
 } from "../../ports/nativeBrowserPort";
 
 const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
-/** One place explains a failure: its control, or the workbench when none is mounted. */
-const setError = (error: string | null) => {
-  if (error && !clearControlMounted()) {
-    useClearProgress.setState({ error: null });
-    useWorkbenchStore.setState({ error });
-  } else useClearProgress.setState({ error });
-};
+// The clear control alone explains the outcome; nothing else repeats it.
+const setError = (error: string | null) => useClearProgress.setState({ error });
 const setSuccess = (success: string | null) =>
   useClearProgress.setState({ success });
 
@@ -34,15 +25,12 @@ export function BrowserClearData({
   buttonClassName?: string;
   describedBy?: string;
 }) {
-  const { busy, error, success, owner } = useClearProgress();
+  const { busy, error, success } = useClearProgress();
   const [confirming, setConfirming] = useState(false);
-  const id = useId();
-  useEffect(() => mountClearControl(id), [id]);
 
   async function clear() {
     if (useClearProgress.getState().busy) return;
     setConfirming(false);
-    useClearProgress.setState({ owner: id });
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -73,7 +61,7 @@ export function BrowserClearData({
       );
       if (result.pending) {
         pending = true;
-        useClearProgress.setState({ error: result.error });
+        setError(result.error);
         if (completion) finish(completion);
         return;
       }
@@ -109,7 +97,7 @@ export function BrowserClearData({
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}
       </button>
-      {owner === id && message ? (
+      {message ? (
         <Notice
           identity={`browser-clear-data:${busy ? "pending" : error ? "failed" : "cleared"}`}
           severity={error && !busy ? "warning" : "info"}

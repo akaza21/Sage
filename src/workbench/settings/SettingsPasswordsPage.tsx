@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { Notice } from "../../ui/Notice";
 import { useClearOnSuspend } from "../../ui/useClearOnSuspend";
 import {
   passwordsCancelImport,
@@ -253,11 +252,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
       ) : (
         <>
           {error ? (
-            <Notice
-              identity="settings:passwords"
-              severity="warning"
-              message={error}
-            />
+            <div className="settings-surface__error" role="alert">
+              <span>{error}</span>
+            </div>
           ) : null}
           {notice ? (
             <p className="settings-passwords__notice" role="status">

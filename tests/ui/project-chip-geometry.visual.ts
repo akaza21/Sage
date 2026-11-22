@@ -951,7 +951,7 @@ for (const when of ["before creation", "during creation"]) {
     await dialog
       .getByRole("button", { name: "Create project", exact: true })
       .click();
-    await expect(page.locator(".notice--warning")).toContainText(
+    await expect(page.getByRole("alert")).toContainText(
       "This chat's folder has files. Start a new chat in the project instead.",
     );
     await expect(

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
-import { Notice } from "../../ui/Notice";
 
 export default function ClosedBrowserSurface({ tabId }: { tabId: string }) {
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
@@ -15,13 +14,7 @@ export default function ClosedBrowserSurface({ tabId }: { tabId: string }) {
         This browser session closed when Sage restarted. Its page was not
         restored.
       </p>
-      {error ? (
-        <Notice
-          identity={`browser:${tabId}:reopen`}
-          severity="warning"
-          message={error}
-        />
-      ) : null}
+      {error && <p role="alert">{error}</p>}
       <button
         type="button"
         onClick={() => {

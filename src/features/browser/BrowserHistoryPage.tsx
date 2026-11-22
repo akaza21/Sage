@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { BrowserVisit } from "../../ports/nativeBrowserHistoryPort";
 import { Globe, Search, X } from "../../ui/leanIcons";
-import { Notice } from "../../ui/Notice";
 import { HISTORY_MAX_LOADED, useBrowsingHistory } from "./useBrowsingHistory";
 import { dayKey, historyDayLabel } from "./historyDays";
 import { BrowserClearData } from "./BrowserClearData";
@@ -92,13 +91,9 @@ export function BrowserHistoryPage({
         <BrowserClearData />
       </div>
       {history.error ? (
-        <div className="browser-history__notice">
-          <Notice
-            identity="browser-history:load"
-            severity="warning"
-            message={history.error}
-          />
-        </div>
+        <p className="browser-history__error" role="alert">
+          {history.error}
+        </p>
       ) : null}
       {status ? (
         <p className="browser-history__status" role="status">

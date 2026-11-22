@@ -22,7 +22,6 @@ import {
   HISTORY_SEARCH_DELAY_MS,
   useBrowsingHistory,
 } from "./useBrowsingHistory";
-import { findWarning } from "../../test/notice";
 
 type Query = {
   search: string;
@@ -188,7 +187,7 @@ it("keeps a visit and reports the error when removal fails", async () => {
   fireEvent.click(
     await screen.findByRole("button", { name: "Remove Stays from history" }),
   );
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "browsing history is unavailable",
   );
   expect(screen.getByText("Stays")).toBeInTheDocument();

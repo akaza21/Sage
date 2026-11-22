@@ -16,7 +16,6 @@ import {
 } from "../../ports/nativeBrowserSiteSettingsPort";
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { Notice } from "../../ui/Notice";
 import {
   admitSiteSettingsView,
   SITE_PERMISSION_LABELS,
@@ -166,30 +165,36 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
         />
       ) : null}
       {error ? (
-        <Notice
-          identity="settings:site-permissions"
-          severity="warning"
-          message={error}
-          action={
-            ready ? undefined : { label: "Retry", onClick: () => void retry() }
-          }
-        />
+        <div className="settings-surface__error" role="alert">
+          <span>{error}</span>
+          {!ready ? (
+            <button
+              className="button button--compact"
+              type="button"
+              onClick={() => void retry()}
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {staleSites.length ? (
-        <Notice
-          identity="settings:site-permissions:stale"
-          severity="warning"
-          message={`Tabs on ${staleSites.join(", ")} have not reloaded since an Allow ended and may still use it. Reload or close them.`}
-          action={
-            busy === null
-              ? {
-                  label: "Reload tabs",
-                  onClick: () =>
-                    void run("reload", browserSiteReloadTabs, RELOAD_FAILURE),
-                }
-              : undefined
-          }
-        />
+        <div className="settings-surface__error" role="alert">
+          <span>
+            Tabs on {staleSites.join(", ")} have not reloaded since an Allow
+            ended and may still use it. Reload or close them.
+          </span>
+          <button
+            className="button button--compact"
+            type="button"
+            disabled={busy !== null}
+            onClick={() =>
+              void run("reload", browserSiteReloadTabs, RELOAD_FAILURE)
+            }
+          >
+            Reload tabs
+          </button>
+        </div>
       ) : null}
       {!ready ? null : rows.length === 0 ? (
         <p className="settings-surface__group-note" role="status">

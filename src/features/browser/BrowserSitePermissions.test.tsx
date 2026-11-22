@@ -11,7 +11,6 @@ import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { BrowserSitePermissions } from "./BrowserSitePermissions";
-import { findWarning, getWarning } from "../../test/notice";
 
 const status = vi.fn();
 const resolve = vi.fn();
@@ -88,7 +87,7 @@ it.each(["registration", "read"])(
     await act(async () => register());
     if (gap === "read") act(() => deliver(revoked));
     await act(async () => answer(gap === "read" ? granted : revoked));
-    expect(getWarning()).toHaveTextContent(
+    expect(screen.getByRole("alert")).toHaveTextContent(
       "Reload this page to end revoked access.",
     );
     expect(
@@ -194,7 +193,7 @@ it("warns while the page may still use access that was revoked", async () => {
     staleAccess: true,
   });
   render(<BrowserSitePermissions tabId="browser-1" />);
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "Reload this page to end revoked access.",
   );
 });

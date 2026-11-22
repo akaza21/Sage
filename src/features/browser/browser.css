@@ -538,15 +538,18 @@
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
-.browser-annotate__notice {
+.browser-annotate__error {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
   max-width: 100%;
-  padding: 0 8px;
+  margin: 0;
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
-  background: var(--color-panel);
-  border: 1px solid var(--color-border-subtle);
+  color: var(--color-danger-surface-text);
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  font-size: 12px;
 }
 .browser-surface__frame--new-tab {
   display: none;
@@ -555,6 +558,9 @@
 .browser-clear-data {
   display: flex;
   padding: 2px 8px;
+}
+.browser-site-permissions p[role="alert"] {
+  color: var(--color-danger);
 }
 
 .browser-site-permissions {

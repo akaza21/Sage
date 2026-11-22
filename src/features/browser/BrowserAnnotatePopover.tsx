@@ -4,7 +4,6 @@ import {
   handOffBrowserElement,
 } from "../../app/browserAnnotations";
 import { utf8ByteLength } from "../../domain/text";
-import { Notice } from "../../ui/Notice";
 import {
   browserAnnotateConfirm,
   browserAnnotateFrame,
@@ -119,13 +118,9 @@ export function BrowserAnnotatePopover({
             disabled={Boolean(reason)}
           />
           {error ? (
-            <div className="browser-annotate__notice">
-              <Notice
-                identity="browser-annotate:confirm"
-                severity="warning"
-                message={error}
-              />
-            </div>
+            <p className="browser-annotate__error" role="alert">
+              {error}
+            </p>
           ) : null}
         </form>
       </div>

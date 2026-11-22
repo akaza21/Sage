@@ -16,7 +16,6 @@ import type { BrowserAnnotateSelection } from "../../ports/nativeBrowserPort";
 import BrowserAnnotateComment, {
   BrowserAnnotatePopover,
 } from "./BrowserAnnotatePopover";
-import { findWarning, queryWarning } from "../../test/notice";
 
 const invokeNative = vi.fn();
 vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
@@ -216,7 +215,7 @@ it("numbers the comment from the sink, confirms it in Rust, hands the item off, 
       action: "annotateCancel",
     }),
   );
-  expect(queryWarning()).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 it("keeps an item the composer refuses waiting, says why, and cancels through Rust", async () => {
@@ -232,7 +231,7 @@ it("keeps an item the composer refuses waiting, says why, and cancels through Ru
   );
   render(<BrowserAnnotateComment tabId="browser-1" selection={selection} />);
   fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "The page element could not be attached",
   );
   expect(attach).not.toHaveBeenCalled();
@@ -263,7 +262,7 @@ it("shows a refused confirmation in the box and keeps the element waiting", asyn
   );
   render(<BrowserAnnotateComment tabId="browser-1" selection={selection} />);
   fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
-  expect(await findWarning()).toHaveTextContent(
+  expect(await screen.findByRole("alert")).toHaveTextContent(
     "browser element text rejected",
   );
   expect(screen.getByRole("dialog")).toBeInTheDocument();

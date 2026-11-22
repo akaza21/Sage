@@ -58,12 +58,7 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
           message={error}
         />
       ) : entries === null ? (
-        <Notice
-          identity={`settings:browser-history:${tabId}:loading`}
-          severity="info"
-          message="Loading browsing history..."
-          progress
-        />
+        <p role="status">Loading browsing history...</p>
       ) : entries.length ? (
         <ul>
           {entries.map((url, index) => (
@@ -237,13 +232,6 @@ export function AgentBrowserSettings() {
                 severity="warning"
                 message={error}
               />
-            ) : loading ? (
-              <Notice
-                identity="settings:browser-live-tabs:loading"
-                severity="info"
-                message="Loading browser tabs..."
-                progress
-              />
             ) : null
           }
         >
@@ -266,7 +254,9 @@ export function AgentBrowserSettings() {
         </SettingsRow>
         {live ? <LiveTabRows key={live} tabId={live} /> : null}
       </div>
-      {loading || tabId || error ? null : (
+      {loading ? (
+        <p role="status">Loading browser tabs...</p>
+      ) : tabId || error ? null : (
         <p role="status">
           Open a browser tab in Files and preview to manage its history, site
           permissions and downloads.
