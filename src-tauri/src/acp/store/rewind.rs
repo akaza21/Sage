@@ -75,15 +75,26 @@ pub(crate) fn target(
             |r| r.get(0),
         )
         .optional()?;
-    let following: i64 = connection.query_row(concat!(
+    let prompt_digest = if native.is_none() {
+        prompt::digest(connection, session, turn)?
+    } else {
+        None
+    };
+    if native.is_none() && prompt_digest.is_none() {
+        return Err(StoreError::RewindUnavailable {
+            reason: "Older messages can't be rewound.",
+        });
+    }
+    // Native receipts stand alone, including in legacy history. Only a
+    // send-time digest needs a position among proven delivered prompts.
+    let following: i64 = if native.is_some() {
+        0
+    } else {
+        connection.query_row(concat!(
         "SELECT COUNT(*) FROM items i JOIN turns t ON t.id=i.turn_id WHERE t.session_id=?1
-         AND t.ordinal>=?2 AND i.kind='text' AND (json_extract(i.payload_json,'$.kind')='userPrompt' OR (json_extract(i.payload_json,'$.payload.role')='user'
+         AND t.delivery_state='correlated' AND t.ordinal>=?2 AND i.kind='text' AND (json_extract(i.payload_json,'$.kind')='userPrompt' OR (json_extract(i.payload_json,'$.payload.role')='user'
          AND t.ordinal>?2)) AND ",super::turn_undo::visible_turn!("t.session_id","t.id")
-    ),params![session,ordinal],|r|r.get(0))?;
-    let prompt_digest = match prompt::digest(connection, session, turn) {
-        Ok(digest) => Some(digest),
-        Err(StoreError::RewindUnavailable { .. }) if native.is_some() => None,
-        Err(error) => return Err(error),
+    ),params![session,ordinal],|r|r.get(0))?
     };
     Ok(ConversationTarget {
         turn_id: sage_acp_protocol::contract::SageTurnId::parse(turn)
@@ -97,6 +108,29 @@ pub(crate) fn target(
             .map_err(|_| StoreError::Corrupt("rewind position"))?,
         prompt_digest,
     })
+}
+
+/// Page decoration uses the same durable identity rule as target admission.
+/// Delivery must be proven even when a queued prompt already has a digest.
+pub(crate) fn has_identity(
+    connection: &Connection,
+    session: &str,
+    turn: &str,
+) -> Result<bool, StoreError> {
+    let identity: Option<(bool, bool)> = connection
+        .query_row(
+            "SELECT t.delivery_state='correlated', EXISTS(SELECT 1 FROM session_facts f
+           WHERE f.session_id=t.session_id AND f.turn_id=t.id AND f.kind='nativeTurnTarget'
+             AND json_extract(f.payload_json,'$.nativeTurnId') IS NOT NULL)
+         FROM turns t WHERE t.session_id=?1 AND t.id=?2",
+            params![session, turn],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((delivered, native)) = identity else {
+        return Ok(false);
+    };
+    Ok(delivered && (native || prompt::digest(connection, session, turn)?.is_some()))
 }
 
 pub(crate) fn suffix(

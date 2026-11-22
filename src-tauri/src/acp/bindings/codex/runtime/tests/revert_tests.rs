@@ -50,7 +50,7 @@ fn an_earlier_correlated_turn_is_reverted_after_later_turns_finish() {
 }
 
 #[test]
-fn an_old_prompt_without_a_native_receipt_resolves_from_the_native_suffix() {
+fn a_delivered_prompt_with_a_saved_digest_resolves_from_the_native_suffix() {
     use sha2::{Digest, Sha256};
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

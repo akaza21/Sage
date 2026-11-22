@@ -251,6 +251,23 @@ fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
         VALUES('prompt-fork','project-one','chat-one',?1,'turn-fork',2,0,'primary','text','completed',
         'prompt-fork',?2,?3,?4,0,46,47,47)", rusqlite::params![session.as_str(),prompt,prompt.len() as i64,format!("{:x}",Sha256::digest(prompt.as_bytes()))]).unwrap();
     let turn = SageTurnId::parse("turn-fork").unwrap();
+    let tx = connection.transaction().unwrap();
+    rewind::record_native_turn(
+        &tx,
+        &AdapterStoreOwner {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: session.clone(),
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            turn_id: turn.clone(),
+            binding_digest: "a".repeat(64),
+            external_session_id: ExternalId::new("externalSessionId", "thread-1").unwrap(),
+        },
+        &ExternalId::new("nativeTurnId", "native-fork").unwrap(),
+        47,
+    )
+    .unwrap();
+    tx.commit().unwrap();
     let source = chat_fork::fork_source(&connection, &project(), &chat(), &turn).unwrap();
     assert_eq!(source.session_id, session);
     assert_eq!(source.runtime_epoch, RuntimeEpoch::new(2).unwrap());

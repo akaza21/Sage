@@ -1,4 +1,4 @@
-//! Resolve pre-existing Sage prompts which predate durable native turn receipts.
+//! Resolve delivered prompts with send-time digests but no native turn receipts.
 //! One bounded native page is held at a time; repeated text is disambiguated by
 //! its position in the user-message suffix and verified against the stored text.
 use super::*;

@@ -111,3 +111,33 @@ test.each(cases)(
     ).toEqual({ rewind: false, fork: false });
   },
 );
+
+test.each([undefined, false])(
+  "a message without durable identity (%s) has no target actions",
+  (conversationTarget) => {
+    const base = fixture("completed");
+    const turn = { ...base.turns[0]!, conversationTarget };
+    const page: AcpChatPage = {
+      ...base,
+      turns: [turn],
+      sessions: [
+        agentSessionFixture({
+          id: turn.sessionId,
+          residency: "hot",
+          capabilities: capabilitySetFixture({
+            rewind: {
+              effects: { conversation: true, files: true },
+              targets: "anyTurn",
+              forkAt: true,
+              onResume: false,
+            },
+          }),
+        }),
+      ],
+    };
+    expect(conversationActions(page, turn)).toEqual({
+      rewind: false,
+      fork: false,
+    });
+  },
+);

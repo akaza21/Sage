@@ -4,11 +4,10 @@ use sage_acp_protocol::{scheduler::RuntimeOwner, session_control::SessionControl
 
 #[test]
 fn admitted_prompts_resolve_the_native_turn_and_settle_the_same_durable_suffix() {
-    for (prompt, historical) in [
-        (Prompt::new("prompt", "Repeat").unwrap(), false),
-        (history::quoted_prompt(), false),
-        (history::quoted_prompt(), true),
-        (history::file_prompt(), false),
+    for prompt in [
+        Prompt::new("prompt", "Repeat").unwrap(),
+        history::quoted_prompt(),
+        history::file_prompt(),
     ] {
         // Build the native content with the production turn/start builder.
         let mut sender = fixture_runtime();
@@ -25,14 +24,11 @@ fn admitted_prompts_resolve_the_native_turn_and_settle_the_same_durable_suffix()
         assert!(content.is_array());
 
         let mut history = history::History::new();
-        if historical {
-            history.historical_turn(prompt.clone(), None);
-        } else {
-            history.turn(prompt.clone(), None);
-        }
+        history.turn(prompt.clone(), None);
         // Repeated text makes an off-by-one select the wrong turn even when
         // its digest matches. Accepted steering belongs to that same turn.
         history.turn(prompt, Some("Steer the second turn"));
+        history.unwritten(Prompt::new("prompt", "Unwritten B").unwrap());
         let target = history.target(0).unwrap();
         assert_eq!(target.following_messages, 2);
         assert!(target.native_turn_id.is_none());

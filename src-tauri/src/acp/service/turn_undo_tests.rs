@@ -70,3 +70,74 @@ fn fork_lineage_does_not_withhold_a_capable_conversation_rewind() {
         .unwrap();
     assert_eq!(offer(&claude, "turn-1"), (Some("turn-1".into()), true));
 }
+
+#[test]
+fn a_pre_upgrade_claude_turn_with_an_attachment_keeps_its_uuid_checkpoint_undo() {
+    use crate::acp::{
+        bindings::claude::sdk,
+        store::{self, rewind_tests::history},
+    };
+    let (fixture, service) = running(CLAUDE_SDK_BINDING_ID);
+    let turn = SageTurnId::parse("turn-00000000-0000-4000-8000-000000000003").unwrap();
+    fixture.turn(turn.as_str(), 0);
+    // This is the immutable pre-upgrade representation: attachment metadata,
+    // no send-time nativePromptDigest and no nativeTurnTarget fact.
+    let prompt = history::file_prompt();
+    let payload = serde_json::json!({"kind":"text","payload":prompt.user_payload()}).to_string();
+    let epoch = fixture.epoch();
+    fixture.database.connection().execute(
+        "INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
+         origin,kind,lifecycle,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at)
+         VALUES('legacy-prompt',?1,?2,'session-a',?3,?4,0,'primary','text','completed',?5,?6,?7,0,1,1,1)",
+        rusqlite::params![fixture.project.as_str(), fixture.chat.as_str(), turn.as_str(),
+            epoch, payload, payload.len() as i64, format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(payload.as_bytes()))],
+    ).unwrap();
+    let session = "00000000-0000-4000-8000-000000000090";
+    let config = fixture.root.join("profile");
+    let directory = config.join("projects").join("project");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join(format!("{session}.jsonl")), concat!(
+        "{\"type\":\"user\",\"uuid\":\"00000000-0000-4000-8000-000000000001\",\"parentUuid\":null}\n",
+        "{\"type\":\"assistant\",\"uuid\":\"00000000-0000-4000-8000-000000000002\",\"parentUuid\":\"00000000-0000-4000-8000-000000000001\"}\n",
+        "{\"type\":\"user\",\"uuid\":\"00000000-0000-4000-8000-000000000003\",\"parentUuid\":\"00000000-0000-4000-8000-000000000002\"}\n"
+    )).unwrap();
+    let owner = RuntimeOwner {
+        project_id: fixture.project.clone(),
+        chat_id: fixture.chat.clone(),
+        session_id: SageAgentSessionId::parse("session-a").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(fixture.epoch() as u64).unwrap(),
+    };
+    assert!(
+        !store::rewind::has_identity(&fixture.database.connection(), "session-a", turn.as_str())
+            .unwrap()
+    );
+    let undo = service
+        .undoable_turn(&owner, &turn)
+        .unwrap()
+        .expect("existing last-turn Undo");
+    assert!(matches!(
+        service.prepare_rewind(&owner, turn.clone(), undo, true, || {
+            sdk::resolve_undo(&config, session, turn.as_str())
+        }),
+        Err(crate::acp::errors::SessionControlError::Refused(_))
+    ));
+    let (command, control) = service
+        .prepare_rewind(&owner, turn.clone(), undo, false, || {
+            sdk::resolve_undo(&config, session, turn.as_str())
+        })
+        .unwrap();
+    assert_eq!(
+        control,
+        sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id: turn }
+    );
+    assert_eq!(
+        command.cut_at.as_deref(),
+        Some("00000000-0000-4000-8000-000000000002")
+    );
+    store::record_turn_undone(&mut fixture.database.connection(), &command).unwrap();
+    assert!(fixture.page_turns().is_empty());
+    assert_eq!(
+        fixture.pending(),
+        Some((command.turn_id.as_str().into(), store::UndoneThread::Cut))
+    );
+}

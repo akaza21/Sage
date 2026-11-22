@@ -54,6 +54,7 @@ export function conversationActions(
   const { offer, boundary, hot, sessionId, busy, latest } = state;
   const available =
     offer &&
+    turn.conversationTarget === true &&
     turn.ordinal > boundary &&
     page.turns.some((row) => row.id === turn.id) &&
     sessionId === turn.sessionId &&

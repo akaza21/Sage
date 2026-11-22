@@ -124,6 +124,44 @@ impl History {
         self.turns.push(prepared.turn_id);
     }
 
+    /// A queued prompt leaves a digest but no bytes ever reach the harness.
+    pub(crate) fn unwritten(&mut self, prompt: Prompt) {
+        let fixture = &self.fixture;
+        let runtime_epoch = RuntimeEpoch::new(fixture.epoch() as u64).unwrap();
+        let expected_projection_revision = fixture.revision();
+        let mut connection = fixture.database.connection();
+        let prepared = prepare_turn(
+            &mut connection,
+            PrepareTurnCommand {
+                project_id: fixture.project.clone(),
+                chat_id: fixture.chat.clone(),
+                session_id: SageAgentSessionId::parse("session-a").unwrap(),
+                runtime_epoch,
+                project_generation: ProjectGeneration::new(1).unwrap(),
+                expected_projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                prompt,
+                now_millis: 20,
+            },
+        )
+        .unwrap();
+        record_send_observation(
+            &mut connection,
+            TurnMutationCommand {
+                project_id: fixture.project.clone(),
+                chat_id: fixture.chat.clone(),
+                session_id: SageAgentSessionId::parse("session-a").unwrap(),
+                runtime_epoch,
+                turn_id: prepared.turn_id.clone(),
+                expected_revision: prepared.turn_revision,
+                now_millis: 21,
+            },
+            SendObservation::ProcessLost,
+        )
+        .unwrap();
+        self.turns.push(prepared.turn_id);
+    }
+
     pub(crate) fn target(&self, index: usize) -> Result<ConversationTarget, StoreError> {
         rewind::target(
             &self.fixture.database.connection(),

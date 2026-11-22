@@ -22,6 +22,7 @@ export function installConversationRewindFixture(inPlace = true) {
   if (!user || user.kind !== "text") throw new Error("Missing prompt fixture");
   const first = {
     ...original,
+    conversationTarget: true,
     id: "turn-00000000-0000-4000-8000-000000000001" as SageTurnId,
     ordinal: 0,
     terminalAt: 1,

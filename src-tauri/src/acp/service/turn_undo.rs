@@ -120,19 +120,6 @@ impl AcpService {
                 .map_err(|_| SessionControlError::RecoveryRequired)?
                 .ok_or(SessionControlError::Unavailable)?
         };
-        let target = crate::acp::store::rewind::target(
-            &self.database.connection(),
-            owner.project_id.as_str(),
-            owner.chat_id.as_str(),
-            owner.session_id.as_str(),
-            turn_id.as_str(),
-        )
-        .map_err(|error| match error {
-            StoreError::RewindUnavailable { reason } => SessionControlError::Refused(
-                sage_acp_protocol::contract::SafeText::new("controlSummary", reason).ok(),
-            ),
-            _ => SessionControlError::Unavailable,
-        })?;
         let (binding, external): (String, String) = self
             .database
             .connection()
@@ -144,29 +131,14 @@ impl AcpService {
             .map_err(|_| SessionControlError::RecoveryRequired)?;
         let binding = sage_acp_protocol::intent::BindingId::new("bindingId", binding)
             .map_err(|_| SessionControlError::RecoveryRequired)?;
-        let command = stage_turn_undo(
-            &self.database,
-            owner,
-            turn_id.clone(),
-            undo.reverts_thread,
-            conversation_only,
-            || {
+        let (command, control) =
+            self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, || {
                 self.resolve_session_binding(&binding)
                     .map_err(|_| "The conversation transcript is unavailable.".to_owned())?
                     .undo_cut(&external, turn_id.as_str())
                     .map_err(|error| error.to_string())
-            },
-        )?;
-        let summary = match self.control_session(
-            owner.clone(),
-            if conversation_only || undo.keeps_files {
-                sage_acp_protocol::session_control::SessionControl::RewindConversation {
-                    before: target,
-                }
-            } else {
-                sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id }
-            },
-        ) {
+            })?;
+        let summary = match self.control_session(owner.clone(), control) {
             Ok(summary) => summary,
             Err(error) => {
                 if matches!(
@@ -221,6 +193,55 @@ impl AcpService {
             tracing::warn!(?refusal, "the runtime that undid a turn is not yet parked");
         }
         Ok(summary)
+    }
+
+    /// Resolve target eligibility only for the new conversation operation.
+    /// Last-turn undo retains the binding's own checkpoint/identity resolver.
+    fn prepare_rewind<E: std::fmt::Display>(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: SageTurnId,
+        undo: TurnUndo,
+        conversation_only: bool,
+        resolve_cut: impl FnOnce() -> Result<Option<String>, E>,
+    ) -> Result<
+        (
+            crate::acp::store::TurnUndoneCommand,
+            sage_acp_protocol::session_control::SessionControl,
+        ),
+        SessionControlError,
+    > {
+        let control = if conversation_only {
+            let target = crate::acp::store::rewind::target(
+                &self.database.connection(),
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                turn_id.as_str(),
+            )
+            .map_err(|error| match error {
+                StoreError::RewindUnavailable { reason } => SessionControlError::Refused(
+                    sage_acp_protocol::contract::SafeText::new("controlSummary", reason).ok(),
+                ),
+                _ => SessionControlError::Unavailable,
+            })?;
+            sage_acp_protocol::session_control::SessionControl::RewindConversation {
+                before: target,
+            }
+        } else {
+            sage_acp_protocol::session_control::SessionControl::UndoTurn {
+                turn_id: turn_id.clone(),
+            }
+        };
+        let command = stage_turn_undo(
+            &self.database,
+            owner,
+            turn_id,
+            undo.reverts_thread,
+            conversation_only,
+            resolve_cut,
+        )?;
+        Ok((command, control))
     }
 
     fn recover_undo_runtime(&self, owner: &RuntimeOwner) {

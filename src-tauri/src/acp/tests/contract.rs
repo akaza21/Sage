@@ -815,6 +815,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         },
     };
     let turn = TurnProjection {
+        conversation_target: false,
         attached_context: Vec::new(),
         session_action: None,
         command: None,

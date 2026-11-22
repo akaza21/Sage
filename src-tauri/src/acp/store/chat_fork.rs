@@ -77,6 +77,11 @@ pub(crate) fn fork_source(
         });
     }
     super::turn_undo::intent::ensure_settled(connection, project_id.as_str(), chat_id.as_str())?;
+    if !super::rewind::has_identity(connection, &session, turn_id.as_str())? {
+        return Err(StoreError::RewindUnavailable {
+            reason: "Older messages can't be rewound.",
+        });
+    }
     let target = if rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
         require_latest_completed(connection, &session, turn_id)?;
         None

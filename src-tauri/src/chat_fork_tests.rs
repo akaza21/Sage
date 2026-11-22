@@ -87,6 +87,10 @@ impl Fixture {
     /// A Project whose first Chat has a hot, idle Codex head session with
     /// one completed Turn, as an answered Chat looks before it is forked.
     fn new(capabilities: &str) -> Self {
+        Self::with_identity(capabilities, true)
+    }
+
+    fn with_identity(capabilities: &str, recorded: bool) -> Self {
         let root = std::env::temp_dir().join(format!("sage-fork-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::database::open_database(&root.join("sage.db")).unwrap();
@@ -118,6 +122,30 @@ impl Fixture {
             parent,
         };
         fixture.turn("turn-1", 0, "completed");
+        if recorded {
+            use crate::acp::store::{AdapterStoreOwner, rewind::record_native_turn};
+            use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
+            let (project_id, chat_id) = fixture.ids();
+            let mut connection = fixture.database.connection();
+            let tx = connection.transaction().unwrap();
+            record_native_turn(
+                &tx,
+                &AdapterStoreOwner {
+                    project_id,
+                    chat_id,
+                    session_id: SageAgentSessionId::parse("session-parent").unwrap(),
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    turn_id: SageTurnId::parse("turn-1").unwrap(),
+                    binding_digest: "a".repeat(64),
+                    external_session_id: ExternalId::new("externalSessionId", "thread-parent")
+                        .unwrap(),
+                },
+                &ExternalId::new("nativeTurnId", "native-turn-1").unwrap(),
+                2,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+        }
         fixture
     }
 
@@ -349,6 +377,11 @@ fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
 
 #[test]
 fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
+    let legacy = Fixture::with_identity(&forkable(), false);
+    assert!(matches!(
+        legacy.source("turn-1"),
+        Err(crate::acp::store::StoreError::RewindUnavailable { .. })
+    ));
     let unforkable = Fixture::new(&forkable().replace(
         r#""nativeSessionFork":true"#,
         r#""nativeSessionFork":false"#,

@@ -171,6 +171,7 @@ export function AnswerMoreActions({
     requestFork &&
     forkable &&
     turn?.state === "completed" &&
+    turn.conversationTarget === true &&
     turn.sessionId === page.currentSessionId &&
     page.sessions.find((session) => session.id === turn.sessionId)?.capabilities
       ?.rewind?.targets === "latestTurn" &&

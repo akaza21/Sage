@@ -1,7 +1,4 @@
-use super::{
-    rewind,
-    turn_undo::{self, fixture::Fixture},
-};
+use super::{rewind, turn_undo};
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageTurnId},
     scheduler::RuntimeOwner,
@@ -20,7 +17,59 @@ fn repeated_prompts_count_accepted_steers_in_the_target_and_later_turns() {
 }
 
 #[test]
-fn quoted_targets_verify_the_expanded_prompt_for_new_and_historical_turns() {
+fn legacy_prompts_without_receipts_and_undelivered_prompts_never_become_targets() {
+    let mut history = history::History::new();
+    let prompt = crate::acp::transcript_quote::Prompt::new("prompt", "Repeat").unwrap();
+    history.historical_turn(prompt.clone(), None);
+    history.historical_turn(prompt.clone(), None);
+    history.unwritten(prompt);
+    for i in 0..3 {
+        assert!(history.target(i).is_err());
+    }
+    let page = super::load_chat_page(
+        &history.fixture.database.connection(),
+        history.fixture.project.clone(),
+        history.fixture.chat.clone(),
+        None,
+    )
+    .unwrap();
+    assert!(
+        page.turns
+            .as_slice()
+            .iter()
+            .all(|turn| !turn.conversation_target)
+    );
+}
+
+#[test]
+fn undelivered_later_prompts_do_not_shift_a_delivered_repeated_target() {
+    let mut history = history::History::new();
+    let prompt = crate::acp::transcript_quote::Prompt::new("prompt", "Repeat").unwrap();
+    history.turn(prompt.clone(), None);
+    history.turn(prompt, None);
+    history.unwritten(crate::acp::transcript_quote::Prompt::new("prompt", "Unwritten B").unwrap());
+    assert_eq!(history.target(0).unwrap().following_messages, 1);
+    assert_eq!(history.target(1).unwrap().following_messages, 0);
+    assert!(history.target(2).is_err());
+    let page = super::load_chat_page(
+        &history.fixture.database.connection(),
+        history.fixture.project.clone(),
+        history.fixture.chat.clone(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        page.turns
+            .as_slice()
+            .iter()
+            .map(|turn| turn.conversation_target)
+            .collect::<Vec<_>>(),
+        [false, true, true]
+    );
+}
+
+#[test]
+fn quoted_targets_verify_the_saved_transmitted_prompt() {
     use sha2::{Digest, Sha256};
     let prompt = history::quoted_prompt();
     assert_ne!(prompt.as_str(), prompt.display_text());
@@ -28,13 +77,10 @@ fn quoted_targets_verify_the_expanded_prompt_for_new_and_historical_turns() {
     let mut history = history::History::new();
     history.turn(prompt.clone(), None);
     assert_eq!(history.target(0).unwrap().prompt_digest, Some(expected));
-    let mut historical = history::History::new();
-    historical.historical_turn(prompt, None);
-    assert_eq!(historical.target(0).unwrap().prompt_digest, Some(expected));
 }
 
 #[test]
-fn file_snapshots_use_the_saved_native_digest_and_old_missing_snapshots_refuse_with_a_reason() {
+fn file_snapshots_use_the_saved_native_digest_and_legacy_prompts_need_native_identity() {
     use sha2::{Digest, Sha256};
     let prompt = history::file_prompt();
     let expected: [u8; 32] =
@@ -47,7 +93,7 @@ fn file_snapshots_use_the_saved_native_digest_and_old_missing_snapshots_refuse_w
     let Err(super::StoreError::RewindUnavailable { reason }) = historical.target(0) else {
         panic!("an unrecoverable native prompt must not be a rewind target");
     };
-    assert!(reason.contains("transmitted context cannot be rebuilt"));
+    assert_eq!(reason, "Older messages can't be rewound.");
     assert_eq!(history.fixture.page_turns().len(), 1);
 
     let mut correlated = history::History::new();
@@ -59,12 +105,14 @@ fn file_snapshots_use_the_saved_native_digest_and_old_missing_snapshots_refuse_w
 
 #[test]
 fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
-    let fixture = Fixture::new();
-    fixture.run();
-    for (ordinal, turn) in ["turn-1", "turn-2", "turn-3"].into_iter().enumerate() {
-        fixture.turn(turn, ordinal as i64);
-        fixture.prompt(turn, turn);
+    let mut history = history::History::new();
+    for turn in ["turn-1", "turn-2", "turn-3"] {
+        history.historical_turn(
+            crate::acp::transcript_quote::Prompt::new("prompt", turn).unwrap(),
+            Some(turn),
+        );
     }
+    let fixture = &history.fixture;
     let owner = RuntimeOwner {
         project_id: fixture.project.clone(),
         chat_id: fixture.chat.clone(),
@@ -74,7 +122,7 @@ fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
     let command = crate::acp::turn_undo::stage_turn_undo(
         &fixture.database,
         &owner,
-        SageTurnId::parse("turn-2").unwrap(),
+        history.turns[1].clone(),
         false,
         true,
         || Ok::<_, String>(Some("00000000-0000-4000-8000-000000000002".into())),
@@ -86,11 +134,15 @@ fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
             .iter()
             .map(SageTurnId::as_str)
             .collect::<Vec<_>>(),
-        ["turn-3", "turn-2"]
+        [history.turns[2].as_str(), history.turns[1].as_str()]
     );
     assert_eq!(
         fixture.page_turns(),
-        ["turn-3", "turn-2", "turn-1"],
+        [
+            history.turns[2].as_str(),
+            history.turns[1].as_str(),
+            history.turns[0].as_str()
+        ],
         "preparation publishes no partial suffix"
     );
     assert!(
@@ -102,10 +154,13 @@ fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
         .is_err()
     );
     turn_undo::record_turn_undone(&mut fixture.database.connection(), &command).unwrap();
-    assert_eq!(fixture.page_turns(), ["turn-1"]);
+    assert_eq!(fixture.page_turns(), [history.turns[0].as_str()]);
     assert_eq!(
         fixture.pending(),
-        Some(("turn-2".into(), turn_undo::UndoneThread::Cut))
+        Some((
+            history.turns[1].as_str().into(),
+            turn_undo::UndoneThread::Cut
+        ))
     );
     let reopened = crate::database::open_database(&fixture.root.join("sage.db")).unwrap();
     assert_eq!(
@@ -114,7 +169,7 @@ fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
             .unwrap()
             .turn_id
             .as_str(),
-        "turn-2"
+        history.turns[1].as_str()
     );
     assert!(
         turn_undo::record_turn_undone(&mut reopened.connection(), &command)
@@ -126,26 +181,36 @@ fn an_earlier_rewind_atomically_hides_the_exact_suffix_and_survives_restart() {
 
 #[test]
 fn compaction_and_a_busy_turn_refuse_older_targets_before_native_effects() {
-    let fixture = Fixture::new();
-    fixture.run();
-    fixture.turn("turn-1", 0);
-    fixture.prompt("turn-1", "Inspect");
-    fixture.turn("turn-2", 1);
-    fixture.prompt("turn-2", "Later");
+    let mut history = history::History::new();
+    history.historical_turn(
+        crate::acp::transcript_quote::Prompt::new("prompt", "Inspect").unwrap(),
+        Some("native-1"),
+    );
+    history.historical_turn(
+        crate::acp::transcript_quote::Prompt::new("prompt", "Later").unwrap(),
+        Some("native-2"),
+    );
+    let fixture = &history.fixture;
     let target = || {
         rewind::target(
             &fixture.database.connection(),
             fixture.project.as_str(),
             fixture.chat.as_str(),
             "session-a",
-            "turn-1",
+            history.turns[0].as_str(),
         )
     };
-    assert_eq!(target().unwrap().following_messages, 1);
-    let busy = Fixture::new();
-    busy.run();
-    busy.turn("turn-1", 0);
-    busy.prompt("turn-1", "Inspect");
+    assert_eq!(
+        target().unwrap().native_turn_id.unwrap().as_str(),
+        "native-1"
+    );
+    let mut busy_history = history::History::new();
+    busy_history.turn(
+        crate::acp::transcript_quote::Prompt::new("prompt", "Inspect").unwrap(),
+        None,
+    );
+    assert!(busy_history.target(0).is_ok());
+    let busy = &busy_history.fixture;
     let queued = super::PrepareTurnCommand {
         project_id: busy.project.clone(),
         chat_id: busy.chat.clone(),
@@ -164,7 +229,7 @@ fn compaction_and_a_busy_turn_refuse_older_targets_before_native_effects() {
             busy.project.as_str(),
             busy.chat.as_str(),
             "session-a",
-            "turn-1"
+            busy_history.turns[0].as_str()
         )
         .is_err()
     );
@@ -176,7 +241,7 @@ fn compaction_and_a_busy_turn_refuse_older_targets_before_native_effects() {
         fixture.project.as_str(),
         fixture.chat.as_str(),
         "session-a",
-        Some("turn-2"),
+        Some(history.turns[1].as_str()),
         "sessionActivity",
         r#"{"i":"compaction","k":"compaction","l":"Compacted","s":"completed"}"#,
         revision,

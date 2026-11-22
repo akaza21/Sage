@@ -8,11 +8,10 @@ const COPY: &str = "2026-11-11T10-05-00-000Z_019a2b3c-0000-7f00-8a9b-0c1d2e3f4a5
 fn admitted_context_and_steering_fork_the_exact_native_entry() {
     use crate::acp::store::rewind_tests::history;
     use sage_acp_protocol::session_control::SessionControl;
-    for (prompt, historical) in [
-        (Prompt::new("prompt", "Repeat").unwrap(), false),
-        (history::quoted_prompt(), false),
-        (history::quoted_prompt(), true),
-        (history::file_prompt(), false),
+    for prompt in [
+        Prompt::new("prompt", "Repeat").unwrap(),
+        history::quoted_prompt(),
+        history::file_prompt(),
     ] {
         let mut sender = saved_chat();
         let sent = sender
@@ -26,12 +25,9 @@ fn admitted_context_and_steering_fork_the_exact_native_entry() {
         let sent = deliver(&mut sender.runtime, sent);
         let text = sent["message"].as_str().expect("native Pi prompt text");
         let mut history = history::History::new();
-        if historical {
-            history.historical_turn(prompt.clone(), None);
-        } else {
-            history.turn(prompt.clone(), None);
-        }
+        history.turn(prompt.clone(), None);
         history.turn(prompt, Some("Steer the second turn"));
+        history.unwritten(Prompt::new("prompt", "Unwritten B").unwrap());
         let target = history.target(0).unwrap();
         assert_eq!(target.following_messages, 2);
         let mut chat = saved_chat();
@@ -62,51 +58,53 @@ fn admitted_context_and_steering_fork_the_exact_native_entry() {
             chat.runtime.take_native_rpc_reply(),
             Some(NativeRpcReply::Forked(_))
         ));
-        assert_eq!(history.fixture.page_turns().len(), 2);
+        assert_eq!(history.fixture.page_turns().len(), 3);
         assert!(chat.file(HOME).is_file());
     }
 }
 
 #[test]
-fn fork_at_uses_the_selected_entry_from_the_recorded_fork_menu_and_returns_home() {
+fn fork_at_uses_a_native_entry_or_a_saved_digest_and_returns_home() {
     use sage_acp_protocol::{
         contract::SageTurnId,
         session_control::{ConversationTarget, SessionControl},
     };
     use sha2::{Digest, Sha256};
-    let mut chat = saved_chat();
-    let egress = chat
-        .runtime
-        .session_control(&SessionControl::ForkAt {
-            target: ConversationTarget {
-                turn_id: SageTurnId::parse("turn-chosen").unwrap(),
-                native_turn_id: None,
-                following_messages: 1,
-                prompt_digest: Some(Sha256::digest(b"WRITE out").into()),
-            },
-        })
-        .unwrap();
-    let menu = deliver(&mut chat.runtime, egress);
-    assert_eq!(menu["type"], "get_fork_messages");
-    let captured: Value =
-        include_str!("../../../../../../testdata/acp/pi/captured_session_150.jsonl")
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .find(|row| row["command"] == "get_fork_messages")
+    for native in [false, true] {
+        let mut chat = saved_chat();
+        let egress = chat
+            .runtime
+            .session_control(&SessionControl::ForkAt {
+                target: ConversationTarget {
+                    turn_id: SageTurnId::parse("turn-chosen").unwrap(),
+                    native_turn_id: native.then(|| ExternalId::new("entryId", "f898de8b").unwrap()),
+                    following_messages: if native { u32::MAX } else { 1 },
+                    prompt_digest: (!native).then(|| Sha256::digest(b"WRITE out").into()),
+                },
+            })
             .unwrap();
-    let fork = answer(&mut chat, &menu, captured["data"].clone()).unwrap();
-    assert_eq!(
-        fork,
-        json!({"id":fork["id"],"type":"fork","entryId":"f898de8b"})
-    );
-    let state = answer(&mut chat, &fork, json!({"cancelled":false})).unwrap();
-    let back = read_copy(&mut chat, &state);
-    answer(&mut chat, &back, json!({"cancelled":false}));
-    assert!(matches!(
-        chat.runtime.take_native_rpc_reply(),
-        Some(NativeRpcReply::Forked(_))
-    ));
-    assert!(chat.file(HOME).is_file());
+        let menu = deliver(&mut chat.runtime, egress);
+        assert_eq!(menu["type"], "get_fork_messages");
+        let captured: Value =
+            include_str!("../../../../../../testdata/acp/pi/captured_session_150.jsonl")
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|row| row["command"] == "get_fork_messages")
+                .unwrap();
+        let fork = answer(&mut chat, &menu, captured["data"].clone()).unwrap();
+        assert_eq!(
+            fork,
+            json!({"id":fork["id"],"type":"fork","entryId":"f898de8b"})
+        );
+        let state = answer(&mut chat, &fork, json!({"cancelled":false})).unwrap();
+        let back = read_copy(&mut chat, &state);
+        answer(&mut chat, &back, json!({"cancelled":false}));
+        assert!(matches!(
+            chat.runtime.take_native_rpc_reply(),
+            Some(NativeRpcReply::Forked(_))
+        ));
+        assert!(chat.file(HOME).is_file());
+    }
 }
 
 struct Chat<R: HarnessAdapter = PiRuntime> {

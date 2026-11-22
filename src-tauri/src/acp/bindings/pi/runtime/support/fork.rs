@@ -347,6 +347,13 @@ fn fork_entry(
     if messages.len() > 4096 {
         return None;
     }
+    if let Some(native) = &target.native_turn_id {
+        return messages
+            .iter()
+            .find(|row| row["entryId"] == native.as_str())
+            .and_then(|row| row["entryId"].as_str())
+            .map(str::to_owned);
+    }
     let row = messages
         .iter()
         .rev()
