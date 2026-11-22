@@ -61,25 +61,13 @@ impl AcpService {
             return Err(crate::acp::runtime::HostError::Intent);
         }
         let admitted = match &action {
-            GoalAction::Set {
-                objective,
-                token_budget,
-                ..
-            } => {
+            GoalAction::Set { objective, .. } => {
                 capabilities.goal.set
                     && crate::acp::goal::valid_objective(objective)
                     && !objective.trim().is_empty()
-                    && token_budget.is_none_or(|value| {
-                        capabilities.goal.token_budget
-                            && crate::acp::goal::valid_token_budget(value)
-                    })
             }
             GoalAction::PauseExisting => capabilities.goal.pause,
             GoalAction::ResumeExisting => capabilities.goal.resume,
-            GoalAction::SetBudget { token_budget, .. } => {
-                capabilities.goal.token_budget
-                    && crate::acp::goal::valid_token_budget(*token_budget)
-            }
             GoalAction::ClearExisting => capabilities.goal.clear,
         };
         if !admitted {

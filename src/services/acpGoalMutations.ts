@@ -17,14 +17,9 @@ function mutation<Request extends AcpSessionMutationIntent>(command: string) {
 
 export const goalMutations = {
   pauseExistingGoal: mutation<AcpSessionMutationIntent>("pause_existing_goal"),
-  setGoal: mutation<
-    GoalEditIntent & { objective: string; tokenBudget?: number }
-  >("set_goal"),
+  setGoal: mutation<GoalEditIntent & { objective: string }>("set_goal"),
   resumeExistingGoal: mutation<AcpSessionMutationIntent>(
     "resume_existing_goal",
-  ),
-  setGoalBudget: mutation<GoalEditIntent & { tokenBudget: number }>(
-    "set_goal_budget",
   ),
   clearExistingGoal: mutation<AcpSessionMutationIntent>("clear_existing_goal"),
 };

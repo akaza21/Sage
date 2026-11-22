@@ -12,7 +12,7 @@ import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
-import { canMutateGoal } from "./goalMutability";
+import { canMutateGoal, isResumableGoalStatus } from "./goalMutability";
 import { currentSession } from "./acpTurnState";
 
 type Action = GoalMutationAction;
@@ -23,16 +23,9 @@ export function createGoalMutationController(deps: {
     request: AcpSessionMutationIntent & {
       objective: string;
       expectedGoal?: GoalIdentity | null;
-      tokenBudget?: number;
     },
   ) => Promise<AcpMutationResult>;
   resume?: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
-  tokenBudget?: (
-    request: AcpSessionMutationIntent & {
-      tokenBudget: number;
-      expectedGoal?: GoalIdentity | null;
-    },
-  ) => Promise<AcpMutationResult>;
   pause: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   clear: (request: AcpSessionMutationIntent) => Promise<AcpMutationResult>;
   apply: (context: AcpActionContext, result: AcpMutationResult) => boolean;
@@ -50,7 +43,6 @@ export function createGoalMutationController(deps: {
   return async (
     action: Action,
     objective?: string,
-    tokenBudget?: number,
     expectedGoal?: GoalIdentity | null,
   ): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
@@ -77,9 +69,7 @@ export function createGoalMutationController(deps: {
     if (
       action === "resume" &&
       (captured.page.goal?.kind !== "goal" ||
-        !["paused", "usageLimited", "budgetLimited"].includes(
-          captured.page.goal.snapshot.status,
-        ))
+        !isResumableGoalStatus(captured.page.goal.snapshot.status))
     ) {
       return { kind: "refused", message: "This Goal cannot be resumed." };
     }
@@ -117,19 +107,10 @@ export function createGoalMutationController(deps: {
           message: "Enter a goal of 1 to 4,000 characters.",
         };
       }
-      if (
-        (tokenBudget !== undefined &&
-          (!session.capabilities.goal?.tokenBudget ||
-            !Number.isSafeInteger(tokenBudget) ||
-            tokenBudget <= 0)) ||
-        (action === "tokenBudget" &&
-          (tokenBudget === undefined || !deps.tokenBudget)) ||
-        (action === "resume" && !deps.resume)
-      ) {
+      if (action === "resume" && !deps.resume) {
         return {
           kind: "refused",
-          message:
-            "Enter a positive integer token budget within the supported range.",
+          message: "Native Goal resume is unavailable for this session.",
         };
       }
       const baseline = expectedGoal && {
@@ -142,19 +123,12 @@ export function createGoalMutationController(deps: {
               ...request,
               objective: objective!,
               expectedGoal: baseline,
-              ...(tokenBudget === undefined ? {} : { tokenBudget }),
             })
-          : action === "tokenBudget"
-            ? await deps.tokenBudget!({
-                ...request,
-                tokenBudget: tokenBudget!,
-                expectedGoal: baseline,
-              })
-            : await {
-                pause: deps.pause,
-                resume: deps.resume!,
-                clear: deps.clear,
-              }[action](request);
+          : await {
+              pause: deps.pause,
+              resume: deps.resume!,
+              clear: deps.clear,
+            }[action](request);
       if (!deps.apply(captured, result)) {
         return outcomeUnknown();
       }
@@ -185,7 +159,6 @@ export function useGoalMutation(boundChatId?: string | null) {
         set: goalMutations.setGoal,
         pause: goalMutations.pauseExistingGoal,
         resume: goalMutations.resumeExistingGoal,
-        tokenBudget: goalMutations.setGoalBudget,
         clear: goalMutations.clearExistingGoal,
         apply: (captured, result) => {
           const current = currentContext(boundChatId);

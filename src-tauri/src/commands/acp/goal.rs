@@ -43,48 +43,10 @@ pub(crate) async fn resume_existing_goal(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct GoalBudgetRequest {
-    #[serde(flatten)]
-    pub session: ExistingGoalRequest,
-    pub token_budget: u64,
-    pub expected_goal: Option<crate::acp::goal::GoalIdentity>,
-}
-
-#[tauri::command]
-pub(crate) async fn set_goal_budget(
-    state: State<'_, AppState>,
-    request: GoalBudgetRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    validate_budget(Some(request.token_budget))?;
-    mutate(
-        &state,
-        request.session,
-        GoalAction::SetBudget {
-            token_budget: request.token_budget,
-            expected_goal: request.expected_goal,
-        },
-    )
-    .await
-}
-
-fn validate_budget(budget: Option<u64>) -> Result<(), AcpIpcError> {
-    if budget.is_some_and(|value| !crate::acp::goal::valid_token_budget(value)) {
-        return Err(AcpIpcError::InvalidRequest {
-            message: safe_message(
-                "Goal token budget must be an integer from 1 to 9,007,199,254,740,991.",
-            ),
-        });
-    }
-    Ok(())
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SetGoalRequest {
     #[serde(flatten)]
     pub session: ExistingGoalRequest,
     pub objective: sage_acp_protocol::contract::RequiredText<16000>,
-    pub token_budget: Option<u64>,
     pub expected_goal: Option<crate::acp::goal::GoalIdentity>,
 }
 
@@ -93,7 +55,6 @@ pub(crate) async fn set_goal(
     state: State<'_, AppState>,
     request: SetGoalRequest,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
-    validate_budget(request.token_budget)?;
     if request.objective.as_str().trim().is_empty()
         || !crate::acp::goal::valid_objective(request.objective.as_str())
     {
@@ -106,7 +67,6 @@ pub(crate) async fn set_goal(
         request.session,
         GoalAction::Set {
             objective: request.objective.as_str().to_owned(),
-            token_budget: request.token_budget,
             expected_goal: request.expected_goal,
         },
     )
@@ -239,10 +199,9 @@ mod tests {
         let mut invalid_identity = set.clone();
         invalid_identity["expectedGoal"]["objective"] = json!("x".repeat(16001));
         assert!(serde_json::from_value::<SetGoalRequest>(invalid_identity).is_err());
-        let mut budget = request();
+        let mut budget = set.clone();
         budget["tokenBudget"] = json!(2000);
-        budget["expectedGoal"] = set["expectedGoal"].clone();
-        assert!(serde_json::from_value::<GoalBudgetRequest>(budget).is_ok());
+        assert!(serde_json::from_value::<SetGoalRequest>(budget).is_err());
         set["objective"] = json!("x".repeat(16001));
         assert!(serde_json::from_value::<SetGoalRequest>(set).is_err());
         for (key, value) in [

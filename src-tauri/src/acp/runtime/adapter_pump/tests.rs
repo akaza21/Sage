@@ -45,24 +45,16 @@ fn replacement_goal_rejects_stale_editor_before_any_native_bytes_are_written() {
         )
         .await
         .unwrap();
-        for action in [
-            GoalAction::Set {
-                objective: "Stale edit".into(),
-                token_budget: None,
-                expected_goal: Some(baseline.clone()),
-            },
-            GoalAction::SetBudget {
-                token_budget: 2000,
-                expected_goal: Some(baseline),
-            },
-        ] {
-            let mut output = CaptureTransport(Vec::new());
-            assert_eq!(
-                pump.write_goal(&mut output, action),
-                Err(crate::acp::runtime::HostError::GoalChanged)
-            );
-            assert!(output.0.is_empty(), "a stale edit must be NotStarted");
-        }
+        let action = GoalAction::Set {
+            objective: "Stale edit".into(),
+            expected_goal: Some(baseline),
+        };
+        let mut output = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.write_goal(&mut output, action),
+            Err(crate::acp::runtime::HostError::GoalChanged)
+        );
+        assert!(output.0.is_empty(), "a stale edit must be NotStarted");
         let state = serde_json::to_value(pump.adapter.goal_state().unwrap()).unwrap();
         assert_eq!(state["snapshot"]["createdAt"], "1795300001");
         assert_eq!(state["snapshot"]["objective"], "Continue bounded work");

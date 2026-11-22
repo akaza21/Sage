@@ -3,7 +3,7 @@ use serde_json::json;
 use sage_acp_protocol::contract::RequiredText;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
-use crate::acp::goal::{GoalAction, valid_objective, valid_token_budget};
+use crate::acp::goal::{GoalAction, valid_objective};
 
 impl OutgoingRequest {
     pub(crate) fn goal_set(
@@ -13,23 +13,12 @@ impl OutgoingRequest {
     ) -> Result<Self, RequestError> {
         let mut params = json!({"threadId": thread_id.as_str()});
         match action {
-            GoalAction::Set {
-                objective,
-                token_budget,
-                ..
-            } if valid_objective(objective) && !objective.trim().is_empty() => {
+            GoalAction::Set { objective, .. }
+                if valid_objective(objective) && !objective.trim().is_empty() =>
+            {
                 params["objective"] = json!(objective);
-                if let Some(budget) = token_budget {
-                    if !valid_token_budget(*budget) {
-                        return Err(RequestError::InvalidGoal);
-                    }
-                    params["tokenBudget"] = json!(budget);
-                }
             }
             GoalAction::ResumeExisting => params["status"] = json!("active"),
-            GoalAction::SetBudget { token_budget, .. } if valid_token_budget(*token_budget) => {
-                params["tokenBudget"] = json!(token_budget)
-            }
             _ => return Err(RequestError::InvalidGoal),
         }
         Self::build(id, RequestKind::GoalSet, params)

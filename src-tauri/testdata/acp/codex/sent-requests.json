@@ -297,24 +297,7 @@
         "method": "thread/goal/set",
         "params": {
           "threadId": "thread-1",
-          "objective": "Ship safely",
-          "tokenBudget": 40000
-        }
-      },
-      {
-        "id": 1,
-        "method": "thread/goal/set",
-        "params": {
-          "threadId": "thread-1",
           "status": "active"
-        }
-      },
-      {
-        "id": 1,
-        "method": "thread/goal/set",
-        "params": {
-          "threadId": "thread-1",
-          "tokenBudget": 40000
         }
       }
     ],

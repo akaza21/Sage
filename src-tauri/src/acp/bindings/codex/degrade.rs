@@ -157,7 +157,7 @@ pub(crate) fn projected_capabilities(
                 observes: true,
                 set: true,
                 resume: true,
-                token_budget: true,
+                token_budget: false,
                 pause: true,
                 clear: true,
             }

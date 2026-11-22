@@ -147,7 +147,6 @@ it.each([
     capability: undefined,
     actions: [],
     status: "active" as const,
-    budget: false,
   },
   {
     capability: {
@@ -159,7 +158,6 @@ it.each([
       clear: true,
     },
     status: "active" as const,
-    budget: false,
     actions: ["Pause goal", "Delete goal"],
   },
   {
@@ -172,7 +170,6 @@ it.each([
       clear: true,
     },
     status: "active" as const,
-    budget: false,
     actions: ["Edit goal", "Delete goal"],
   },
   {
@@ -185,18 +182,10 @@ it.each([
       clear: false,
     },
     status: "active" as const,
-    budget: false,
     actions: ["Edit goal"],
   },
   ...(
-    [
-      "active",
-      "paused",
-      "blocked",
-      "usageLimited",
-      "budgetLimited",
-      "complete",
-    ] as const
+    ["active", "paused", "usageLimited", "budgetLimited", "complete"] as const
   ).flatMap((status) =>
     [true, false].map((enabled) => ({
       capability: {
@@ -208,7 +197,6 @@ it.each([
         clear: true,
       },
       status,
-      budget: enabled,
       actions: [
         "Edit goal",
         "Delete goal",
@@ -220,22 +208,9 @@ it.each([
       ],
     })),
   ),
-  {
-    capability: {
-      observes: true,
-      set: false,
-      pause: false,
-      resume: false,
-      tokenBudget: true,
-      clear: false,
-    },
-    status: "paused" as const,
-    budget: true,
-    actions: ["Edit goal budget"],
-  },
 ])(
   "renders only the advertised goal operations: $actions",
-  async ({ capability, actions, status, budget }) => {
+  async ({ capability, actions, status }) => {
     render(
       <ChatGoalControl
         state={{
@@ -279,9 +254,7 @@ it.each([
     if (edit) {
       fireEvent.click(edit);
       await screen.findByLabelText("Goal objective");
-      expect(screen.queryByLabelText("Token budget (optional)") !== null).toBe(
-        budget,
-      );
+      expect(screen.queryByLabelText("Token budget (optional)")).toBeNull();
     }
   },
 );

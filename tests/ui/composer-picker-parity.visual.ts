@@ -516,7 +516,7 @@ test("known context and Goal fit the reference composer without invented native 
             set: true,
             pause: true,
             resume: true,
-            tokenBudget: true,
+            tokenBudget: false,
             clear: true,
           },
         },
@@ -529,14 +529,15 @@ test("known context and Goal fit the reference composer without invented native 
   await composer
     .getByRole("button", { name: "Edit goal", exact: true })
     .click();
-  const budget = composer.getByLabel("Token budget (optional)");
-  await expect(budget).toBeVisible();
-  await budget.fill("40000");
+  const objective = composer.getByLabel("Goal objective");
+  await expect(objective).toBeVisible();
+  await expect(composer.getByLabel("Token budget (optional)")).toHaveCount(0);
+  await objective.fill("Ship safely");
   await expect(
     composer.getByRole("button", { name: "Save goal" }),
   ).toBeEnabled();
   await composer.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(budget).toHaveCount(0);
+  await expect(objective).toHaveCount(0);
 });
 
 for (const forcedColors of ["none", "active"] as const) {

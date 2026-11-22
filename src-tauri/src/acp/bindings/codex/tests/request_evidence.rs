@@ -63,18 +63,8 @@ fn outgoing_request_evidence_matches_real_serializers() {
         crate::acp::goal::GoalAction::Set {
             expected_goal: None,
             objective: "Ship safely".into(),
-            token_budget: None,
-        },
-        crate::acp::goal::GoalAction::Set {
-            expected_goal: None,
-            objective: "Ship safely".into(),
-            token_budget: Some(40000),
         },
         crate::acp::goal::GoalAction::ResumeExisting,
-        crate::acp::goal::GoalAction::SetBudget {
-            expected_goal: None,
-            token_budget: 40000,
-        },
     ] {
         send(OutgoingRequest::goal_set(1, &thread, &action));
     }

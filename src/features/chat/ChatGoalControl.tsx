@@ -1,3 +1,4 @@
+import { isResumableGoalStatus } from "./acp/goalMutability";
 import { Maximize2, Trash2 } from "../../ui/leanIcons";
 import { RotateCw, Target } from "../../ui/leanIconNodesLazy";
 import { Pause } from "../../ui/goalIcons";
@@ -64,7 +65,6 @@ export function ChatGoalControl({
   onMutation?: (
     action: GoalMutationAction,
     objective?: string,
-    tokenBudget?: number,
     expectedGoal?: GoalIdentity | null,
   ) => Promise<GoalMutationOutcome>;
 }) {
@@ -127,23 +127,14 @@ export function ChatGoalControl({
     onEditorClose?.();
   };
   const editor =
-    controls &&
-    (capabilities?.set ||
-      (capabilities?.tokenBudget && state.kind === "goal")) &&
-    (editing || editorOpen) ? (
+    controls && capabilities?.set && (editing || editorOpen) ? (
       <GoalContent
         part="GoalEditor"
         snapshot={state.kind === "goal" ? state.snapshot : undefined}
-        canSetObjective={!!capabilities?.set}
-        canSetBudget={!!capabilities?.tokenBudget}
         disabled={locked}
-        onSave={async (objective, budget, expectedGoal) => {
-          if (objective !== undefined)
-            return run("set", objective, budget, expectedGoal);
-          if (budget !== undefined)
-            return run("tokenBudget", undefined, budget, expectedGoal);
-          return true;
-        }}
+        onSave={async (objective, expectedGoal) =>
+          objective === undefined ? true : run("set", objective, expectedGoal)
+        }
         onClose={closeEditor}
       />
     ) : null;
@@ -221,13 +212,11 @@ export function ChatGoalControl({
             <time>{formatElapsedSeconds(snapshot.timeUsedSeconds)}</time>
           )}
           <span className="chat-goal-strip__icons">
-            {controls && (capabilities?.set || capabilities?.tokenBudget) && (
+            {controls && capabilities?.set && (
               <button
                 type="button"
                 className="chat-goal-strip__icon"
-                aria-label={
-                  capabilities?.set ? "Edit goal" : "Edit goal budget"
-                }
+                aria-label="Edit goal"
                 disabled={locked}
                 onClick={(event) => {
                   event.preventDefault();
@@ -244,9 +233,7 @@ export function ChatGoalControl({
               actionButton("pause", "Pause goal", Pause)}
             {controls &&
               capabilities?.resume &&
-              ["paused", "usageLimited", "budgetLimited"].includes(
-                snapshot.status,
-              ) &&
+              isResumableGoalStatus(snapshot.status) &&
               actionButton("resume", "Resume goal", RotateCw)}
             {controls &&
               capabilities?.clear &&

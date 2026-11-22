@@ -11,14 +11,9 @@ pub(crate) enum GoalAction {
     Set {
         objective: String,
         expected_goal: Option<GoalIdentity>,
-        token_budget: Option<u64>,
     },
     PauseExisting,
     ResumeExisting,
-    SetBudget {
-        expected_goal: Option<GoalIdentity>,
-        token_budget: u64,
-    },
     ClearExisting,
 }
 
@@ -48,10 +43,6 @@ impl GoalIdentity {
 }
 
 pub(crate) const MAX_GOAL_OBJECTIVE_CHARS: usize = 4_000;
-pub(crate) const MAX_GOAL_TOKEN_BUDGET: u64 = 9_007_199_254_740_991;
-pub(crate) fn valid_token_budget(value: u64) -> bool {
-    (1..=MAX_GOAL_TOKEN_BUDGET).contains(&value)
-}
 pub(crate) fn valid_objective(text: &str) -> bool {
     !text.is_empty() && !text.contains('\0') && text.chars().count() <= MAX_GOAL_OBJECTIVE_CHARS
 }
@@ -221,10 +212,7 @@ impl NativeRpcIntent {
                     objective,
                     expected_goal,
                     ..
-                }) => objective.len() + 9 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes),
-                NativeRpcRequest::Goal(GoalAction::SetBudget { expected_goal, .. }) => {
-                    9 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes)
-                }
+                }) => objective.len() + 1 + expected_goal.as_ref().map_or(0, GoalIdentity::bytes),
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,

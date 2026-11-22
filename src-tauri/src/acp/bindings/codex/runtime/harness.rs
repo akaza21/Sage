@@ -218,8 +218,7 @@ impl HarnessAdapter for CodexRuntime {
         self.native_rpc_reply = None;
         match action {
             crate::acp::goal::GoalAction::Set { .. }
-            | crate::acp::goal::GoalAction::ResumeExisting
-            | crate::acp::goal::GoalAction::SetBudget { .. } => {
+            | crate::acp::goal::GoalAction::ResumeExisting => {
                 self.request(|adapter, id| adapter.goal_set(id, &action))
             }
             crate::acp::goal::GoalAction::PauseExisting => self.request(CodexAdapter::goal_pause),

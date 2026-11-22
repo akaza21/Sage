@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AcpGoalSnapshot } from "../../domain/acpGoal";
 import type { AcpActionContext } from "./acp/acpActionController";
@@ -17,6 +18,7 @@ import { createGoalMutationController } from "./acp/useGoalMutation";
 import { ChatGoalControl } from "./ChatGoalControl";
 
 const native = vi.hoisted(() => ({
+  reply: null as unknown,
   frames: [] as { command: string; request: Record<string, unknown> }[],
 }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -25,6 +27,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     { request }: { request: Record<string, unknown> },
   ) => {
     native.frames.push({ command, request });
+    if (native.reply) return native.reply;
     throw { kind: "rejected", message: "Native refusal" };
   },
 }));
@@ -32,20 +35,18 @@ vi.mock("@tauri-apps/api/core", () => ({
 afterEach(() => {
   cleanup();
   native.frames.length = 0;
+  native.reply = null;
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
 });
 
 it.each([
-  { field: "budget", replacement: "none", choice: "save" },
-  { field: "objective", replacement: "unseen", choice: "save" },
-  { field: "objective", replacement: "none", choice: "save" },
-  { field: "budget", replacement: "objective", choice: "Keep editing" },
-  { field: "objective", replacement: "identity", choice: "Keep editing" },
-  { field: "budget", replacement: "identity", choice: "Discard" },
-  { field: "objective", replacement: "objective", choice: "Discard" },
+  { replacement: "unseen", choice: "save" },
+  { replacement: "none", choice: "save" },
+  { replacement: "identity", choice: "Keep editing" },
+  { replacement: "objective", choice: "Discard" },
 ])(
-  "preserves native updates during a $field edit ($replacement, $choice)",
-  async ({ field, replacement, choice }) => {
+  "preserves native updates during an objective edit ($replacement, $choice)",
+  async ({ replacement, choice }) => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
@@ -96,7 +97,6 @@ it.each([
     const mutate = createGoalMutationController({
       getContext: () => context,
       set: goalMutations.setGoal,
-      tokenBudget: goalMutations.setGoalBudget,
       pause: goalMutations.pauseExistingGoal,
       clear: goalMutations.clearExistingGoal,
       apply: () => true,
@@ -107,23 +107,9 @@ it.each([
       <ChatGoalControl {...props} state={{ kind: "goal", snapshot }} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Edit goal" }));
-    if (field === "budget") {
-      const input = await screen.findByLabelText("Token budget (optional)");
-      for (const value of ["0", "-1", "1.5", "9007199254740992"]) {
-        fireEvent.change(input, { target: { value } });
-        expect(
-          screen.getByRole("button", { name: "Save goal" }),
-        ).toBeDisabled();
-      }
-    }
-    fireEvent.change(
-      await screen.findByLabelText(
-        field === "budget" ? "Token budget (optional)" : "Goal objective",
-      ),
-      {
-        target: { value: field === "budget" ? "2000" : "My edited objective" },
-      },
-    );
+    fireEvent.change(await screen.findByLabelText("Goal objective"), {
+      target: { value: "My edited objective" },
+    });
     const latest = {
       ...snapshot,
       tokenBudget: 3000,
@@ -167,7 +153,7 @@ it.each([
     await waitFor(() =>
       expect(native.frames).toEqual([
         {
-          command: field === "budget" ? "set_goal_budget" : "set_goal",
+          command: "set_goal",
           request: {
             projectId: "project-a",
             projectGeneration: "0",
@@ -183,9 +169,7 @@ it.each([
                   : latest.objective,
               createdAt: latest.createdAt,
             },
-            ...(field === "budget"
-              ? { tokenBudget: 2000 }
-              : { objective: "My edited objective" }),
+            objective: "My edited objective",
           },
         },
       ]),
@@ -193,3 +177,101 @@ it.each([
     expect(screen.getByText("Pursuing goal")).toBeVisible();
   },
 );
+
+it("resumes a blocked native goal and renders the authoritative active state", async () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", {
+    configurable: true,
+    value: {},
+  });
+  const capabilities = {
+    observes: true,
+    set: true,
+    pause: true,
+    resume: true,
+    tokenBudget: false,
+    clear: true,
+  };
+  const snapshot: AcpGoalSnapshot = {
+    objective: "Ship",
+    status: "blocked",
+    tokenBudget: 1000,
+    tokensUsed: 42,
+    timeUsedSeconds: 10,
+    createdAt: "1",
+    updatedAt: "1",
+  };
+  const context = {
+    scope: { projectId: "project-a", projectGeneration: "0", chatId: "chat-a" },
+    ownershipEpoch: 0,
+    commandProjectGeneration: "0",
+    page: {
+      projectId: "project-a",
+      chatId: "chat-a",
+      title: "Chat",
+      projectionRevision: "1",
+      currentSessionId: "session-a",
+      turns: [],
+      nextCursor: null,
+      sessions: [
+        agentSessionFixture({
+          id: "session-a" as never,
+          runtimeEpoch: "1" as never,
+          capabilities: capabilitySetFixture({ goal: capabilities }),
+        }),
+      ],
+      goal: { kind: "goal", snapshot },
+    },
+  } as unknown as AcpActionContext;
+  native.reply = {
+    projection: {
+      ...context.page,
+      projectionRevision: "2",
+      goal: {
+        kind: "goal",
+        snapshot: { ...snapshot, status: "active", updatedAt: "2" },
+      },
+    },
+  };
+  function Goal() {
+    const [page, setPage] = useState(context.page);
+    const mutate = createGoalMutationController({
+      getContext: () => context,
+      resume: goalMutations.resumeExistingGoal,
+      pause: goalMutations.pauseExistingGoal,
+      clear: goalMutations.clearExistingGoal,
+      apply: (_, result) => {
+        context.page = result.projection;
+        setPage(result.projection);
+        return true;
+      },
+      nextIntentId: () => "intent-resume" as never,
+    });
+    return (
+      <ChatGoalControl
+        state={page.goal!}
+        capabilities={capabilities}
+        canMutate
+        onMutation={mutate}
+      />
+    );
+  }
+  render(<Goal />);
+  fireEvent.click(screen.getByRole("button", { name: "Resume goal" }));
+  expect(await screen.findByText("Pursuing goal")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Resume goal" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
+  expect(native.frames).toEqual([
+    {
+      command: "resume_existing_goal",
+      request: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+        expectedProjectionRevision: "1",
+        clientIntentId: "intent-resume",
+        sessionId: "session-a",
+        runtimeEpoch: "1",
+      },
+    },
+  ]);
+});

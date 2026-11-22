@@ -9,7 +9,6 @@ pub(super) struct PendingGoalMutation {
     id: u64,
     generation: u64,
     objective: Option<String>,
-    token_budget: Option<u64>,
     status: Option<GoalStatus>,
 }
 
@@ -19,20 +18,11 @@ impl PendingGoalMutation {
             id,
             generation,
             objective: None,
-            token_budget: None,
             status: None,
         };
         match action {
-            GoalAction::Set {
-                objective,
-                token_budget,
-                ..
-            } => {
+            GoalAction::Set { objective, .. } => {
                 pending.objective = Some(objective.clone());
-                pending.token_budget = *token_budget;
-            }
-            GoalAction::SetBudget { token_budget, .. } => {
-                pending.token_budget = Some(*token_budget)
             }
             GoalAction::ResumeExisting => pending.status = Some(GoalStatus::Active),
             GoalAction::PauseExisting => pending.status = Some(GoalStatus::Paused),
@@ -45,9 +35,6 @@ impl PendingGoalMutation {
         self.objective
             .as_ref()
             .is_none_or(|objective| *objective == snapshot.objective)
-            && self
-                .token_budget
-                .is_none_or(|budget| snapshot.token_budget == Some(budget))
             && self
                 .status
                 .as_ref()
@@ -128,9 +115,7 @@ impl CodexAdapter {
         id: u64,
         action: &crate::acp::goal::GoalAction,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if let GoalAction::Set { expected_goal, .. } | GoalAction::SetBudget { expected_goal, .. } =
-            action
-        {
+        if let GoalAction::Set { expected_goal, .. } = action {
             let matches = match (&self.goal_state, expected_goal) {
                 (GoalState::Goal { snapshot }, Some(expected)) => expected.matches(snapshot),
                 (GoalState::NoGoal, None) => true,
@@ -215,7 +200,6 @@ impl CodexAdapter {
             | super::super::request::RequestKind::GoalPause => result
                 .and_then(|value| value.get("goal"))
                 .and_then(|value| goal_snapshot(value).ok())
-                .filter(|snapshot| pending.matches(snapshot))
                 .map(|snapshot| GoalState::Goal { snapshot }),
             super::super::request::RequestKind::GoalClear => match result
                 .and_then(|value| value.get("cleared"))
@@ -227,10 +211,14 @@ impl CodexAdapter {
             _ => None,
         };
         if let Some(next) = next {
+            let applied = match &next {
+                GoalState::Goal { snapshot } => pending.matches(snapshot),
+                _ => true,
+            };
             if pending.generation == self.goal_notification_generation {
                 self.goal_state = next;
             }
-            true
+            applied
         } else {
             false
         }

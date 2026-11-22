@@ -7,8 +7,7 @@ export interface AcpGoalCapabilities {
   clear: boolean;
 }
 
-export type GoalMutationAction =
-  "set" | "pause" | "resume" | "tokenBudget" | "clear";
+export type GoalMutationAction = "set" | "pause" | "resume" | "clear";
 
 export function decodeGoalCapabilities(
   value: unknown,

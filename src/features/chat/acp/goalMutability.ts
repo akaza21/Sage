@@ -1,5 +1,8 @@
 import type { AcpChatPage } from "../../../domain/acp";
-import type { GoalMutationAction } from "../../../domain/acpGoal";
+import type {
+  AcpGoalSnapshot,
+  GoalMutationAction,
+} from "../../../domain/acpGoal";
 
 export function canMutateGoal(
   page: AcpChatPage | null | undefined,
@@ -20,6 +23,17 @@ export function canMutateGoal(
     page?.goal?.kind === "goal" &&
     (action
       ? goal[action]
-      : goal.set || goal.pause || goal.resume || goal.tokenBudget || goal.clear)
+      : goal.set || goal.pause || goal.resume || goal.clear)
+  );
+}
+
+export function isResumableGoalStatus(
+  status: AcpGoalSnapshot["status"],
+): boolean {
+  return (
+    status === "paused" ||
+    status === "blocked" ||
+    status === "usageLimited" ||
+    status === "budgetLimited"
   );
 }

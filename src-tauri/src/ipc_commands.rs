@@ -174,7 +174,6 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::goal::clear_existing_goal,
         commands::acp::goal::set_goal,
         commands::acp::goal::resume_existing_goal,
-        commands::acp::goal::set_goal_budget,
         commands::acp::session_control::control_acp_session,
         commands::acp::permission::resolve_permission_decision,
         commands::acp::user_input::answer_user_input,

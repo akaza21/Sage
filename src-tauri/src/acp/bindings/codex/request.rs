@@ -424,7 +424,7 @@ pub(crate) enum RequestError {
     UnsupportedAccessMode,
     #[error("request id is outside the admitted integer range")]
     InvalidId,
-    #[error("goal objective or token budget is outside the admitted range")]
+    #[error("goal objective is outside the admitted range")]
     InvalidGoal,
     #[error("native project path is not absolute and normalized")]
     InvalidNativePath,
