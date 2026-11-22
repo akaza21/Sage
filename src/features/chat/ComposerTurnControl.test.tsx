@@ -115,7 +115,9 @@ it("keeps dictation on one control until stopped and disables it during the turn
   expect(input).toHaveValue("Review the composer");
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveAttribute("aria-pressed", "true");
-  fireEvent.click(control);
+  // A trusted click re-renders Stop as Send before activation runs, so the
+  // Stop click itself must be cancelled; jsdom alone would never submit here.
+  expect(fireEvent.click(control)).toBe(false);
   expect(input).toHaveValue("Review the composer");
   expect(screen.getByRole("button", { name: "Send message" })).toBe(control);
   fireEvent.click(control);
@@ -185,7 +187,9 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
   expect(screen.getByRole("button", { name: "Stop dictation" })).toBe(control);
   expect(control).toHaveClass("composer__mic");
   expect(control).toHaveAttribute("aria-pressed", "true");
-  fireEvent.click(control);
+  // A trusted click re-renders Stop as Send before activation runs, so the
+  // Stop click itself must be cancelled; jsdom alone would never submit here.
+  expect(fireEvent.click(control)).toBe(false);
   expect(input).toHaveValue("Review the composer");
   expect(
     screen.getByRole("status", { name: "Sent prompt" }),

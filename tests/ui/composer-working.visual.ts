@@ -114,6 +114,54 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+test("Stop dictation keeps the spoken draft unsent", async ({ page }) => {
+  await page.addInitScript(() => {
+    type Result = (event: unknown) => void;
+    class FakeRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onresult: Result | null = null;
+      onerror: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      start() {
+        Object.assign(window, { fakeRecognition: this });
+      }
+      stop() {}
+      abort() {}
+    }
+    Object.assign(window, { SpeechRecognition: FakeRecognition });
+    let submits = 0;
+    document.addEventListener("submit", () => (submits += 1), true);
+    Object.defineProperty(window, "submits", { get: () => submits });
+  });
+  const dock = await openComposer(page);
+  const prompt = dock.getByRole("combobox", { name: "Message agent" });
+  await dock.getByRole("button", { name: "Start dictation" }).click();
+  const stop = dock.getByRole("button", { name: "Stop dictation" });
+  await expect(stop).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => {
+    const result = Object.assign([{ transcript: "Review the composer" }], {
+      isFinal: true,
+    });
+    const { fakeRecognition } = window as unknown as {
+      fakeRecognition: { onresult: (event: unknown) => void };
+    };
+    fakeRecognition.onresult({ resultIndex: 0, results: [result] });
+  });
+  await expect(prompt).toHaveValue("Review the composer");
+  await stop.click();
+  await expect(
+    dock.getByRole("button", { name: "Send message", exact: true }),
+  ).toBeVisible();
+  await expect(prompt).toHaveValue("Review the composer");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { submits: number }).submits,
+    ),
+  ).toBe(0);
+});
+
 test("working border sleeps with the document and wakes on return", async ({
   page,
 }) => {

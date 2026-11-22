@@ -21,7 +21,7 @@ export function ComposerTurnControl({
   disabledReason?: string | null;
   disabledReasonId?: string;
 }) {
-  const reason = sendDisabled ? (disabledReason ?? undefined) : undefined;
+  const reason = (sendDisabled && disabledReason) || undefined;
   const microphone = dictation.listening || !hasContent;
   const Icon = activeTurn ? Square : microphone ? Mic : ArrowUp;
   const action: ButtonHTMLAttributes<HTMLButtonElement> = activeTurn
@@ -46,14 +46,20 @@ export function ComposerTurnControl({
           disabled: dictation.disabled,
           "aria-pressed": dictation.listening,
           onMouseDown: (event) => event.preventDefault(),
-          onClick: dictation.listening ? dictation.stop : dictation.start,
+          onClick: (event) => {
+            // A trusted click re-renders this button as Send before its
+            // activation runs, so cancel activation or Stop would submit.
+            event.preventDefault();
+            if (dictation.listening) dictation.stop();
+            else void dictation.start();
+          },
         }
       : {
           className: "send-button",
           type: "submit",
           "aria-label": "Send message",
           title: reason,
-          "aria-describedby": reason ? disabledReasonId : undefined,
+          "aria-describedby": reason && disabledReasonId,
           disabled: sendDisabled,
         };
   return (

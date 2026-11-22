@@ -395,7 +395,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               dictation={dictation}
               onCancelTurn={onCancelTurn}
               cancelDisabled={actionDisabled}
-              sendDisabled={dispatchBlocked || !hasContent}
+              sendDisabled={dispatchBlocked}
             />
           </div>
         </form>
