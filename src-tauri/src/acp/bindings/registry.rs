@@ -25,6 +25,7 @@ mod pi_native;
 mod record;
 mod record_reason;
 mod record_root;
+mod record_versions;
 mod standard_acp;
 pub(crate) use record::TitleCapability;
 use record::{Admission, AdmittedBinding, RootPolicy};

@@ -35,15 +35,7 @@ impl Lane<'_> {
             Ok(spec) => spec,
             Err(error) => {
                 let _ = self.runtime.abandon_start(&prepared.owner);
-                return Err(
-                    if error
-                        == crate::acp::bindings::adapter::AdapterRuntimeError::RewindUnavailable
-                    {
-                        CodexSessionError::RewindUnavailable
-                    } else {
-                        CodexSessionError::Intent
-                    },
-                );
+                return Err(CodexSessionError::from_launch_preparation(error));
             }
         };
         spec.absolute_cleanup_deadline = Some(cleanup_deadline);

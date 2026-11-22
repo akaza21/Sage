@@ -12,6 +12,7 @@ import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures
 /** The native command boundary returns a rejection once, then commits the suffix. */
 export function installConversationRewindFixture(
   inPlace = true,
+  residency: "hot" | "cold" = "hot",
   files?: { files: string[]; conflicts: string[] },
 ) {
   installTranscriptSelectionFixture(false, true);
@@ -50,7 +51,7 @@ export function installConversationRewindFixture(
     turns: [first, second],
     sessions: page.sessions.map((session) => ({
       ...session,
-      residency: "hot",
+      residency,
       capabilities: {
         ...session.capabilities,
         rewind: {

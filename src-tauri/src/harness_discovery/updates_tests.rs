@@ -96,15 +96,66 @@ fn the_lookup_reads_what_npm_reports_and_nothing_else() {
             ),
         );
         assert_eq!(
-            latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex").as_deref(),
+            latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex", &run_lookup).as_deref(),
             expected,
             "{printed}"
         );
     }
     write(&npm_cli, "exit 1\n");
     assert_eq!(
-        latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex"),
+        latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex", &run_lookup),
         None
     );
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_runner_sees_no_npm_call_once_checking_is_off() {
+    let source = |harness_id, package| UpdateSource {
+        harness_id,
+        package,
+        command: format!("npm install -g {package}@latest"),
+    };
+    let sources = [
+        source("codex", "@openai/codex"),
+        source("pi", crate::acp::bindings::pi::PI_PACKAGE),
+    ];
+    fn npm() -> Option<(PathBuf, PathBuf)> {
+        Some((
+            PathBuf::from("/runtime/node"),
+            PathBuf::from("/runtime/lib/node_modules/npm/bin/npm-cli.js"),
+        ))
+    }
+    let switch = std::cell::Cell::new(false);
+    let calls = std::cell::RefCell::new(Vec::new());
+    let run = |_: &Path, args: &[&OsStr], _: &Path| {
+        calls.borrow_mut().push(
+            args.iter()
+                .skip(1)
+                .take(3)
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+        );
+        Some(b"0.168.0\n".to_vec())
+    };
+    let enabled = || switch.get();
+    assert_eq!(lookup_releases(&sources, &enabled, npm, &run), None);
+    assert!(calls.borrow().is_empty());
+
+    switch.set(true);
+    let found = lookup_releases(&sources, &enabled, npm, &run).unwrap();
+    assert_eq!(found.len(), 2);
+    assert_eq!(calls.borrow()[0], ["view", "@openai/codex", "version"]);
+    calls.borrow_mut().clear();
+
+    // Turned off while the first lookup runs: no second npm process starts.
+    let run_then_off = |node: &Path, args: &[&OsStr], dir: &Path| {
+        switch.set(false);
+        run(node, args, dir)
+    };
+    assert_eq!(
+        lookup_releases(&sources, &enabled, npm, &run_then_off),
+        None
+    );
+    assert_eq!(calls.borrow().len(), 1);
 }

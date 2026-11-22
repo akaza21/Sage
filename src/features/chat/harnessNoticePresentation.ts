@@ -13,8 +13,12 @@ export interface HarnessNoticePresentationProps {
 export type HarnessNoticePresentation =
   ComponentType<HarnessNoticePresentationProps>;
 
-/** One compatibility identity and one release identity, never a history. */
-type DismissalIdentities = { build?: string; release?: string };
+/** One compatibility, one adapter-fallback and one release identity, never a history. */
+type DismissalIdentities = {
+  build?: string;
+  release?: string;
+  direct?: string;
+};
 export type HarnessNoticeDismissal = [
   DismissalIdentities,
   Dispatch<SetStateAction<DismissalIdentities>>,
