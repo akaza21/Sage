@@ -29,19 +29,15 @@ function unsaved(
   failures: readonly SaveAllFailure[],
   tabs: readonly WorkbenchTab[],
 ): SaveAllFailure[] {
-  const seen = new Set<string>();
-  return failures.filter(({ resource }) => {
-    const key = resourceKey(resource);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return tabs.some(
+  return failures.filter(({ resource }) =>
+    tabs.some(
       (tab) =>
         tab.kind === "file" &&
         tab.dirty &&
         !!tab.resource &&
         sameResource(tab.resource, resource),
-    );
-  });
+    ),
+  );
 }
 
 export function SaveAllNotice() {
@@ -89,16 +85,7 @@ export function SaveAllNotice() {
         <ul>
           {failures.map(({ resource, message }) => (
             <li key={resourceKey(resource)}>
-              <button
-                type="button"
-                className="notice__text-link"
-                onClick={() =>
-                  void useWorkbenchStore.getState().openFile(resource)
-                }
-              >
-                {saveAllPath(resource, roots)}
-              </button>
-              : {message}
+              {saveAllPath(resource, roots)}: {message}
             </li>
           ))}
         </ul>

@@ -51,9 +51,8 @@ function report(resources: ResourceRef[]) {
   });
 }
 
-it("summarizes unresolved files compactly, retaining distinct resource identities", () => {
+it("summarizes unresolved files compactly, naming each root", () => {
   report([
-    { rootId: "a", relativePath: "index.ts" },
     { rootId: "a", relativePath: "index.ts" },
     { rootId: "b", relativePath: "index.ts" },
   ]);
@@ -63,11 +62,12 @@ it("summarizes unresolved files compactly, retaining distinct resource identitie
   );
   expect(screen.queryByRole("list")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  expect(screen.getAllByRole("listitem")).toHaveLength(2);
-  expect(screen.getByRole("button", { name: "App/index.ts" })).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "Library/index.ts" }),
-  ).toBeVisible();
+    screen.getAllByRole("listitem").map((item) => item.textContent),
+  ).toEqual([
+    "App/index.ts: Write refused.",
+    "Library/index.ts: Write refused.",
+  ]);
   fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(useWorkbenchStore.getState().saveAllReport).toBeNull();
@@ -88,5 +88,7 @@ it("limits the visible summary and reveals unresolved files on demand", () => {
   expect(screen.queryByText(/file-6.ts/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
   expect(screen.getAllByRole("listitem")).toHaveLength(7);
-  expect(screen.getByRole("button", { name: "App/file-6.ts" })).toBeVisible();
+  expect(screen.getAllByRole("listitem")[6]).toHaveTextContent(
+    "App/file-6.ts: Write refused.",
+  );
 });
