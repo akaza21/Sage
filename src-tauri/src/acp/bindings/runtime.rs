@@ -8,7 +8,6 @@ use sage_acp_protocol::{
     session_config::ConfigMutation,
 };
 
-mod attach;
 mod commands;
 mod state;
 
