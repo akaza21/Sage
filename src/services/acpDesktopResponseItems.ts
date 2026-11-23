@@ -83,58 +83,54 @@ export function safeItem(value: unknown): AcpItem | null {
   if (!isRecord(value) || !isRecord(value.payload)) return null;
   const identity = safeItemIdentity(value);
   if (!identity) return null;
-  const { payload } = value;
-  switch (value.kind) {
+  const { payload, kind, toolState } = value;
+  switch (kind) {
     case "text":
     case "userPrompt": {
       const text = safeText(payload.text, 262_144);
-      if (value.toolState !== null || text === null) return null;
+      if (toolState !== null || text === null) return null;
       const { role } = payload;
-      if (value.kind === "userPrompt")
+      if (kind === "userPrompt")
         return Object.keys(payload).length === 1
           ? {
               ...identity,
-              kind: "userPrompt",
-              toolState: null,
+              kind,
+              toolState,
               payload: { text },
             }
           : null;
       return isOneOf(role, ["user", "assistant", "system"] as const)
         ? {
             ...identity,
-            kind: "text",
-            toolState: null,
+            kind,
+            toolState,
             payload: { role, text },
           }
         : null;
     }
     case "thoughtSummary": {
       const summary = safeText(payload.summary, 262_144);
-      return value.toolState === null && summary !== null
+      return toolState === null && summary !== null
         ? {
             ...identity,
-            kind: "thoughtSummary",
-            toolState: null,
+            kind,
+            toolState,
             payload: { summary },
           }
         : null;
     }
-    // A compaction notice has no payload; an extension message's payload
-    // is decoded by its lazy view.
     case "compactionNotice":
+      return toolState === null && Object.keys(payload).length === 0
+        ? { ...identity, kind, toolState, payload: {} }
+        : null;
+    // An extension message's payload is decoded by its lazy view.
     case "extensionMessage":
-      return value.toolState === null &&
-        (value.kind === "extensionMessage" || Object.keys(payload).length === 0)
-        ? ({
-            ...identity,
-            kind: value.kind as AcpItem["kind"],
-            toolState: null,
-            payload,
-          } as AcpItem)
+      return toolState === null
+        ? { ...identity, kind, toolState, payload }
         : null;
     case "plan": {
       if (
-        value.toolState !== null ||
+        toolState !== null ||
         !Array.isArray(payload.entries) ||
         payload.entries.length > MAX_PLAN_ENTRIES
       )
@@ -156,8 +152,8 @@ export function safeItem(value: unknown): AcpItem | null {
         ? null
         : {
             ...identity,
-            kind: "plan",
-            toolState: null,
+            kind,
+            toolState,
             payload: {
               entries: entries as {
                 label: string;
@@ -173,7 +169,7 @@ export function safeItem(value: unknown): AcpItem | null {
         payload.outputSummary === undefined
           ? null
           : safeNullableText(payload.outputSummary, 65_536);
-      return !isOneOf(value.toolState, [
+      return !isOneOf(toolState, [
         "pending",
         "inProgress",
         "waitingForApproval",
@@ -188,14 +184,14 @@ export function safeItem(value: unknown): AcpItem | null {
         ? null
         : {
             ...identity,
-            kind: "toolCall",
-            toolState: value.toolState,
+            kind,
+            toolState,
             payload: { presentation, inputSummary, outputSummary },
           };
     }
     case "fileChangeDiff": {
       if (
-        value.toolState !== null ||
+        toolState !== null ||
         !Array.isArray(payload.changes) ||
         payload.changes.length > MAX_FILE_CHANGES ||
         typeof payload.truncated !== "boolean"
@@ -206,8 +202,8 @@ export function safeItem(value: unknown): AcpItem | null {
         ? null
         : {
             ...identity,
-            kind: "fileChangeDiff",
-            toolState: null,
+            kind,
+            toolState,
             payload: {
               changes: changes as NonNullable<(typeof changes)[number]>[],
               truncated: payload.truncated,
@@ -216,11 +212,11 @@ export function safeItem(value: unknown): AcpItem | null {
     }
     case "image": {
       const image = admittedImageDataUrl(payload.mediaType, payload.dataUrl);
-      return value.toolState === null && image
+      return toolState === null && image
         ? {
             ...identity,
-            kind: "image",
-            toolState: null,
+            kind,
+            toolState,
             payload: image,
           }
         : null;
@@ -253,7 +249,7 @@ export function safeItem(value: unknown): AcpItem | null {
         : undefined;
       const userInput = safeUserInputRequest(payload.userInput);
       return userInput === undefined ||
-        !isOneOf(value.toolState, [
+        !isOneOf(toolState, [
           "pending",
           "inProgress",
           "waitingForApproval",
@@ -280,8 +276,8 @@ export function safeItem(value: unknown): AcpItem | null {
         ? null
         : {
             ...identity,
-            kind: "permissionRequest",
-            toolState: value.toolState,
+            kind,
+            toolState,
             payload: {
               requestId: requestId as Extract<
                 AcpItem,
@@ -304,14 +300,14 @@ export function safeItem(value: unknown): AcpItem | null {
     case "error": {
       const code = safeText(payload.code, 128);
       const message = safeText(payload.message, 8192);
-      return value.toolState === null &&
+      return toolState === null &&
         code !== null &&
         message !== null &&
         typeof payload.recoverable === "boolean"
         ? {
             ...identity,
-            kind: "error",
-            toolState: null,
+            kind,
+            toolState,
             payload: {
               code,
               message,
@@ -326,20 +322,20 @@ export function safeItem(value: unknown): AcpItem | null {
     case "unsupported": {
       const category = safeText(payload.category, 128);
       const summary = safeText(payload.summary, 16_384);
-      return value.toolState === null &&
+      return toolState === null &&
         category !== null &&
         summary !== null &&
         typeof payload.truncated === "boolean"
         ? {
             ...identity,
-            kind: "unsupported",
-            toolState: null,
+            kind,
+            toolState,
             payload: { category, summary, truncated: payload.truncated },
           }
         : null;
     }
     case "collaboration":
-      return value.toolState === null
+      return toolState === null
         ? safeCollaborationItem(identity, payload)
         : null;
     default:

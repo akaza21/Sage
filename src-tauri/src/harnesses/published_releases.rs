@@ -21,6 +21,14 @@ struct Checked {
 pub(super) struct PublishedReleases(Arc<RwLock<Checked>>);
 
 impl PublishedReleases {
+    pub(super) fn check_current(&self, epoch: u64) -> bool {
+        self.0
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .epoch
+            == epoch
+    }
+
     /// `None` while a check started within the interval already covers them;
     /// otherwise the epoch `finish_check` must present.
     pub(super) fn begin_check(&self, harness_ids: &[&'static str]) -> Option<u64> {
@@ -161,12 +169,26 @@ mod tests {
     #[test]
     fn a_check_begun_before_checking_turned_off_writes_nothing_back() {
         let releases = PublishedReleases::default();
+        let registry = crate::acp::bindings::registry::BindingRegistry::default();
+        let mut definition = super::super::catalog_definition::definition(
+            "codex",
+            "Codex",
+            "ACP",
+            "available",
+            "builtIn",
+            super::super::catalog_definition::CuratedProtocol::acp(Some("codex-app-server")),
+        );
+        definition.version = Some("0.167.1".into());
         let epoch = releases.begin_check(&["codex"]).unwrap();
         releases.forget();
+        let current_epoch = releases.begin_check(&["codex"]).unwrap();
         releases.finish_check(epoch, Some(vec![release("codex", "0.168.0")]));
-        assert_eq!(releases.latest_for("codex"), None);
-        let epoch = releases.begin_check(&["codex"]).unwrap();
-        releases.finish_check(epoch, Some(vec![release("codex", "0.168.0")]));
-        assert_eq!(releases.latest_for("codex").as_deref(), Some("0.168.0"));
+        super::super::version_details::annotate(&mut definition, None, &releases, &registry);
+        assert_eq!(definition.latest_version, None);
+        assert_eq!(definition.update, None);
+        releases.finish_check(current_epoch, Some(vec![release("codex", "0.168.0")]));
+        super::super::version_details::annotate(&mut definition, None, &releases, &registry);
+        assert_eq!(definition.latest_version.as_deref(), Some("0.168.0"));
+        assert_eq!(definition.update.unwrap().latest_version, "0.168.0");
     }
 }
