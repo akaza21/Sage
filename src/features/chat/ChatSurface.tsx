@@ -226,10 +226,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
-      {chatId && firstSendPending ? (
+      {/* A pending first send is always this chat's (see firstSendPending). */}
+      {firstSendPending ? (
         <FirstSendPart
           part="FirstChatSend"
-          chatId={chatId}
+          chatId={chatId!}
           page={acpPage}
           actions={acpActions}
         />
