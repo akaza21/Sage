@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/033_sign_in_evide
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentSignInEvidenceIndexes | SchemaClass::CurrentAgentFileWrites => {
+        SchemaClass::CurrentSignInEvidenceIndexes
+        | SchemaClass::CurrentAgentFileWrites
+        | SchemaClass::CurrentCatalogCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentPrivateProjects => {}
@@ -178,6 +180,7 @@ mod tests {
             SchemaClass::CurrentSignInEvidenceIndexes
         );
         agent_file_writes::apply(&mut connection).unwrap();
+        catalog_capabilities::apply(&mut connection).unwrap();
         assert_eq!(retained_rows(&connection), before);
         let migrated = database_fingerprint(&connection).unwrap();
         post_v18::apply(&mut connection).unwrap();

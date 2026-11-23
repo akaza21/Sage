@@ -66,6 +66,7 @@ pub(crate) use permission::PermissionDecisionIntent;
 pub(crate) mod file_rewind;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;
+pub(crate) mod catalog_capabilities;
 mod chat_fork;
 pub(crate) mod chat_title;
 mod child_transcript;

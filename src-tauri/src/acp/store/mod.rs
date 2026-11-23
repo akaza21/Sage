@@ -3,6 +3,7 @@ mod activity_ingress;
 mod adapter_batch;
 pub(crate) mod agent_writes;
 pub(crate) mod browser_operations;
+pub(crate) mod catalog_capabilities;
 #[cfg(test)]
 mod browser_permission_tests;
 mod cancel;

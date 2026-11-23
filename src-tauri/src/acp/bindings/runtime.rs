@@ -57,6 +57,7 @@ pub(crate) struct NativeRuntime(
         std::sync::Arc<sage_acp_protocol::usage::UsageChannel>,
     )>,
     Option<crate::acp::service::chat_title::TitleScheduler>,
+    Option<crate::acp::service::catalog_capabilities::CatalogCapabilities>,
 );
 
 impl NativeRuntime {
@@ -68,7 +69,7 @@ impl NativeRuntime {
     }
 
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime), None, None, None, None, None)
+        Self(Box::new(runtime), None, None, None, None, None, None)
     }
 
     /// Lends the binding's usage cell to the lane once; a binding without
@@ -365,6 +366,7 @@ impl HarnessAdapter for NativeRuntime {
         }
         let batch = result?;
         self.follow_catalog_triggers(&batch);
+        self.follow_catalog_capabilities();
         self.publish_config()?;
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()

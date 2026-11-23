@@ -18,7 +18,7 @@ use sage_core::error::{AppError, AppResult};
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
-const MAX_SCHEMA_VERSION: usize = super::agent_file_writes::VERSION as usize;
+const MAX_SCHEMA_VERSION: usize = super::catalog_capabilities::VERSION as usize;
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -82,13 +82,17 @@ pub(super) enum SchemaClass {
     /// The sign-in evidence schema plus each file's latest agent write; its
     /// version lives in `agent_file_writes::VERSION`.
     CurrentAgentFileWrites,
+    /// The agent file writes schema whose live sessions may republish the
+    /// capabilities they derive from their command catalog; its version lives
+    /// in `catalog_capabilities::VERSION`.
+    CurrentCatalogCapabilities,
 }
 
 #[cfg(test)]
-pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentAgentFileWrites;
+pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentCatalogCapabilities;
 
 #[cfg(test)]
-pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::agent_file_writes::VERSION;
+pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::catalog_capabilities::VERSION;
 
 impl SchemaClass {
     /// Every schema from v18 on, which opens and verifies in place: the
@@ -111,6 +115,7 @@ impl SchemaClass {
                 | Self::CurrentSessionCapabilities
                 | Self::CurrentSignInEvidenceIndexes
                 | Self::CurrentAgentFileWrites
+                | Self::CurrentCatalogCapabilities
                 | Self::CurrentPrivateProjects
                 | Self::CurrentChildThreadStates
         )

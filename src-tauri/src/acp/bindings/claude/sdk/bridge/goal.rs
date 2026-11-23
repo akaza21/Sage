@@ -20,13 +20,16 @@ impl SdkBridge {
         }
     }
 
-    pub(super) fn refresh_goal_capability(&mut self) {
-        self.goals_enabled = self.commands.as_array().is_some_and(|commands| {
+    /// Follows each catalog Claude Code reports, as Sage lists it.
+    pub(super) fn refresh_goal_capability(&mut self, commands: &Value) {
+        self.goals_enabled = commands.as_array().is_some_and(|commands| {
             commands.iter().any(|command| {
                 command["name"] == GOAL_COMMAND && command["_meta"]["source"] == "builtin"
             })
         });
-        if self.goals_enabled && matches!(self.goal, GoalState::Unsupported) {
+        if !self.goals_enabled {
+            self.goal = GoalState::Unsupported;
+        } else if matches!(self.goal, GoalState::Unsupported) {
             // A listed command does not prove that no goal is set.
             self.goal = GoalState::Unavailable;
         }

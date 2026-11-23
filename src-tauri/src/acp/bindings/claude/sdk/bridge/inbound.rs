@@ -72,9 +72,12 @@ impl SdkBridge {
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
             match &pending {
-                Pending::Commands => inbound.acp.push(self.update(
-                    json!({"sessionUpdate":"available_commands_update","availableCommands":[]}),
-                )),
+                Pending::Commands => {
+                    self.refresh_goal_capability(&Value::Null);
+                    inbound.acp.push(self.update(
+                        json!({"sessionUpdate":"available_commands_update","availableCommands":[]}),
+                    ));
+                }
                 Pending::Control | Pending::Restore => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
@@ -91,6 +94,7 @@ impl SdkBridge {
         match pending {
             Pending::Commands => {
                 let commands = super::commands::commands(reply);
+                self.refresh_goal_capability(&commands);
                 inbound.acp.push(self.update(json!({"sessionUpdate":"available_commands_update","availableCommands":commands})));
             }
             Pending::Initialize(id) => {
@@ -102,8 +106,9 @@ impl SdkBridge {
                         .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
                     return Ok(());
                 }
-                self.commands = super::commands::commands(reply);
-                self.refresh_goal_capability();
+                let commands = super::commands::commands(reply);
+                self.refresh_goal_capability(&commands);
+                self.commands = commands;
                 inbound.acp.push(acp_result(
                     id,
                     json!({

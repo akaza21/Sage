@@ -12,6 +12,27 @@ impl NativeRuntime {
         self.3 = Some((owner, channel));
     }
 
+    pub(crate) fn attach_catalog_capabilities(
+        &mut self,
+        capabilities: crate::acp::service::catalog_capabilities::CatalogCapabilities,
+    ) {
+        self.6 = Some(capabilities);
+        // A harness already initialized reports its negotiated set now.
+        self.follow_catalog_capabilities();
+    }
+
+    /// Re-reads what the harness advertises once its catalog revision moves,
+    /// so a stored capability never lags the catalog the menu shows.
+    pub(super) fn follow_catalog_capabilities(&mut self) {
+        let Some(capabilities) = self.6.as_mut() else {
+            return;
+        };
+        let revision = self.0.available_commands().revision();
+        if !capabilities.settled(revision) {
+            capabilities.observe(revision, self.0.catalog_capabilities());
+        }
+    }
+
     pub(super) fn publish_commands(&self) {
         if let Some((owner, channel)) = &self.3 {
             channel.update(owner, self.0.available_commands());

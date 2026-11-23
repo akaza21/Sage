@@ -342,3 +342,44 @@ fn config_updates_are_exact_session_and_boolean_support_is_advertised() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_harness_deriving_nothing_from_its_catalog_never_restores_capabilities() {
+    use crate::acp::{bindings::runtime::NativeRuntime, runtime::ProjectionMailbox};
+    let (database, fixture) = crate::acp::store::title_fixture();
+    let read = || -> (String, i64) {
+        database
+            .connection()
+            .query_row(
+                "SELECT capabilities_json,projection_revision FROM agent_sessions WHERE id=?1",
+                [fixture.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+    };
+    let before = read();
+    let claude = ready_config(false);
+    let ceiling = claude.capabilities().unwrap();
+    let notices = Arc::new(ProjectionMailbox::default());
+    let mut runtime = NativeRuntime::new(claude);
+    runtime.attach_catalog_capabilities(
+        crate::acp::service::catalog_capabilities::CatalogCapabilities::new(
+            RuntimeOwner {
+                project_id: fixture.project_id.clone(),
+                chat_id: fixture.chat_id.clone(),
+                session_id: fixture.session_id.clone(),
+                runtime_epoch: fixture.runtime_epoch,
+            },
+            (ceiling.clone(), ceiling),
+            database.clone(),
+            notices.clone(),
+        ),
+    );
+    for commands in [json!([{"name":"goal"}]), json!([])] {
+        runtime.ingest(&frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+            "sessionId":"external-a","update":{"sessionUpdate":"available_commands_update",
+            "availableCommands":commands}}})), &Mapper).unwrap();
+    }
+    assert_eq!(read(), before);
+    assert!(notices.take().is_none());
+}

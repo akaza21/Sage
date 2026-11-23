@@ -174,3 +174,108 @@ fn a_new_session_sends_exactly_one_catalog_read() {
     }
     assert_eq!(reads, 1);
 }
+
+/// A ready Claude Code session whose store holds what its activation
+/// negotiated, watched for catalog-derived capabilities.
+struct Tracked {
+    runtime: NativeRuntime,
+    database: sage_db::database::Database,
+    notices: Arc<crate::acp::runtime::ProjectionMailbox>,
+    session: String,
+}
+
+fn tracked() -> Tracked {
+    let (database, intent) = crate::acp::store::title_fixture();
+    let claude = ready();
+    let advertised = claude.capabilities().unwrap();
+    assert!(!advertised.goal.set, "the first catalog lists no /goal");
+    let mut ceiling = advertised.clone();
+    ceiling.goal.set = true;
+    ceiling.goal.clear = true;
+    let negotiated =
+        crate::acp::runtime::intersect_capabilities(&ceiling, &advertised, &ceiling).unwrap();
+    database
+        .connection()
+        .execute(
+            "UPDATE agent_sessions SET capabilities_json=?2 WHERE id=?1",
+            rusqlite::params![
+                intent.session_id.as_str(),
+                serde_json::to_string(&negotiated).unwrap()
+            ],
+        )
+        .unwrap();
+    let notices = Arc::new(crate::acp::runtime::ProjectionMailbox::default());
+    let mut runtime = NativeRuntime::new(claude);
+    runtime.attach_catalog_capabilities(
+        crate::acp::service::catalog_capabilities::CatalogCapabilities::new(
+            sage_acp_protocol::scheduler::RuntimeOwner {
+                project_id: intent.project_id,
+                chat_id: intent.chat_id,
+                session_id: intent.session_id.clone(),
+                runtime_epoch: intent.runtime_epoch,
+            },
+            (ceiling.clone(), ceiling),
+            database.clone(),
+            notices.clone(),
+        ),
+    );
+    Tracked {
+        runtime,
+        database,
+        notices,
+        session: intent.session_id.as_str().to_owned(),
+    }
+}
+
+impl Tracked {
+    fn catalog(&mut self, commands: Value) {
+        self.runtime
+            .ingest(
+                &frame(json!({"type":"system","subtype":"commands_changed","commands":commands})),
+                &Mapper,
+            )
+            .unwrap();
+    }
+
+    fn stored(&self) -> (CapabilitySnapshotV1, i64) {
+        let (json, projection): (String, i64) = self
+            .database
+            .connection()
+            .query_row(
+                "SELECT capabilities_json,projection_revision FROM agent_sessions WHERE id=?1",
+                [&self.session],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        (serde_json::from_str(&json).unwrap(), projection)
+    }
+}
+
+#[test]
+fn a_goal_command_added_to_the_catalog_stores_and_announces_goal_support_once() {
+    let mut session = tracked();
+    let (_, before) = session.stored();
+    session.catalog(json!([{"name":"review"},{"name":"goal","builtin":true}]));
+    let (capabilities, after) = session.stored();
+    assert!(capabilities.goal.set && capabilities.goal.clear);
+    let notice = session.notices.take().expect("one projection notice");
+    assert_eq!(notice.projection_revision.get() as i64, after);
+    assert!(after > before);
+    assert!(session.notices.take().is_none());
+}
+
+#[test]
+fn a_removed_goal_command_withdraws_goal_support_and_a_repeated_catalog_changes_nothing() {
+    let mut session = tracked();
+    session.catalog(json!([{"name":"goal","builtin":true}]));
+    session.notices.take();
+    // A skill sharing the name is not Claude Code's own goal command.
+    let unchanged = json!([{"name":"goal","source":"skill"}]);
+    session.catalog(unchanged.clone());
+    let (capabilities, projection) = session.stored();
+    assert!(!capabilities.goal.set && !capabilities.goal.clear);
+    assert!(session.notices.take().is_some());
+    session.catalog(unchanged);
+    assert_eq!(session.stored(), (capabilities, projection));
+    assert!(session.notices.take().is_none());
+}

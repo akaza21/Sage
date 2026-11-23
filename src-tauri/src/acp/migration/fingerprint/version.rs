@@ -150,6 +150,9 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         version if version == super::super::agent_file_writes::VERSION => {
             SchemaClass::CurrentAgentFileWrites
         }
+        version if version == super::super::catalog_capabilities::VERSION => {
+            SchemaClass::CurrentCatalogCapabilities
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

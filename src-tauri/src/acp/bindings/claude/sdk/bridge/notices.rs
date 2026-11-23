@@ -132,6 +132,7 @@ impl SdkBridge {
             Some("commands_changed") => {
                 if let Some(commands) = sdk.get("commands") {
                     let commands = super::commands::commands(&json!({"commands": commands}));
+                    self.refresh_goal_capability(&commands);
                     let update = json!({
                         "sessionUpdate": "available_commands_update",
                         "availableCommands": commands,

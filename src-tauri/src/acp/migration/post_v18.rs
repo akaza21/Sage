@@ -17,5 +17,6 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     child_thread_states::apply(connection)?;
     private_projects::apply(connection)?;
     sign_in_evidence_indexes::apply(connection)?;
-    agent_file_writes::apply(connection)
+    agent_file_writes::apply(connection)?;
+    catalog_capabilities::apply(connection)
 }

@@ -1,6 +1,7 @@
 mod agent_file_writes;
 mod backup;
 mod build_intent;
+mod catalog_capabilities;
 mod child_thread_states;
 mod config_choices;
 mod file_artifact;

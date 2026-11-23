@@ -23,6 +23,7 @@ use sage_core::limits::LIMITS;
 
 mod available_commands;
 mod capabilities;
+pub(crate) use capabilities::intersect as intersect_capabilities;
 mod coordinator_journal;
 mod ingress;
 mod intent;
