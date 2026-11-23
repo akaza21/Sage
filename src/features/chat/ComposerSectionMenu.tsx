@@ -282,12 +282,12 @@ function DraftOptionsBrowser(props: ComposerOptionsProps) {
       {...props}
       load={null}
       draftBuiltins={builtins}
-      insertCommand={(field, { name }) => {
-        useWorkbenchStore.getState().updateNewChatDraft({
-          text: `/${name} ${field.value.replace(/^\/\S*\s?/u, "")}`,
-        });
-        field.focus();
-      }}
+      // Through the field's editing commands, so Undo restores the text.
+      insertCommand={(field, { name }) =>
+        void import("./ComposerCommandRuntime").then((runtime) =>
+          runtime.insertSlashCommand(field, name),
+        )
+      }
     />
   );
 }

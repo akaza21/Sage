@@ -48,11 +48,16 @@ export function installDraftPlusFixture() {
     builtins: [] as string[],
     catalog: undefined as string[] | null | undefined,
     ran: [] as string[],
+    lists: 0,
+    listHold: null as ReturnType<typeof deferred> | null,
     holdUploads() {
       control.uploadHold = deferred();
     },
     holdPage() {
       control.pageHold = deferred();
+    },
+    holdList() {
+      control.listHold = deferred();
     },
   };
   Object.assign(window, { draftPlus: control });
@@ -157,18 +162,20 @@ export function installDraftPlusFixture() {
     return revised(request.chatId, () => {});
   };
   const { listCommands, runCommand } = acpCommandsDesktop;
-  acpCommandsDesktop.listCommands = async (request) =>
-    control.catalog === undefined
-      ? listCommands(request)
-      : {
-          revision: control.catalog ? 1 : 0,
-          commands: (control.catalog ?? []).map((name) => ({
-            name,
-            description: "",
-            inputHint: null,
-            source: "builtin" as const,
-          })),
-        };
+  acpCommandsDesktop.listCommands = async (request) => {
+    if (control.catalog === undefined) return listCommands(request);
+    control.lists += 1;
+    await control.listHold?.promise;
+    return {
+      revision: control.catalog ? 1 : 0,
+      commands: (control.catalog ?? []).map((name) => ({
+        name,
+        description: "",
+        inputHint: null,
+        source: "builtin" as const,
+      })),
+    };
+  };
   acpCommandsDesktop.runCommand = async (request) => {
     if (control.catalog === undefined) return runCommand(request);
     bounded(control.ran);

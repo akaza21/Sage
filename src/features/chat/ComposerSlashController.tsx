@@ -34,8 +34,8 @@ const notSent = (reason: string) =>
 
 // Both field mounting and typed sends enter through this lightweight facade.
 // A held first send waits here until the new session's harness reports its
-// catalog (revision 0 until then), Stop ends the hold, or it times out; it
-// then runs as a command or sends nothing, never text.
+// catalog (revision 0 until then), Stop or leaving the chat ends the hold, or
+// it times out; it then runs as a command or sends nothing, never text.
 // eslint-disable-next-line react-refresh/only-export-components -- the lazy facade exposes the chunk's command action
 export async function slashCommandTurn(
   ...args: Parameters<typeof Runtime.slashCommandTurn>
@@ -47,10 +47,13 @@ export async function slashCommandTurn(
   if (
     request.target !== "session" ||
     !hold ||
-    hold.name !== /^\/([^\s/]+)/u.exec(request.prompt)?.[1] ||
-    request.attachedContext?.length
+    hold.name !== runtime.parseSlashCommand(request.prompt)?.name
   )
     return runtime.slashCommandTurn(...args);
+  const { name, live } = hold;
+  // The typed command route carries no attachments.
+  if (request.attachedContext?.length)
+    throw notSent("Commands can't include images.");
   const intent = {
     projectId: request.projectId,
     projectGeneration: request.projectGeneration,
@@ -60,35 +63,64 @@ export async function slashCommandTurn(
     sessionId: request.sessionId,
     runtimeEpoch: request.runtimeEpoch,
   };
-  for (let polls = FIRST_COMMAND_HOLD_MS / 200; ; polls--) {
-    if (!hold.live()) throw notSent(`Stopped before /${hold.name} ran.`);
-    const list = await (port ?? runtime.acpCommandsDesktop)
-      .listCommands(intent)
-      .catch(() => null);
-    if (list?.revision) {
-      if (list.commands.some(({ name }) => name === hold.name)) break;
-      throw notSent(`/${hold.name} is not available in this session.`);
-    }
-    if (!polls)
+  // Every wait ends by the deadline, and the hold is checked after each one
+  // and again just before the command is dispatched.
+  let expired = false;
+  const deadline = new Promise<undefined>((resolve) =>
+    setTimeout(() => resolve(void (expired = true)), FIRST_COMMAND_HOLD_MS),
+  );
+  const within = <T,>(work: Promise<T>) => Promise.race([work, deadline]);
+  const held = () => {
+    if (!live())
       throw notSent(
-        `/${hold.name} did not run: the session's commands took over ${FIRST_COMMAND_HOLD_MS / 1000} seconds.`,
+        useWorkbenchStore.getState().activeTabId === request.chatId
+          ? `Stopped before /${name} ran.`
+          : `The chat was left before /${name} ran.`,
       );
+  };
+  const timedOut = () =>
+    notSent(
+      `/${name} did not run: the session's commands took over ${FIRST_COMMAND_HOLD_MS / 1000} seconds.`,
+    );
+  for (;;) {
+    held();
+    const list = await within(
+      (port ?? runtime.acpCommandsDesktop)
+        .listCommands(intent)
+        .catch(() => null),
+    );
+    held();
+    if (list?.revision) {
+      if (list.commands.some((command) => command.name === name)) break;
+      throw notSent(`/${name} is not available in this session.`);
+    }
+    if (expired) throw timedOut();
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   // As a picked command, it is refused rather than sent as text.
-  runtime.setPickedCommand(request.chatId, hold.name);
+  runtime.setPickedCommand(request.chatId, name);
   try {
-    return await runtime.slashCommandTurn(...args);
+    const run = await within(runtime.slashCommandTurn(...args));
+    held();
+    if (run === undefined) throw timedOut();
+    return (
+      run &&
+      (async () => {
+        held();
+        return run();
+      })
+    );
   } finally {
     runtime.setPickedCommand(request.chatId, null);
   }
 }
 
 /**
- * A new chat's first send. One starting with `/` stays pending, held (the
- * composer shows it working, with Stop), while Sage looks up the harness's
- * curated built-in commands (installation metadata only). One of those waits
- * for the session's catalog in slashCommandTurn; anything else is sent now.
+ * A new chat's first send. A `/command` stays pending, held (the composer
+ * shows it working, with Stop), while Sage looks up the harness's curated
+ * built-in commands (installation metadata only). One of those, or any
+ * command when that lookup fails, waits for the session's catalog in
+ * slashCommandTurn; anything else is sent now.
  */
 async function sendFirstCommand(
   chatId: string,
@@ -97,8 +129,7 @@ async function sendFirstCommand(
   submit: () => Promise<unknown>,
 ) {
   const store = useWorkbenchStore;
-  const name = /^\/([^\s/]+)/u.exec(pending.text.trim())?.[1];
-  if (!name) return submit();
+  if (!pending.text.trimStart().startsWith("/")) return submit();
   const held = { ...pending, held: true as const };
   const live = () => store.getState().pendingFirstSend === held;
   // Navigating away meanwhile cancelled it.
@@ -108,10 +139,14 @@ async function sendFirstCommand(
   )
     return;
   store.setState({ pendingFirstSend: held });
-  const builtins = await invokeNative<unknown>("list_builtin_commands", {
-    harnessId,
-  }).catch(() => null);
   try {
+    const runtime = await loadRuntime();
+    const name = runtime.parseSlashCommand(pending.text.trim())?.name;
+    const builtins = name
+      ? await invokeNative<unknown>("list_builtin_commands", {
+          harnessId,
+        }).catch(() => [name])
+      : null;
     // Stopped while looking: nothing is sent.
     if (!live()) return;
     if (name && Array.isArray(builtins) && builtins.includes(name))
@@ -123,7 +158,6 @@ async function sendFirstCommand(
     if (live()) store.setState({ pendingFirstSend: null });
   }
 }
-
 export function ComposerSlashController(
   props: ComponentProps<typeof Runtime.ComposerSlashController>,
 ) {

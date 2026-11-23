@@ -158,3 +158,73 @@ test("Stop cancels the first-send hold", async ({ page }) => {
   ).toHaveValue("/fast");
   expect(await fixture(page)).toMatchObject({ ran: [], sent: 0 });
 });
+
+const holdList = (page: Page) =>
+  page.evaluate(() =>
+    (
+      window as never as { draftPlus: { holdList(): void } }
+    ).draftPlus.holdList(),
+  );
+
+test("Stop during an in-flight catalog read sends nothing", async ({
+  page,
+}) => {
+  const opened = await openDraft(page, ["fast"]);
+  await holdList(page);
+  await sendFirst(opened, "/fast");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as never as { draftPlus: { lists: number } }).draftPlus.lists,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await opened.chat.getByRole("button", { name: "Cancel turn" }).click();
+  // The read answers with the command only after Stop.
+  await reportCatalog(page, ["fast"]);
+  await expect(
+    opened.chat.getByText("Stopped before /fast ran. Nothing was sent."),
+  ).toBeVisible({ timeout: 10_000 });
+  expect(await fixture(page)).toMatchObject({ ran: [], sent: 0 });
+});
+
+test("a hung catalog read ends the hold at its deadline", async ({ page }) => {
+  const opened = await openDraft(page, ["fast"]);
+  await holdList(page);
+  await sendFirst(opened, "/fast");
+  await expect(
+    opened.chat.getByText(
+      "/fast did not run: the session's commands took over 5 seconds. Nothing was sent.",
+    ),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(
+    opened.chat.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveValue("/fast");
+  expect(await fixture(page)).toMatchObject({ ran: [], sent: 0 });
+});
+
+test("a built-in command with images sends nothing", async ({ page }) => {
+  const opened = await openDraft(page, ["fast"], ["fast"]);
+  await opened.plus.click();
+  const chooser = page.waitForEvent("filechooser");
+  await opened.menu.getByRole("menuitem", { name: "Add images" }).click();
+  await (
+    await chooser
+  ).setFiles({
+    name: "shot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  });
+  await sendFirst(opened, "/fast");
+  await expect(
+    opened.chat.getByText("Commands can't include images. Nothing was sent."),
+  ).toBeVisible();
+  await expect(
+    opened.chat.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveValue("/fast");
+  expect(await fixture(page)).toMatchObject({ ran: [], sent: 0 });
+});
