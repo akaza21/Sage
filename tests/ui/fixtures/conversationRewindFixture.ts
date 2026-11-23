@@ -98,13 +98,39 @@ export function installConversationRewindFixture(
         if (control?.kind === "previewRewind")
           return files
             ? {
-                preview: {
-                  ...files,
-                  unverified: files.unverified ?? [],
+                // The native side's view: kept files with why, else the
+                // files it would restore and what rewind does not undo.
+                preview: ((
+                  kept = [
+                    [
+                      "Files changed since the agent last wrote them, so they stay:",
+                      files.conflicts,
+                    ] as const,
+                    [
+                      "Sage can't verify these files in this chat, so they stay as they are:",
+                      files.unverified ?? [],
+                    ] as const,
+                  ].filter(([, paths]) => paths.length),
+                ) => ({
                   fileCount: files.files.length,
-                  conflictCount: files.conflicts.length,
-                  unverifiedCount: files.unverified?.length ?? 0,
-                },
+                  sections: kept.length
+                    ? kept.map(([note, paths]) => ({
+                        note,
+                        paths,
+                        count: paths.length,
+                        keeps: true,
+                      }))
+                    : [
+                        {
+                          note: "These files go back to before this message:",
+                          paths: files.files,
+                          count: files.files.length,
+                        },
+                      ],
+                  caveat: kept.length
+                    ? null
+                    : "Rewind does not undo shell commands, commits, branch switches, or files changed outside checkpoints.",
+                }))(),
               }
             : {};
         if (control?.kind !== "rewindConversation")

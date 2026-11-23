@@ -7,59 +7,66 @@ import { isRecord } from "../../services/acpDesktopGuards";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { currentContext } from "./acp/useAcpChatActions";
-import { useSessionControl } from "./acp/useSessionControl";
+import { sessionRequest, useSessionControl } from "./acp/useSessionControl";
 import type { RewindChatRequest } from "./forkChatRequest";
 
-/** The native dry run's lists, each at most 200 paths with counts for the rest. */
+/** At most 200 paths, with the count of all of them. */
+type Listed = { paths: string[]; count: number };
+/**
+ * The native dry run: the files it keeps with why, or else the files it would
+ * restore. `caveat` (what rewind does not undo) comes exactly when it restores.
+ */
 type Preview = {
-  files: string[];
   fileCount: number;
-  conflicts: string[];
-  conflictCount: number;
-  unverified: string[];
-  unverifiedCount: number;
+  sections: (Listed & { note: string; keeps?: true })[];
+  caveat: string | null;
 };
 
 /** After this failure the files are already back: only the conversation is left. */
 const RESTORED = "Files were restored";
 
-const list = (value: unknown) =>
-  Array.isArray(value) &&
-  value.length <= 200 &&
-  value.every((path) => typeof path === "string");
+const listed = (
+  value: Record<string, unknown>,
+  paths: string,
+  count: string,
+) => {
+  const list = value[paths];
+  return (
+    Array.isArray(list) &&
+    list.length <= 200 &&
+    list.every((path) => typeof path === "string") &&
+    Number.isSafeInteger(value[count])
+  );
+};
 
 /** A dry run only: no file changes until the user confirms. `null` means files stay. */
 async function preview(chatId: string, before: string) {
-  const context = currentContext(chatId)!;
-  const session = context.page.sessions.find(
-    (item) => item.id === context.page.currentSessionId,
-  )!;
+  const request = sessionRequest(chatId, { kind: "previewRewind", before });
+  if (!request) return null;
   const value = await invokeAcp<{ preview?: unknown }, object>(
     "control_acp_session",
-    {
-      ...context.scope,
-      projectGeneration: context.commandProjectGeneration,
-      sessionId: session.id,
-      runtimeEpoch: session.runtimeEpoch,
-      control: { kind: "previewRewind", before },
-    },
+    request,
   );
   const found = value?.preview;
   if (found === undefined) return null;
   if (
     !isRecord(found) ||
-    !list(found.files) ||
-    !list(found.conflicts) ||
-    !list(found.unverified) ||
     !Number.isSafeInteger(found.fileCount) ||
-    !Number.isSafeInteger(found.conflictCount) ||
-    !Number.isSafeInteger(found.unverifiedCount)
+    !(found.caveat === null || typeof found.caveat === "string") ||
+    !Array.isArray(found.sections) ||
+    found.sections.length > 2 ||
+    !found.sections.every(
+      (section) =>
+        isRecord(section) &&
+        typeof section.note === "string" &&
+        listed(section, "paths", "count"),
+    )
   )
     throw new Error();
   return found as Preview;
 }
 
-function Paths({ paths, count }: { paths: string[]; count: number }) {
+function Paths({ paths, count }: Listed) {
   return (
     <ul className="rewind-files">
       {paths.map((path) => (
@@ -80,18 +87,16 @@ export function RewindChatDialog({
   const title = useId();
   const { status, run } = useSessionControl(chatId);
   const pending = useRef(false);
-  const [files, setFiles] = useState<Preview | null | undefined>();
-  const [reason, setReason] = useState("");
+  // The preview, or why there is none: files then stay as they are.
+  const [found, setFound] = useState<Preview | string>();
+  const files = typeof found === "object" ? found : undefined;
   const [last, setLast] = useState(false);
   useEffect(() => {
     let live = true;
     preview(chatId, turnId).then(
-      (next) => live && setFiles(next),
-      (error: unknown) => {
-        if (!live) return;
-        setFiles(null);
-        if (error instanceof AcpDesktopError) setReason(error.message);
-      },
+      (next) => live && setFound(next ?? ""),
+      (error: unknown) =>
+        live && setFound(error instanceof AcpDesktopError ? error.message : ""),
     );
     return () => {
       live = false;
@@ -111,9 +116,8 @@ export function RewindChatDialog({
             before: turnId,
             ...(withFiles ? { files: true } : {}),
           },
-          withFiles
-            ? "Files restored; conversation rewound"
-            : "Conversation rewound; files unchanged",
+          // A file rewind always reports what it restored.
+          "Conversation rewound; files unchanged",
         ))
       )
         return;
@@ -137,11 +141,7 @@ export function RewindChatDialog({
   const busy = status.kind === "pending";
   const restored =
     status.kind === "failed" && status.message.startsWith(RESTORED);
-  const restorable =
-    !restored &&
-    !!files?.fileCount &&
-    !files.conflictCount &&
-    !files.unverifiedCount;
+  const restorable = !restored && !!files?.caveat;
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -153,33 +153,21 @@ export function RewindChatDialog({
     >
       <h2 id={title}>Rewind conversation from here</h2>
       <p>Remove this message and later replies from the conversation.</p>
-      {files === null ? <p>{reason} Files stay as they are.</p> : null}
-      {files?.conflictCount ? (
-        <>
-          <p role="alert">
-            Files changed since the agent last wrote them, so they stay:
-          </p>
-          <Paths paths={files.conflicts} count={files.conflictCount} />
-        </>
+      {typeof found === "string" ? (
+        <p>{found} Files stay as they are.</p>
       ) : null}
-      {files?.unverifiedCount ? (
-        <>
-          <p role="alert">
-            Sage can&apos;t verify these files in this chat, so they stay as
-            they are:
-          </p>
-          <Paths paths={files.unverified} count={files.unverifiedCount} />
-        </>
-      ) : null}
+      {files?.sections
+        .filter((section) => section.keeps || !restored)
+        .map((section) => (
+          <div key={section.note}>
+            <p role={section.keeps && "alert"}>{section.note}</p>
+            <Paths {...section} />
+          </div>
+        ))}
       {restorable ? (
         <>
-          <p>These files go back to before this message:</p>
-          <Paths paths={files.files} count={files.fileCount} />
           <p>
-            <small>
-              Rewind does not undo shell commands, commits, branch switches, or
-              files changed outside checkpoints.
-            </small>
+            <small>{files.caveat}</small>
           </p>
           <button
             type="button"

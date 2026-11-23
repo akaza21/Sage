@@ -2,8 +2,6 @@
 //! every listed file still holds the bytes the agent last wrote to it.
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
-
 use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
@@ -18,6 +16,8 @@ use sage_acp_protocol::{
     session_control::{ConversationTarget, SessionControl},
 };
 
+mod view;
+
 /// Paths a preview shows; the counts cover the rest.
 const PREVIEW_PATHS: usize = 200;
 const NAME_BYTES: usize = 255;
@@ -29,9 +29,9 @@ pub(crate) const RESTORED_RECOVERING: &str =
     "Files were restored; this chat is recovering and the rewind did not finish.";
 
 /// What a file rewind would restore, as root-relative paths. Absolute paths
-/// never leave the native side.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// never leave the native side. The dialog gets the files it would restore
+/// and, for any it keeps, the reason (see `view`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FileRewindPreview {
     pub files: Vec<String>,
     pub file_count: u32,

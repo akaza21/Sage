@@ -592,9 +592,9 @@
       },
       {
         "entry": "src/features/chat/ConversationActions.tsx",
-        "maxGzipBytes": 4750,
+        "maxGzipBytes": 4400,
         "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork menus, confirmations with the T11b file-rewind preview, legacy last-turn controls and fork history. 600 B of cap went to SessionNoticeStrip."
+        "reason": "Prompt rewind/fork menus, confirmations, legacy last-turn controls and inherited fork history. Measured JS 3848 B; 600 B of cap moved to SessionNoticeStrip. Dialogs retain no hidden DOM."
       }
     ],
     "windowsInstallerMb": 45,
