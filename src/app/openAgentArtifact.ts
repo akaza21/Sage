@@ -85,8 +85,10 @@ export async function openAgentArtifact(
       .getState()
       .openDiff(intent.resource, undefined, ref);
     if (
-      admission.snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
-        revision ||
+      admission.snapshotProjectionRevision(
+        useWorkbenchStore.getState(),
+        ref,
+      ) !== revision ||
       !admission.selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
