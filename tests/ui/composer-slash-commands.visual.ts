@@ -378,3 +378,71 @@ test("picking Codex's /review shows its input hint", async ({ page }) => {
     "/review base <branch>, commit <sha>, or what to check",
   );
 });
+
+test("a typed terminal-only command is held at send with a copy or text choice", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  // The live catalog of a curated binding, with its terminal handoff; sends
+  // are captured instead of reaching a harness.
+  await page.evaluate(async () => {
+    const [
+      { acpCommandsDesktop },
+      { acpDesktop },
+      { useSessionAccessModeStore },
+    ] = await Promise.all([
+      import("/src/services/acpCommandsDesktop.ts"),
+      import("/src/services/acpDesktop.ts"),
+      import("/src/app/sessionAccessModeStore.ts"),
+    ]);
+    useSessionAccessModeStore.setState({ ready: true });
+    const sent: string[] = [];
+    Object.assign(window, { terminalSent: sent });
+    acpCommandsDesktop.listCommands = async () => ({
+      revision: 1,
+      commands: [],
+      terminalHandoff: {
+        label: "Claude Code",
+        command: 'claude --resume "4f1c2a"',
+        terminalOnly: ["hooks"],
+      },
+    });
+    acpDesktop.sendTurn = async (request) => {
+      if (sent.length < 4) sent.push(request.prompt);
+      throw new Error("captured");
+    };
+  });
+  const composer = page.locator("form.composer").first();
+  const field = composer.getByRole("combobox", { name: "Message agent" });
+  await field.focus();
+  await field.fill("/hooks");
+  // The field's command controller is loaded once its menu shows.
+  await expect(page.locator(".composer-slash-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await field.press("Enter");
+  const held =
+    "/hooks only runs in the terminal. Copy the command to resume this chat there, then type /hooks.";
+  const choice = page.getByRole("group", { name: "Terminal-only command" });
+  await expect(choice).toContainText(held);
+  // The field's status region, mounted before the catch, announces it.
+  await expect(
+    page.locator(".composer__input-area > [role='status']"),
+  ).toHaveText(held);
+  await expect(
+    choice.getByRole("button", { name: "Copy terminal command" }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("/hooks");
+  const sent = () =>
+    page.evaluate(
+      () => (window as unknown as { terminalSent: string[] }).terminalSent,
+    );
+  expect(await sent()).toEqual([]);
+  await expectNoViewportOverflow(page);
+  await expect(composer).toHaveScreenshot("composer-terminal-command.png");
+  await choice.getByRole("button", { name: "Send as text anyway" }).click();
+  await expect(choice).toHaveCount(0);
+  await expect(field).toBeFocused();
+  await expect.poll(sent).toEqual(["/hooks"]);
+});
