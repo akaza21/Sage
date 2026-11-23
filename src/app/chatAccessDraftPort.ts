@@ -16,4 +16,7 @@ export const chatAccessDraftPort: {
   spendEffort?: (chatId: string) => void;
   /** The new-chat draft's image handoff; registered with its first image. */
   uploadDraftImages?: (chatId?: string) => Promise<void>;
+  /** The new-chat draft's file handoff; registered with its staging part.
+   * Resolves to the created chat's staged revision, if it moved any. */
+  handOffDraftFiles?: (chatId?: string) => Promise<string | undefined>;
 } = {};

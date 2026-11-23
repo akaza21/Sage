@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 mod attachment;
 pub(crate) mod commands;
+mod draft;
 pub(crate) mod images;
 mod inline;
 pub(crate) mod limits;
@@ -165,6 +166,9 @@ impl FileStages {
         resources: Resources,
     ) -> Result<StagedFiles, &'static str> {
         let key = (project.to_owned(), chat.to_owned());
+        if draft::is_draft(project) {
+            self.release_other_drafts(chat);
+        }
         if self
             .batches
             .get(&key)
@@ -392,8 +396,10 @@ impl FileStages {
     }
     fn owners(&self) -> Vec<(String, String, i64)> {
         let sent = self.sent.iter().map(|(k, s)| (k, s.attached_at));
+        // A draft's batch belongs to no chat tab, so no tab ends it.
         self.batches
             .iter()
+            .filter(|((project, _), _)| !draft::is_draft(project))
             .map(|(k, batch)| (k, batch.attached_at))
             .chain(sent)
             .map(|((project, chat), attached_at)| (project.clone(), chat.clone(), attached_at))

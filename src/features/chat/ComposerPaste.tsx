@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useWorkbenchStore } from "../../app/store";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
   heldInputMessage,
@@ -7,6 +8,8 @@ import {
   type PasteAttachability,
 } from "./composerPasteText";
 import { ComposerPasteNotices } from "./ComposerPasteNotices";
+// The draft's first send reaches its file handoff through the draft port.
+import "./draftFileHandoff";
 import { PastedTextChips } from "./PastedTextChips";
 import {
   pasteOver,
@@ -25,6 +28,7 @@ const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
 
 export function ComposerPaste({
   chatId,
+  draft,
   session,
   nativeAcp,
   activeTurn,
@@ -35,6 +39,8 @@ export function ComposerPaste({
   onStaged,
 }: {
   chatId: string | undefined;
+  /** The new-chat draft, which stages by its own token until a chat exists. */
+  draft?: boolean;
   session: PasteAttachability["session"];
   nativeAcp: boolean;
   activeTurn: boolean;
@@ -59,6 +65,11 @@ export function ComposerPaste({
     (message: string) => setNotice({ text, message }),
     [text],
   );
+  // The draft's slot is named by its token: a new or retargeted draft reads
+  // its own, empty slot.
+  const draftToken = useWorkbenchStore((state) =>
+    draft ? state.newChatDraft?.fileToken : undefined,
+  );
   const owner = useMemo<StagedOwner>(() => {
     const publish = (next: PastedTextState) =>
       onStaged({
@@ -67,7 +78,8 @@ export function ComposerPaste({
         settled: settled.current,
       });
     return {
-      chatId,
+      chatId: draft ? draftToken : chatId,
+      draft,
       ref,
       set(next) {
         if (!live.current) return;
@@ -81,7 +93,7 @@ export function ComposerPaste({
         publish(ref.current);
       },
     };
-  }, [chatId, onStaged]);
+  }, [chatId, draft, draftToken, onStaged]);
   // Nothing staged here may outlive this chat's composer, and a send waits
   // for this chat's batch, not the one the composer showed before.
   useEffect(() => {

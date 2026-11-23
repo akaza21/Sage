@@ -113,6 +113,8 @@ it.each(["current", "foreign"])(
         ...draft,
         targetProjectId:
           target === "current" ? state.project!.id : "another-project",
+        // A retarget starts the draft's files over in a fresh native slot.
+        fileToken: expect.not.stringMatching(draft!.fileToken!),
       },
     });
   },

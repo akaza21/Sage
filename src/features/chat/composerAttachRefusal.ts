@@ -9,6 +9,8 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 export function attachRefusal(chatId: string): string | null {
   if (!isTauriRuntime())
     return "Attaching files needs the Sage desktop app with an ACP harness.";
+  // The new-chat draft has no session to ask; its send checks the harness.
+  if (!chatId) return null;
   const page = acpProjectionStoreFor(chatId).getState().page;
   const session = page?.sessions.find(
     (item) => item.id === page.currentSessionId,

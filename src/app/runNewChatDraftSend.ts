@@ -21,6 +21,8 @@ export async function runNewChatDraftSend(
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
   /** The draft's image handoff, registered with its first image. */
   uploadDraftImages?: (chatId?: string) => Promise<void>,
+  /** The draft's file handoff, registered with its staging part. */
+  handOffDraftFiles?: (chatId?: string) => Promise<string | undefined>,
 ) {
   let creation = attempt.submission.creation;
   let opening = false;
@@ -146,6 +148,8 @@ export async function runNewChatDraftSend(
     // All the images move into the created chat's composer, or none, before
     // the prompt does; a first send that is then cancelled keeps them there.
     await uploadDraftImages?.(chatId);
+    // The staged files move natively the same way, whole or not at all.
+    const staged = await handOffDraftFiles?.(chatId);
     const { state, draft } = current();
     const owner = state.captureChatOwnership(chatId, draft.id);
     // Leaving the chat cancels its send; the handoff then completes unsent.
@@ -185,13 +189,16 @@ export async function runNewChatDraftSend(
               projectId: owner.projectId,
               chatId,
               text: draft.text,
+              ...(staged && { staged: { revision: staged } }),
             }
           : null,
     });
     return { submission: creation, error: "" };
   } catch (error) {
-    // All or nothing: a failed handoff takes the images back out of the chat.
+    // All or nothing: a failed handoff takes the images and files back out of
+    // the chat before the draft is shown again and reads its files.
     void uploadDraftImages?.();
+    await handOffDraftFiles?.();
     // Opening the chat moved the center to it; unless the user navigated
     // since, a failed handoff returns to the draft that still holds the prompt.
     if (
