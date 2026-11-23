@@ -148,6 +148,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         crate::acp::attached_context::files::commands::hand_off_prompt_files,
         crate::acp::attached_context::files::commands::release_draft_prompt_files,
         commands::acp::slash_commands::list_acp_commands,
+        commands::acp::slash_commands::refresh_acp_commands,
         commands::acp::slash_commands::run_acp_command,
         commands::acp::usage::get_acp_usage,
         commands::acp::background_terminals::get_background_terminals,

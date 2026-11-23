@@ -208,6 +208,9 @@ pub(crate) fn write_config<A: HarnessAdapter>(
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    pub(crate) fn request_command_refresh(&self) {
+        self.adapter.available_commands().request_refresh();
+    }
     pub(crate) fn poll_title(
         &mut self,
         cancel: bool,
@@ -313,6 +316,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 }
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn request_command_refresh(&self) {
+        self.adapter.available_commands().request_refresh();
+    }
     pub(crate) fn hydrate_model_config(&mut self, transport: &mut impl EgressTransport) {
         hydrate_model_config(&mut self.adapter, transport);
         if self.idle_decoder.is_frame_aligned() {
