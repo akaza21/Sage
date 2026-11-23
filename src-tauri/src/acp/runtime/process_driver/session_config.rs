@@ -14,6 +14,9 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    pub(crate) fn request_command_refresh(&self) {
+        self.pump.request_command_refresh();
+    }
     pub(crate) fn begin_configure_session(
         &mut self,
         intent: &ConfigIntent,
@@ -47,6 +50,7 @@ where
             return Err(HostError::Intent);
         }
         match &intent.request {
+            crate::acp::goal::NativeRpcRequest::RefreshCommands => Err(HostError::State),
             crate::acp::goal::NativeRpcRequest::Goal(action) => {
                 self.pump.write_goal(&mut self.transport, action.clone())
             }

@@ -135,6 +135,10 @@ pub(crate) trait HarnessAdapter {
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
+    /// Re-read the harness catalog; bindings use their existing request accounting.
+    fn refresh_commands(&mut self) -> AdapterOptionalEgress {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         crate::acp::slash_commands::CommandState::unsupported()
     }
