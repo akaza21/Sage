@@ -71,10 +71,8 @@ impl PiTranslator {
         ) {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
-        // Pi echoes prompts and steers as user messages; Sage already shows
-        // those. An extension's injected user turn has no reliable marker yet.
         if role == "user" {
-            return Ok(vec![AdapterOutput::Absorbed]);
+            return self.user_echo(message);
         }
         if role != "custom" {
             return self.unknown_event("message_role");

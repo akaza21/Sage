@@ -141,6 +141,7 @@ impl PiTranslator {
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
             extension_messages: 0,
+            injected_user_messages: Default::default(),
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),
@@ -177,6 +178,7 @@ impl PiTranslator {
         }) {
             return Err(AdapterError::StaleIntent);
         }
+        self.settle_injected(Some(&message));
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
         self.one(PendingKind::Steer, fields)

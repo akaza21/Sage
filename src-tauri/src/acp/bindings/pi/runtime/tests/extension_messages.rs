@@ -107,13 +107,125 @@ fn extension_message_roles_are_visible_hidden_or_unsupported_without_losing_the_
             .events(),
         [AdapterEvent::Unsupported(_)]
     ));
-    // Pi's user messages, its prompt echo or an injected turn, stay as on main.
+    // Without a bridge marker, Pi's user message echoes stay absorbed.
     for text in ["Inspect read-only", "Extension request"] {
         assert!(matches!(
             runtime.ingest(&user(text), &Mapper).unwrap().events(),
             [AdapterEvent::Absorbed]
         ));
     }
+}
+
+fn status(key: &str, body: Value) -> Frame {
+    frame(
+        json!({"type":"extension_ui_request","id":"status-1","method":"setStatus",
+        "statusKey":key,"statusText":body.to_string()}),
+    )
+}
+
+#[test]
+fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_repeat() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let page = runtime
+        .command(AdapterCommand::ModelPage { cursor: None })
+        .unwrap();
+    let page = deliver(&mut runtime, page);
+    let models = json!({"models":[{"provider":"openai","id":"gpt","name":"GPT"},
+        {"provider":"anthropic","id":"claude","name":"Claude"}]});
+    runtime.ingest(&response(&page, models), &Mapper).unwrap();
+    let model = |provider: &str, id: &str| {
+        status(
+            "sage.pi.model.v1",
+            json!({"version":1,"provider":provider,"id":id}),
+        )
+    };
+    let config = |runtime: &PiRuntime| serde_json::to_value(runtime.session_config()).unwrap();
+    // Pi reports Sage's own switch too; the model in place keeps its level.
+    let before = config(&runtime);
+    assert_eq!(before["configOptions"][1]["currentValue"], "high");
+    let batch = runtime.ingest(&model("openai", "gpt"), &Mapper).unwrap();
+    assert!(batch.events().is_empty() && batch.egress().is_empty());
+    assert_eq!(config(&runtime), before);
+    runtime
+        .ingest(&model("anthropic", "claude"), &Mapper)
+        .unwrap();
+    let after = config(&runtime);
+    assert_eq!(
+        after["configOptions"][0]["currentValue"],
+        "anthropic:claude"
+    );
+    // A model outside the catalogue is read with the next prompt.
+    runtime
+        .ingest(&model("router", "virtual"), &Mapper)
+        .unwrap();
+    assert_eq!(config(&runtime), after);
+    assert!(runtime.configuration_dirty);
+}
+
+#[test]
+fn an_extension_sent_user_message_shows_once_per_marker_and_sages_echo_stays_absorbed() {
+    use sha2::{Digest, Sha256};
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let marker = |runtime: &mut PiRuntime, text: &str| {
+        let digest: String = Sha256::digest(text.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let body = json!({"version":1,"digest":digest});
+        let batch = runtime
+            .ingest(&status("sage.pi.user.v1", body), &Mapper)
+            .unwrap();
+        assert!(batch.events().is_empty());
+    };
+    let shown = |runtime: &mut PiRuntime, text: &str| {
+        let batch = runtime.ingest(&user(text), &Mapper).unwrap();
+        match batch.events() {
+            [
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::UserPrompt { text: shown },
+                    ..
+                },
+            ] => {
+                assert_eq!(shown.as_str(), text);
+                true
+            }
+            [AdapterEvent::Absorbed] => false,
+            events => panic!("{events:?}"),
+        }
+    };
+    assert!(!shown(&mut runtime, "Inspect read-only"));
+    // One text sent twice is two markers: two turns, then Sage's own echo.
+    marker(&mut runtime, "Again");
+    marker(&mut runtime, "Again");
+    assert!(shown(&mut runtime, "Again"));
+    assert!(shown(&mut runtime, "Again"));
+    assert!(!shown(&mut runtime, "Again"));
+    // Past the per-turn cap the oldest marker is dropped.
+    for index in 0..9 {
+        marker(&mut runtime, &format!("queued {index}"));
+    }
+    assert!(!shown(&mut runtime, "queued 0"));
+    assert!(shown(&mut runtime, "queued 8"));
+    assert!(shown(&mut runtime, "queued 1"));
+    // A marker whose message never came (another input handler swallowed
+    // it) does not claim Sage's own steer of the same text.
+    marker(&mut runtime, "Use the cache");
+    let steer = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "Use the cache").unwrap(),
+            client_message_id: RequiredText::new("client", "steer").unwrap(),
+        })
+        .unwrap();
+    deliver(&mut runtime, steer);
+    assert!(!shown(&mut runtime, "Use the cache"));
+    // Pi ends the run only once both queues drain, so what is left is stale.
+    runtime
+        .ingest(&frame(json!({"type":"agent_end","messages":[]})), &Mapper)
+        .unwrap();
+    assert!(!shown(&mut runtime, "queued 2"));
 }
 
 #[test]
