@@ -127,6 +127,22 @@ export default function sageBridge(pi) {
   pi.on("session_shutdown", (_event, ctx) => {
     ctx.ui.setStatus("sage.pi.ready.v1", undefined);
   });
+  // Any model change, including an extension's pi.setModel or a virtual
+  // model's switch, so Sage's model chip follows without a prompt.
+  pi.on("model_select", (event, ctx) => {
+    const { provider, id } = event.model;
+    ctx.ui.setStatus(
+      "sage.pi.model.v1",
+      JSON.stringify({ version: 1, provider, id }),
+    );
+  });
+  // Pi's echo of a user message does not say who sent it. Mark each one an
+  // extension sends, by digest, so Sage shows that echo once.
+  pi.on("input", (event, ctx) => {
+    if (event.source !== "extension" || !event.text) return;
+    const digest = createHash("sha256").update(event.text).digest("hex");
+    ctx.ui.setStatus("sage.pi.user.v1", JSON.stringify({ version: 1, digest }));
+  });
   pi.on("tool_call", async (event, ctx) => {
     const tool = pi.getAllTools().find((tool) => tool.name === event.toolName);
     if (

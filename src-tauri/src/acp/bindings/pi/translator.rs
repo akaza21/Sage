@@ -102,6 +102,8 @@ impl PendingKind {
 struct ActiveTurn {
     /// Extension messages shown this turn; later ones are hidden.
     extension_messages: u8,
+    /// Digests of extension-sent user messages whose echo is still due.
+    injected_user_messages: VecDeque<[u8; 32]>,
     turn_key: String,
     prompt_command_id: String,
     lifecycle: TurnLifecycle,
