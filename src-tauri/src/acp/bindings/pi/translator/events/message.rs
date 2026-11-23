@@ -79,6 +79,9 @@ impl PiTranslator {
         if role != "custom" {
             return self.unknown_event("message_role");
         }
+        let Some(label) = message["customType"].as_str() else {
+            return self.unknown_event("custom_message_without_type");
+        };
         let turn = self.live_turn_any_phase()?;
         if turn.extension_messages > EXTENSION_MESSAGES_PER_TURN {
             return Ok(vec![AdapterOutput::Absorbed]);
@@ -98,9 +101,6 @@ impl PiTranslator {
                 },
             )]);
         }
-        let Some(label) = message["customType"].as_str() else {
-            return self.unknown_event("custom_message_without_type");
-        };
         let mut unsupported = false;
         let text = match &message["content"] {
             Value::String(text) => text.clone(),

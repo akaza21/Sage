@@ -5,6 +5,30 @@ import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
 afterEach(cleanup);
 
+it("dismissing the adapter fallback keeps the compatibility warning", () => {
+  const fallbackHarness = {
+    ...harness,
+    runsVersion: "2.1.257",
+    directFromVersion: "2.1.300",
+  };
+  const { rerender } = render(
+    <HarnessDiscoveryNotice harness={fallbackHarness} />,
+  );
+  const warning = screen.getByText(/hasn't been tested/).closest(".notice");
+  expect(warning).toHaveClass("notice--warning");
+  expect(screen.getByText(/bundled with its adapter/)).toBeVisible();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Dismiss adapter notice" }),
+  );
+  expect(screen.queryByText(/bundled with its adapter/)).toBeNull();
+  expect(warning).toBeVisible();
+  rerender(<HarnessDiscoveryNotice harness={{ ...fallbackHarness }} />);
+  expect(screen.queryByText(/bundled with its adapter/)).toBeNull();
+  expect(screen.getByText(/hasn't been tested/).closest(".notice")).toHaveClass(
+    "notice--warning",
+  );
+});
+
 it("separates compatibility warning from update information", () => {
   render(<HarnessDiscoveryNotice harness={{ ...harness, update }} />);
   const compatibility = screen

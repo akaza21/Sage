@@ -158,4 +158,42 @@ fn the_runner_sees_no_npm_call_once_checking_is_off() {
         None
     );
     assert_eq!(calls.borrow().len(), 1);
+
+    // Turning the switch off and back on during the first lookup must not
+    // let that check continue with the next package in the old epoch.
+    let catalog = crate::harnesses::HarnessCatalog::default();
+    let epoch = catalog.begin_update_check(&["codex", "pi"]).unwrap();
+    switch.set(true);
+    let current = || switch.get() && catalog.update_check_current(epoch);
+    let run_then_toggle = |node: &Path, args: &[&OsStr], dir: &Path| {
+        switch.set(false);
+        catalog.forget_published_releases();
+        switch.set(true);
+        run(node, args, dir)
+    };
+    assert_eq!(
+        lookup_releases(&sources, &current, npm, &run_then_toggle),
+        None
+    );
+    let epoch = catalog.begin_update_check(&["codex", "pi"]).unwrap();
+    let current = || switch.get() && catalog.update_check_current(epoch);
+    let found = lookup_releases(&sources, &current, npm, &run).unwrap();
+    assert_eq!(
+        found,
+        [
+            PublishedRelease {
+                harness_id: "codex",
+                version: "0.168.0".into(),
+                command: "npm install -g @openai/codex@latest".into()
+            },
+            PublishedRelease {
+                harness_id: "pi",
+                version: "0.168.0".into(),
+                command: format!(
+                    "npm install -g {}@latest",
+                    crate::acp::bindings::pi::PI_PACKAGE
+                )
+            },
+        ]
+    );
 }

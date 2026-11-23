@@ -32,16 +32,16 @@ import { useComposerPaste } from "./useComposerPaste";
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden,
+    hidden = false,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId,
+    sessionId = null,
     project,
-    newChat,
+    newChat = false,
     usage,
     onCompact,
     descriptionId,
@@ -52,7 +52,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked,
+    sendBlocked = false,
     actionBusy,
     activeTurn,
     queueAvailable,
