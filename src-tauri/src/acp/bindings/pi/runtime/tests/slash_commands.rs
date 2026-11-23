@@ -180,7 +180,10 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
             )
             .unwrap();
         let catalog = runtime.available_commands().snapshot();
-        assert_eq!(catalog.revision, turn + 1);
+        assert_eq!(
+            catalog.revision, 1,
+            "identical catalogs preserve command authority"
+        );
         catalog.validate(catalog.revision, "/review").unwrap();
         let mut prompt = Prompt::new("prompt", "/review").unwrap();
         prompt.command_revision = Some(catalog.revision);
@@ -231,6 +234,15 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     );
     let mut prompt = Prompt::new("prompt", "/review src").unwrap();
     prompt.command_revision = Some(commands.revision);
+    let refresh = runtime.refresh_commands().unwrap().unwrap();
+    let refresh = deliver(&mut runtime, refresh);
+    assert_eq!(refresh["type"], "get_commands");
+    assert!(runtime.refresh_commands().unwrap().is_none());
+    runtime.ingest(&response(&refresh, json!({"commands":[{"name":"review","description":"Review changes","source":"extension"}]})), &Mapper).unwrap();
+    assert_eq!(
+        runtime.available_commands().snapshot().revision,
+        commands.revision
+    );
     let send = runtime
         .command(AdapterCommand::Prompt {
             prompt,
