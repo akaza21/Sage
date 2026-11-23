@@ -12,12 +12,12 @@
       "editorFile": 289989
     },
     "webTotalJsGzipBytes": 460850,
-    "webTerminalLazyJsGzipBytes": 89516,
+    "webTerminalLazyJsGzipBytes": 89916,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 4804,
+        "maxGzipBytes": 4904,
         "maxCssGzipBytes": 550,
         "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
       },
@@ -539,7 +539,7 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 7256,
+        "maxGzipBytes": 6756,
         "maxCssGzipBytes": 800,
         "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B went to T6, 300 B moved to ConversationActions (T11d)."
       },
