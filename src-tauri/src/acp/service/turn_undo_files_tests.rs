@@ -177,8 +177,7 @@ impl Written {
     /// Recording the staged undo takes the turn off the page.
     fn cut(&self, command: &TurnUndoneCommand) {
         let fixture = &self.history.fixture;
-        crate::acp::store::record_turn_undone(&mut fixture.database.connection(), command)
-            .unwrap();
+        crate::acp::store::record_turn_undone(&mut fixture.database.connection(), command).unwrap();
         assert!(fixture.page_turns().is_empty());
     }
 

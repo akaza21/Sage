@@ -69,9 +69,11 @@ impl AcpService {
             self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
         match control(native) {
             Ok(NativeRpcReply::Controlled(summary)) => Ok((command, summary, false)),
-            Ok(_) => {
-                Err(self.abandon_staged(owner, &command, SessionControlError::RecoveryRequired(None)))
-            }
+            Ok(_) => Err(self.abandon_staged(
+                owner,
+                &command,
+                SessionControlError::RecoveryRequired(None),
+            )),
             Err(error) => Err(self.abandon_staged(owner, &command, error)),
         }
     }
