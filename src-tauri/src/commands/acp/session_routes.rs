@@ -32,7 +32,7 @@ pub(crate) async fn start_acp_session_inner(
         .map_err(|_| binding_unavailable())?;
     let project_root = admitted
         .project_root(&state.database, &transition)
-        .map_err(|_| root_unavailable())?;
+        .map_err(|error| project_root_error(error, root_unavailable))?;
     // A thinking level chosen before the session existed starts the session
     // only when this binding lists it for the chosen model; no `effort` is
     // the harness's default. A level the binding does not list, or one it
@@ -131,7 +131,7 @@ pub(crate) async fn activate_acp_session_inner(
         .map_err(|_| binding_unavailable())?;
     let project_root = admitted
         .project_root(&state.database, &transition)
-        .map_err(errors::project_root_error)?;
+        .map_err(|error| project_root_error(error, binding_unavailable))?;
     // The session takes over the chat's access before it runs; one the
     // activation goes on in instead (a resume on a later harness release
     // links a new session) takes it once activated. A read of either's
@@ -188,6 +188,24 @@ fn effort_not_offered() -> AcpIpcError {
         message: safe_message(
             "The chosen thinking level is not offered for this model any more. Choose another level, then send.",
         ),
+    }
+}
+
+/// A missing, moved or changed project folder is a launch step the chat
+/// names; any other refusal keeps the route's own error.
+pub(super) fn project_root_error(
+    error: crate::project_registry::ProjectRootAcquisitionError,
+    otherwise: fn() -> AcpIpcError,
+) -> AcpIpcError {
+    use crate::acp::service::{CodexLaunchSetupError, CodexSessionError};
+    use crate::project_registry::ProjectRootAcquisitionError;
+
+    tracing::warn!(?error, "ACP project root acquisition failed");
+    match error {
+        ProjectRootAcquisitionError::Folder(_) => session_error(CodexSessionError::LaunchSetup(
+            CodexLaunchSetupError::ProjectRoot,
+        )),
+        ProjectRootAcquisitionError::Intent(_) => otherwise(),
     }
 }
 

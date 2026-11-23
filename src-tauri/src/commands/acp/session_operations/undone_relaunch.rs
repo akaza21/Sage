@@ -39,7 +39,7 @@ pub(super) async fn relaunch_undone(
         .map_err(|_| binding_unavailable())?;
     let project_root = admitted
         .project_root(&state.database, transition)
-        .map_err(errors::project_root_error)?;
+        .map_err(|error| session_routes::project_root_error(error, binding_unavailable))?;
     let relaunched = state
         .acp
         .relaunch_without_undone_turn(admitted, &owner, *project_generation, project_root)

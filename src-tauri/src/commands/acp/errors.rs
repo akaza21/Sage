@@ -8,21 +8,6 @@ use crate::acp::{
 use sage_acp_protocol::{contract::SafeText, page_admission::PageAdmissionError};
 use sage_process::error::LaunchError;
 
-pub(super) fn project_root_error(
-    error: crate::project_registry::ProjectRootAcquisitionError,
-) -> AcpIpcError {
-    use crate::acp::service::{CodexLaunchSetupError, CodexSessionError};
-    use crate::project_registry::ProjectRootAcquisitionError;
-
-    tracing::warn!(?error, "ACP project root acquisition failed");
-    session_error(match error {
-        ProjectRootAcquisitionError::Folder(_) => {
-            CodexSessionError::LaunchSetup(CodexLaunchSetupError::ProjectRoot)
-        }
-        ProjectRootAcquisitionError::Intent(_) => CodexSessionError::Intent,
-    })
-}
-
 pub(super) fn dispatch_error(error: crate::acp::service::SessionDispatchError) -> AcpIpcError {
     match error {
         crate::acp::service::SessionDispatchError::Binding => binding_unavailable(),
