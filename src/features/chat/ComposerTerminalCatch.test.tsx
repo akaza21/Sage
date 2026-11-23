@@ -20,6 +20,9 @@ import {
   type AcpActionCommands,
 } from "./acp/acpActionController";
 import { ComposerTerminalCatch } from "./ComposerTerminalCatch";
+// The send path loads these lazily; load them up front so no test waits on a cold import.
+import "./ComposerSlashController";
+import "./ComposerCommandRuntime";
 
 afterEach(cleanup);
 
