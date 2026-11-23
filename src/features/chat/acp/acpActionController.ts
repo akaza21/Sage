@@ -9,6 +9,7 @@ import type {
   ProjectGeneration,
   SageTurnId,
   SendAcpTurnRequest,
+  StagedSelection,
 } from "../../../domain/acp";
 import type {
   AcpProjectionScope,
@@ -21,7 +22,7 @@ import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
-import type { SlashCommandPort, SubmitOptions } from "../slashCommandTurn";
+import type { FirstCommandHold, SlashCommandPort } from "../slashCommandTurn";
 import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
@@ -224,7 +225,9 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
-    { staged, firstCommand }: SubmitOptions = {},
+    staged?: StagedSelection,
+    // A new chat's first send naming a curated built-in command.
+    firstCommand?: FirstCommandHold,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();

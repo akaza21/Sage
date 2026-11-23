@@ -214,7 +214,8 @@ export function FirstChatSend({
           harness.bindingId as CuratedBindingId,
           (entry.modelId ?? null) as CuratedModelId | null,
           // Files the draft handed over go with this first turn only.
-          { staged: pending.staged, firstCommand },
+          pending.staged,
+          firstCommand,
         ),
       );
     }

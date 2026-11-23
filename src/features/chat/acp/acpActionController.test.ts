@@ -221,9 +221,7 @@ describe("ACP action controller", () => {
       }),
     );
     await expect(
-      test.controller.submit("", [], bindingId, modelId, {
-        staged: { revision: "r1" },
-      }),
+      test.controller.submit("", [], bindingId, modelId, { revision: "r1" }),
     ).resolves.toBe("rejected");
     expect(test.commands.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -244,9 +242,7 @@ describe("ACP action controller", () => {
       vi.mocked(test.commands.sendTurn).mock.calls[0][0],
     ).not.toHaveProperty("staged");
     const retryOf = "turn-1" as SageTurnId;
-    await test.controller.submit("Again", [], bindingId, modelId, {
-      staged: { retryOf },
-    });
+    await test.controller.submit("Again", [], bindingId, modelId, { retryOf });
     expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({ prompt: "Again", staged: { retryOf } }),
     );

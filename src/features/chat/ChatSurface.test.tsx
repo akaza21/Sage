@@ -1046,7 +1046,7 @@ describe("ChatSurface ACP resource integration", () => {
       [],
       "codex-app-server",
       null,
-      { staged: { retryOf: base.turns[0].id } },
+      { retryOf: base.turns[0].id },
     );
   });
 

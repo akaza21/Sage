@@ -90,7 +90,7 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-      options?: { staged: { revision: string } },
+      staged?: { revision: string },
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -305,7 +305,7 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
-          ...(stagedRevision ? [{ staged: { revision: stagedRevision } }] : []),
+          ...(stagedRevision ? [{ revision: stagedRevision }] : []),
         );
         return;
       }

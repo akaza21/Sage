@@ -189,9 +189,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     if (retry!.action) return void acpActions.runSessionAction(retry!.action);
     // Retry resends what that turn carried, never the next one's paste.
     const { prompt, bindingId, modelId, turnId } = retry!;
-    void acpActions.submit(prompt, [], bindingId, modelId, {
-      staged: { retryOf: turnId },
-    });
+    void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
   useTerminalTurnFocus({
