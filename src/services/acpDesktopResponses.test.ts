@@ -581,9 +581,34 @@ describe("safeAcpMutationResponse", () => {
         ],
       }),
     );
-    expect(response?.projection.turns[0].items[0].kind).toBe(
-      "compactionNotice",
-    );
+    expect(response?.projection.turns[0].items[0]).toMatchObject({
+      kind: "compactionNotice",
+      toolState: null,
+      payload: {},
+    });
+    for (const overrides of [
+      { payload: { text: "unexpected" } },
+      { toolState: "completed" },
+    ]) {
+      expect(
+        safeAcpMutationResponse(
+          mutation({
+            turns: [
+              turn({
+                items: [
+                  item(0, {
+                    kind: "compactionNotice",
+                    toolState: null,
+                    payload: {},
+                    ...overrides,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ),
+      ).toBeNull();
+    }
   });
 
   it("admits a file-change payload at the 32-change bound", () => {

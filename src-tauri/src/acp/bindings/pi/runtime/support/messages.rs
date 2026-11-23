@@ -16,10 +16,6 @@ impl PiRuntime {
         state: StateSnapshot,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let model = state.model.as_ref().map(identity::model_key).transpose()?;
-        if model == self.current_model && !self.configuration_dirty {
-            // Unchanged: the prompt's ordinary state read.
-            return self.state_reply(state);
-        }
         self.refresh_thinking_after_model = true;
         self.current_model = model;
         self.current_thinking = state.thinking_level;

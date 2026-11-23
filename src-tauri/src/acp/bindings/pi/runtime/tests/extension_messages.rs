@@ -121,6 +121,16 @@ fn extension_messages_past_the_turn_cap_add_one_notice_and_then_nothing() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
     running(&mut runtime);
+    assert!(matches!(
+        runtime
+            .ingest(
+                &end(json!({"role":"custom","content":"no type","display":true})),
+                &Mapper
+            )
+            .unwrap()
+            .events(),
+        [AdapterEvent::Unsupported(_)]
+    ));
     let message =
         || end(json!({"role":"custom","customType":"loop","content":"tick","display":true}));
     for _ in 0..64 {

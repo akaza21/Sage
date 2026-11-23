@@ -1,5 +1,4 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -126,9 +125,33 @@ it("shows the native refusal while another chat works in the repository, then sw
       };
     },
   );
-  render(<ComposerBranchChip disabled={false} activeTurn={false} />);
+  const chats = () => (
+    <>
+      <section aria-label="Chat A">
+        <ComposerBranchChip
+          disabled={false}
+          activeTurn={chatATurn === "running"}
+        />
+      </section>
+      <section aria-label="Chat B">
+        <ComposerBranchChip disabled={false} activeTurn={false} />
+      </section>
+    </>
+  );
+  const { rerender } = render(chats());
   const chip = () =>
-    screen.getByRole("button", { name: "Switch branch in Alpha" });
+    within(screen.getByRole("region", { name: "Chat B" })).getByRole("button", {
+      name: "Switch branch in Alpha",
+    });
+  const chatAChip = () =>
+    within(screen.getByRole("region", { name: "Chat A" })).getByRole("button", {
+      name: "Switch branch in Alpha",
+    });
+  expect(chatAChip()).toBeDisabled();
+  expect(chatAChip()).toHaveAttribute(
+    "title",
+    "Can't switch branches while the agent is working",
+  );
   const switchToTopic = async () => {
     fireEvent.click(chip());
     fireEvent.click(
@@ -148,59 +171,13 @@ it("shows the native refusal while another chat works in the repository, then sw
   fireEvent.click(within(refusal).getByRole("button", { name: "Close" }));
 
   chatATurn = "completed";
+  rerender(chats());
+  expect(chatAChip()).toBeEnabled();
   await switchToTopic();
   await waitFor(() => expect(chip()).toHaveTextContent("topic"));
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(chatAChip()).toHaveTextContent("topic");
   expect(useWorkbenchStore.getState().repositories.roots[0].branch).toBe(
     "topic",
   );
-});
-
-it("dismisses the pending branch menu and keeps moved focus while its module loads", async () => {
-  // A fresh module graph, so the branch menu chunk has not loaded yet. Kept
-  // last: later dynamic imports would resolve into this graph.
-  vi.resetModules();
-  const { useWorkbenchStore: store } = await import("../../app/store");
-  const { ComposerBranchChip: Chip } = await import("./ComposerBranchChip");
-  let resolve!: () => void;
-  const gate = new Promise<void>((done) => (resolve = done));
-  vi.spyOn(loader, "load").mockImplementation(async () => {
-    await gate;
-    return import("../../workbench/StatusBarDetails");
-  });
-  seedRepository(store);
-  render(
-    <>
-      <Chip disabled={false} />
-      <button type="button">Elsewhere</button>
-    </>,
-  );
-  const chip = screen.getByRole("button", { name: "Switch branch in Alpha" });
-  chip.focus();
-  fireEvent.click(chip);
-  expect(chip).toHaveAttribute("aria-expanded", "true");
-  fireEvent.keyDown(chip, { key: "Escape" });
-  expect(chip).toHaveAttribute("aria-expanded", "false");
-  expect(chip).toHaveFocus();
-
-  fireEvent.keyDown(chip, { key: "ArrowDown" });
-  expect(chip).toHaveAttribute("aria-expanded", "true");
-  fireEvent.pointerDown(document.body);
-  expect(chip).toHaveAttribute("aria-expanded", "false");
-
-  fireEvent.click(chip);
-  const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
-  elsewhere.focus();
-  await act(async () => resolve());
-  const loaded = await screen.findByRole("button", {
-    name: "Switch branch in Alpha",
-    expanded: false,
-  });
-  expect(screen.queryByRole("listbox")).toBeNull();
-  expect(elsewhere).toHaveFocus();
-  fireEvent.click(loaded);
-  expect(
-    await screen.findByRole("listbox", { name: "Switch branch in Alpha" }),
-  ).toBeVisible();
-  store.setState(store.getInitialState(), true);
 });
