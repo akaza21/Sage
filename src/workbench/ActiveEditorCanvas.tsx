@@ -1,8 +1,9 @@
 import { FileCode2 } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
-import { sameResource } from "../domain/resourceIdentity";
+import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import { Notice } from "../ui/Notice";
 import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
@@ -18,21 +19,6 @@ const loadSaveAllNotice = () =>
   }));
 
 export default ActiveEditorCanvas;
-
-function repositoryMutationTitle(
-  error: NonNullable<
-    ReturnType<typeof useWorkbenchStore.getState>["repositoryMutationError"]
-  >,
-) {
-  const path = error.resource.relativePath;
-  if (error.kind === "containment") {
-    return `Source Control containment blocked ${error.action} for ${path}`;
-  }
-  if (error.kind === "effectUnknown") {
-    return `Source Control could not confirm ${error.action} for ${path}`;
-  }
-  return `Source Control could not ${error.action} ${path}`;
-}
 
 function PlaceholderSurface({ tab }: { tab: WorkbenchTab }) {
   return (
@@ -57,6 +43,9 @@ export function ActiveEditorCanvas({
   const repositoryMutationError = useWorkbenchStore(
     (state) => state.repositoryMutationError,
   );
+  const sourceControlOpen = useWorkbenchStore(
+    (state) => state.sidebarOpen && state.sidebarView === "sourceControl",
+  );
   const saveAllFailed = useWorkbenchStore(
     (state) =>
       !!state.saveAllReport &&
@@ -68,6 +57,7 @@ export function ActiveEditorCanvas({
   const contextualMutationError =
     editorTab?.resource &&
     repositoryMutationError &&
+    !sourceControlOpen &&
     sameResource(editorTab.resource, repositoryMutationError.resource)
       ? repositoryMutationError
       : null;
@@ -77,12 +67,23 @@ export function ActiveEditorCanvas({
     (!activeTab || activeTab.kind === "chat" || activeTab.kind === "browser");
 
   return (
-    <div className="active-canvas" role="tabpanel">
+    <div
+      className={`active-canvas${contextualMutationError || saveAllFailed ? " active-canvas--noticed" : ""}`}
+      role="tabpanel"
+    >
       {contextualMutationError ? (
-        <div className="repository-mutation-alert" role="alert">
-          <strong>{repositoryMutationTitle(contextualMutationError)}</strong>
-          <span>{contextualMutationError.message}</span>
-        </div>
+        // Source Control owns the explanation, even for a filtered-out
+        // repository; the editor only points there.
+        <Notice
+          identity={`repository-mutation-link:${resourceKey(contextualMutationError.resource)}`}
+          severity="warning"
+          message="Source Control has a problem with this file."
+          action={{
+            label: "Show in Source Control",
+            onClick: () =>
+              useWorkbenchStore.getState().setSidebarView("sourceControl"),
+          }}
+        />
       ) : null}
       {saveAllFailed ? (
         <LazyModuleBoundary

@@ -499,9 +499,10 @@ it("stops a smart commit when staging fails and keeps the message for recovery",
   fireEvent.change(message, { target: { value: "Keep this message" } });
   fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Yes" }));
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent("The index is locked."),
-  );
+  const failure = await screen.findByRole("alert");
+  expect(failure).toHaveTextContent("Source Control could not");
+  fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
+  expect(failure).toHaveTextContent("The index is locked.");
   expect(message).toHaveValue("Keep this message");
   expect(useWorkbenchStore.getState().repositories.roots[0].changes).toEqual(
     root.changes,

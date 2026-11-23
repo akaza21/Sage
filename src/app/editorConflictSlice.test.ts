@@ -5,13 +5,15 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
-import FileConflictNotice from "../features/files/FileConflictNotice";
+import type { EditorDocument } from "../domain/workbench";
+import { FileEditorNotices } from "../features/files/FileEditorNotices";
 import { SaveAllNotice } from "../features/files/SaveAllNotice";
 import { applyEditorExternalWatchNotice } from "../features/files/editorExternalWatch";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -38,6 +40,27 @@ import { useWorkbenchStore } from "./store";
 // disk has moved on.
 const editor = getWorkbenchPorts().editor;
 const store = () => useWorkbenchStore.getState();
+
+function ActiveFileNotices({
+  document,
+  editable,
+}: {
+  document: EditorDocument;
+  editable: boolean;
+}) {
+  const active = useWorkbenchStore((state) => state.activeEditor);
+  const ready = active?.phase === "ready" ? active : null;
+  return createElement(FileEditorNotices, {
+    editor: {
+      document,
+      message: ready?.message ?? null,
+      details: ready?.details,
+      unstored: ready?.unstored,
+      failure: ready?.failure,
+    },
+    editable,
+  });
+}
 const bridge = storeEditorBridge(
   useWorkbenchStore.setState,
   useWorkbenchStore.getState,
@@ -125,6 +148,110 @@ afterEach(() => {
   resetBrowserDesktopForTests();
 });
 
+it.each(["reload", "discard"] as const)(
+  "keeps rejected %s diagnostics bounded and behind Details beside the conflict",
+  async (action) => {
+    const resource = nextFile();
+    openTabs(resource);
+    await edit(resource, "// keep my edits");
+    await store().flushActiveEditor();
+    await changeOnDisk(resource, "// changed elsewhere");
+    const raw =
+      "filesystem operation failed: The process cannot access the file because it is being used by another process. (os error 32) " +
+      "diagnostic ".repeat(200);
+    vi.spyOn(editor, "discardEditorBuffer").mockRejectedValue(new Error(raw));
+    render(
+      createElement(ActiveFileNotices, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    const conflict = await screen.findByRole("group", {
+      name: "External change",
+    });
+    if (action === "reload") {
+      fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    } else {
+      await act(async () => {
+        expect(await store().discardActiveEditor()).toBe(false);
+      });
+    }
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent(
+      action === "reload"
+        ? "Could not reload this file."
+        : "Could not discard changes.",
+    );
+    expect(failure).not.toHaveTextContent("filesystem operation failed");
+    expect(conflict).toHaveTextContent("This file changed outside Sage.");
+    expect(readyEditor().content).toBe("// keep my edits");
+    expect(readyEditor().details).toBe(raw.slice(0, 1024));
+    expect(store().error).not.toContain("filesystem operation failed");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const details = failure.querySelector(".notice__details");
+    expect(details?.textContent).toBe(raw.slice(0, 1024));
+    expect(details).toHaveAttribute("aria-live", "off");
+    act(() => store().updateEditorContent("// next edit"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(readyEditor().details).toBeUndefined();
+  },
+);
+
+it("announces each failed operation afresh, with its own Details closed", async () => {
+  const resource = nextFile();
+  openTabs(resource);
+  await edit(resource, "// mine");
+  await store().flushActiveEditor();
+  await changeOnDisk(resource, "// theirs");
+  vi.spyOn(editor, "rebaseEditorBuffer").mockRejectedValue(
+    new Error("keep diagnostic (os error 32)"),
+  );
+  vi.spyOn(editor, "discardEditorBuffer")
+    .mockRejectedValueOnce(new Error("reload diagnostic (os error 32)"))
+    .mockRejectedValueOnce(new Error("retry diagnostic (os error 32)"));
+  render(
+    createElement(ActiveFileNotices, {
+      document: readyEditor().document,
+      editable: true,
+    }),
+  );
+  const banner = await screen.findByRole("group", { name: "External change" });
+  const failure = async (sentence: string) =>
+    (await screen.findByText(sentence)).closest<HTMLElement>(
+      "[data-notice-identity]",
+    )!;
+  // Announced, collapsed, and opening Details shows this failure's diagnostic.
+  const expectNew = (notice: HTMLElement, diagnostic: string) => {
+    expect(notice).toHaveAttribute("role", "alert");
+    expect(notice).toHaveAttribute("aria-live", "assertive");
+    const toggle = within(notice).getByRole("button", { name: "Details" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(notice.querySelector(".notice__details")).toBeNull();
+    fireEvent.click(toggle);
+    expect(notice.querySelector(".notice__details")?.textContent).toBe(
+      diagnostic,
+    );
+  };
+
+  fireEvent.click(within(banner).getByRole("button", { name: "Keep mine" }));
+  const kept = await failure("Couldn't keep your version.");
+  expectNew(kept, "keep diagnostic (os error 32)");
+
+  fireEvent.click(within(banner).getByRole("button", { name: "Reload" }));
+  const reloaded = await failure("Could not reload this file.");
+  expect(reloaded).not.toBe(kept);
+  expect(kept).not.toBeInTheDocument();
+  expectNew(reloaded, "reload diagnostic (os error 32)");
+
+  // A retry that fails again is a new failure as well.
+  fireEvent.click(within(banner).getByRole("button", { name: "Reload" }));
+  await waitFor(() => expect(reloaded).not.toBeInTheDocument());
+  const retried = await failure("Could not reload this file.");
+  expectNew(retried, "retry diagnostic (os error 32)");
+  expect(screen.getAllByRole("alert")).toEqual([retried]);
+  expect(readyEditor().content).toBe("// mine");
+});
+
 describe("a File that changed on disk under unsaved edits", () => {
   it("Reload replaces the buffer with the File on disk", async () => {
     const file = nextFile();
@@ -191,25 +318,76 @@ describe("a File that changed on disk under unsaved edits", () => {
       snapshot.mockRestore();
     }
 
-    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(readyEditor()).toMatchObject({
+      content: "mine\n",
+      message: null,
+      unstored: "the disk is full",
+    });
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(readyEditor().message).toBe("Couldn't save: the disk is full.");
     expect(readyEditor().revision).toBeGreaterThan(
       readyEditor().persistedRevision,
     );
     render(
-      createElement(FileConflictNotice, {
+      createElement(ActiveFileNotices, {
         document: readyEditor().document,
         editable: true,
       }),
     );
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Your unsaved changes are not yet stored. Couldn't save: the disk is full.",
+    // Two problems, each said once: the disk change warns, the lost copy alerts.
+    const conflict = await screen.findByRole("group", {
+      name: "External change",
+    });
+    expect(conflict).toHaveTextContent("This file changed outside Sage.");
+    const [recovery, ...rest] = screen.getAllByRole("alert");
+    expect(rest).toEqual([]);
+    expect(recovery).toHaveTextContent(
+      "Your unsaved changes could not be stored for recovery.",
+    );
+    expect(screen.queryByText(/the disk is full/)).toBeNull();
+    cleanup();
+  });
+
+  it("still warns that edits are unprotected when disk moved on before the first copy", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    const snapshot = vi
+      .spyOn(editor, "snapshotEditorBuffer")
+      .mockRejectedValue(
+        new Error(
+          "invalid request: snapshot base no longer matches disk and no durable buffer exists",
+        ),
+      );
+    try {
+      await changeOnDisk(file, "theirs\n");
+      expect(snapshot).toHaveBeenCalled();
+    } finally {
+      snapshot.mockRestore();
+    }
+
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    // No durable buffer exists, so the edits live only in this window.
+    expect(readyEditor()).toMatchObject({ content: "mine\n", message: null });
+    expect(readyEditor().unstored).toMatch(/no durable buffer exists/);
+    const { container } = render(
+      createElement(ActiveFileNotices, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    await screen.findByRole("group", { name: "External change" });
+    expect(
+      [...container.querySelectorAll("[data-notice-identity]")].map(
+        (node) => node.getAttribute("data-notice-identity")?.split(":")[0],
+      ),
+    ).toEqual(["file-conflict", "file-recovery"]);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Your unsaved changes could not be stored for recovery.",
     );
     cleanup();
   });
 
-  it("names a refused save plainly and says so when disk then changes", async () => {
+  it("names a refused save plainly, then lets the disk change explain itself", async () => {
     const file = nextFile();
     openTabs(file);
     await edit(file, "mine\n");
@@ -230,21 +408,35 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(readyEditor().message).toBe(refused);
     expect(store().error).toBe(refused);
     expect(tabOf(file).dirty).toBe(true);
+    render(
+      createElement(ActiveFileNotices, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(refused);
+    cleanup();
 
     store().updateEditorContent("mine, more\n");
     await changeOnDisk(file, "theirs\n");
 
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(readyEditor()).toMatchObject({ content: "mine, more\n" });
-    render(
-      createElement(FileConflictNotice, {
+    expect(readyEditor()).toMatchObject({
+      content: "mine, more\n",
+      message: null,
+    });
+    expect(readyEditor().unstored).toBeUndefined();
+    const { container } = render(
+      createElement(ActiveFileNotices, {
         document: readyEditor().document,
         editable: true,
       }),
     );
-    expect(screen.getByRole("alert").textContent).toContain(
-      `Your unsaved changes are not yet stored. ${refused}`,
+    await screen.findByRole("group", { name: "External change" });
+    expect(container.querySelectorAll("[data-notice-identity]")).toHaveLength(
+      1,
     );
+    expect(screen.queryByText(refused)).toBeNull();
     cleanup();
     expect(await diskText(file)).toBe("theirs\n");
   });
@@ -316,12 +508,14 @@ describe("a File that changed on disk under unsaved edits", () => {
       expect(readyEditor().document.conflict?.kind).toBe("deleted");
       expect(tabOf(file).status).toBe("failed");
       render(
-        createElement(FileConflictNotice, {
+        createElement(ActiveFileNotices, {
           document: readyEditor().document,
           editable: true,
         }),
       );
-      expect(screen.getByRole("alert").textContent).toContain("File deleted.");
+      expect(
+        await screen.findByText("This file was deleted outside Sage."),
+      ).toBeVisible();
       expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
       cleanup();
@@ -366,7 +560,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(store().error).toBe(failed);
     expect(readyEditor()).toMatchObject({ saving: false, content: "mine\n" });
     render(
-      createElement(FileConflictNotice, {
+      createElement(ActiveFileNotices, {
         document: readyEditor().document,
         editable: true,
       }),
@@ -374,8 +568,10 @@ describe("a File that changed on disk under unsaved edits", () => {
     const alerts = screen
       .getAllByRole("alert")
       .map((alert) => alert.textContent);
-    expect(alerts).toContain(failed);
-    expect(alerts.some((text) => text?.includes("External change"))).toBe(true);
+    expect(alerts.some((text) => text?.includes(failed))).toBe(true);
+    expect(
+      await screen.findByText("This file changed outside Sage."),
+    ).toBeVisible();
     cleanup();
   });
 
@@ -461,13 +657,13 @@ describe("a File that changed on disk under unsaved edits", () => {
     await changeOnDisk(file, "theirs\n");
     browserEditor.changeOnDisk(file, null);
     render(
-      createElement(FileConflictNotice, {
+      createElement(ActiveFileNotices, {
         document: readyEditor().document,
         editable: true,
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
       expect(readyEditor().document.conflict?.kind).toBe("deleted"),
@@ -483,13 +679,13 @@ describe("a File that changed on disk under unsaved edits", () => {
     await edit(file, "mine\n");
     await changeOnDisk(file, null);
     render(
-      createElement(FileConflictNotice, {
+      createElement(ActiveFileNotices, {
         document: readyEditor().document,
         editable: true,
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep mine" }));
 
     expect(
       (
@@ -513,12 +709,12 @@ describe("a File that changed on disk under unsaved edits", () => {
       await changeOnDisk(a, "a theirs\n");
       await backgroundBuffer(b, "b mine\n");
       render(
-        createElement(FileConflictNotice, {
+        createElement(ActiveFileNotices, {
           document: readyEditor().document,
           editable: true,
         }),
       );
-      const button = screen.getByRole("button", { name });
+      const button = await screen.findByRole("button", { name });
 
       fireEvent.click(button);
       expect(button).toBeDisabled();
@@ -528,7 +724,7 @@ describe("a File that changed on disk under unsaved edits", () => {
       });
       await store().loadEditor(b);
       await waitFor(() =>
-        expect(screen.getByRole("button", { name })).toBeEnabled(),
+        expect(screen.queryByRole("button", { name })).toBeNull(),
       );
 
       expect(readyEditor()).toMatchObject({ resource: b, content: "b mine\n" });
@@ -608,6 +804,39 @@ describe("a File that changed on disk under unsaved edits", () => {
 });
 
 describe("Save All", () => {
+  it("announces a second failing run as a new problem", async () => {
+    const broken = nextFile();
+    openTabs(broken);
+    await backgroundBuffer(broken, "broken\n");
+    const failing = vi
+      .spyOn(editor, "saveEditorDocument")
+      .mockRejectedValue(new Error("The disk is full."));
+    render(createElement(SaveAllNotice));
+    try {
+      await act(() => saveAllEditors());
+      const first = screen.getByRole("alert");
+      expect(first).toHaveAttribute("aria-live", "assertive");
+
+      let refuse!: (error: Error) => void;
+      failing.mockImplementation(
+        () => new Promise((_, reject) => (refuse = reject)),
+      );
+      const run = saveAllEditors();
+      await waitFor(() => expect(failing).toHaveBeenCalledTimes(2));
+      // The earlier report is gone while the new run works.
+      expect(store().saveAllReport).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      refuse(new Error("The disk is still full."));
+      await act(() => run);
+      const second = screen.getByRole("alert");
+      expect(second).not.toBe(first);
+      expect(second).toHaveAttribute("aria-live", "assertive");
+    } finally {
+      failing.mockRestore();
+      cleanup();
+    }
+  });
+
   it("saves every dirty File and reports the one it could not", async () => {
     const [active, background, conflicted] = [
       nextFile(),
@@ -665,7 +894,10 @@ describe("Save All", () => {
     expect(await store().saveActiveEditor()).toBe(true);
     render(createElement(SaveAllNotice));
     const notice = screen.getByRole("alert");
-    expect(notice.textContent).toContain("could not save 1 file.");
+    expect(notice.textContent).toContain(
+      `could not save 1 file: ${broken.relativePath}.`,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(notice.textContent).toContain(
       `${broken.relativePath}: The disk is full.`,
     );

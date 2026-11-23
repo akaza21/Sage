@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { errorMessage } from "../../domain/errors";
+import { boundedError } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type {
   BufferSnapshotAck,
@@ -34,8 +34,13 @@ export type ActiveEditorState =
       persistedRevision: number;
       persisting: boolean;
       saving: boolean;
+      /** A Sage-written operation failure; the disk conflict explains itself. */
       message: string | null;
-      /** Persistence failure retained through edits until save, reload, or Keep mine. */
+      /** Native diagnostics, capped at 1024 UTF-16 code units. */
+      details?: string;
+      /** Numbers each failed operation, so every failure is a new notice. */
+      failure?: number;
+      /** Why the recovery copy failed; cleared once a copy, save, reload or Keep mine succeeds. */
       unstored?: string;
       unwatched?: string;
     };
@@ -96,7 +101,6 @@ export interface FileEditorController {
     canCommit: (resource: ResourceRef) => boolean,
     reload?: boolean,
   ): Promise<EditorDocument | null>;
-  saveError(bridge: EditorStateBridge, error: unknown): void;
 }
 
 function ready(document: EditorDocument): ReadyEditorState {
@@ -141,7 +145,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         content: String(active.content),
         revision: active.revision,
       };
-      bridge.setActiveEditor({ ...active, persisting: true, message: null });
+      bridge.setActiveEditor({
+        ...active,
+        persisting: true,
+        message: null,
+        details: undefined,
+      });
       try {
         const ack = await editor.snapshotEditorBuffer(request);
         const current = currentReady(bridge);
@@ -157,6 +166,8 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
               ack.revision,
             ),
             persisting: false,
+            // Storage works again; a later edit gets its own copy.
+            unstored: undefined,
           },
           { dirty },
         );
@@ -168,10 +179,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         bridge.setActiveEditor({
           ...current,
           persisting: false,
-          message:
-            current.revision === request.revision
-              ? errorMessage(error)
-              : current.message,
+          unstored: boundedError(error, 1024, "utf16"),
         });
         throw error;
       }
@@ -184,17 +192,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
   return {
     loading: (resource) => ({ phase: "loading", resource }),
     failLoad: (resource, error, bridge) => {
+      const kind = (error as { kind?: unknown } | null)?.kind;
       bridge.setActiveEditor({
         phase: "error",
         resource,
-        message: errorMessage(error),
-        kind:
-          typeof error === "object" &&
-          error !== null &&
-          "kind" in error &&
-          error.kind === "mixedLineEndings"
-            ? "mixedLineEndings"
-            : undefined,
+        message: boundedError(error, 1024, "utf16"),
+        kind: kind === "mixedLineEndings" ? "mixedLineEndings" : undefined,
       });
     },
     load: async (resource, bridge, canCommit = () => true) => {
@@ -228,6 +231,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           content,
           revision: active.revision + 1,
           message: null,
+          details: undefined,
         },
         { dirty },
       );
@@ -248,7 +252,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       if (!active || !canCommit(active.resource)) {
         return null;
       }
-      bridge.setActiveEditor({ ...active, saving: true, message: null });
+      bridge.setActiveEditor({
+        ...active,
+        saving: true,
+        message: null,
+        details: undefined,
+      });
       await persistLatestEditor(bridge);
       const current = currentReady(bridge);
       if (!current || !canCommit(current.resource)) {
@@ -284,16 +293,6 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         });
       }
       return document;
-    },
-    saveError: (bridge, error) => {
-      const active = currentReady(bridge);
-      if (active) {
-        bridge.setActiveEditor({
-          ...active,
-          saving: false,
-          message: errorMessage(error),
-        });
-      }
     },
   };
 }

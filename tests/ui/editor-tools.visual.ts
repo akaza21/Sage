@@ -151,10 +151,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       fixtures.installVisualRepositoryError();
     });
     await expect(sourceTools.getByRole("alert")).toContainText(
+      "Repository status is unavailable.",
+    );
+    await expect(sourceTools.getByRole("alert")).not.toContainText(
       "Could not refresh repository inventory.",
     );
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-source-control-error.png");
+    await sourceTools.getByRole("button", { name: "Details" }).click();
+    await expect(sourceTools.getByRole("alert")).toContainText(
+      "Could not refresh repository inventory.",
+    );
   });
 
   test("keeps Editor Search compact and visually stable", async ({ page }) => {

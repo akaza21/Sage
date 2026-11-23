@@ -3,8 +3,10 @@ import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
 import type { EditorView } from "@codemirror/view";
 
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
+import { ABSENT_FINGERPRINT } from "../../domain/workbench";
 import {
   MAX_EDITABLE_CONTENT_BYTES,
   contentText,
@@ -25,9 +27,11 @@ type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 export function FileSurfaceResourceState({
   error,
   path,
+  identity,
 }: {
   error?: string;
   path: string;
+  identity: string;
 }) {
   return (
     <section
@@ -37,10 +41,11 @@ export function FileSurfaceResourceState({
       {error === undefined ? (
         <ResourceStateNotice state="loading" title={`Loading ${path}…`} />
       ) : (
-        <ResourceStateNotice
-          state="error"
-          title={`Could not open ${path}`}
-          detail={error}
+        <Notice
+          identity={`file-load:${identity}`}
+          severity="blocking"
+          message={`Could not open ${path}.`}
+          details={error}
         />
       )}
     </section>
@@ -123,6 +128,11 @@ export function FileSurfaceContent({
         projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
+        deleted={
+          editor.document.conflict
+            ? editor.document.conflict.kind === "deleted"
+            : editor.document.base.fingerprint === ABSENT_FINGERPRINT
+        }
         unwatched={editor.unwatched}
         persisting={editor.persisting}
         dirty={dirty}
@@ -133,11 +143,7 @@ export function FileSurfaceContent({
         agentMarkdown={agentMarkdown}
         onTogglePreview={onTogglePreview}
       />
-      <FileEditorNotices
-        document={editor.document}
-        message={editor.message}
-        editable={!readOnly}
-      />
+      <FileEditorNotices editor={editor} editable={!readOnly} />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">
           {languageNavigationStatus}
