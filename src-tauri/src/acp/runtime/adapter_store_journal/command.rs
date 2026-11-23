@@ -7,6 +7,7 @@ use crate::acp::{
 use sage_acp_protocol::intent::NormalizedPayload;
 use sage_core::limits::LIMITS;
 
+mod agent_write;
 mod bytes;
 mod child_threads;
 mod hashing;
@@ -198,6 +199,7 @@ fn event_bytes(
                 + old_text.len()
                 + new_text.len())
         }
+        event @ DurableAdapterEvent::AgentWrite { .. } => agent_write::event_bytes(intent, event),
         DurableAdapterEvent::PermissionRequest { intent: deny, .. }
         | DurableAdapterEvent::PermissionDeny { intent: deny, .. } => {
             if deny.project_id != intent.project_id
@@ -326,6 +328,7 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             new_text,
             now_millis,
         }),
+        event @ DurableAdapterEvent::AgentWrite { .. } => agent_write::convert(event)?,
         DurableAdapterEvent::PermissionRequest { intent, now_millis } => {
             AdapterInboundEvent::PermissionRequest { intent, now_millis }
         }

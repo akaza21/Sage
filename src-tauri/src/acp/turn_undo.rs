@@ -1,6 +1,10 @@
 use crate::acp::errors::SessionControlError;
 use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
+/// The most files one rewind restores. A harness listing more refuses the
+/// file rewind, since every file must be checked before any is restored.
+pub(crate) const MAX_REWIND_FILES: usize = 1_000;
+
 /// Preparation boundary shared by native bindings: resolve first, then commit
 /// the intent. No native effect is admitted until this returns successfully.
 pub(crate) fn stage_turn_undo<E: std::fmt::Display>(

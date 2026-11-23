@@ -101,6 +101,7 @@ fn codex_rewind() -> sage_acp_protocol::intent::RewindCapability {
         effects: RewindEffects {
             conversation: true,
             files: false,
+            file_preview: false,
         },
         targets: RewindTargets::LatestTurn,
         fork_at: true,

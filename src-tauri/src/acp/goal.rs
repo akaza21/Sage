@@ -143,6 +143,9 @@ pub(crate) enum NativeRpcReply {
     Controlled(Option<sage_acp_protocol::contract::SafeText<512>>),
     /// The harness declined a session control, with its reason if it gave one.
     ControlRefused(Option<sage_acp_protocol::contract::SafeText<512>>),
+    /// The native files a file rewind would restore, at most
+    /// `MAX_REWIND_FILES` of them. Native-only: never crosses IPC.
+    FileRewindPlan(Vec<std::path::PathBuf>),
     McpServers(crate::acp::mcp::inventory::McpInventory),
     McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),
 }

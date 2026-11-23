@@ -113,7 +113,8 @@ impl ClaudeSdkRuntime {
                 batch.push_event(match event {
                     AdapterEvent::Initialized { capabilities } => AdapterEvent::Initialized {
                         capabilities: {
-                            let mut capabilities = sdk_capabilities(capabilities);
+                            let mut capabilities =
+                                sdk_capabilities(capabilities, self.binding.harness_version());
                             capabilities.goal = self.bridge()?.goal_capabilities();
                             capabilities
                         },

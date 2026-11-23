@@ -56,6 +56,7 @@ impl PiRuntime {
             }
             SessionControl::UndoTurn { .. }
             | SessionControl::RewindConversation { .. }
+            | SessionControl::RewindFiles { .. }
             | SessionControl::StopActivity { .. }
             | SessionControl::ReadMcpServers
             | SessionControl::ReloadMcpServers

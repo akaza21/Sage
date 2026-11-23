@@ -1349,6 +1349,7 @@ fn fresh_schema_equals_a_v6_schema_upgraded_in_place() {
     child_thread_states::apply(&mut upgraded).unwrap();
     private_projects::apply(&mut upgraded).unwrap();
     sign_in_evidence_indexes::apply(&mut upgraded).unwrap();
+    agent_file_writes::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(
