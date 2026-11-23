@@ -8,6 +8,7 @@ import type {
   PromptPick,
   StagedPromptFiles,
 } from "../../ports/promptAttachments";
+import { draftEnded } from "./draftFileHandoff";
 import {
   lineCount,
   pasteAttachmentRefusal,
@@ -20,7 +21,9 @@ import type { HeldPaste, PastedTextState } from "./pastedTextTypes";
 type Announce = (message: string) => void;
 
 export interface StagedOwner {
+  /** A chat's id, or the new-chat draft's token when `draft` is set. */
   chatId: string | undefined;
+  draft?: boolean;
   ref: RefObject<PastedTextState>;
   set(next: PastedTextState): void;
   settle(): void;
@@ -33,7 +36,10 @@ function failure(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function owner(chatId: string | undefined): PromptFileOwner | null {
+/** A chat and the new-chat draft stage through the same commands; the draft
+ * by its token, as its chat has no id until the draft's first send. */
+function owner({ chatId, draft }: StagedOwner): PromptFileOwner | null {
+  if (draft) return chatId && isTauriRuntime() ? { draftToken: chatId } : null;
   const state = useWorkbenchStore.getState();
   const intent = chatId ? state.captureChatOwnership(chatId) : null;
   if (!intent || !isTauriRuntime()) return null;
@@ -74,7 +80,7 @@ function setBusy(staged: StagedOwner, busy: boolean) {
 }
 
 export async function reconcile(staged: StagedOwner) {
-  const target = owner(staged.chatId);
+  const target = owner(staged);
   if (!target) return;
   try {
     apply(staged, await port.listPromptFiles(target));
@@ -109,7 +115,7 @@ export async function pasteOver(
     return announce(
       "Wait for the message to finish sending, then paste again. Nothing was pasted.",
     );
-  const target = owner(staged.chatId);
+  const target = owner(staged);
   if (!target) return announce("This chat is not ready for attachments.");
   if (state.busy)
     return announce("Wait for the previous attachment to finish.");
@@ -146,7 +152,7 @@ export async function pickFiles(
     return announce(
       "Wait for the message to finish sending, then attach again. Nothing was attached.",
     );
-  const target = owner(staged.chatId);
+  const target = owner(staged);
   if (!target) return announce("This chat is not ready for attachments.");
   if (staged.ref.current.busy)
     return announce("Wait for the previous attachment to finish.");
@@ -158,6 +164,8 @@ export async function pickFiles(
       expectedRevision: staged.ref.current.revision,
     });
     if (!result) return;
+    // A draft discarded while its picker was open keeps nothing.
+    if (staged.draft && draftEnded(staged.chatId)) return;
     apply(staged, result);
     const count = result.files.length;
     announce(
@@ -177,7 +185,7 @@ export async function removeStaged(
   label: string,
   announce: Announce,
 ) {
-  const target = owner(staged.chatId);
+  const target = owner(staged);
   const revision = staged.ref.current.revision;
   if (!target || !revision) return;
   try {

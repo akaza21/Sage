@@ -458,6 +458,7 @@ it("creates and switches branches from the status bar through the existing comma
   fireEvent.click(
     await screen.findByRole("option", { name: "Switch to feature" }),
   );
+  fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
   await waitFor(() =>
     expect(useWorkbenchStore.getState().repositories.roots[0].branch).toBe(
       "feature",
@@ -477,6 +478,7 @@ it("keeps a dirty branch selected and shows the checkout rejection at the status
   fireEvent.click(
     await screen.findByRole("option", { name: "Switch to topic" }),
   );
+  fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
   const dialog = await screen.findByRole("dialog", {
     name: "Cannot switch branch",
   });
@@ -497,9 +499,10 @@ it("stops a smart commit when staging fails and keeps the message for recovery",
   fireEvent.change(message, { target: { value: "Keep this message" } });
   fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Yes" }));
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent("The index is locked."),
-  );
+  const failure = await screen.findByRole("alert");
+  expect(failure).toHaveTextContent("Source Control could not");
+  fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
+  expect(failure).toHaveTextContent("The index is locked.");
   expect(message).toHaveValue("Keep this message");
   expect(useWorkbenchStore.getState().repositories.roots[0].changes).toEqual(
     root.changes,

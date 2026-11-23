@@ -34,7 +34,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { RetryTurnButton, TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
-import { TurnPrompts } from "./TurnPrompts";
+import { PromptPageContext, renderTurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -185,12 +185,7 @@ export const Turn = memo(
                 ))}
               </div>
             ) : null}
-            <TurnPrompts
-              page={page}
-              items={promptItems}
-              turn={turn}
-              interactive={interactive}
-            />
+            {renderTurnPrompts(promptItems, turn, interactive)}
             <ChatTranscriptTurnSummary
               turn={turn}
               runningHeading={!isSideChatId(page.chatId)}
@@ -374,19 +369,23 @@ export function AcpChatPresentation({
           retentionIncomplete={retentionIncomplete}
         />
       ) : null}
-      {page.turns.length > 40 ? (
-        <VirtualTurnList
-          key={`turns:${page.projectId}:${page.chatId}`}
-          turns={page.turns}
-          renderTurn={renderTurn}
-          navigationRef={navigationRef}
-        />
-      ) : (
-        page.turns.map(renderTurn)
-      )}
+      <PromptPageContext value={page}>
+        {page.turns.length > 40 ? (
+          <VirtualTurnList
+            key={`turns:${page.projectId}:${page.chatId}`}
+            turns={page.turns}
+            renderTurn={renderTurn}
+            navigationRef={navigationRef}
+          />
+        ) : (
+          page.turns.map(renderTurn)
+        )}
+      </PromptPageContext>
       {editSummaryContainer
         ? createPortal(editSummary, editSummaryContainer)
         : null}
     </>
   );
 }
+
+export default AcpChatPresentation;

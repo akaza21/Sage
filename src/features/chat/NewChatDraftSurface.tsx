@@ -9,8 +9,10 @@ import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { preferredAvailableHarness } from "../../domain/harness";
 
-const emptyContext = [] as const;
 const unchangedSession = () => Promise.resolve();
+// Images taken just before Send join the draft before it is sent: Send waits
+// for every drop still in flight, and with none acts at once.
+let intake: Promise<unknown> | undefined;
 
 export function NewChatDraftSurface({
   navigationCollapsed = false,
@@ -58,7 +60,6 @@ export function NewChatDraftSurface({
     if (
       draft &&
       draft.submission.status === "released" &&
-      !submitting &&
       !transitioning &&
       available &&
       draft.harnessId !== available.id
@@ -74,25 +75,14 @@ export function NewChatDraftSurface({
     ) {
       void chooseHarness(draft.harnessId);
     }
-  }, [
-    chooseHarness,
-    draft,
-    harnesses,
-    selectedHarnessId,
-    submitting,
-    transitioning,
-  ]);
+  }, [chooseHarness, draft, harnesses, selectedHarnessId, transitioning]);
   if (!draft) return null;
   const targetId =
     draft.targetProjectId === undefined
       ? draft.projectId
       : draft.targetProjectId;
-  const targetProject = targetId
-    ? projects.find((item) => item.id === targetId)
-    : null;
-  const shownProject = targetProject
-    ? { id: targetProject.id, name: targetProject.name, roots: [] }
-    : null;
+  // Only its name is shown.
+  const shownProject = projects.find((item) => item.id === targetId);
   const available = harness?.installState === "available";
   const choice = effectiveDraftChoice(draft, {
     harnesses,
@@ -104,9 +94,7 @@ export function NewChatDraftSurface({
     draft.error || unconfirmed ? (
       <>
         {draft.error ??
-          (unconfirmed
-            ? "Chat creation is unconfirmed. Reload chats before trying again."
-            : null)}
+          "Chat creation is unconfirmed. Reload chats before trying again."}
         {unconfirmed ? (
           <button
             type="button"
@@ -140,7 +128,7 @@ export function NewChatDraftSurface({
       >
         <div className="message-list message-list--home">
           <div className="message-list__content">
-            <ChatHome projectName={shownProject?.name ?? null} />
+            <ChatHome projectName={shownProject?.name} />
             {ownsChat && !submitting ? (
               <div>
                 <button
@@ -169,33 +157,48 @@ export function NewChatDraftSurface({
           descriptionId="new-chat-description"
           disabledReasonId="new-chat-disabled"
           text={draft.text}
-          attachedContext={emptyContext}
-          enabled={!submitting && !!available}
-          sendBlocked={!choice || unconfirmed}
+          attachedContext={draft.images ?? []}
+          // Images go to a chat's native session, so only with a binding.
+          imageInputAvailable={!!harness?.bindingId}
+          onAddImages={
+            harness?.bindingId
+              ? (files) => {
+                  // Each drop joins after the one before it, in drop order.
+                  const next: Promise<unknown> = Promise.all([
+                    intake,
+                    import("./ComposerSectionMenu"),
+                  ])
+                    .then(([, images]) =>
+                      images.addDraftImages(draft.id, files),
+                    )
+                    .finally(() => {
+                      if (intake === next) intake = undefined;
+                    });
+                  intake = next;
+                }
+              : undefined
+          }
+          enabled={!submitting && available}
+          sendBlocked={!choice || unconfirmed || !draft.text.trim()}
           actionBusy={submitting}
           activeTurn={false}
           projectTransitioning={transitioning}
-          workbenchError={null}
           chatError={composerProblem("create-chat", "new-chat", errorNotice)}
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
-            access: choice ? choice.access : draft.access,
-            effort: choice ? choice.effort : draft.effort,
+            access: (choice ?? draft).access,
+            effort: (choice ?? draft).effort,
             onAccessChange: (access) => update({ access }),
             onEffortChange: (effort) =>
               update({ effort: effort === "default" ? null : effort }),
           }}
           availableBinding={!!harness?.bindingId}
-          canPrompt={!!available}
+          canPrompt={available}
           discoveryPhase={discoveryPhase}
-          sessionHarnessId={null}
-          sessionModelId={null}
           selectedHarnessId={draft.harnessId}
-          selectedModelId={choice ? choice.modelId : draft.modelId}
-          sessionPromptUnavailable={false}
+          selectedModelId={(choice ?? draft).modelId}
           sessionConfig={null}
           modePending={false}
-          modeError={null}
           focused
           onSetSessionMode={unchangedSession}
           onSetSessionConfigOption={unchangedSession}
@@ -207,15 +210,17 @@ export function NewChatDraftSurface({
           }
           project={shownProject}
           newChat
-          usage={null}
-          goal={{ kind: "unsupported" }}
           onSubmit={(event) => {
             event.preventDefault();
-            void useWorkbenchStore.getState().sendNewChatDraft();
+            const send = useWorkbenchStore.getState().sendNewChatDraft;
+            void (intake?.finally(send) ?? send());
           }}
           onTextChange={(text) => update({ text })}
-          onRemoveContext={() => undefined}
-          onCancelTurn={null}
+          onRemoveContext={(context) =>
+            update({
+              images: draft.images?.filter((image) => image !== context),
+            })
+          }
         />
       </section>
     </div>

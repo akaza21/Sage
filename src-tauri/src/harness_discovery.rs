@@ -30,7 +30,8 @@ mod tests;
 
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
-    ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
+    ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, bundled_claude_code_version,
+    discover_claude_launch, sha256_file,
 };
 #[cfg(all(test, windows))]
 pub(crate) use npm_package::npm_package_bin;
@@ -72,14 +73,18 @@ pub(crate) enum InstallLayout {
     CursorAgent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct KnownHarnessSpec {
     pub(crate) id: &'static str,
     pub(crate) executable: HarnessExecutable,
     pub(crate) install_layout: InstallLayout,
     pub(crate) sign_in: Option<KnownHarnessSignIn>,
     pub(crate) brand: Option<HarnessBrand>,
+    /// Curated known commands, whose `since` versions say what an update unlocks.
+    pub(crate) known_commands: Option<KnownCommands>,
 }
+
+type KnownCommands = fn() -> &'static crate::acp::command_placement::KnownCommandTable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KnownHarnessSignIn {
@@ -99,6 +104,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: None,
         }),
         brand: Some(HarnessBrand::Codex),
+        known_commands: Some(crate::acp::bindings::codex::known_commands),
     },
     KnownHarnessSpec {
         id: "claude-code",
@@ -110,6 +116,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: Some(sage_domain::harness::HarnessSignInCheck::ClaudeCli),
         }),
         brand: Some(HarnessBrand::Claude),
+        known_commands: Some(crate::acp::bindings::claude::known_commands),
     },
     KnownHarnessSpec {
         id: "pi",
@@ -121,6 +128,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: None,
         }),
         brand: Some(HarnessBrand::Pi),
+        known_commands: Some(crate::acp::bindings::pi::known_commands),
     },
     KnownHarnessSpec {
         id: "gemini-cli",
@@ -132,6 +140,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: None,
         }),
         brand: None,
+        known_commands: None,
     },
     KnownHarnessSpec {
         id: "opencode",
@@ -143,6 +152,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: None,
         }),
         brand: Some(HarnessBrand::OpenCode),
+        known_commands: None,
     },
     KnownHarnessSpec {
         id: "cursor-agent",
@@ -154,6 +164,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             status_check: None,
         }),
         brand: None,
+        known_commands: None,
     },
     KnownHarnessSpec {
         id: "oh-my-pi",
@@ -161,6 +172,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         install_layout: InstallLayout::NpmGlobal,
         sign_in: None,
         brand: None,
+        known_commands: None,
     },
 ];
 

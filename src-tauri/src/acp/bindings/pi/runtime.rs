@@ -111,6 +111,10 @@ pub(crate) struct PiRuntime {
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
     commands_discovered: bool,
+    configuration_dirty: bool,
+    /// A configuration read asked for the model registry; its reply continues
+    /// to the thinking levels.
+    configuration_models_pending: bool,
     pub(super) thinking_request_session: Option<ExternalId>,
     pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
     pub(super) thinking_request_command: Option<String>,
@@ -189,6 +193,7 @@ impl HarnessAdapter for PiRuntime {
         if self.poisoned
             || self.external_session.is_none()
             || self.active_turn.is_some()
+            || self.fork.is_some()
             || self.commands_pending
             || self.commands_discovered
         {
@@ -198,6 +203,13 @@ impl HarnessAdapter for PiRuntime {
         self.commands_pending = true;
         self.commands_discovered = true;
         Ok(Some(egress))
+    }
+    fn refresh_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.commands_pending || self.active_turn.is_some() {
+            return Ok(None);
+        }
+        self.commands_discovered = false;
+        self.discover_commands()
     }
     fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.model_session_config()

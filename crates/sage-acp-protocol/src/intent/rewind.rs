@@ -18,8 +18,13 @@ pub struct RewindCapability {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RewindEffects {
     pub conversation: bool,
-    /// Existing last-turn file undo only; arbitrary file rewind is reserved.
+    /// The harness restores files with a rewind. Without `file_preview` this
+    /// is the last-turn undo only.
     pub files: bool,
+    /// A dry run lists the files a rewind to any admitted target would
+    /// restore, so files rewind with the conversation after a preview.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub file_preview: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +44,7 @@ impl RewindCapability {
                     && other.effects.conversation
                     && self.on_resume == other.on_resume,
                 files: self.effects.files && other.effects.files,
+                file_preview: self.effects.file_preview && other.effects.file_preview,
             },
             targets: if self.targets == other.targets {
                 self.targets

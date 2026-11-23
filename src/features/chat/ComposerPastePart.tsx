@@ -35,6 +35,7 @@ export function ComposerPasteSlot({
 }: {
   paste: ComposerPasteWiring;
   chatId: string;
+  draft?: boolean;
   session: ComponentProps<typeof PasteChunk.ComposerPaste>["session"];
   text: string;
   disabled: boolean;

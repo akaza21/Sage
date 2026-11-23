@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import type { ImageAttachedContext } from "../domain/attachedContext";
 import type { SessionAccessMode } from "../domain/sessionAccessMode";
 import type { createNewChatDraftActions } from "./newChatDraftActions";
 import type { CreateChatResult } from "./runCreateChat";
@@ -20,6 +21,13 @@ export interface NewChatDraft {
   /** Undefined retains the owner project; null explicitly chooses no project. */
   targetProjectId?: string | null;
   text: string;
+  /** Images for the first turn, at most MAX_PROMPT_IMAGES. They stay in the
+   * WebView until the handoff uploads them into the created chat's composer. */
+  images?: readonly DraftImage[];
+  /** Names the draft's native file slot, released when the draft ends. */
+  fileToken?: string;
+  /** The slot's staged revision while it holds files, as the composer shows. */
+  fileRevision?: string | null;
   harnessId: string | null;
   modelId: string | null;
   access: SessionAccessMode | null;
@@ -29,6 +37,9 @@ export interface NewChatDraft {
     | { status: "submitting"; chatId: string; creation: DraftCreation };
   error: string | null;
 }
+
+/** A draft image's chip, with the file the created chat uploads. */
+export type DraftImage = ImageAttachedContext & { file: File };
 
 export interface NewChatDraftOpenOptions {
   /** Automatic continuity must not supersede a later explicit navigation. */
@@ -60,6 +71,10 @@ export interface NewChatDraftSlice {
         ownershipEpoch: number;
         /** The text handed to the chat; a different composer text cancels. */
         text: string;
+        /** Sent, and waiting for the session's catalog to run a command. */
+        held?: true;
+        /** The staged batch the draft's files moved to, sent with it. */
+        staged?: { revision: string };
       }
     | null;
   openNewChatDraft: (
@@ -68,7 +83,10 @@ export interface NewChatDraftSlice {
   ) => Promise<unknown>;
   updateNewChatDraft: (
     patch: Partial<
-      Pick<NewChatDraft, "text" | "access" | "effort" | "targetProjectId">
+      Pick<
+        NewChatDraft,
+        "text" | "images" | "access" | "effort" | "targetProjectId"
+      >
     >,
   ) => void;
   selectDraftHarness: (harnessId: string) => Promise<void>;

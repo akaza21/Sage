@@ -1,0 +1,34 @@
+{
+  "id": "commands",
+  "type": "response",
+  "command": "get_commands",
+  "success": true,
+  "data": {
+    "commands": [
+      {
+        "name": "fixture-render",
+        "description": "Extension rendering fixture",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/fixture/profile/extensions/render.js",
+          "source": "auto",
+          "scope": "user",
+          "origin": "top-level",
+          "baseDir": "/fixture/profile"
+        }
+      },
+      {
+        "name": "fixture-unknown",
+        "description": "Unknown augmented message role",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/fixture/profile/extensions/render.js",
+          "source": "auto",
+          "scope": "user",
+          "origin": "top-level",
+          "baseDir": "/fixture/profile"
+        }
+      }
+    ]
+  }
+}

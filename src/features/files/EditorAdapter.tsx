@@ -1,5 +1,6 @@
 import type { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { Notice } from "../../ui/Notice";
 import {
   forwardRef,
   useImperativeHandle,
@@ -178,16 +179,22 @@ export const EditorAdapter = forwardRef<
 
   return (
     <div className="editor-input">
-      <div ref={mountRef} className="editor-input__mount" />
+      <div
+        ref={mountRef}
+        className="editor-input__mount"
+        hidden={loadState === "error"}
+      />
       {loadState === "loading" ? (
         <div className="editor-loading" role="status">
           Loading editor…
         </div>
       ) : null}
       {loadState === "error" ? (
-        <div className="editor-loading editor-loading--error" role="alert">
-          Could not load the editor.
-        </div>
+        <Notice
+          identity={`editor-load:${props.documentIdentity}`}
+          severity="blocking"
+          message="Could not load the editor."
+        />
       ) : null}
     </div>
   );

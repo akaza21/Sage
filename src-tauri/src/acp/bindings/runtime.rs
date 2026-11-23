@@ -8,6 +8,7 @@ use sage_acp_protocol::{
     session_config::ConfigMutation,
 };
 
+mod commands;
 mod state;
 
 use super::adapter::{
@@ -70,13 +71,6 @@ impl NativeRuntime {
         Self(Box::new(runtime), None, None, None, None, None)
     }
 
-    pub(crate) fn attach_commands(
-        &mut self,
-        owner: sage_acp_protocol::scheduler::RuntimeOwner,
-        channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
-    ) {
-        self.3 = Some((owner, channel));
-    }
     /// Lends the binding's usage cell to the lane once; a binding without
     /// one leaves the lane empty, which reads as unsupported.
     pub(crate) fn attach_usage(
@@ -162,16 +156,14 @@ impl HarnessAdapter for NativeRuntime {
 
     fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
         let result = self.0.receive_command_update(frame);
-        if let Some((owner, channel)) = &self.3 {
-            channel.update(owner, self.0.available_commands());
-        }
+        self.publish_config()?;
         result
     }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.0.available_commands()
     }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.0.discover_commands()
+        self.discover_catalog()
     }
     fn frames_repeat_terminal(&self, frames: &[Frame], resources: &dyn ResourceMapper) -> bool {
         self.0.frames_repeat_terminal(frames, resources)
@@ -253,7 +245,9 @@ impl HarnessAdapter for NativeRuntime {
         self.0.oversize_frame_skipped();
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
-        self.0.take_native_rpc_reply()
+        let reply = self.0.take_native_rpc_reply();
+        self.refresh_after_fork(reply.as_ref());
+        reply
     }
     fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         self.0.usage()
@@ -345,15 +339,7 @@ impl HarnessAdapter for NativeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
-            &command
-            && let Some(revision) = prompt.command_revision
-        {
-            self.0
-                .available_commands()
-                .validate(revision, prompt.as_str())?;
-        }
-        self.0.command(command)
+        self.command_with_refresh(command)
     }
 
     fn cancel_permission(
@@ -374,10 +360,11 @@ impl HarnessAdapter for NativeRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let result = self.0.ingest(frame, resources);
-        if let Some((owner, channel)) = &self.3 {
-            channel.update(owner, self.0.available_commands());
+        if result.is_err() {
+            self.publish_commands();
         }
         let batch = result?;
+        self.follow_catalog_triggers(&batch);
         self.publish_config()?;
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()

@@ -10,7 +10,12 @@ import { acpDesktop } from "../../../src/services/acpDesktop";
 import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures";
 
 /** The native command boundary returns a rejection once, then commits the suffix. */
-export function installConversationRewindFixture(inPlace = true) {
+export function installConversationRewindFixture(
+  inPlace = true,
+  residency: "hot" | "cold" = "hot",
+  availability: "all" | "latestTurn" = "all",
+  files?: { files: string[]; conflicts: string[]; unverified?: string[] },
+) {
   installTranscriptSelectionFixture(false, true);
   const chat = useWorkbenchStore.getState().activeTabId!;
   const projection = acpProjectionStoreFor(chat);
@@ -45,14 +50,20 @@ export function installConversationRewindFixture(inPlace = true) {
   page = {
     ...page,
     turns: [first, second],
+    // Both turns stay conversation targets; a latest-turn offer acts only at
+    // its undo turn, so the earlier prompt must show no trigger.
+    sessionSurface:
+      availability === "latestTurn"
+        ? { activities: [], undoTurn: second.id }
+        : page.sessionSurface,
     sessions: page.sessions.map((session) => ({
       ...session,
-      residency: "hot",
+      residency,
       capabilities: {
         ...session.capabilities,
         rewind: {
-          effects: { conversation: inPlace, files: false },
-          targets: "anyTurn",
+          effects: { conversation: inPlace, files: !!files },
+          targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,
         },
@@ -68,17 +79,60 @@ export function installConversationRewindFixture(inPlace = true) {
   };
   publish();
   acpDesktop.getChatPage = async () => structuredClone(page);
-  let refused = false;
+  let refused = !!files;
+  const sent: unknown[] = [];
+  (window as { __rewindControls?: unknown[] }).__rewindControls = sent;
   Object.defineProperty(window, "__TAURI_INTERNALS__", {
     configurable: true,
     value: {
       transformCallback: () => 0,
       invoke: async (
         command: string,
-        args: { request?: { control?: { kind: string; before: string } } },
+        args: {
+          request?: { control?: { kind: string; before: string } };
+        },
       ) => {
         if (command !== "control_acp_session") return null;
         const control = args.request?.control;
+        sent.push(control);
+        if (control?.kind === "previewRewind")
+          return files
+            ? {
+                // The native side's view: kept files with why, else the
+                // files it would restore and what rewind does not undo.
+                preview: ((
+                  kept = [
+                    [
+                      "Files changed since the agent last wrote them, so they stay:",
+                      files.conflicts,
+                    ] as const,
+                    [
+                      "Sage can't verify these files in this chat, so they stay as they are:",
+                      files.unverified ?? [],
+                    ] as const,
+                  ].filter(([, paths]) => paths.length),
+                ) => ({
+                  fileCount: files.files.length,
+                  sections: kept.length
+                    ? kept.map(([note, paths]) => ({
+                        note,
+                        paths,
+                        count: paths.length,
+                        keeps: true,
+                      }))
+                    : [
+                        {
+                          note: "These files go back to before this message:",
+                          paths: files.files,
+                          count: files.files.length,
+                        },
+                      ],
+                  caveat: kept.length
+                    ? null
+                    : "Rewind does not undo shell commands, commits, branch switches, or files changed outside checkpoints.",
+                }))(),
+              }
+            : {};
         if (control?.kind !== "rewindConversation")
           throw new Error("Unexpected control");
         if (!refused) {

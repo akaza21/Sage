@@ -1,0 +1,143 @@
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
+import frame from "../../../src-tauri/testdata/pi/extension-commands.json";
+import { ComposerExtensions } from "./ComposerExtensions";
+import { decodeCommandList } from "../../services/acpCommandsDesktop";
+import { safeItem } from "../../services/acpDesktopResponseItems";
+import ExtensionMessage from "./acp/ExtensionMessage";
+
+afterEach(cleanup);
+
+it("shows get_commands provenance without attributing unrelated resources and searches within 100 rows", () => {
+  // Pi 1.5.0 get_commands response, with the fixture root substituted for privacy.
+  const list = decodeCommandList({
+    revision: 1,
+    commands: [
+      ...frame.data.commands.map((command) => ({
+        ...command,
+        inputHint: null,
+      })),
+      // Pi 1.5.0's `builtin:mcp` /mcp entry as the host lists it: shipped
+      // with Pi, placed on the MCP row, still run as Pi's command. Its
+      // omitted `baseDir` must not reject the list.
+      {
+        name: "mcp",
+        description: "Manage MCP servers",
+        inputHint: null,
+        source: "builtin",
+        sourceLabel: "builtin:mcp",
+        sourceInfo: {
+          path: "builtin:mcp",
+          source: "builtin",
+          scope: "temporary",
+          origin: "top-level",
+        },
+        placement: { section: "connections", control: "mcpPanel" },
+      },
+    ],
+  });
+  expect(list).not.toBeNull();
+  const catalog = [
+    ...list!.commands,
+    ...Array.from({ length: 110 }, (_, index) => ({
+      name: `command-${index}`,
+      description: "No provider attribution",
+      source: "extension" as const,
+      inputHint: null,
+    })),
+  ];
+  render(<ComposerExtensions catalog={catalog} page={null} />);
+  expect(
+    within(
+      screen.getByRole("region", { name: "Extensions and packages" }),
+    ).getByText(
+      /\/fixture\/profile\/extensions\/render.js · user · top-level · auto/,
+    ),
+  ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("region", { name: "Extensions and packages" }),
+    ).getByText("builtin:mcp · temporary · top-level · builtin"),
+  ).toBeVisible();
+  expect(screen.getAllByRole("listitem")).toHaveLength(100);
+  expect(
+    screen.getByText("Showing 100 rows. Refine your search to see more."),
+  ).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "command-109" },
+  });
+  expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  expect(
+    within(screen.getByRole("region", { name: "From harness" })).getByText(
+      "/command-109",
+    ),
+  ).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "managed" },
+  });
+  expect(
+    within(screen.getByRole("region", { name: "From harness" })).getByText(
+      /^Managed by harness · \/mcp · server inventory/,
+    ),
+  ).toBeVisible();
+});
+
+const projected = (payload: Record<string, unknown>) =>
+  safeItem({
+    id: "extension-message",
+    projectId: "project-1",
+    chatId: "chat-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    runtimeEpoch: "1",
+    revision: "1",
+    ordinal: 1,
+    origin: "primary",
+    activityId: null,
+    lifecycle: "completed",
+    createdAt: 1,
+    updatedAt: 1,
+    terminalAt: 1,
+    kind: "extensionMessage",
+    toolState: null,
+    payload,
+  });
+
+it("renders a projected custom message as safe text with disposable details", () => {
+  const details = "<img src=x onerror=alert(1)>";
+  const item = projected({
+    label: "fixture-report",
+    text: "<script>plain text</script>",
+    details,
+  });
+  if (item?.kind !== "extensionMessage") throw new Error("Invalid projection");
+  const { container } = render(<ExtensionMessage item={item} />);
+  expect(screen.getByText("<script>plain text</script>")).toBeVisible();
+  expect(container.querySelector("script, img")).toBeNull();
+  expect(screen.queryByText(details)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(screen.getByText(details)).toBeVisible();
+  expect(container.querySelector("script, img")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(container.querySelector("pre")).toBeNull();
+});
+
+it("shows an over-cap custom message as a notice instead of its text", () => {
+  const item = projected({
+    label: "x".repeat(129),
+    text: "body",
+    details: null,
+  });
+  if (item?.kind !== "extensionMessage") throw new Error("Invalid projection");
+  render(<ExtensionMessage item={item} />);
+  expect(
+    screen.getByText("An extension message could not be shown."),
+  ).toBeVisible();
+  expect(screen.queryByText("body")).not.toBeInTheDocument();
+});

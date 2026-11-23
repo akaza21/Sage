@@ -63,7 +63,12 @@ export async function keepActiveEditorBuffer(
       ) {
         return false;
       }
-      bridge.setActiveEditor({ ...active, saving: true, message: null });
+      bridge.setActiveEditor({
+        ...active,
+        saving: true,
+        message: null,
+        details: undefined,
+      });
       const result = await getWorkbenchPorts().editor.rebaseEditorBuffer({
         resource: active.resource,
         expectedDisk:
@@ -153,8 +158,7 @@ export async function reloadActiveEditor(
     });
   } catch (error) {
     if (projectId && matchesProjectIntent(get(), generation, projectId)) {
-      controller.saveError(bridge, error);
-      set({ error: errorMessage(error) });
+      set({ error: actionFailed(bridge, error, "reload") });
     }
     return false;
   }
@@ -218,6 +222,8 @@ export async function saveAllEditors(): Promise<SaveAllFailure[]> {
       seen.add(key);
       return [tab.resource!];
     });
+  // A new run's failures are a new problem, announced afresh.
+  set({ saveAllReport: null });
   const failures: SaveAllFailure[] = [];
   const savedInBackground: ResourceRef[] = [];
   for (const resource of dirty) {

@@ -102,7 +102,48 @@ impl KnownCommandTable {
         }
         Ok(Self(entries))
     }
+
+    /// Known commands whose curated `since` is newer than `installed` and no
+    /// newer than `latest`: what that upgrade unlocks. Entries without `since`
+    /// are never listed, so nothing is guessed.
+    pub(crate) fn introduced_between<'a>(
+        &'a self,
+        installed: &'a ReleaseVersion,
+        latest: &'a ReleaseVersion,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.0.iter().filter_map(move |entry| {
+            let since = ReleaseVersion::parse(entry.since.as_deref()?)?;
+            (&since > installed && &since <= latest).then_some(entry.name.as_str())
+        })
+    }
+
+    /// The curated built-in commands a new-chat draft offers before any
+    /// session exists: neither terminal-only nor a native control, and
+    /// introduced no later than `installed`. A `since` entry is left out when
+    /// the installed release is unknown, so nothing is guessed. At most
+    /// [`MAX_DRAFT_BUILTINS`].
+    pub(crate) fn draft_builtins<'a>(
+        &'a self,
+        installed: Option<&'a ReleaseVersion>,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.0
+            .iter()
+            .filter(move |entry| {
+                entry.terminal_only.is_none()
+                    && entry.control.is_none()
+                    && entry.since.as_deref().is_none_or(|since| {
+                        ReleaseVersion::parse(since)
+                            .zip(installed)
+                            .is_some_and(|(since, installed)| installed >= &since)
+                    })
+            })
+            .map(|entry| entry.name.as_str())
+            .take(MAX_DRAFT_BUILTINS)
+    }
 }
+
+/// The most built-in commands a draft lists; the curated tables hold far fewer.
+pub(crate) const MAX_DRAFT_BUILTINS: usize = 32;
 
 /// Minimum versions gate native controls, never the harness's advertised command.
 /// User skills/plugins cannot acquire native command authority.

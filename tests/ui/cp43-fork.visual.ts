@@ -159,11 +159,11 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     return fixture.installConversationRewindFixture();
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   await actions
     .first()
-    .getByRole("button", { name: "More actions", exact: true })
+    .getByRole("button", { name: "Message actions", exact: true })
     .click();
   const menu = page.getByRole("menu", { name: "Prompt actions" });
   await expect(
@@ -180,7 +180,7 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
   await page.keyboard.press("Escape");
   const trigger = actions
     .first()
-    .getByRole("button", { name: "More actions", exact: true });
+    .getByRole("button", { name: "Message actions", exact: true });
   await expect(trigger).toBeFocused();
   await trigger.click();
   await menu
@@ -202,6 +202,292 @@ test("T11a: an earlier prompt rewinds after confirmation and one retry restores 
   ).toHaveValue(prompt);
 });
 
+async function openFileRewind(
+  page: Page,
+  files: { files: string[]; conflicts: string[] },
+) {
+  const workbench = await openForkableAnswer(page);
+  await page.evaluate(async (files) => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "hot", "all", files);
+  }, files);
+  const actions = page.locator(".acp-prompt-actions");
+  await actions
+    .first()
+    .getByRole("button", { name: "Message actions", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Prompt actions" })
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Rewind conversation from here",
+  });
+  const sent = () =>
+    page.evaluate(
+      () => (window as { __rewindControls?: unknown[] }).__rewindControls,
+    );
+  return { workbench, actions, dialog, sent };
+}
+
+/** Dry runs only (a dev effect may repeat one), then exactly one rewind. */
+function rewound(controls: unknown[] | undefined, files: { files?: true }) {
+  const before = "turn-00000000-0000-4000-8000-000000000001";
+  const sent = controls ?? [];
+  expect(sent.length).toBeGreaterThan(1);
+  expect(sent.slice(0, -1)).toEqual(
+    sent.slice(0, -1).map(() => ({ kind: "previewRewind", before })),
+  );
+  expect(sent.at(-1)).toEqual({ kind: "rewindConversation", before, ...files });
+}
+
+test("T11b: a preview lists the files, then files and conversation rewind", async ({
+  page,
+}) => {
+  const { workbench, actions, dialog, sent } = await openFileRewind(page, {
+    files: ["src/app.ts", "src/app.test.ts"],
+    conflicts: [],
+  });
+  await expect(dialog.getByRole("listitem")).toHaveText([
+    "src/app.ts",
+    "src/app.test.ts",
+  ]);
+  await expect(
+    dialog.getByText("Rewind does not undo shell commands", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Rewind conversation only" }),
+  ).toBeFocused();
+  await expect(workbench).toHaveScreenshot("rewind-files-preview.png");
+  await dialog
+    .getByRole("button", { name: "Rewind files and conversation" })
+    .click();
+  await expect(actions).toHaveCount(0);
+  rewound(await sent(), { files: true });
+});
+
+test("T11b: files changed since the agent wrote them refuse a file rewind", async ({
+  page,
+}) => {
+  const { actions, dialog, sent } = await openFileRewind(page, {
+    files: ["src/app.ts", "src/app.test.ts"],
+    conflicts: ["src/app.ts"],
+  });
+  await expect(dialog.getByRole("alert")).toContainText(
+    "changed since the agent last wrote them",
+  );
+  await expect(dialog.getByRole("listitem")).toHaveText(["src/app.ts"]);
+  await expect(
+    dialog.getByRole("button", { name: "Rewind files and conversation" }),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Rewind conversation only", exact: true })
+    .click();
+  await expect(actions).toHaveCount(0);
+  rewound(await sent(), {});
+});
+
+test("T22: a cold session's completed turns carry no ellipsis actions row", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "cold");
+  });
+  const turns = page.locator('.acp-turn[data-turn-state="completed"]');
+  await expect(turns).toHaveCount(2);
+  await expect(page.locator(".acp-prompt-actions")).toHaveCount(0);
+  // Between each prompt and its "Worked" heading nothing but the prompt renders.
+  for (const turn of await turns.all())
+    await expect(
+      turn.locator(".acp-turn__items > .chat-transcript-actions"),
+    ).toHaveCount(0);
+});
+
+test("T22b: prompt actions reveal on hover and Tab without moving the transcript", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture();
+  });
+  await settleTranscriptAtEnd(page);
+  const prompt = page
+    .locator(".acp-turn__items > :has(> .acp-prompt-actions)")
+    .first();
+  const trigger = prompt.getByRole("button", {
+    name: "Message actions",
+    exact: true,
+  });
+  await expect(trigger).toHaveCount(1);
+  await page.mouse.move(0, 0);
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
+  const following = page.locator(".acp-turn__items > *, .acp-virtual-turn-row");
+  const boxes = () =>
+    following.evaluateAll((items) =>
+      items.map((item) => item.getBoundingClientRect().toJSON()),
+    );
+  const before = await boxes();
+  await prompt.locator(".acp-message--user").hover();
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "1");
+  expect(await boxes()).toEqual(before);
+  const bubble = (await prompt.locator(".acp-message--user").boundingBox())!;
+  const button = (await trigger.boundingBox())!;
+  expect(button.y).toBeGreaterThanOrEqual(bubble.y + bubble.height);
+  expect(button.x + button.width).toBe(bubble.x + bubble.width);
+  await page.mouse.move(0, 0);
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
+  // Enter from the preceding workbench control using real keyboard navigation.
+  await trigger.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(trigger).not.toBeFocused();
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "0");
+  await page.keyboard.press("Tab");
+  await expect(trigger).toBeFocused();
+  await expect(prompt.locator(".acp-prompt-actions")).toHaveCSS("opacity", "1");
+  expect(await boxes()).toEqual(before);
+});
+
+test("T22b: unchanged prompts follow eligibility updates without moving", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture();
+  });
+  const actions = page.locator(".acp-prompt-actions");
+  await expect(actions).toHaveCount(2);
+  // The earlier prompt, its summary and its answer never move. Offsets are
+  // turn-relative: the transcript may scroll as the later turn changes.
+  const earlierLayout = () =>
+    page
+      .locator(".acp-turn")
+      .first()
+      .evaluate((turn) => {
+        const origin = turn.getBoundingClientRect();
+        return [
+          ...turn.querySelectorAll(
+            ".acp-turn__items > :has(> .acp-message--user), .acp-message--user, .chat-transcript-work, .acp-message--assistant",
+          ),
+        ].map((item) => {
+          const box = item.getBoundingClientRect();
+          return [box.x - origin.x, box.y - origin.y, box.width, box.height];
+        });
+      });
+  const settled = await earlierLayout();
+  for (const availability of [
+    "busy",
+    "all",
+    "cold",
+    "all",
+    "none",
+    "all",
+  ] as const) {
+    const retained = await page.evaluate(async (availability) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { acpProjectionStoreFor } =
+        await import("/src/app/acpProjectionRegistry.ts");
+      const projection = acpProjectionStoreFor(
+        useWorkbenchStore.getState().activeTabId!,
+      );
+      const state = projection.getState();
+      const page = state.page!;
+      const first = page.turns[0];
+      state.applyAuthoritativePage(state.scope!, {
+        ...page,
+        projectionRevision: String(
+          Number(page.projectionRevision) + 1,
+        ) as never,
+        turns: page.turns.map((turn, index) =>
+          index === 0
+            ? turn
+            : {
+                ...turn,
+                terminalAt: availability === "busy" ? null : 1,
+                state: availability === "busy" ? "running" : "completed",
+              },
+        ),
+        sessions: page.sessions.map((session) => ({
+          ...session,
+          residency: availability === "cold" ? "cold" : "hot",
+          capabilities: {
+            ...session.capabilities,
+            rewind:
+              availability === "none"
+                ? undefined
+                : {
+                    effects: { conversation: true, files: false },
+                    targets: "anyTurn",
+                    forkAt: true,
+                    onResume: false,
+                  },
+          },
+        })),
+      });
+      return projection.getState().page!.turns[0] === first;
+    }, availability);
+    expect(retained).toBe(true);
+    await expect(actions).toHaveCount(availability === "all" ? 2 : 0);
+    expect(await earlierLayout(), availability).toEqual(settled);
+  }
+  await expect(page.locator(".acp-turn")).toHaveCount(2);
+});
+
+test("T22b: latest-turn actions appear only at the offered undo prompt", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "hot", "latestTurn");
+  });
+  const turns = page.locator(".acp-turn");
+  await expect(turns).toHaveCount(2);
+  await expect(turns.first().locator(".acp-prompt-actions")).toHaveCount(0);
+  const prompt = turns
+    .last()
+    .locator(".acp-turn__items > :has(.acp-message--user)");
+  await prompt.hover();
+  await prompt
+    .getByRole("button", { name: "Message actions", exact: true })
+    .click();
+  const menu = page.getByRole("menu", { name: "Prompt actions" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rewind here"]);
+});
+
+test.describe("T22b: no-hover devices", () => {
+  test.use({ hasTouch: true });
+
+  test("prompt actions stay visible without hovering", async ({ page }) => {
+    await openForkableAnswer(page);
+    await page.evaluate(async () => {
+      const fixture =
+        await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+      fixture.installConversationRewindFixture();
+    });
+    expect(await page.evaluate(() => matchMedia("(hover: none)").matches)).toBe(
+      true,
+    );
+    await page.mouse.move(0, 0);
+    const actions = page.locator(".acp-prompt-actions").first();
+    await expect(actions).toHaveCSS("opacity", "1");
+    await actions
+      .getByRole("button", { name: "Message actions", exact: true })
+      .tap();
+    await expect(
+      page.getByRole("menu", { name: "Prompt actions" }).getByRole("menuitem"),
+    ).toHaveText(["Rewind here", "Fork from here"]);
+  });
+});
+
 test("T11a: a fork-only offer has no in-place rewind and explains the shared folder", async ({
   page,
 }) => {
@@ -211,11 +497,11 @@ test("T11a: a fork-only offer has no in-place rewind and explains the shared fol
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture(false);
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   await actions
     .first()
-    .getByRole("button", { name: "More actions", exact: true })
+    .getByRole("button", { name: "Message actions", exact: true })
     .click();
   const menu = page.getByRole("menu", { name: "Prompt actions" });
   await expect(
@@ -234,7 +520,7 @@ test("T11a: message actions load only after their menu opens", async ({
 }) => {
   const requested = new Set<string>();
   const feature =
-    /\/src\/features\/chat\/(?:ConversationActions|ForkChat|RewindChatDialog|UserMessageActions|ForkHistory|conversationActionAvailability)\.tsx?(?:\?|$)/;
+    /\/src\/features\/chat\/(?:ConversationActions|ForkChat|RewindChatDialog|UserMessageActions|ForkHistory)\.tsx?(?:\?|$)/;
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if (feature.test(path)) requested.add(path);
@@ -245,24 +531,24 @@ test("T11a: message actions load only after their menu opens", async ({
       await import("/tests/ui/fixtures/conversationRewindFixture.ts");
     fixture.installConversationRewindFixture();
   });
-  const actions = page.getByRole("group", { name: "Prompt actions" });
+  const actions = page.locator(".acp-prompt-actions");
   await expect(actions).toHaveCount(2);
   expect([...requested]).toEqual([]);
   await actions
     .first()
-    .getByRole("button", { name: "More actions", exact: true })
+    .getByRole("button", { name: "Message actions", exact: true })
     .click();
   await expect(
     page.getByRole("menuitem", { name: "Rewind here", exact: true }),
   ).toBeVisible();
-  expect(
-    requested.has("/src/features/chat/conversationActionAvailability.ts"),
-  ).toBe(true);
+  expect(requested.has("/src/features/chat/UserMessageActions.tsx")).toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu", { name: "Prompt actions" })).toHaveCount(
     0,
   );
   await expect(
-    actions.first().getByRole("button", { name: "More actions", exact: true }),
+    actions
+      .first()
+      .getByRole("button", { name: "Message actions", exact: true }),
   ).toBeFocused();
 });

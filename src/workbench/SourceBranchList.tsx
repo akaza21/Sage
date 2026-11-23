@@ -11,6 +11,7 @@ import {
 } from "../features/git/localBranches";
 import { MenuPopover } from "../ui/MenuPopover";
 import { SearchablePicker } from "../ui/SearchablePicker";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 export function SourceBranchList({
   repository,
@@ -20,6 +21,9 @@ export function SourceBranchList({
   triggerRole,
   open,
   onOpenChange,
+  manageBranches = true,
+  triggerClassName,
+  stateTitle,
 }: {
   repository: RootRepositoryStatus;
   rootLabel: string;
@@ -28,6 +32,9 @@ export function SourceBranchList({
   triggerRole?: "menuitem";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  manageBranches?: boolean;
+  triggerClassName?: string;
+  stateTitle?: string;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -35,6 +42,8 @@ export function SourceBranchList({
   const [draft, setDraft] = useState("");
   const [from, setFrom] = useState("");
   const [checkoutFailed, setCheckoutFailed] = useState(false);
+  const [pendingBranch, setPendingBranch] = useState<string | null>(null);
+  if (disabled && pendingBranch) setPendingBranch(null);
   const checkout = useWorkbenchStore((state) => state.checkoutLocalBranch);
   const create = useWorkbenchStore((state) => state.createLocalBranch);
   const rename = useWorkbenchStore((state) => state.renameLocalBranch);
@@ -68,11 +77,20 @@ export function SourceBranchList({
           ? "current"
           : undefined,
       })),
-      { id: "rename", label: "Rename branch…" },
-      { id: "delete", label: "Delete branch…" },
+      ...(manageBranches
+        ? [
+            { id: "rename", label: "Rename branch…" },
+            { id: "delete", label: "Delete branch…" },
+          ]
+        : []),
     ],
-    [names, repository.branch, repository.branchesTruncated],
+    [names, repository.branch, repository.branchesTruncated, manageBranches],
   );
+  const switchBranch = async (name: string) => {
+    if (disabled || !canCheckoutLocalBranch(name, repository.branch, names))
+      return;
+    setCheckoutFailed(!(await checkout(repository.rootId, name)));
+  };
   const valid =
     mode === "create"
       ? canCreateLocalBranch(draft, names, repository.branchesTruncated)
@@ -92,7 +110,10 @@ export function SourceBranchList({
         appearance="plain"
         chevron={false}
         triggerRole={triggerRole}
-        triggerClassName={triggerRole ? "menu-item" : "status-bar__button"}
+        triggerClassName={
+          triggerClassName ?? (triggerRole ? "menu-item" : "status-bar__button")
+        }
+        stateTitle={stateTitle}
         triggerLabel={triggerLabel}
         selectedId={`branch:${repository.branch}`}
         candidates={candidates}
@@ -108,6 +129,7 @@ export function SourceBranchList({
             : undefined
         }
         onSelect={async (choice) => {
+          if (disabled) return;
           if (
             choice === "create" ||
             choice === "rename" ||
@@ -118,11 +140,25 @@ export function SourceBranchList({
             setFrom(names[0] ?? "");
           } else {
             const name = choice.slice("branch:".length);
-            if (canCheckoutLocalBranch(name, repository.branch, names))
-              setCheckoutFailed(!(await checkout(repository.rootId, name)));
+            if (!canCheckoutLocalBranch(name, repository.branch, names)) return;
+            if (repository.changes.length || repository.changesOverflowed)
+              setPendingBranch(name);
+            else await switchBranch(name);
           }
         }}
       />
+      {pendingBranch && !disabled ? (
+        <ConfirmDialog
+          title="Switch branch with uncommitted changes?"
+          description={`Your uncommitted changes will be carried to ${pendingBranch} if Git can preserve them. Commit or stash conflicting changes before switching.`}
+          confirmLabel="Switch branch"
+          onCancel={() => setPendingBranch(null)}
+          onConfirm={() => {
+            setPendingBranch(null);
+            void switchBranch(pendingBranch);
+          }}
+        />
+      ) : null}
       {checkoutFailed && error?.rootId === repository.rootId ? (
         <MenuPopover
           className="menu-popover--editor"

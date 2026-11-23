@@ -43,6 +43,8 @@ pub(crate) enum ClaudeAdmissionUnavailable {
 #[derive(Debug)]
 pub(crate) struct AdmittedClaudeBinding {
     candidate: super::AdmittedCandidate,
+    /// The Claude Code release the adapter bundles, for display only.
+    runs_version: Option<String>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     fixture: Option<crate::launch_profile::FixtureSelection>,
     binding_digest: [u8; 32],
@@ -57,6 +59,8 @@ impl AdmittedClaudeBinding {
         #[cfg(windows)]
         let system_root = system_windows_directory()?;
         let fixed_argument = discovered.adapter_path.to_string_lossy().into_owned();
+        let runs_version =
+            crate::harness_discovery::bundled_claude_code_version(&discovered.adapter_path);
         let candidate = validate_research_candidate(CandidateManifest {
             adapter_version: discovered.adapter_version,
             acp_sdk_version: discovered.acp_sdk_version,
@@ -96,6 +100,7 @@ impl AdmittedClaudeBinding {
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             fixture: None,
             candidate,
+            runs_version,
             binding_digest_hex: binding_digest
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
@@ -118,6 +123,9 @@ impl AdmittedClaudeBinding {
     }
     pub(crate) fn harness_version(&self) -> &str {
         &self.candidate.adapter_version
+    }
+    pub(crate) fn runs_version(&self) -> Option<&str> {
+        self.runs_version.as_deref()
     }
     pub(crate) fn characterisation(
         &self,

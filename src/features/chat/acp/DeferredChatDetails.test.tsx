@@ -13,17 +13,17 @@ const requests = vi.hoisted(() => ({
 }));
 vi.mock("./TurnFileActivity", () => {
   requests.files();
-  return {
-    TurnFileActivity: () => (
-      <section aria-label="Edited files">Edit card ready</section>
-    ),
-  };
+  const TurnFileActivity = () => (
+    <section aria-label="Edited files">Edit card ready</section>
+  );
+  return { TurnFileActivity, default: TurnFileActivity };
 });
 vi.mock("./InlineSavedDiff", () => {
   requests.diff();
-  return {
-    InlineSavedDiff: () => <pre aria-label="Saved diff">Diff detail ready</pre>,
-  };
+  const InlineSavedDiff = () => (
+    <pre aria-label="Saved diff">Diff detail ready</pre>
+  );
+  return { InlineSavedDiff, default: InlineSavedDiff };
 });
 afterEach(cleanup);
 

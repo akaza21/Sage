@@ -7,11 +7,12 @@ import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode
 import type { PlanAccessTarget } from "./ComposerPlanAccess";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import type { ImageAction } from "./useComposerImageInput";
+import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import { lazyParts } from "./lazyParts";
 import type * as SectionChunk from "./ComposerSectionMenu";
-const SectionPart = lazyParts<typeof SectionChunk>(
-  () => import("./ComposerSectionMenu"),
-);
+const SectionPart = lazyParts<
+  Pick<typeof SectionChunk, "ComposerOptionsMenu" | "ComposerSectionMenu">
+>(() => import("./ComposerSectionMenu"));
 
 export { ListedHarnessModels } from "./ListedHarnessModels";
 export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";
@@ -44,6 +45,8 @@ export function ComposerOptionsMenu(props: ComposerOptionsProps) {
 }
 export type ComposerAddActionsProps = {
   boundChatId?: string;
+  /** The new-chat draft's pickers. Only rows needing no session are offered. */
+  draftPickers?: ControlledDraftPickers;
   sessionConfig: AcpSessionConfig | null;
   projectAction?: ReactNode;
   planAccess?: PlanAccessTarget;
@@ -60,6 +63,7 @@ export type ComposerAddActionsProps = {
   onOpenEffort?: () => void;
   onOpenUsage?: () => void;
   onOpenMcp?: () => void;
+  onOpenExtensions?: () => void;
   onPickCommand?: (command: AvailableAcpCommand, input: string) => void;
   onClose: () => void;
   onSetSessionMode: (id: string) => Promise<unknown>;
@@ -72,3 +76,6 @@ export type ComposerAddActionsProps = {
 export function ComposerAddActions(props: ComposerAddActionsProps) {
   return <SectionPart part="ComposerSectionMenu" {...props} />;
 }
+
+// The + menu Extensions and managed MCP views load with this menu chunk.
+export { ExtensionsPopover } from "./ComposerExtensions";

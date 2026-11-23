@@ -12,10 +12,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { MAX_FIND_QUERY_LENGTH, contentText } from "./editorContent";
-import {
-  useEditorExternalWatch,
-  WATCH_MISSING_MESSAGE,
-} from "./editorExternalWatch";
+import { useEditorExternalWatch } from "./editorExternalWatch";
 import type { EditorAdapterHandle } from "./EditorAdapter";
 import type { FindControl, FindOpenRequest } from "./FileFindBar";
 import { fileNavigationSelection } from "./fileNavigation";
@@ -70,14 +67,12 @@ export function useFileSurfaceModel(
     }),
     [],
   );
-  const watchedResource =
+  const currentEditor =
     editor?.phase === "ready" && sameResource(editor.resource, resource)
-      ? resource
-      : undefined;
-  const content =
-    editor?.phase === "ready" && sameResource(editor.resource, resource)
-      ? editor.content
-      : "";
+      ? editor
+      : null;
+  const watchedResource = currentEditor ? resource : undefined;
+  const content = currentEditor?.content ?? "";
   useFileEditorLifecycle(controller, {
     resource,
     editor,
@@ -93,16 +88,12 @@ export function useFileSurfaceModel(
     watchBridge,
     editorFocusBoundary,
   );
-  // An operation message shows first; the not-watched notice returns once it clears.
+  // Not being watched is a compact header warning, never an editor notice.
   const shownEditor = useMemo(
     () =>
       editor?.phase !== "ready" || !unwatchedMessage
         ? editor
-        : unwatchedMessage === WATCH_MISSING_MESSAGE || editor.document.conflict
-          ? { ...editor, unwatched: unwatchedMessage }
-          : editor.message
-            ? editor
-            : { ...editor, message: unwatchedMessage },
+        : { ...editor, unwatched: unwatchedMessage },
     [editor, unwatchedMessage],
   );
   const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);
@@ -157,7 +148,8 @@ export function useFileSurfaceModel(
     resource,
     path,
     activeResourceKey,
-    editor: shownEditor,
+    // A File surface only receives state for its own resource.
+    editor: sameResource(shownEditor?.resource, resource) ? shownEditor : null,
     projectTransitioning,
     updateEditorContent,
     saveActiveEditor,

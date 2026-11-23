@@ -69,26 +69,20 @@
   line-height: 1.4;
 }
 
-.repository-mutation-alert {
-  position: absolute;
-  z-index: var(--z-floating);
-  top: 8px;
-  right: 8px;
-  left: 8px;
-  display: grid;
-  gap: 4px;
-  padding: 8px 12px;
-  border: 1px solid
-    color-mix(in srgb, var(--color-danger) 45%, var(--color-border-subtle));
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  background: var(--color-danger-muted);
-  box-shadow: var(--elevation-popover);
-  font-size: var(--font-size-sm);
+/* Editor-wide notices take their height from the File or Diff below them. */
+.active-canvas--noticed {
+  display: flex;
+  flex-direction: column;
 }
 
-.repository-mutation-alert span {
-  color: var(--color-text-secondary);
+.active-canvas--noticed > .notice {
+  flex: none;
+  margin: var(--space-2) var(--space-3);
+}
+
+.active-canvas--noticed > :not(.notice) {
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .placeholder-surface {

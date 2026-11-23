@@ -215,3 +215,79 @@ it.each([
     }
   },
 );
+
+it.each([
+  {
+    sessionless: false,
+    rows: [
+      "files",
+      "images",
+      "project",
+      "goal",
+      "plan",
+      "mode:plan",
+      "effort",
+      "usage",
+    ],
+    commands: ["link", "recipe", "tune", "status"],
+  },
+  // Fails closed: rows that do not declare needing nothing (effort) and
+  // every catalog command stay hidden before a session exists; only the
+  // draft's curated built-ins show. Files stage in the draft's own native
+  // slot.
+  { sessionless: true, rows: ["files", "images", "plan"], commands: ["fast"] },
+])(
+  "before a session exists keeps only rows declaring they need none (sessionless $sessionless)",
+  ({ sessionless, rows, commands }) => {
+    const native = composerNativeRows({
+      sessionConfig: {
+        sageAgentSessionId: "s",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        configOptions: [],
+        modes: {
+          currentModeId: "plan",
+          availableModes: [{ id: "plan", name: "Plan" }],
+        },
+      },
+      projectAction: "Project",
+      disabled: false,
+      pending: false,
+      onClose: noop,
+      onSetSessionMode: async () => {},
+      onSetSessionConfigOption: async () => {},
+      onAttachFiles: noop,
+      imageAction: { disabled: false, onChoose: noop },
+      planAccess: {
+        bindingId: "binding",
+        capabilities: [],
+        onOpenAccess: noop,
+      },
+      onOpenGoal: noop,
+      onOpenEffort: noop,
+      onOpenUsage: noop,
+      importable: false,
+      onImport: noop,
+    });
+    const sections = composerMenuSections(
+      native,
+      [
+        command("link", "addToMessage"),
+        command("recipe", "skillsAndCommands", "skill"),
+        command("tune", "modelAndAccess"),
+        command("status", "usage"),
+      ],
+      "",
+      sessionless ? [command("fast", "skillsAndCommands")] : undefined,
+    );
+    const shown = sections.flatMap((section) =>
+      section.groups.flatMap((group) => group.rows),
+    );
+    expect(
+      shown.flatMap((row) => (row.kind === "native" ? [row.id] : [])),
+    ).toEqual(rows);
+    expect(
+      shown.flatMap((row) => (row.kind === "command" ? [row.id] : [])),
+    ).toEqual(commands);
+  },
+);

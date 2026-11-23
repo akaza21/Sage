@@ -19,6 +19,7 @@ const LocationPart = lazyParts<typeof LocationChunk>(
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
+import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
@@ -35,16 +36,16 @@ const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden = false,
+    hidden,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId = null,
+    sessionId,
     project,
-    newChat = false,
+    newChat,
     usage,
     onCompact,
     descriptionId,
@@ -55,7 +56,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked = false,
+    sendBlocked,
     actionBusy,
     activeTurn,
     queueAvailable,
@@ -83,6 +84,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInputDisabledReason = null,
     onAddImages,
     onCancelTurn,
+    onStop,
     onDeleteQueuedPrompt,
     onRetryQueuedPrompt,
     onSteerQueuedPrompt,
@@ -105,7 +107,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onAddImages,
   });
   const paste = useComposerPaste(
-    sessionFeatures && availableBinding,
+    availableBinding,
     activeTurn,
     disabledReasonId,
     onTextChange,
@@ -117,7 +119,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     (activeTurn && !queueAvailable) ||
     imageUploading ||
     imageInput.sendBlocked ||
-    (sessionFeatures && paste.blocksSend);
+    paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const hasContent = Boolean(
     text.trim() || attachedContext.length || paste.revision,
@@ -134,7 +136,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onPickFiles: paste.pickFiles,
     hidden: hidden || !sessionFeatures,
     disabled: composerDisabled,
-    attachable: sessionFeatures && availableBinding,
+    attachable: availableBinding,
   });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -153,6 +155,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
           disabled={actionDisabled || !!sessionId}
+          activeTurn={activeTurn}
         />
       ) : null}
       <div
@@ -197,14 +200,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {goal.kind === "goal" ||
+            {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
-                (goal.kind === "noGoal" && goalCapabilities.set))) ? (
+                (goal?.kind === "noGoal" && goalCapabilities.set))) ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 key={dictationScope}
-                state={goal}
+                // Every chat passes its goal; only the new-chat draft has none.
+                state={goal!}
                 chatId={dictationScope}
                 details={goalDetails}
                 capabilities={goalCapabilities}
@@ -293,26 +297,28 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               ) : null}
             </div>
-            {sessionFeatures ? (
-              <ComposerPasteSlot
-                paste={paste}
-                chatId={dictationScope}
-                session={pasteSession}
-                text={text}
-                disabled={actionDisabled}
-              />
-            ) : null}
+            <ComposerPasteSlot
+              paste={paste}
+              chatId={dictationScope}
+              // The new-chat draft stages files in its own slot, a chat by id.
+              draft={!sessionFeatures}
+              session={pasteSession}
+              text={text}
+              disabled={actionDisabled}
+            />
             <ComposerAvailabilityNotice
               reason={disabledReason}
               id={disabledReasonId}
               scope={dictationScope}
               onRetry={onRetryLoad}
               compact={
+                // A visible error explains the session's own refusal; a local
+                // reason (size, queue, access) stays visible.
+                (!!chatError && sessionPromptUnavailable) ||
                 missingBindingNotice ||
                 (!availableBinding && !canPrompt) ||
-                ["checking", "consent", "waiting", "signInRequired"].includes(
-                  discoveryPhase,
-                )
+                discoveryPhase === "checking" ||
+                SIGN_IN_PHASES.includes(discoveryPhase)
               }
             />
             {otherContext.length > 0 ? (
@@ -326,7 +332,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               </div>
             ) : null}
-            {sessionFeatures ? files.parts : null}
+            {files.parts}
             {!hidden ? (
               <ComposerStatusNotices
                 workbenchError={workbenchError}
@@ -391,8 +397,8 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              onCancelTurn={onCancelTurn}
-              cancelDisabled={actionDisabled}
+              onCancelTurn={onStop ?? onCancelTurn}
+              cancelDisabled={actionDisabled && !onStop}
               sendDisabled={dispatchBlocked}
             />
           </div>

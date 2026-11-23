@@ -69,6 +69,7 @@ pub(super) struct Inbound {
 #[derive(Debug)]
 enum Pending {
     Initialize(Value),
+    Commands,
     Session(Value),
     Mode {
         id: Value,
@@ -82,6 +83,8 @@ enum Pending {
     Interrupt,
     Withdraw(String),
     Control,
+    /// A `rewind_files` that restores; its reply names the files restored.
+    Restore,
     Passive(controls::PassiveRequest),
     /// A passive request whose caller gave up: its late reply is dropped.
     Abandoned,
@@ -341,6 +344,9 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod file_rewind_tests;
 
 #[cfg(test)]
 mod subagent_tests;

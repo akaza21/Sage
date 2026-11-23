@@ -22,6 +22,11 @@ impl PiRuntime {
         );
         let thinking_reply = matches!(&record, Ok(crate::acp::bindings::pi::decode::Record::Response(response))
             if Some(&response.id) == self.thinking_request_command.as_ref() && response.command == "get_available_thinking_levels");
+        if matches!(&record, Ok(crate::acp::bindings::pi::decode::Record::Response(response))
+            if !response.success && response.command == "get_commands" && self.translator.sole_optional_discovery_request_id("get_commands") == Some(response.id.as_str()))
+        {
+            self.commands_pending = false;
+        }
         if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
             && kind == "extension_ui_request"
             && value.get("method").and_then(serde_json::Value::as_str) == Some("setStatus")

@@ -1,4 +1,11 @@
+use crate::acp::bindings::pi::decode::redact_structured_text;
+use crate::acp::redaction::text::{clip_display, neutralized};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 use serde_json::Value;
+
+/// Displayed extension messages shown in one turn; the next adds one notice
+/// that further ones are hidden, and the rest are dropped.
+const EXTENSION_MESSAGES_PER_TURN: u8 = 64;
 
 use super::super::PiTranslator;
 use super::{assistant_message, message_id, turn::failure_detail};
@@ -12,9 +19,9 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        self.live_turn()?;
+        self.live_turn_any_phase()?;
         if !assistant_message(value) {
-            return Ok(Vec::new());
+            return self.other_message(&value["message"]);
         }
         let message = value.get("message");
         let kept = |key| message.and_then(|message| message.get(key)).cloned();
@@ -43,6 +50,97 @@ impl PiTranslator {
             external_id: message_id(value)?,
             outcome,
         });
+        Ok(output)
+    }
+
+    fn other_message(&mut self, message: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let role = message["role"].as_str().unwrap_or("");
+        if role == "custom" {
+            match message["display"].as_bool() {
+                Some(false) => return Ok(vec![AdapterOutput::Absorbed]),
+                Some(true) => {}
+                None => return self.unknown_event("custom_message_without_display"),
+            }
+        }
+        // Pi 1.5.0 roles Sage renders elsewhere or that only carry Pi's own
+        // context: tool results, system prompt sections (`message-types.md`),
+        // RPC shell runs Sage never starts, and summary context messages.
+        if matches!(
+            role,
+            "toolResult" | "system" | "bashExecution" | "branchSummary" | "compactionSummary"
+        ) {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        // Pi echoes prompts and steers as user messages; Sage already shows
+        // those. An extension's injected user turn has no reliable marker yet.
+        if role == "user" {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        if role != "custom" {
+            return self.unknown_event("message_role");
+        }
+        let turn = self.live_turn_any_phase()?;
+        if turn.extension_messages > EXTENSION_MESSAGES_PER_TURN {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        turn.extension_messages += 1;
+        if turn.extension_messages > EXTENSION_MESSAGES_PER_TURN {
+            return Ok(vec![AdapterOutput::Message(
+                NormalizedPayload::ExtensionMessage {
+                    label: SafeText::new("extensionLabel", "Extension messages".to_owned())
+                        .map_err(|_| AdapterError::Malformed)?,
+                    text: SafeText::new(
+                        "extensionText",
+                        "Further extension messages in this turn are hidden.".to_owned(),
+                    )
+                    .map_err(|_| AdapterError::Malformed)?,
+                    details: None,
+                },
+            )]);
+        }
+        let Some(label) = message["customType"].as_str() else {
+            return self.unknown_event("custom_message_without_type");
+        };
+        let mut unsupported = false;
+        let text = match &message["content"] {
+            Value::String(text) => text.clone(),
+            Value::Array(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    if part["type"] == "text"
+                        && let Some(value) = part["text"].as_str()
+                    {
+                        text.push_str(value);
+                    } else {
+                        unsupported = true;
+                    }
+                }
+                text
+            }
+            _ => {
+                unsupported = true;
+                String::new()
+            }
+        };
+        let clean =
+            |text: &str, cap| clip_display(&redact_structured_text(&neutralized(text, true)), cap);
+        let payload = NormalizedPayload::ExtensionMessage {
+            label: SafeText::new("extensionLabel", clean(label, 128))
+                .map_err(|_| AdapterError::Malformed)?,
+            text: SafeText::new("extensionText", clean(&text, 16384))
+                .map_err(|_| AdapterError::Malformed)?,
+            details: message
+                .get("details")
+                .map(|details| {
+                    SafeText::new("extensionDetails", clean(&details.to_string(), 16384))
+                })
+                .transpose()
+                .map_err(|_| AdapterError::Malformed)?,
+        };
+        let mut output = vec![AdapterOutput::Message(payload)];
+        if unsupported {
+            output.extend(self.unknown_event("message_content")?);
+        }
         Ok(output)
     }
 

@@ -2,7 +2,7 @@ import {
   noticeMatchesWatch,
   type EditorExternalWatchNotice,
 } from "../../domain/editorWatch";
-import { errorMessage } from "../../domain/errors";
+import { boundedError, errorMessage } from "../../domain/errors";
 import {
   ABSENT_FINGERPRINT,
   type DocumentVersion,
@@ -30,24 +30,39 @@ const DELETION_CONFLICT = {
   message: "This file was deleted outside Sage.",
 };
 
+/** Matches the native refusal of a recovery copy whose base the disk has left. */
+const DISK_MISMATCH = /no longer matches disk/i;
+
 function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   const editor = bridge.getActiveEditor();
   return editor?.phase === "ready" ? editor : null;
 }
 
-export function markDeleted(bridge: EditorStateBridge): void {
+/** A disk conflict explains itself, so it replaces any operation failure. */
+function setConflict(
+  bridge: EditorStateBridge,
+  conflict: EditorConflict,
+  disk?: DocumentVersion,
+): void {
   const active = currentReady(bridge);
-  if (active) {
+  if (active)
     bridge.setActiveEditor(
       {
         ...active,
-        document: { ...active.document, conflict: DELETION_CONFLICT },
-        message: DELETION_CONFLICT.message,
+        message: null,
+        details: undefined,
+        document: {
+          ...active.document,
+          disk: disk ?? active.document.disk,
+          conflict,
+        },
       },
       { tabStatus: "failed" },
     );
-  }
 }
+
+const markDeleted = (bridge: EditorStateBridge) =>
+  setConflict(bridge, DELETION_CONFLICT);
 
 /**
  * Windows ends the watch of a deleted folder with a notice, so absent must
@@ -78,7 +93,6 @@ export function reread(
   bridge.setActiveEditor(
     {
       ...(getFileEditorController().ready(document) as ReadyEditorState),
-      message: document.conflict?.message ?? null,
       unstored: document.dirty ? active?.unstored : undefined,
     },
     {
@@ -88,29 +102,11 @@ export function reread(
   );
 }
 
-export function setExternalChangeConflict(
-  bridge: EditorStateBridge,
-  disk: DocumentVersion | undefined,
-): void {
-  const active = currentReady(bridge);
-  if (!active) return;
-  bridge.setActiveEditor(
-    {
-      ...active,
-      message: active.unstored ?? null,
-      document: {
-        ...active.document,
-        disk: disk ?? active.document.disk,
-        conflict: EXTERNAL_CHANGE,
-      },
-    },
-    { tabStatus: "failed" },
-  );
-}
-
 const FAILED = {
   save: "Couldn't save",
   keep: "Couldn't keep your version",
+  reload: "Could not reload this file",
+  discard: "Could not discard changes",
 } as const;
 
 const REASONS: [RegExp, string][] = [
@@ -127,44 +123,41 @@ const REASONS: [RegExp, string][] = [
     /buffer recovery limit|-buffer limit|MiB project limit/i,
     "too many files have unsaved changes. Save or close some, then try again.",
   ],
-  [
-    /no longer matches disk/i,
-    "the file changed on disk. Keep your version or reload it.",
-  ],
+  [DISK_MISMATCH, "the file changed on disk. Keep your version or reload it."],
 ];
 
 export function failureMessage(
   error: unknown,
-  action: keyof typeof FAILED = "save",
+  action: keyof typeof FAILED,
 ): string {
   const raw = errorMessage(error);
   const known = REASONS.find(([pattern]) => pattern.test(raw));
-  const reason =
-    known?.[1] ??
-    raw
-      .replace(
-        /^(filesystem operation failed|invalid request|resource limit exceeded|unsupported operation): /,
-        "",
-      )
-      .replace(/ \(os error \d+\)$/, "");
-  return `${FAILED[action]}: ${reason}`;
+  return `${FAILED[action]}${known ? `: ${known[1]}` : "."}`;
 }
+
+/** A retried action that fails again is a new failure, announced again. */
+let failures = 0;
 
 export function actionFailed(
   bridge: EditorStateBridge,
   error: unknown,
-  action: keyof typeof FAILED = "save",
+  action: keyof typeof FAILED,
 ): string {
   const message = failureMessage(error, action);
   const active = currentReady(bridge);
-  if (active) {
-    bridge.setActiveEditor({
-      ...active,
-      saving: false,
-      message,
-      ...(action === "save" ? { unstored: message } : {}),
-    });
-  }
+  if (active)
+    bridge.setActiveEditor(
+      // A refused recovery copy after disk moved is explained by the conflict.
+      active.document.conflict && DISK_MISMATCH.test(errorMessage(error))
+        ? { ...active, saving: false }
+        : {
+            ...active,
+            saving: false,
+            message,
+            details: boundedError(error, 1024, "utf16"),
+            failure: ++failures,
+          },
+    );
   return message;
 }
 
@@ -191,7 +184,8 @@ export async function applyWatchNotice(
         }
       : null;
   // Reading the File drops a durable buffer that matches disk, so unsaved edits
-  // are persisted first.
+  // are persisted first. The controller records a refused copy as unstored;
+  // a refusal because disk moved on means no durable copy exists either.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&
@@ -199,7 +193,7 @@ export async function applyWatchNotice(
   )
     await getFileEditorController()
       .flush(bridge)
-      .catch((error: unknown) => actionFailed(bridge, error));
+      .catch(() => undefined);
   const document = await editor
     .openEditorDocument(notice.resource)
     .catch(() => null);
@@ -230,7 +224,7 @@ export async function applyWatchNotice(
       current.document.disk.fingerprint === document.disk.fingerprint &&
       current.document.lineEnding === document.lineEnding;
     if (!completedMatchingSave) {
-      setExternalChangeConflict(bridge, document?.disk);
+      setConflict(bridge, EXTERNAL_CHANGE, document?.disk);
       return;
     }
   }

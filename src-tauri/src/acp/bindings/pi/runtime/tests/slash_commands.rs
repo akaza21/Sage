@@ -180,7 +180,10 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
             )
             .unwrap();
         let catalog = runtime.available_commands().snapshot();
-        assert_eq!(catalog.revision, turn + 1);
+        assert_eq!(
+            catalog.revision, 1,
+            "identical catalogs preserve command authority"
+        );
         catalog.validate(catalog.revision, "/review").unwrap();
         let mut prompt = Prompt::new("prompt", "/review").unwrap();
         prompt.command_revision = Some(catalog.revision);
@@ -231,6 +234,15 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     );
     let mut prompt = Prompt::new("prompt", "/review src").unwrap();
     prompt.command_revision = Some(commands.revision);
+    let refresh = runtime.refresh_commands().unwrap().unwrap();
+    let refresh = deliver(&mut runtime, refresh);
+    assert_eq!(refresh["type"], "get_commands");
+    assert!(runtime.refresh_commands().unwrap().is_none());
+    runtime.ingest(&response(&refresh, json!({"commands":[{"name":"review","description":"Review changes","source":"extension"}]})), &Mapper).unwrap();
+    assert_eq!(
+        runtime.available_commands().snapshot().revision,
+        commands.revision
+    );
     let send = runtime
         .command(AdapterCommand::Prompt {
             prompt,
@@ -353,10 +365,14 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
                 json!({"commands":[
                     {"name":"review","description":"Review","source":"extension",
                         "sourceInfo":{"path":"/extensions/review.ts","source":"package","scope":"user",
-                            "origin":"npm:review-tools","baseDir":"/packages/review-tools"}},
+                            "origin":"package","baseDir":"/packages/review-tools"}},
                     {"name":"fix","description":"Fix it","source":"prompt","location":"project",
                         "sourceInfo":{"path":"/prompts/fix.md","source":"local","scope":"project"}},
                     {"name":"skill:lint","description":"Lint","source":"skill","path":"/s/SKILL.md"},
+                    // Pi 1.5.0 lists its built-in MCP extension so; `--no-mcp` omits it.
+                    {"name":"mcp","description":"Manage MCP servers: sign in, reconnect, enable or disable, and change exposure",
+                        "source":"extension","sourceInfo":{"path":"builtin:mcp","source":"builtin",
+                            "scope":"temporary","origin":"top-level"}},
                 ]}),
             ),
             &Mapper,
@@ -373,20 +389,40 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         [
             ("session", CommandSource::Builtin),
             ("compact", CommandSource::Builtin),
+            ("mcp", CommandSource::Builtin),
             ("review", CommandSource::Extension),
             ("fix", CommandSource::Prompt),
             ("skill:lint", CommandSource::Skill),
         ]
     );
-    let review = &listed.commands[2];
+    // Pi's own MCP command keeps its route, so /mcp still prints server
+    // status, and gains the native MCP row only as a shipped extension.
+    let mcp = &listed.commands[2];
+    assert_eq!(
+        mcp.dispatch,
+        crate::acp::slash_commands::CommandDispatch::CommandTurn
+    );
+    assert_eq!(
+        mcp.placement.control,
+        Some(crate::acp::command_placement::NativeControl::McpPanel)
+    );
+    // The WebView's Extensions view reads this provenance; Pi's missing
+    // `baseDir` is sent as null.
+    assert_eq!(
+        serde_json::to_value(mcp).unwrap()["sourceInfo"],
+        json!({"path":"builtin:mcp","source":"builtin","scope":"temporary",
+            "origin":"top-level","baseDir":null})
+    );
+    assert_eq!(listed.commands[3].placement.control, None);
+    let review = &listed.commands[3];
     assert_eq!(review.source_label.as_deref(), Some("review-tools"));
     let info = review.source_info.as_ref().unwrap();
     assert_eq!(info.path.as_deref(), Some("/extensions/review.ts"));
     assert_eq!(info.source.as_deref(), Some("package"));
     assert_eq!(info.scope.as_deref(), Some("user"));
-    assert_eq!(info.origin.as_deref(), Some("npm:review-tools"));
+    assert_eq!(info.origin.as_deref(), Some("package"));
     assert_eq!(info.base_dir.as_deref(), Some("/packages/review-tools"));
-    assert_eq!(listed.commands[3].source_label.as_deref(), Some("fix"));
+    assert_eq!(listed.commands[4].source_label.as_deref(), Some("fix"));
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime

@@ -18,12 +18,28 @@
   font-weight: var(--font-weight-medium);
 }
 
-.composer-location > .searchable-picker {
+.composer-location > .searchable-picker,
+.composer-branch {
   --picker-trigger-icon-size: var(--icon-size-sm);
   --picker-trigger-gap: var(--composer-location-icon-gap);
   --picker-field-padding: 0 var(--space-1);
   --picker-trigger-hover-color: var(--color-text-emphasis);
   --picker-trigger-hover-fill: var(--composer-control-hover);
+  flex: none;
+}
+
+.composer-branch {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.composer-branch__trigger > .searchable-picker__trigger-label {
+  display: flex;
+  align-items: center;
+  gap: var(--composer-location-icon-gap);
+}
+
+.composer-branch__trigger svg {
   flex: none;
 }
 

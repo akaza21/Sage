@@ -33,7 +33,17 @@ fn checkout_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: sage_git::public_error::containment().into(),
+            // The repository lease outlives a Git process that may still run.
+            message: match state {
+                GitContainmentState::TerminatedUnreaped => {
+                    sage_git::public_error::containment().into()
+                }
+                GitContainmentState::PotentiallyRunning => format!(
+                    "{} {}",
+                    sage_git::public_error::containment(),
+                    crate::repository_mutation_guard::LEASE_KEPT
+                ),
+            },
         },
         error => GitFileMutationCommandError::Failed {
             message: sage_git::public_error::checkout(&error),
@@ -45,6 +55,21 @@ async fn checkout_git_local_branch_inner(
     state: &AppState,
     request: GitRepositoryCheckoutRequest,
     expected_transition_epoch: u64,
+) -> AppResult<GitRepositoryCheckoutResult> {
+    checkout_git_local_branch_with(
+        state,
+        request,
+        expected_transition_epoch,
+        std::future::ready(()),
+    )
+    .await
+}
+
+async fn checkout_git_local_branch_with(
+    state: &AppState,
+    request: GitRepositoryCheckoutRequest,
+    expected_transition_epoch: u64,
+    before_checkout: impl std::future::Future<Output = ()>,
 ) -> AppResult<GitRepositoryCheckoutResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -93,8 +118,18 @@ async fn checkout_git_local_branch_inner(
             (root.id.clone(), workspace)
         })
         .collect();
-    let checkout_result =
-        sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await;
+    // No agent turn runs or starts in this repository during the switch; the
+    // status refresh below runs after the lease is released.
+    let checkout_result = crate::repository_mutation_guard::with_idle_repository(
+        &state.database,
+        &workspace,
+        crate::repository_mutation_guard::RepositoryOperation::SWITCH_BRANCHES,
+        || async {
+            before_checkout.await;
+            sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await
+        },
+    )
+    .await;
     let error = match checkout_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -112,3 +147,6 @@ async fn checkout_git_local_branch_inner(
         error,
     })
 }
+
+#[cfg(test)]
+mod tests;

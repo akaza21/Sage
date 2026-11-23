@@ -51,6 +51,33 @@ afterEach(() => {
 });
 
 describe("file editor controller seam", () => {
+  it("bounds native load and recovery diagnostics before retaining them", async () => {
+    const editor = fakeEditorPort();
+    const controller = bindFileEditorController(editor);
+    let active: ActiveEditorState = controller.ready(document);
+    const bridge: EditorStateBridge = {
+      getActiveEditor: () => active,
+      setActiveEditor: (next) => {
+        active = next;
+      },
+    };
+    const raw = "filesystem operation failed: " + "diagnostic ".repeat(200);
+    controller.failLoad(savedResource, new Error(raw), bridge);
+    expect(active).toMatchObject({
+      phase: "error",
+      message: raw.slice(0, 1024),
+    });
+    active = controller.ready(document);
+    controller.updateContent(bridge, "edited\n");
+    vi.mocked(editor.snapshotEditorBuffer).mockRejectedValue(new Error(raw));
+    await expect(controller.flush(bridge)).rejects.toThrow(raw);
+    expect(active).toMatchObject({
+      phase: "ready",
+      unstored: raw.slice(0, 1024),
+      content: "edited\n",
+    });
+  });
+
   it("uses one shared controller to coordinate load, flush, save, and discard", async () => {
     vi.useFakeTimers();
     const editor = fakeEditorPort();

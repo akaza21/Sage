@@ -16,7 +16,7 @@ export function ComposerAvailabilityNotice({
 }) {
   return (
     <>
-      {reason ? (
+      {reason && (
         <p
           id={id}
           className={
@@ -25,15 +25,15 @@ export function ComposerAvailabilityNotice({
         >
           {reason}
         </p>
-      ) : null}
-      {onRetry ? (
+      )}
+      {onRetry && (
         <Notice
           identity={`${scope}:chat-load`}
           severity="blocking"
           message="This chat failed to load."
           action={{ label: "Retry", onClick: onRetry }}
         />
-      ) : null}
+      )}
     </>
   );
 }

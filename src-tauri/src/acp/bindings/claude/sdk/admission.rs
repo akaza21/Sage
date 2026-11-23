@@ -394,6 +394,13 @@ impl ClaudeSdkBindingRegistration {
         }
     }
 
+    /// The oldest release this binding admits, while it refuses the installed
+    /// one as older than that.
+    pub(crate) fn refused_below(&self) -> Option<&'static str> {
+        (self.unavailable() == Some(ClaudeSdkAdmissionUnavailable::VersionUnsupported))
+            .then_some(SUPPORTED_MINIMUM)
+    }
+
     pub(crate) fn unavailable(&self) -> Option<ClaudeSdkAdmissionUnavailable> {
         match *self.lock_state() {
             RegistrationState::Pending => Some(ClaudeSdkAdmissionUnavailable::DiscoveryPending),

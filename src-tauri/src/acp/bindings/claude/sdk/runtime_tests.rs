@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
 use super::*;
+#[path = "runtime_refresh_tests.rs"]
+mod refresh;
 use crate::acp::{transcript_quote::Prompt, transport::FrameReader};
 use sage_acp_protocol::{
     contract::RequiredText,
@@ -56,6 +58,7 @@ fn runtime() -> ClaudeSdkRuntime {
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
+        cwd: None,
         epoch: RuntimeEpoch::new(1).unwrap(),
     };
     runtime.bind_activation(&ActivationMode::New {
@@ -1950,4 +1953,44 @@ fn initialize_plugin_commands_keep_their_reported_namespace() {
         crate::acp::slash_commands::CommandSource::Plugin
     );
     assert_eq!(plugin.source_label.as_deref(), Some("codex"));
+}
+
+#[test]
+fn file_rewind_preview_is_declared_only_from_the_release_verified_to_honour_dry_run() {
+    for (version, preview) in [
+        ("2.1.325", false),
+        ("2.1.326-beta.1", false),
+        ("not a version", false),
+        ("", false),
+        ("2.1.326", true),
+        ("2.1.330", true),
+        ("2.2.0", true),
+    ] {
+        let capability = super::native::rewind_capability(version);
+        assert_eq!(capability.effects.file_preview, preview, "{version}");
+        assert!(capability.effects.files, "{version}");
+    }
+}
+
+#[test]
+fn files_claude_code_names_relative_to_its_cwd_resolve_under_it() {
+    use crate::acp::goal::NativeRpcReply;
+    let mut runtime = runtime();
+    let cwd = std::env::temp_dir().join("sage-rewind-cwd");
+    let elsewhere = std::env::temp_dir().join("elsewhere").join("b.rs");
+    runtime.cwd = Some(cwd.clone());
+    runtime.answered(
+        Some(NativeRpcReply::FileRewindPlan(vec![
+            "src/a.rs".into(),
+            elsewhere.clone(),
+        ])),
+        None,
+    );
+    assert_eq!(
+        runtime.native,
+        Some(NativeRpcReply::FileRewindPlan(vec![
+            cwd.join("src/a.rs"),
+            elsewhere
+        ]))
+    );
 }

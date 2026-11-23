@@ -53,6 +53,13 @@ export interface HarnessSignIn {
   statusCheck?: "claudeCli";
 }
 
+export interface HarnessUpdate {
+  latestVersion: string;
+  command: string;
+  /** Curated known commands newer than the installed release. */
+  unlocks?: readonly string[];
+}
+
 interface HarnessDefinitionBase {
   id: string;
   name: string;
@@ -70,7 +77,13 @@ interface HarnessDefinitionBase {
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: HarnessSignIn | null;
   brand?: HarnessBrand | null;
-  update?: { latestVersion: string; command: string } | null;
+  update?: HarnessUpdate | null;
+  /** The newest published release from the last npm check, if any ran. */
+  latestVersion?: string | null;
+  /** The release Sage runs when it is not the installed one. */
+  runsVersion?: string | null;
+  /** Sage runs a fallback until the installed release reaches this one. */
+  directFromVersion?: string | null;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

@@ -462,6 +462,8 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   });
   await expect(project).toBeVisible();
   await expect(project).toHaveAttribute("aria-haspopup", "listbox");
+  const branch = strip.getByRole("button", { name: /^Switch branch in / });
+  await expect(branch).toHaveText("feature/editor-polish");
   for (const width of [1888, 720, 480]) {
     await page.setViewportSize({ width, height: 1096 });
     await settledComposerFit(composer);
@@ -501,9 +503,13 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       icons: [
         [14, 14],
         [14, 14],
+        [14, 14],
       ],
     });
     await expectResponsiveToolbar(composer);
+    await expect(strip).toHaveScreenshot(
+      `composer-location-branch-${width}.png`,
+    );
   }
   await expect(project).toHaveCSS("font-size", "13px");
   await project.click();
@@ -522,6 +528,26 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   const tab = frame.locator(".composer-location");
   await expect(tab).toHaveCSS("outline-style", "solid");
   await expect(tab).toHaveCSS("outline-width", "2px");
+  await page.emulateMedia({ forcedColors: "none" });
+  await page.setViewportSize({ width: 1280, height: 1096 });
+  await branch.click();
+  const branches = page.getByRole("listbox", { name: /^Switch branch in / });
+  await expect(
+    branches.getByRole("option", { name: "Create new branch…" }),
+  ).toBeVisible();
+  await expect(
+    branches.getByRole("option", { name: /Rename|Delete/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".searchable-picker__popover--menu"),
+  ).toHaveScreenshot("composer-branch-menu.png");
+  await page.getByPlaceholder("Select a branch").fill("release");
+  await expect(
+    branches.getByRole("option", { name: "Switch to release/beta" }),
+  ).toBeVisible();
+  await expect(branches.getByRole("option", { name: /main/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(branch).toBeFocused();
 });
 
 test("the location strip is gone once the chat has a turn", async ({

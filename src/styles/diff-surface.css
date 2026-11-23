@@ -37,6 +37,10 @@
   flex: none;
 }
 
+.diff-surface > .notice {
+  margin: var(--space-2) var(--space-3);
+}
+
 .diff-surface > .diff-editor,
 .diff-surface > .resource-state {
   min-height: 0;

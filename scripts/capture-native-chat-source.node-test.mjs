@@ -816,7 +816,7 @@ function stagedPair(root, mutate = () => {}) {
     assistantRendered: true,
     lazyFallbackVisible: false,
     elements: [],
-    controls: { send: true },
+    controls: { composer: true, send: true },
     overflow: { horizontal: false },
     timing: { elapsedMs: 100, steps: [] },
     verdict: "captured",

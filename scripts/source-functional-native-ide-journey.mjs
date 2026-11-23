@@ -900,7 +900,7 @@ export const UI_PROBES = Object.freeze({
   outlineNames:
     "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Outline project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Outline\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.outline-card .outline-card__name')].map(x=>x.textContent))})()",
   saveSettled:
-    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const conflicts=editors[0].querySelectorAll('.editor-notice--conflict').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&conflicts===0&&dirtyTabs===0})()",
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const conflicts=editors[0].querySelectorAll('[data-notice-identity^=\"file-conflict:\"]').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&conflicts===0&&dirtyTabs===0})()",
   savedContent:
     "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return null;const contents=[...editors[0].querySelectorAll('.cm-content')];return contents.length===1?contents[0].innerText:null})()",
   diffContent:
@@ -910,7 +910,7 @@ export const UI_PROBES = Object.freeze({
   insertConflictEdit:
     '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// SAGE_CONFLICT_EDIT native recovery\\n")})()',
   conflictVisible:
-    "(()=>{const alerts=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"] .editor-notice--conflict[role=\"alert\"]')];return alerts.length===1&&alerts[0].innerText.includes('External change detected')})()",
+    '(()=>{const groups=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] [role="group"][aria-label="External change"]\')];return groups.length===1&&groups[0].innerText.includes(\'This file changed outside Sage.\')})()',
   closeDirtyFile:
     "(()=>{const tabs=[...document.querySelectorAll('.tab')].filter(x=>x.querySelector('.file-kind-icon')&&x.textContent.includes('journey.ts'));if(tabs.length!==1)return false;const buttons=[...tabs[0].querySelectorAll('button[aria-label=\"Close journey.ts\"]')];if(buttons.length!==1)return false;buttons[0].click();return true})()",
   dirtyDialogVisible:
@@ -918,7 +918,7 @@ export const UI_PROBES = Object.freeze({
   discardDirtyClose:
     "(()=>{const dialogs=[...document.querySelectorAll('section.dirty-dialog[role=\"dialog\"]')];if(dialogs.length!==1)return false;const buttons=[...dialogs[0].querySelectorAll('button')].filter(x=>x.textContent.trim()==='Discard');if(buttons.length!==1)return false;buttons[0].click();return true})()",
   recoverySettled:
-    '(()=>document.querySelectorAll(\'section.dirty-dialog[role="dialog"]\').length===0&&document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .editor-notice--conflict[role="alert"]\').length===0)()',
+    '(()=>document.querySelectorAll(\'section.dirty-dialog[role="dialog"]\').length===0&&document.querySelectorAll(\'section[aria-label="File editor journey.ts"] [role="group"][aria-label="External change"]\').length===0)()',
 });
 
 export async function performUiMilestone(cdp, current, deadline) {

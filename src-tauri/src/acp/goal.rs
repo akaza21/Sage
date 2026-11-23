@@ -44,6 +44,8 @@ pub(crate) struct NativeRpcIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcRequest {
+    /// Coalesced session intent; the idle discovery pump owns the actual read.
+    RefreshCommands,
     Goal(GoalAction),
     Read(NativeRead),
     /// Forks the runtime's own native session through its latest turn. Only
@@ -141,6 +143,9 @@ pub(crate) enum NativeRpcReply {
     Controlled(Option<sage_acp_protocol::contract::SafeText<512>>),
     /// The harness declined a session control, with its reason if it gave one.
     ControlRefused(Option<sage_acp_protocol::contract::SafeText<512>>),
+    /// The native files a file rewind would restore, at most
+    /// `MAX_REWIND_FILES` of them. Native-only: never crosses IPC.
+    FileRewindPlan(Vec<std::path::PathBuf>),
     McpServers(crate::acp::mcp::inventory::McpInventory),
     McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),
 }
@@ -150,7 +155,7 @@ impl NativeRpcIntent {
     /// abandons it instead of recovering the runtime.
     pub(crate) fn passive(&self) -> bool {
         match &self.request {
-            NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::UsageRead | NativeRpcRequest::RefreshCommands => true,
             NativeRpcRequest::BackgroundTerminals(
                 crate::acp::background_terminals::TerminalAction::List,
             ) => true,
@@ -164,7 +169,7 @@ impl NativeRpcIntent {
     /// deadline rather than the ordinary one.
     pub(crate) fn answers_at_once(&self) -> bool {
         match &self.request {
-            NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::UsageRead | NativeRpcRequest::RefreshCommands => true,
             NativeRpcRequest::BackgroundTerminals(
                 crate::acp::background_terminals::TerminalAction::List,
             ) => true,
@@ -182,7 +187,9 @@ impl NativeRpcIntent {
                 NativeRpcRequest::Goal(GoalAction::Set { objective }) => objective.len() + 1,
                 NativeRpcRequest::Goal(_) => 1,
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
-                NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
+                NativeRpcRequest::RefreshCommands
+                | NativeRpcRequest::ForkSession
+                | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
                 NativeRpcRequest::BackgroundTerminals(action) => action.bytes(),
                 NativeRpcRequest::Control(control) => control.actual_bytes() + 1,

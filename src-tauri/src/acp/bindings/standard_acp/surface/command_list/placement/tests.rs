@@ -169,3 +169,72 @@ fn curated_commands_survive_a_full_report_ahead_of_other_builtins() {
     assert!(list.validate(list.revision, "/compact").is_ok());
     assert!(list.validate(list.revision, "/cmd511").is_err());
 }
+
+#[test]
+fn an_upgrade_unlocks_exactly_the_known_commands_introduced_after_the_installed_release() {
+    let table = KnownCommandTable::parse(
+        br#"[
+        {"name":"compact","section":"session","control":"compact"},
+        {"name":"reload-skills","section":"skillsAndCommands","since":"2.1.152"},
+        {"name":"reload-plugins","section":"addOns","since":"2.1.260"},
+        {"name":"future","section":"usage","since":"2.2.0"}
+    ]"#,
+    )
+    .unwrap();
+    for (installed, latest, expected) in [
+        ("2.1.100", "2.1.152", vec!["reload-skills"]),
+        ("2.1.152", "2.1.260", vec!["reload-plugins"]),
+        (
+            "2.1.100",
+            "2.2.0",
+            vec!["reload-skills", "reload-plugins", "future"],
+        ),
+        ("2.1.260", "2.1.330", vec![]),
+        ("2.1.152", "2.1.152", vec![]),
+        ("2.2.0", "2.1.100", vec![]),
+    ] {
+        let (installed_version, latest_version) = (
+            ReleaseVersion::parse(installed).unwrap(),
+            ReleaseVersion::parse(latest).unwrap(),
+        );
+        assert_eq!(
+            table
+                .introduced_between(&installed_version, &latest_version)
+                .collect::<Vec<_>>(),
+            expected,
+            "{installed} -> {latest}"
+        );
+    }
+}
+
+#[test]
+fn a_draft_lists_only_session_free_builtins_its_installed_release_has() {
+    let claude = include_bytes!("../../../../claude/known_commands.json").as_slice();
+    let codex = include_bytes!("../../../../codex/known_commands.json").as_slice();
+    let pi = include_bytes!("../../../../pi/known_commands.json").as_slice();
+    // Native controls, terminal-only rows and newer releases stay out.
+    let gated = br#"[
+        {"name":"compact","section":"session","control":"compact"},
+        {"name":"agents","section":"session"},
+        {"name":"hooks","section":"addOns","terminalOnly":true},
+        {"name":"fresh","section":"skillsAndCommands","since":"2.1.152"}
+    ]"#
+    .as_slice();
+    for (bytes, installed, expected) in [
+        (claude, Some("9.0.0"), vec!["fast", "agents"]),
+        (claude, None, vec!["fast", "agents"]),
+        (codex, Some("9.0.0"), vec!["skills"]),
+        (pi, Some("9.0.0"), vec![]),
+        (gated, Some("2.1.151"), vec!["agents"]),
+        (gated, Some("2.1.152"), vec!["agents", "fresh"]),
+        (gated, None, vec!["agents"]),
+    ] {
+        let table = KnownCommandTable::parse(bytes).unwrap();
+        let installed = installed.and_then(ReleaseVersion::parse);
+        assert_eq!(
+            table.draft_builtins(installed.as_ref()).collect::<Vec<_>>(),
+            expected,
+            "{installed:?}"
+        );
+    }
+}

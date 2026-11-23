@@ -136,6 +136,7 @@ fn page_reply(
             | NativeRpcReply::TerminalsStopped
             | NativeRpcReply::Controlled(_)
             | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::FileRewindPlan(_)
             | NativeRpcReply::McpServers(_)
             | NativeRpcReply::McpSignIn(_),
         ) => Err(NativeReadError::RecoveryRequired),

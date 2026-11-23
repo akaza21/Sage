@@ -105,7 +105,6 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/ProjectScopeChip.tsx",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
-  "src/features/chat/FirstChatSend.tsx",
   "src/features/chat/ChatSessionHeader.tsx",
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
@@ -312,6 +311,9 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  // An extension's custom message; grouped, it lives in the markdown chunk
+  // a transcript has already loaded.
+  "src/features/chat/acp/ExtensionMessage.tsx",
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",
@@ -336,7 +338,6 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/chatEffortDraft.ts",
     "src/features/chat/DraftEffortControl.tsx",
     "src/app/runCreateChat.ts",
-    "src/features/chat/FirstChatSend.tsx",
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",
     "src/features/chat/NewChatDraftSurface.tsx",
@@ -793,7 +794,6 @@ describe("desktop-native chunk topology", () => {
       "src/features/chat/ForkChat.tsx",
       "src/features/chat/RewindChatDialog.tsx",
       "src/features/chat/UserMessageActions.tsx",
-      "src/features/chat/conversationActionAvailability.ts",
       "src/features/chat/ForkHistory.tsx",
     ];
     const conversation = closureForModule(
@@ -818,6 +818,14 @@ describe("desktop-native chunk topology", () => {
         module,
       ).toBe(true);
     }
+    // Eligibility is needed before opening a menu; it still stays off startup.
+    const eligibility = "src/features/chat/conversationActionAvailability.ts";
+    expect(messageTrigger.some((id) => id.endsWith(eligibility))).toBe(true);
+    expect(conversation.some((id) => id.endsWith(eligibility))).toBe(true);
+    expect(chat.some((id) => id.endsWith(eligibility))).toBe(false);
+    expect(graph.initialModules.some((id) => id.endsWith(eligibility))).toBe(
+      false,
+    );
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>
@@ -948,6 +956,22 @@ describe("desktop-native chunk topology", () => {
         );
       }
     }
+    // A new-chat draft's image intake and built-in commands ride in the +
+    // menu's section chunk.
+    for (const module of [
+      "src/features/chat/draftImages.ts",
+      "src/features/chat/draftBuiltinCommands.ts",
+    ])
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(
+        groupedGraph.moduleFiles.get(
+          "src/features/chat/ComposerSectionMenu.tsx",
+        ),
+      );
+    // Its file handoff rides with the composer's staging part, which stages
+    // the draft's files; the send path carries neither.
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/draftFileHandoff.ts"),
+    ).toBe(groupedGraph.moduleFiles.get("src/features/chat/ComposerPaste.tsx"));
     // Chat search's dialog and native adapter share a lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",

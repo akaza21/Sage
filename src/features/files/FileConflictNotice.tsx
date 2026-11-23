@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
-import { parentResource, resourceKey } from "../../domain/resourceIdentity";
+import {
+  parentResource,
+  resourceKey,
+  sameResource,
+} from "../../domain/resourceIdentity";
 import {
   ABSENT_FINGERPRINT,
   type EditorDocument,
   type ResourceRef,
 } from "../../domain/workbench";
-import { AlertTriangle } from "../../ui/leanIcons";
+import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
@@ -42,10 +46,10 @@ function useConflictAction() {
   return { pending, run };
 }
 
-const UNSTORED_EDITS = "Your unsaved changes are not yet stored.";
-
+const CHANGED_FILE = "This file changed outside Sage.";
+const DELETED_FILE = "This file was deleted outside Sage.";
 const KEPT_DELETED_FILE =
-  "This file was deleted outside Sage. Save to create it again, or close it.";
+  "This file was deleted outside Sage; saving creates it again.";
 
 /**
  * Keyed by the File as it is on disk, so Compare ends by itself once disk
@@ -58,10 +62,7 @@ function conflictCompareKey(editor: {
   return `${resourceKey(editor.resource)}\0${editor.document.disk.fingerprint}`;
 }
 
-const loadConflictCompare = () =>
-  import("./FileConflictCompare").then(({ FileConflictCompare }) => ({
-    default: FileConflictCompare,
-  }));
+const loadConflictCompare = () => import("./FileConflictCompare");
 
 /** Reads the store itself rather than add to the File surface's bundle. */
 export default function FileConflictNotice({
@@ -81,8 +82,8 @@ export default function FileConflictNotice({
   const { pending, run } = useConflictAction();
   const off = busy || pending;
   const { conflict } = document;
-  const deletedKey =
-    conflict?.kind === "deleted" ? resourceKey(document.resource) : null;
+  const key = resourceKey(document.resource);
+  const deletedKey = conflict?.kind === "deleted" ? key : null;
   useEffect(() => {
     if (!deletedKey) return;
     const state = useWorkbenchStore.getState();
@@ -94,51 +95,45 @@ export default function FileConflictNotice({
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     return (
-      <div
-        className="editor-notice editor-notice--conflict editor-notice--deleted"
-        role="status"
-      >
-        <AlertTriangle size={16} aria-hidden="true" />
-        <span className="editor-notice__text">{KEPT_DELETED_FILE}</span>
+      <div className="file-conflict" role="group" aria-label="Kept version">
+        <Notice
+          identity={`file-kept:${key}`}
+          severity="info"
+          message={KEPT_DELETED_FILE}
+        />
         {editable ? (
-          <div className="editor-notice__actions">
+          <span className="file-conflict__actions">
             <CloseButton busy={off} run={run} />
-          </div>
+          </span>
         ) : null}
       </div>
     );
   }
-  const ready = editor?.phase === "ready" ? editor : null;
-  const key = ready && conflictCompareKey(ready);
+  const ready =
+    editor?.phase === "ready" &&
+    sameResource(editor.resource, document.resource)
+      ? editor
+      : null;
+  const compare = ready && conflictCompareKey(ready);
   const comparing =
-    editable && conflict.kind === "external-change" && compareKey === key;
+    editable && conflict.kind === "external-change" && compareKey === compare;
   const deleted = conflict.kind === "deleted";
   const button = "button button--compact";
   return (
     <>
       <div
-        className={`editor-notice editor-notice--conflict${deleted ? " editor-notice--deleted" : ""}`}
-        role="alert"
+        className="file-conflict"
+        role="group"
+        aria-label={deleted ? "Deleted file" : "External change"}
       >
-        <AlertTriangle size={16} aria-hidden="true" />
-        <span className="editor-notice__text">
-          <strong>
-            {deleted ? "File deleted." : "External change detected."}
-          </strong>{" "}
-          {conflict.message}
-          {ready?.unstored ? (
-            <>
-              {" "}
-              {UNSTORED_EDITS} {ready.unstored}
-            </>
-          ) : null}
-        </span>
+        {/* A lost recovery copy is its own alert beside this warning. */}
+        <Notice
+          identity={`file-conflict:${key}:${conflict.kind}`}
+          severity="warning"
+          message={deleted ? DELETED_FILE : CHANGED_FILE}
+        />
         {editable && ready ? (
-          <div
-            className="editor-notice__actions"
-            role="group"
-            aria-label={deleted ? "Deleted file" : "External change"}
-          >
+          <span className="file-conflict__actions">
             {deleted ? null : (
               <button
                 className={button}
@@ -179,37 +174,29 @@ export default function FileConflictNotice({
               <CloseButton busy={off} run={run} />
             ) : (
               <button
-                className={`${button} editor-notice__toggle`}
+                className={button}
                 type="button"
                 aria-pressed={comparing}
                 title="Compare the file on disk with your version"
                 onClick={() =>
                   useWorkbenchStore.setState({
-                    editorCompareKey: comparing ? null : key,
+                    editorCompareKey: comparing ? null : compare,
                   })
                 }
               >
                 Compare
               </button>
             )}
-          </div>
+          </span>
         ) : null}
       </div>
-      {ready?.message &&
-      ready.message !== conflict.message &&
-      ready.message !== ready.unstored ? (
-        <div className="editor-notice editor-notice--error" role="alert">
-          <AlertTriangle size={16} aria-hidden="true" />
-          <span>{ready.message}</span>
-        </div>
-      ) : null}
       {comparing && ready ? (
         <LazyModuleBoundary
           load={loadConflictCompare}
           label="Compare"
           render={(FileConflictCompare) => (
             <FileConflictCompare
-              key={`${key}\0${ready.revision}`}
+              key={`${compare}\0${ready.revision}`}
               resource={ready.resource}
               text={contentText(ready.content)}
             />

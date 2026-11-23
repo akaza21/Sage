@@ -18,7 +18,7 @@ use sage_core::error::{AppError, AppResult};
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
-const MAX_SCHEMA_VERSION: usize = super::sign_in_evidence_indexes::VERSION as usize;
+const MAX_SCHEMA_VERSION: usize = super::agent_file_writes::VERSION as usize;
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -79,13 +79,16 @@ pub(super) enum SchemaClass {
     CurrentChildThreadStates,
     CurrentPrivateProjects,
     CurrentSignInEvidenceIndexes,
+    /// The sign-in evidence schema plus each file's latest agent write; its
+    /// version lives in `agent_file_writes::VERSION`.
+    CurrentAgentFileWrites,
 }
 
 #[cfg(test)]
-pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentSignInEvidenceIndexes;
+pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentAgentFileWrites;
 
 #[cfg(test)]
-pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::sign_in_evidence_indexes::VERSION;
+pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::agent_file_writes::VERSION;
 
 impl SchemaClass {
     /// Every schema from v18 on, which opens and verifies in place: the
@@ -107,6 +110,7 @@ impl SchemaClass {
                 | Self::CurrentImportedHistory
                 | Self::CurrentSessionCapabilities
                 | Self::CurrentSignInEvidenceIndexes
+                | Self::CurrentAgentFileWrites
                 | Self::CurrentPrivateProjects
                 | Self::CurrentChildThreadStates
         )

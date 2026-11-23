@@ -16,7 +16,6 @@ import {
   keymapBinding,
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
-import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import type { EditorAdapterHandle } from "./EditorAdapter";
@@ -91,10 +90,7 @@ export function FileSurface({
   );
   const reviewReadOnly = readOnly && !projectTransitioning;
   const onCaretOffset = useEditorCaretPublisher(
-    !previewing &&
-      editor?.phase === "ready" &&
-      !!resource &&
-      sameResource(editor.resource, resource),
+    !previewing && editor?.phase === "ready",
     !readOnly,
   );
 
@@ -117,11 +113,7 @@ export function FileSurface({
   // A pending "focus the opened File" request (New File > Create) is taken
   // once this File's editor is on screen, after the render that shows it.
   const editorShown =
-    !readOnly &&
-    !previewing &&
-    editor?.phase === "ready" &&
-    !!resource &&
-    sameResource(editor.resource, resource);
+    !readOnly && !previewing && editor?.phase === "ready" && !!resource;
   // The editor, with the File it was made for, so markers never cross Files.
   const [gutterEditor, setGutterEditor] = useState<
     (GitGutterEditor & { key: string }) | null
@@ -248,13 +240,10 @@ export function FileSurface({
     if (message) setLanguageNavigationStatus(message);
   }
 
-  if (
-    !resource ||
-    !editor ||
-    !sameResource(editor.resource, resource) ||
-    editor.phase === "loading"
-  ) {
-    return <FileSurfaceResourceState path={path} />;
+  if (!resource || !editor || editor.phase === "loading") {
+    return (
+      <FileSurfaceResourceState path={path} identity={activeResourceKey} />
+    );
   }
   if (editor.phase === "error") {
     if (editor.kind === "mixedLineEndings")
@@ -263,7 +252,13 @@ export function FileSurface({
           <MixedEolFileView key={activeResourceKey} resource={resource} />
         </Suspense>
       );
-    return <FileSurfaceResourceState path={path} error={editor.message} />;
+    return (
+      <FileSurfaceResourceState
+        path={path}
+        identity={activeResourceKey}
+        error={editor.message}
+      />
+    );
   }
 
   return (
@@ -307,12 +302,12 @@ export function FileSurface({
           },
           closeFind,
           closeGoToLine,
-          openFind: () => openFindFromSurface(),
+          openFind: openFindFromSurface,
           openReplace: () => openFindFromSurface(true),
           moveFind,
           openGoToLine,
-          goToLocalSymbol: () => void goToLocalSymbol(),
-          save: readOnly ? () => undefined : () => void saveActiveEditor(),
+          goToLocalSymbol,
+          save: readOnly ? () => undefined : saveActiveEditor,
         });
       }}
       onTogglePreview={() => {

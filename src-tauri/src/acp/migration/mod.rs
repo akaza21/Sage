@@ -1,3 +1,4 @@
+mod agent_file_writes;
 mod backup;
 mod build_intent;
 mod child_thread_states;

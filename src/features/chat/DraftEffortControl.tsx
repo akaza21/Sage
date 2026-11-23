@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import {
+  chatEffortField,
   DEFAULT_EFFORT_DRAFT,
   useChatEffortDraft,
 } from "../../app/chatEffortDraft";
@@ -26,16 +27,14 @@ export default function DraftEffortControl({
   ComponentProps<typeof ComposerEffortControl>,
   "option" | "onSetOption"
 >) {
-  const held = useChatEffortDraft((state) => state.draft);
+  // Subscribed so a held level re-renders; the field reads the same draft.
+  useChatEffortDraft((state) => state.draft);
   const { chatId, bindingId, modelId } = draft;
-  const current = draft.onChange
-    ? (draft.value ?? DEFAULT_EFFORT_DRAFT)
-    : held &&
-        held.chatId === chatId &&
-        held.bindingId === bindingId &&
-        held.modelId === modelId
-      ? held.effort
-      : DEFAULT_EFFORT_DRAFT;
+  const current =
+    (draft.onChange
+      ? draft.value
+      : chatId && chatEffortField(chatId, bindingId, modelId).effort) ||
+    DEFAULT_EFFORT_DRAFT;
   const listed = [DEFAULT_EFFORT_DRAFT, ...draft.levels];
   const values = listed.includes(current) ? listed : [...listed, current];
   return (

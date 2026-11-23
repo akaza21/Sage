@@ -4,6 +4,29 @@ use crate::acp::bindings::pi::{ModelSummary, StateSnapshot};
 type ConfigReply = (Option<AdapterEvent>, Option<AdapterEgress>);
 
 impl PiRuntime {
+    /// Re-reads what an extension may have changed: the model registry
+    /// (providers registered on `session_start`), the selected model and the
+    /// thinking level. Optional: it is skipped, and stays due, when a read is
+    /// already in flight or Pi's command capacity is full.
+    pub(in crate::acp::bindings::pi::runtime) fn refresh_configuration(
+        &mut self,
+    ) -> Option<AdapterEgress> {
+        if self.poisoned
+            || !self.initialized
+            || self.external_session.is_none()
+            || self.translator.configuration_refresh_pending()
+            || self.thinking_request_command.is_some()
+            || self.fork.is_some()
+        {
+            return None;
+        }
+        self.configuration_models_pending = false;
+        self.begin_one(
+            crate::acp::bindings::pi::Operation::RefreshConfiguration,
+            super::super::RequestKind::RefreshState,
+        )
+        .ok()
+    }
     pub(super) fn state_reply(
         &mut self,
         state: StateSnapshot,
