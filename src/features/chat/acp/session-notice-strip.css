@@ -41,7 +41,9 @@
    (the item gap plus its heading margin, 38px against the 24px button). So
    mounting, unmounting or revealing it never moves the transcript, even when
    a turn starts or ends. right: 0 lines it up with the bubble's right edge.
-   Opacity, not visibility, keeps the button in the Tab order while hidden. */
+   Opacity, not visibility, keeps the button in the Tab order while hidden.
+   The rule below names both classes so it outranks the shared actions row's
+   min-height and reveal whichever stylesheet loads last. */
 .acp-turn__items > :has(> .acp-prompt-actions) {
   position: relative;
 }
@@ -57,7 +59,7 @@
   bottom: 0;
 }
 
-.acp-prompt-actions {
+.chat-transcript-actions.acp-prompt-actions {
   position: absolute;
   top: 100%;
   right: 0;
@@ -73,7 +75,7 @@
 }
 
 @media (hover: none) {
-  .acp-prompt-actions {
+  .chat-transcript-actions.acp-prompt-actions {
     opacity: 1;
   }
 }

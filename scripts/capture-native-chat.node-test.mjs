@@ -46,6 +46,7 @@ import {
   actionsFor,
   HARNESS,
   IDLE_CAPTURE_STATES,
+  COMPOSER_FILL,
   clickExpression,
   liveActionExpression,
 } from "./capture-native-chat-dom.mjs";
@@ -139,7 +140,7 @@ for (const harness of ["codex", "claude", "pi"])
         bindingId: HARNESS[harness].binding,
         state: "none",
         turnCount: 0,
-        controls: { stop: false, composer: true, send: true },
+        controls: { stop: false, composer: true, send: false, dictate: true },
         visible: { harnessMenu: true, addMenu: true },
       };
       const accepted = (sample) =>
@@ -348,12 +349,20 @@ for (const state of ["approval-approved", "approval-declined"])
     boundary.observation.accessModes = ["ask"];
     let warmupObservations = 0;
     let selectedAsk = false;
+    // Idle shows the mic; typed text swaps it for Send.
+    const idle = {
+      stop: false,
+      composer: true,
+      send: false,
+      dictate: true,
+      modelEnabled: true,
+    };
     const observation = {
       turnId: "none",
       turnCount: 0,
       state: "none",
       bindingId: HARNESS.claude.binding,
-      controls: { stop: false, composer: true, send: true, modelEnabled: true },
+      controls: idle,
       assistantRendered: true,
     };
     const cdp = {
@@ -363,15 +372,12 @@ for (const state of ["approval-approved", "approval-declined"])
         if (expression === observationExpression) {
           if (observation.turnCount === 1 && ++warmupObservations >= 2) {
             observation.state = "completed";
-            observation.controls = {
-              stop: false,
-              composer: true,
-              send: true,
-              modelEnabled: true,
-            };
+            observation.controls = idle;
           }
           return { ...boundary.observation, ...observation };
         }
+        if (expression === COMPOSER_FILL)
+          observation.controls = { ...idle, send: true, dictate: false };
         if (
           expression === clickExpression('button[aria-label="Send message"]')
         ) {
@@ -415,12 +421,7 @@ for (const state of ["approval-approved", "approval-declined"])
         ) {
           assert.equal(observation.state, "waitingApproval");
           observation.state = "completed";
-          observation.controls = {
-            stop: false,
-            composer: true,
-            send: true,
-            modelEnabled: true,
-          };
+          observation.controls = idle;
         }
         return true;
       },
@@ -1066,7 +1067,7 @@ test("hydrated empty chats bind to the selected harness, not a retained welcome 
         { harness, state },
         {
           ...observation,
-          controls: { stop: false, composer: true, send: true },
+          controls: { stop: false, composer: true, send: false, dictate: true },
           visible: { harnessMenu: true },
         },
       );

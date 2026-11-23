@@ -28,14 +28,25 @@ impl HarnessCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness_discovery::InstalledHarness;
 
     #[test]
     fn a_draft_projects_each_curated_harness_table_and_nothing_otherwise() {
         let catalog = HarnessCatalog::default();
-        assert_eq!(
-            catalog.draft_builtin_commands("claude-code"),
-            ["fast", "agents"]
-        );
+        // Before, between and after the releases Claude's `since` rows name:
+        // those rows are native controls, so no discovered release admits them.
+        for version in [None, Some("2.1.151"), Some("2.1.200"), Some("2.1.300")] {
+            catalog.discovered.replace(vec![InstalledHarness {
+                id: "claude-code",
+                executable: "claude".into(),
+                version: version.map(Into::into),
+            }]);
+            assert_eq!(
+                catalog.draft_builtin_commands("claude-code"),
+                ["fast", "agents"],
+                "{version:?}"
+            );
+        }
         assert_eq!(catalog.draft_builtin_commands("codex"), ["skills"]);
         for harness in ["pi", "gemini-cli", "sage-simulator", "missing"] {
             assert!(

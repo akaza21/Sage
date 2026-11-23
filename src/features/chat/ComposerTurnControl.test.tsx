@@ -233,6 +233,14 @@ it("never restarts dictation from a Stop press that outlived the recording", asy
     "Start dictation",
     2,
   ]);
+  // Shift never activates the button, so a later screen-reader click starts.
+  fireEvent.click(stop);
+  await screen.findByRole("button", { name: "Stop dictation" });
+  fireEvent.keyDown(stop, { key: "Shift" });
+  act(() => Speech.latest.onend?.());
+  fireEvent.click(stop);
+  await screen.findByRole("button", { name: "Stop dictation" });
+  expect(Speech.starts).toBe(4);
 });
 
 it("keeps Send for typed text while an uncancellable turn runs and queues it", () => {

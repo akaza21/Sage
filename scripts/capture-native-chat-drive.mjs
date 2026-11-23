@@ -25,6 +25,7 @@ import {
   isExpandable,
   expandExpression,
   COMPOSER_IDLE_CONTROL,
+  composerTurnControlReady,
   NEW_CHAT,
   HARNESS_PICKER,
   harnessOption,
@@ -286,7 +287,7 @@ export async function waitForComposerIdle(
     return (
       SETTLED_TURN_STATES.includes(latest.state) &&
       !latest.controls.stop &&
-      latest.controls.composer === true &&
+      composerTurnControlReady(latest.controls) &&
       latest.controls[control] === true
     );
   }, deadline);

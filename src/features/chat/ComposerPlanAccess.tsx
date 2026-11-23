@@ -54,9 +54,11 @@ export function ComposerPlanAccess({
               else chooseAccess({ sessionId, onDraft }, next);
             },
           },
-          "Plan mode",
-          description,
-          <Lightbulb size={14} aria-hidden="true" />,
+          {
+            text: "Plan mode",
+            description,
+            icon: <Lightbulb size={14} aria-hidden="true" />,
+          },
         );
       }}
     </ChatAccessView>

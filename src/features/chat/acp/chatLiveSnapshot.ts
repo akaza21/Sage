@@ -1,6 +1,7 @@
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import {
   awaitingPermission,
+  currentOrLatestTurn,
   getTurnStatusLabel,
   terminalTurnStates,
 } from "./statusSemantics";
@@ -18,21 +19,6 @@ export type ChatLiveSnapshot = {
   waiting: boolean;
   working: boolean;
 };
-
-function currentTurn(page: AcpChatPage): TurnProjection | null {
-  let current: TurnProjection | null = null;
-  let latest: TurnProjection | null = null;
-  for (const turn of page.turns) {
-    if (!latest || turn.ordinal > latest.ordinal) latest = turn;
-    if (
-      !terminalTurnStates.has(turn.state) &&
-      (!current || turn.ordinal > current.ordinal)
-    ) {
-      current = turn;
-    }
-  }
-  return current ?? latest;
-}
 
 function latestTextItem(turn: TurnProjection): string {
   let text = "";
@@ -60,7 +46,7 @@ export function projectChatLiveSnapshot(
   chatId: string,
   page: AcpChatPage | null,
 ): ChatLiveSnapshot {
-  const turn = page ? currentTurn(page) : null;
+  const turn = page ? currentOrLatestTurn(page) : null;
   if (!turn) {
     return {
       chatId,
