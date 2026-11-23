@@ -139,7 +139,7 @@ export function composerPromptPlaceholder(
   canPrompt: boolean,
   sessionPromptUnavailable = false,
 ): string {
-  if (canPrompt !== true) {
+  if (!canPrompt) {
     if (sessionPromptUnavailable) return "This session cannot accept prompts.";
     return COMPOSER_PROMPT_PLACEHOLDER_DISABLED;
   }
@@ -167,7 +167,7 @@ export function useComposerFocusHotkey(
   enabled: boolean,
 ): void {
   useEffect(() => {
-    if (enabled !== true) {
+    if (!enabled) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
