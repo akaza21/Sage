@@ -80,10 +80,18 @@ function renderClearData() {
   return render(<BrowserClearData />);
 }
 
-async function outcome(message = "WebView2 clearing failed") {
+async function outcome(message: string) {
   const text = await screen.findByText(message);
   expect(text.closest('[role="status"]')).not.toBeNull();
   return text;
+}
+
+// A failure is the workbench error, like other failures; the status bar keeps
+// only the quiet success line.
+async function failed(message = "WebView2 clearing failed") {
+  await waitFor(() => expect(useWorkbenchStore.getState().error).toBe(message));
+  expect(useWorkbenchStore.getState().browserClearNotice).toBeNull();
+  expect(screen.queryByText(message)).toBeNull();
 }
 
 function confirmClear() {
@@ -145,8 +153,7 @@ it("reports a partial clear failure after reconciling closed tabs", async () => 
   });
   renderClearData();
   confirmClear();
-  expect(await outcome()).toHaveTextContent("WebView2 clearing failed");
-  expect(useWorkbenchStore.getState().error).toBeNull();
+  await failed();
   expect(
     useWorkbenchStore
       .getState()
@@ -154,7 +161,7 @@ it("reports a partial clear failure after reconciling closed tabs", async () => 
   ).toBe(false);
 });
 
-it("explains a failed clear once in the surviving status bar", async () => {
+it("reports a failed clear as the workbench error, not a status line", async () => {
   browserClearData.mockResolvedValue({
     closedTabIds: [],
     cleared: false,
@@ -177,10 +184,8 @@ it("explains a failed clear once in the surviving status bar", async () => {
       screen.getByRole("dialog", { name: "Clear browsing data?" }),
     ).getByRole("button", { name: "Clear browsing data" }),
   );
-  await outcome();
+  await failed();
   expect(history.querySelector(".notice")).toBeNull();
-  expect(screen.getAllByText("WebView2 clearing failed")).toHaveLength(1);
-  expect(useWorkbenchStore.getState().error).toBeNull();
 });
 
 it("reports a pending clear failure when WebView2 finishes later", async () => {
@@ -200,9 +205,8 @@ it("reports a pending clear failure when WebView2 finishes later", async () => {
   act(() =>
     clearDataEvent?.({ cleared: false, error: "WebView2 clearing failed" }),
   );
-  expect(await outcome()).toHaveTextContent("WebView2 clearing failed");
+  await failed();
   expect(screen.queryByText(/still clearing/)).not.toBeInTheDocument();
-  expect(useWorkbenchStore.getState().error).toBeNull();
   expect(
     screen.getByRole("button", { name: "Clear browsing data" }),
   ).toBeEnabled();
@@ -302,14 +306,17 @@ it.each([false, true])(
         error: cleared ? null : "WebView2 clearing failed",
       }),
     );
-    const message = cleared
-      ? "Browsing data cleared."
-      : "WebView2 clearing failed";
-    const notice = await outcome(message);
-    render(<BrowserClearData />);
-    expect(document.querySelector(".browser-clear-data .notice")).toBeNull();
-    expect(screen.getAllByText(message)).toEqual([notice]);
-    expect(useWorkbenchStore.getState().error).toBeNull();
+    if (cleared) {
+      const notice = await outcome("Browsing data cleared.");
+      render(<BrowserClearData />);
+      expect(document.querySelector(".browser-clear-data .notice")).toBeNull();
+      expect(screen.getAllByText("Browsing data cleared.")).toEqual([notice]);
+      expect(useWorkbenchStore.getState().error).toBeNull();
+    } else {
+      await failed();
+      render(<BrowserClearData />);
+      expect(document.querySelector(".browser-clear-data .notice")).toBeNull();
+    }
   },
 );
 
@@ -412,7 +419,7 @@ it("says plainly that nothing was cleared where WebView2 is unavailable", async 
   });
   renderClearData();
   confirmClear();
-  expect(await outcome(message)).toHaveTextContent(message);
+  await failed(message);
   expect(
     useWorkbenchStore
       .getState()

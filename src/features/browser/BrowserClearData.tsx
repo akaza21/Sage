@@ -11,9 +11,13 @@ import {
 } from "../../ports/nativeBrowserPort";
 
 const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
-// The status bar outlives the browser tabs closed by this operation.
-const setOutcome = (browserClearNotice: string | null) =>
-  useWorkbenchStore.setState({ browserClearNotice });
+// Both outlive the browser tabs closed by this operation: success is a quiet
+// status-bar line, a failure is the workbench error, as for other failures.
+const setOutcome = (cleared: boolean, failure: string | null) =>
+  useWorkbenchStore.setState({
+    browserClearNotice: cleared ? "Browsing data cleared." : null,
+    ...(failure ? { error: failure } : {}),
+  });
 
 export function BrowserClearData({
   menuItem = false,
@@ -31,7 +35,7 @@ export function BrowserClearData({
     if (useClearProgress.getState().busy) return;
     setConfirming(false);
     setBusy(true);
-    setOutcome(null);
+    useWorkbenchStore.setState({ browserClearNotice: null });
     let unlisten: (() => void) | undefined;
     let pending = false;
     let completion: BrowserClearDataCompletion | null = null;
@@ -40,10 +44,9 @@ export function BrowserClearData({
       unlisten = undefined;
       setBusy(false);
       setOutcome(
+        outcome.cleared,
         outcome.error ??
-          (outcome.cleared
-            ? "Browsing data cleared."
-            : "Browser data could not be cleared."),
+          (outcome.cleared ? null : "Browser data could not be cleared."),
       );
     };
     try {
@@ -70,7 +73,7 @@ export function BrowserClearData({
     } catch (cause) {
       unlisten?.();
       setBusy(false);
-      setOutcome(String(cause).slice(0, 512));
+      setOutcome(false, String(cause).slice(0, 512));
     }
   }
 

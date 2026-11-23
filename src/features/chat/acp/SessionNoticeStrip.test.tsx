@@ -122,6 +122,18 @@ describe("SessionNoticeStrip", () => {
     expect(screen.getByText("Sandbox is degraded.")).toBeVisible();
     expect(screen.getByText("Legacy blocking failure")).toBeVisible();
   });
+  it("remounting a chat replays saved warnings silently but still interrupts for errors", () => {
+    const { unmount } = render(
+      <SessionNoticeStrip session="s1" notices={notices} />,
+    );
+    unmount();
+    render(<SessionNoticeStrip session="s1" notices={notices} />);
+    const warning = screen
+      .getByText("Approval review needs attention")
+      .closest(".notice");
+    expect(warning).toHaveAttribute("aria-live", "off");
+    expect(screen.getByRole("alert")).toHaveTextContent("Extension crashed");
+  });
   it("keeps protocol diagnostics out of chat while retaining blocking errors", () => {
     const decoded = safeSessionNotices([
       {
