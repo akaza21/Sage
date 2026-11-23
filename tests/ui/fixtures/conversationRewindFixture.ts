@@ -61,18 +61,19 @@ export function installConversationRewindFixture(
     sessionSurface:
       availability === "all"
         ? page.sessionSurface
-        : { activities: [], undoTurn: second.id },
+        : {
+            activities: [],
+            undoTurn: second.id,
+            // The native side offers the file preview with the undo.
+            ...(files && { undoPreviewsFiles: true }),
+          },
     sessions: page.sessions.map((session) => ({
       ...session,
       residency,
       capabilities: {
         ...session.capabilities,
         rewind: {
-          effects: {
-            conversation: inPlace,
-            files: !!files,
-            ...(files && { filePreview: true as const }),
-          },
+          effects: { conversation: inPlace, files: !!files },
           targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,

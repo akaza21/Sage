@@ -153,8 +153,8 @@ export type ActivityState =
 export interface AcpRewindEffects {
   conversation: boolean;
   files: boolean;
-  /** Undo asks the native side for a file preview only when this is set. */
-  filePreview?: true;
+  /** Not decoded: the rewind dialog asks the native side for its preview. */
+  filePreview?: boolean;
 }
 
 export interface AcpRewindCapability {

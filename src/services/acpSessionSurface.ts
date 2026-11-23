@@ -49,6 +49,7 @@ export function decodeSessionSurface(
       ? {
           undoTurn: value.undoTurn,
           ...(value.undoKeepsFiles === true ? { undoKeepsFiles: true } : {}),
+          ...(value.undoPreviewsFiles === true && { undoPreviewsFiles: true }),
         }
       : {}),
   };

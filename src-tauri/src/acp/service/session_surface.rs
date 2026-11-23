@@ -45,6 +45,8 @@ impl AcpService {
             _ => None,
         };
         view.undo_keeps_files = undo.as_ref().is_some_and(|(_, keeps)| *keeps);
+        view.undo_previews_files =
+            undo.is_some() && super::file_rewind::offers_file_rewind(session.capabilities.rewind);
         view.undo_turn = undo.as_ref().map(|(turn, _)| turn.clone());
         page.session_surface = (view != Default::default()).then_some(view);
         let bytes = serde_json::to_vec(page)

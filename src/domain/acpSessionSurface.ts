@@ -19,4 +19,6 @@ export interface AcpSessionSurface {
    */
   undoTurn?: string;
   undoKeepsFiles?: boolean;
+  /** Undo restores files only after Rewind's file preview and check. */
+  undoPreviewsFiles?: true;
 }

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import { FileRewindPreview, useFileRewindPreview } from "../FileRewindPreview";
 import "./session-surface.css";
-import { currentContext } from "./useAcpChatActions";
 import { useSessionControl } from "./useSessionControl";
 
 const STATE_LABEL = {
@@ -29,10 +28,7 @@ export function SessionSurfacePanel({
   const undoTurn = decoded?.undoTurn;
   // Only a session whose rewinds preview files is asked for one; any other
   // undoes as its harness offers.
-  const page = currentContext(chatId)?.page;
-  const previews = !!page?.sessions.find(
-    (session) => session.id === page.currentSessionId,
-  )?.capabilities.rewind?.effects.filePreview;
+  const previews = decoded?.undoPreviewsFiles;
   const found = useFileRewindPreview(
     chatId,
     confirming && previews ? undoTurn : null,
