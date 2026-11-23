@@ -24,13 +24,13 @@ impl NativeRuntime {
         let commands = self.0.available_commands();
         let result = if commands.take_refresh_request() {
             let result = self.0.refresh_commands();
-            // A refused refresh stays asked for until the next discovery. A
-            // read already out answers it; a harness that cannot refresh never will.
-            let sent = matches!(
+            // An unsent refresh stays asked for until the next discovery: a
+            // read already out may predate the change. A harness that cannot
+            // refresh never will.
+            if !matches!(
                 result,
                 Ok(Some(_)) | Err(AdapterRuntimeError::UnsupportedCommand)
-            );
-            if !sent && !self.0.commands_refreshing() {
+            ) {
                 commands.request_refresh();
             }
             result

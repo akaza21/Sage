@@ -44,6 +44,9 @@ fn shared_refresh_intents_coalesce_until_the_harness_answers() {
     let list = commands.snapshot();
     assert!(list.commands.iter().any(|command| command.name == "fresh"));
     assert_eq!(published.lock().unwrap().last(), Some(&list.revision));
+    // The intents asked for while that read was out coalesce into one re-read.
+    let reread = runtime.discover_commands().unwrap().unwrap();
+    assert_eq!(value(&reread)["request"]["subtype"], "initialize");
     assert!(runtime.discover_commands().unwrap().is_none());
 }
 

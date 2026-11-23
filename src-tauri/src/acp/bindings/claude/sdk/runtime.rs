@@ -188,11 +188,6 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         let egress = self.control_egress(&sdk)?;
         Ok(Some(egress))
     }
-    fn commands_refreshing(&self) -> bool {
-        self.bridge
-            .as_ref()
-            .is_some_and(|bridge| bridge.refreshing_commands())
-    }
     fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.session.session_config()
     }

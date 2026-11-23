@@ -73,9 +73,6 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.skills_changed();
         self.discover_commands()
     }
-    fn commands_refreshing(&self) -> bool {
-        self.inner.skills_read_pending()
-    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(self.request_model_config())
     }

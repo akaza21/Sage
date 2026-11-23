@@ -139,11 +139,6 @@ pub(crate) trait HarnessAdapter {
     fn refresh_commands(&mut self) -> AdapterOptionalEgress {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// A catalog read is already out, so a refresh asked for now is answered
-    /// by it rather than refused.
-    fn commands_refreshing(&self) -> bool {
-        false
-    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         crate::acp::slash_commands::CommandState::unsupported()
     }

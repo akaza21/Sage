@@ -466,7 +466,7 @@ fn a_changed_skills_read_skips_the_cache_until_one_succeeds() {
 }
 
 #[test]
-fn a_change_during_a_read_rereads_once_off_the_cache() {
+fn a_change_during_a_read_keeps_the_next_read_off_the_cache() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     read_skills(&mut runtime, json!([]));
@@ -483,15 +483,6 @@ fn a_change_during_a_read_rereads_once_off_the_cache() {
     let egress = runtime.discover_commands().unwrap().expect("skills/list");
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
     assert_eq!(wire["params"]["forceReload"], true);
-    runtime
-        .resolve_egress(egress.into_token(), EgressResolution::Queued)
-        .unwrap();
-    let id = wire["id"].as_u64().unwrap();
-    runtime
-        .ingest(&skills_reply(id, json!([skill("fresh", true)])), &Mapper)
-        .unwrap();
-    assert_eq!(listed(&runtime), ["fresh"]);
-    assert!(runtime.discover_commands().unwrap().is_none());
 }
 
 #[test]

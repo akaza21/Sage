@@ -209,7 +209,7 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
 }
 
 #[test]
-fn a_refresh_refused_during_a_turn_is_sent_at_the_next_discovery_once() {
+fn an_unsent_refresh_is_sent_at_the_next_discovery() {
     let mut pi = fixture_runtime(1);
     ready(&mut pi);
     let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(pi);
@@ -243,10 +243,16 @@ fn a_refresh_refused_during_a_turn_is_sent_at_the_next_discovery_once() {
     let refresh = runtime.discover_commands().unwrap().expect("retried");
     let refresh = deliver(&mut runtime, refresh);
     assert_eq!(refresh["type"], "get_commands");
+    // Asked for while that read is out, which may predate the change.
     runtime.available_commands().request_refresh();
     assert!(runtime.discover_commands().unwrap().is_none());
     runtime
-        .ingest(&response(&refresh, catalog(&["review", "deploy"])), &Mapper)
+        .ingest(&response(&refresh, catalog(&["review"])), &Mapper)
+        .unwrap();
+    let reread = runtime.discover_commands().unwrap().expect("re-read");
+    let reread = deliver(&mut runtime, reread);
+    runtime
+        .ingest(&response(&reread, catalog(&["review", "deploy"])), &Mapper)
         .unwrap();
     let list = runtime.available_commands().snapshot();
     list.validate(list.revision, "/deploy").unwrap();
