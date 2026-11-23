@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/034_acp_agent_fil
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentAgentFileWrites => return Ok(()),
+        SchemaClass::CurrentAgentFileWrites | SchemaClass::CurrentCatalogCapabilities => {
+            return Ok(());
+        }
         SchemaClass::CurrentSignInEvidenceIndexes => {}
         _ => return invalid("agent file writes require the exact sign-in evidence index schema"),
     }

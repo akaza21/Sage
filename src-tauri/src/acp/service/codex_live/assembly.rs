@@ -153,6 +153,17 @@ impl Lane<'_> {
         prepared
             .runtime
             .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
+        prepared.runtime.attach_catalog_capabilities(
+            super::super::catalog_capabilities::CatalogCapabilities::new(
+                abort.owner.clone(),
+                (
+                    prepared.intent.curated_ceiling.clone(),
+                    prepared.intent.sage_policy.clone(),
+                ),
+                self.database.clone(),
+                Arc::clone(&self.publisher),
+            ),
+        );
         let titles = super::super::chat_title::TitleScheduler::new(
             self.database.clone(),
             Arc::clone(&self.publisher),

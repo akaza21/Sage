@@ -295,6 +295,12 @@ pub(crate) trait HarnessAdapter {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1>;
+    /// What `capabilities` advertises now that the live command catalog may
+    /// have changed. `None` for a harness that derives nothing from its
+    /// catalog: its negotiated capabilities never move after initialization.
+    fn catalog_capabilities(&self) -> Option<CapabilitySnapshotV1> {
+        None
+    }
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError>;
     fn cancel_permission(
         &mut self,

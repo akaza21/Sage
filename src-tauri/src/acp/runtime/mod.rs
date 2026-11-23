@@ -27,7 +27,7 @@ pub(crate) use activation_pump::{
     ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationMode,
     ActivationPump, ActivationPumpError, ActivationStartupStep, ActivationTransport,
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
-    IdleActivationParts, RecoveryActivationParts, TeardownActivationParts,
+    IdleActivationParts, RecoveryActivationParts, TeardownActivationParts, intersect_capabilities,
 };
 #[cfg(test)]
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};

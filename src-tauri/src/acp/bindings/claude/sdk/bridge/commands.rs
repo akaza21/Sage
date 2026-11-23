@@ -56,6 +56,14 @@ struct CatalogResponse {
 }
 
 impl super::SdkBridge {
+    /// Sage's catalog update for commands as Sage lists them; goal support
+    /// follows the same list.
+    pub(super) fn catalog_update(&mut self, commands: Value) -> Value {
+        let commands = self.goal_support(commands);
+        self.update(
+            json!({"sessionUpdate":"available_commands_update","availableCommands":commands}),
+        )
+    }
     pub(in crate::acp::bindings::claude::sdk) fn refreshing_commands(&self) -> bool {
         self.pending
             .values()

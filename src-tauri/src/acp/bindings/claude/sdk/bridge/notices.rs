@@ -132,11 +132,7 @@ impl SdkBridge {
             Some("commands_changed") => {
                 if let Some(commands) = sdk.get("commands") {
                     let commands = super::commands::commands(&json!({"commands": commands}));
-                    let update = json!({
-                        "sessionUpdate": "available_commands_update",
-                        "availableCommands": commands,
-                    });
-                    inbound.acp.push(self.update(update));
+                    inbound.acp.push(self.catalog_update(commands));
                 }
             }
             _ => {}

@@ -10,6 +10,7 @@ pub(crate) fn rollback_to_version(connection: &Connection, version: u32) -> AppR
     }
     let transaction = connection.unchecked_transaction().db()?;
     for (introduced, sql) in [
+        (35, super::session_capabilities::SQL),
         (34, "DROP TABLE acp_agent_file_writes;"),
         (
             33,

@@ -7,7 +7,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
         SchemaClass::CurrentPrivateProjects
         | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentAgentFileWrites => {
+        | SchemaClass::CurrentAgentFileWrites
+        | SchemaClass::CurrentCatalogCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentChildThreadStates => {}

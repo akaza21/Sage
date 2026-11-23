@@ -22,6 +22,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentPrivateProjects
             | SchemaClass::CurrentSignInEvidenceIndexes
             | SchemaClass::CurrentAgentFileWrites
+            | SchemaClass::CurrentCatalogCapabilities
     ) {
         return Ok(());
     }
