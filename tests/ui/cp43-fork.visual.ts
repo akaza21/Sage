@@ -288,7 +288,7 @@ test("T11b: files changed since the agent wrote them refuse a file rewind", asyn
   rewound(await sent(), {});
 });
 
-test("T11d: Undo confirms over Rewind's file preview, and a failed preview holds it", async ({
+test("T11d: Undo confirms over Rewind's file preview, and a failed one offers the conversation only", async ({
   page,
 }) => {
   await openForkableAnswer(page);
@@ -305,24 +305,31 @@ test("T11d: Undo confirms over Rewind's file preview, and a failed preview holds
   const surface = page.getByRole("region", { name: "Session activity" });
   const undo = surface.getByRole("button", { name: "Undo last turn" });
   const confirm = surface.getByRole("button", { name: "Confirm undo" });
-  const kinds = async () =>
+  const turnId = "turn-00000000-0000-4000-8000-000000000002";
+  const undos = async () =>
     (
       (await page.evaluate(
         () => (window as { __rewindControls?: unknown[] }).__rewindControls,
       )) as { kind: string }[]
-    ).map((control) => control.kind);
+    ).filter((control) => control.kind === "undoTurn");
 
+  // A failed check holds the file undo and offers the conversation only.
   await undo.click();
   await expect(surface.getByRole("alert")).toContainText(failure);
   await expect(confirm).toBeDisabled();
   await confirm.click({ force: true });
-  expect(await kinds()).not.toContain("undoTurn");
+  expect(await undos()).toEqual([]);
+  await surface
+    .getByRole("button", { name: "Undo conversation only; files stay" })
+    .click();
+  await expect
+    .poll(undos)
+    .toEqual([{ kind: "undoTurn", turnId, keepFiles: true }]);
 
-  // Leaving the confirm and opening it again asks for the preview again.
+  // Opening it again asks for the preview again; a clean one restores files.
   await page.evaluate(() => {
     (window as { __failRewindPreview?: boolean }).__failRewindPreview = false;
   });
-  await confirm.blur();
   await undo.click();
   await expect(surface.getByRole("listitem")).toHaveText([
     "src/app.ts",
@@ -330,10 +337,10 @@ test("T11d: Undo confirms over Rewind's file preview, and a failed preview holds
   ]);
   await expect(surface.getByRole("alert")).toHaveCount(0);
   await confirm.click();
-  await expect.poll(kinds).toContain("undoTurn");
-  expect(new Set(await kinds())).toEqual(
-    new Set(["previewRewind", "undoTurn"]),
-  );
+  await expect.poll(async () => (await undos()).at(-1)).toEqual({
+    kind: "undoTurn",
+    turnId,
+  });
 });
 
 test("T22: a cold session's completed turns carry no ellipsis actions row", async ({

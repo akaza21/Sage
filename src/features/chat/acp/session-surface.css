@@ -59,6 +59,11 @@
   justify-self: start;
 }
 
+.acp-session-surface__undo-group {
+  display: grid;
+  gap: var(--space-1);
+}
+
 .acp-session-surface__preview p {
   margin: 0 0 var(--space-1);
   color: var(--color-text-secondary);

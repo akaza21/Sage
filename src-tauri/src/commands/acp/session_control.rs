@@ -52,6 +52,9 @@ enum ControlIntent {
     },
     UndoTurn {
         turn_id: SageTurnId,
+        /// Cut the conversation only; files stay as they are.
+        #[serde(default)]
+        keep_files: bool,
     },
     StopActivity {
         activity_key: String,
@@ -131,10 +134,13 @@ pub(crate) async fn control_acp_session(
                 preview: None,
             });
         }
-        ControlIntent::UndoTurn { turn_id } => {
+        ControlIntent::UndoTurn {
+            turn_id,
+            keep_files,
+        } => {
             let summary = state
                 .acp
-                .undo_turn(&owner, turn_id)
+                .undo_turn(&owner, turn_id, keep_files)
                 .await
                 .map_err(control_error)?;
             return Ok(SessionControlResponse {

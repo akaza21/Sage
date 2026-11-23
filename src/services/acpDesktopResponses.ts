@@ -102,7 +102,11 @@ function safeRewind(
   )
     return undefined;
   return {
-    effects: { conversation, files },
+    effects: {
+      conversation,
+      files,
+      ...(value.effects.filePreview === true && { filePreview: true }),
+    },
     targets,
     forkAt,
     onResume,

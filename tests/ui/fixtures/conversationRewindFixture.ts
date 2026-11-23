@@ -68,7 +68,11 @@ export function installConversationRewindFixture(
       capabilities: {
         ...session.capabilities,
         rewind: {
-          effects: { conversation: inPlace, files: !!files },
+          effects: {
+            conversation: inPlace,
+            files: !!files,
+            ...(files && { filePreview: true as const }),
+          },
           targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,

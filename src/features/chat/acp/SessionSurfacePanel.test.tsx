@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import { SessionSurfacePanel } from "./SessionSurfacePanel";
@@ -13,8 +7,6 @@ const run = vi.fn();
 let status: { kind: string; message?: string } = { kind: "idle" };
 vi.mock("./useSessionControl", () => ({
   useSessionControl: () => ({ status, run }),
-  // No running session: no file preview, so Undo stays as it was.
-  sessionRequest: () => null,
 }));
 
 beforeEach(() => {
@@ -90,7 +82,7 @@ it("stops a running activity by its key", () => {
   );
 });
 
-it("undoes the latest turn after a confirming click", async () => {
+it("undoes the latest turn after a confirming click", () => {
   render(
     <SessionSurfacePanel
       chatId="chat-one"
@@ -99,9 +91,7 @@ it("undoes the latest turn after a confirming click", async () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "Undo last turn" }));
   expect(run).not.toHaveBeenCalled();
-  const confirm = screen.getByRole("button", { name: "Confirm undo" });
-  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
-  fireEvent.click(confirm);
+  fireEvent.click(screen.getByRole("button", { name: "Confirm undo" }));
   expect(run).toHaveBeenCalledWith(
     { kind: "undoTurn", turnId: TURN },
     "Changes undone",
