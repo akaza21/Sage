@@ -27,6 +27,13 @@ export const COMPOSER_IDLE_CONTROL = Object.freeze({
   "plan-mode-entry": "addEnabled",
   "access-menu": "accessEnabled",
 });
+/**
+ * An idle composer shows its prompt box and a visible turn control: the mic
+ * while the prompt is empty (since T8), or Send once it holds text.
+ */
+export const composerTurnControlReady = (controls) =>
+  controls.composer === true &&
+  (controls.dictate === true || controls.send === true);
 /** CP-29e: one composer action menu; session modes are a group inside it. */
 const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
 /** CP-30c chat-wide edit summary above the composer. */
@@ -224,7 +231,7 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={composer:has('textarea[aria-label="Message agent"]'),harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}'),effortEnabled:has('${EFFORT_TRIGGER}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('${CONTEXT_METER}')};
+  const controls={composer:has('textarea[aria-label="Message agent"]'),harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}'),effortEnabled:has('${EFFORT_TRIGGER}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),dictate:has('button.composer__mic'),meter:has('${CONTEXT_METER}')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
@@ -404,7 +411,8 @@ export function namedState(options, observation, captureChat) {
     "answer-mermaid": terminal && view.mermaid,
     "answer-image": terminal && view.image && observation.imageLoaded === true,
     "composer-idle":
-      !observation.controls.stop && observation.controls.composer,
+      !observation.controls.stop &&
+      composerTurnControlReady(observation.controls),
     "composer-stop": live && observation.controls.stop,
     "harness-menu": view.harnessMenu,
     "model-menu": view.modelMenu,

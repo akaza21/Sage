@@ -1,12 +1,16 @@
 import type { ComponentProps, ReactNode } from "react";
 
+export interface ComposerMenuRowContent {
+  text: string;
+  description?: string;
+  icon?: ReactNode;
+  trailing?: ReactNode;
+}
+
 /** Shared label, description and trailing columns; callers own the action. */
 export function composerMenuRow(
   props: ComponentProps<"button"> & { "data-restored"?: boolean },
-  text: string,
-  description?: string,
-  icon?: ReactNode,
-  trailing?: ReactNode,
+  { text, description, icon, trailing }: ComposerMenuRowContent,
 ) {
   return (
     <button

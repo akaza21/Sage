@@ -148,7 +148,8 @@ test("effort readiness does not depend on the no-account Codex model picker", as
       controls: {
         stop: false,
         composer: true,
-        send: true,
+        send: false,
+        dictate: true,
         effortEnabled: false,
       },
     },
@@ -157,7 +158,8 @@ test("effort readiness does not depend on the no-account Codex model picker", as
       controls: {
         stop: false,
         composer: true,
-        send: true,
+        send: false,
+        dictate: true,
         effortEnabled: true,
         modelEnabled: false,
       },

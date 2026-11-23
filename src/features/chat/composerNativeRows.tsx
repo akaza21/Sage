@@ -64,9 +64,7 @@ export function composerNativeRows(
             run();
           },
         },
-        label,
-        description,
-        icon,
+        { text: label, description, icon },
       ),
       description,
       control,
@@ -91,9 +89,11 @@ export function composerNativeRows(
             props.onAttachFiles?.();
           },
         },
-        "Files and folders",
-        refusal ?? undefined,
-        <Paperclip size={14} aria-hidden="true" />,
+        {
+          text: "Files and folders",
+          description: refusal ?? undefined,
+          icon: <Paperclip size={14} aria-hidden="true" />,
+        },
       ),
       refusal ?? undefined,
       undefined,
@@ -115,7 +115,7 @@ export function composerNativeRows(
             imageAction.onChoose();
           },
         },
-        "Add images",
+        { text: "Add images" },
       ),
       undefined,
       undefined,
@@ -218,10 +218,12 @@ export function composerNativeRows(
             run();
           },
         },
-        text,
-        description,
-        icon,
-        checked ? <Check size={14} aria-hidden="true" /> : null,
+        {
+          text,
+          description,
+          icon,
+          trailing: checked ? <Check size={14} aria-hidden="true" /> : null,
+        },
       ),
       description,
     );

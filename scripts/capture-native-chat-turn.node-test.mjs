@@ -94,7 +94,7 @@ test("all terminal predicates need rendered content and no chat lazy fallback", 
       compactionStates: ["started", "completed", "failed", "cancelled"],
       permissionStates: ["resolvedAllowed", "resolvedDeclined"],
       noticeKinds: ["pi_dialog_cancelled"],
-      controls: { composer: true, send: true },
+      controls: { composer: true, send: false, dictate: true },
       turnCount: 1,
       failedTurns: 0,
       elements: [{ kind: "answer", text: "Synthetic retry completed." }],
@@ -456,7 +456,7 @@ test("model capture waits through sending, live turns and disabled composer cont
     {
       ...ready,
       state: "completed",
-      controls: { stop: true, composer: true, send: true, modelEnabled: true },
+      controls: { stop: true, composer: true, send: false, modelEnabled: true },
     },
     {
       ...ready,
@@ -464,14 +464,27 @@ test("model capture waits through sending, live turns and disabled composer cont
       controls: {
         stop: false,
         composer: true,
-        send: true,
+        send: false,
+        dictate: true,
         modelEnabled: false,
       },
+    },
+    // The prompt box alone, before its turn control shows, is not idle.
+    {
+      ...ready,
+      state: "completed",
+      controls: { stop: false, composer: true, send: false, modelEnabled: true },
     },
     {
       ...ready,
       state: "completed",
-      controls: { stop: false, composer: true, send: true, modelEnabled: true },
+      controls: {
+        stop: false,
+        composer: true,
+        send: false,
+        dictate: true,
+        modelEnabled: true,
+      },
     },
   ];
   const timing = captureTiming();
@@ -513,7 +526,8 @@ test("model capture rejects another turn and a model list that never hydrates", 
         controls: {
           stop: false,
           composer: true,
-          send: true,
+          send: false,
+          dictate: true,
           modelEnabled: false,
         },
       }),

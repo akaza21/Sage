@@ -22,9 +22,9 @@ const RuntimePart =
  * session's command catalog before refusing to send. */
 export const FIRST_COMMAND_HOLD_MS = 5_000;
 
-// New chats whose first send names a curated built-in command, one entry per
-// chat while that send is in flight.
-const holds = new Map<string, { name: string; live: () => boolean }>();
+/** A new chat's first send naming a curated built-in command, carried by that
+ * one submit; `live` turns false once Stop or leaving the chat ends it. */
+export type FirstCommandHold = { name: string; live: () => boolean };
 
 const notSent = (reason: string) =>
   new AcpDesktopError({
@@ -38,12 +38,13 @@ const notSent = (reason: string) =>
 // it times out; it then runs as a command or sends nothing, never text.
 // eslint-disable-next-line react-refresh/only-export-components -- the lazy facade exposes the chunk's command action
 export async function slashCommandTurn(
-  ...args: Parameters<typeof Runtime.slashCommandTurn>
+  ...[request, nextIntentId, port, hold]: [
+    ...Parameters<typeof Runtime.slashCommandTurn>,
+    FirstCommandHold?,
+  ]
 ) {
   const runtime = await loadRuntime();
-  const [request, nextIntentId, port] = args;
-  const hold = holds.get(request.chatId);
-  holds.delete(request.chatId);
+  const args = [request, nextIntentId, port] as const;
   if (
     request.target !== "session" ||
     !hold ||
@@ -126,7 +127,7 @@ async function sendFirstCommand(
   chatId: string,
   harnessId: string,
   pending: Extract<WorkbenchState["pendingFirstSend"], { text: string }>,
-  submit: () => Promise<unknown>,
+  submit: (hold?: FirstCommandHold) => Promise<unknown>,
 ) {
   const store = useWorkbenchStore;
   if (!pending.text.trimStart().startsWith("/")) return submit();
@@ -150,11 +151,10 @@ async function sendFirstCommand(
     // Stopped while looking: nothing is sent.
     if (!live()) return;
     if (name && Array.isArray(builtins) && builtins.includes(name))
-      holds.set(chatId, { name, live });
-    else store.setState({ pendingFirstSend: null });
+      return await submit({ name, live });
+    store.setState({ pendingFirstSend: null });
     await submit();
   } finally {
-    holds.delete(chatId);
     if (live()) store.setState({ pendingFirstSend: null });
   }
 }
@@ -209,7 +209,7 @@ export function FirstChatSend({
     if (harness.transport === "legacySimulator") {
       void state.sendPrompt();
     } else if (harness.bindingId) {
-      void sendFirstCommand(chatId, harness.id, pending, () =>
+      void sendFirstCommand(chatId, harness.id, pending, (firstCommand) =>
         // Images a draft handed over are already in this composer.
         actions.submit(
           pending.text.trim(),
@@ -217,7 +217,7 @@ export function FirstChatSend({
           harness.bindingId as CuratedBindingId,
           (entry.modelId ?? null) as CuratedModelId | null,
           // Files the draft handed over go with this first turn only.
-          pending.staged,
+          { staged: pending.staged, firstCommand },
         ),
       );
     }

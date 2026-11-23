@@ -23,10 +23,13 @@ export function ComposerTurnControl({
   const hadFocus = useRef(false);
   // A press that began on Stop only ever stops, even if recording ended
   // on its own before the click landed. Key repeats keep the first press;
-  // a press that ends without a click forgets it.
+  // a press that ends without a click forgets it. Only pointerdown, Enter and
+  // Space activate the button; any other key leaves the press unrecorded.
   const pressedStop = useRef(false);
-  const notePress = (event: { type: string; repeat?: boolean }) =>
-    event.repeat || (pressedStop.current = dictation.listening);
+  const notePress = ({ key = " ", repeat }: { key?: string; repeat?: boolean }) =>
+    repeat ||
+    (key !== " " && key !== "Enter") ||
+    (pressedStop.current = dictation.listening);
   const forgetPress = () => (pressedStop.current = false);
   const reason = (sendDisabled && disabledReason) || undefined;
   // Without a usable Cancel, typed text keeps Send so a click queues it.

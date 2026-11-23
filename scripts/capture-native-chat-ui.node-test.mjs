@@ -33,6 +33,7 @@ import {
   accessModeOption,
   clickExpression,
   clickableExpression,
+  composerTurnControlReady,
   harnessOption,
   namedState,
   observationFor,
@@ -331,7 +332,7 @@ async function openCapture(t, scenario, options) {
       observation.singlePane === true &&
       observation.lazyFallbackVisible === false &&
       // The composer mounts after the projection; slow runners show the gap.
-      observation.controls.composer === true &&
+      composerTurnControlReady(observation.controls) &&
       observation.controls.harness === true &&
       typeof observation.selected === "string"
     );

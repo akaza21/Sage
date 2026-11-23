@@ -23,6 +23,7 @@ import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 import type { SlashCommandPort } from "../slashCommandTurn";
+import type { FirstCommandHold } from "../ComposerSlashController";
 import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
@@ -225,7 +226,10 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
-    staged?: StagedSelection,
+    {
+      staged,
+      firstCommand,
+    }: { staged?: StagedSelection; firstCommand?: FirstCommandHold } = {},
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -364,6 +368,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
               request,
               nextIntentId,
               dependencies.slashCommands,
+              firstCommand,
             )
           : null;
         // The composer took a terminal-only command; nothing is sent.

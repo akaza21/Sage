@@ -305,7 +305,7 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
-          ...(stagedRevision ? [{ revision: stagedRevision }] : []),
+          ...(stagedRevision ? [{ staged: { revision: stagedRevision } }] : []),
         );
         return;
       }

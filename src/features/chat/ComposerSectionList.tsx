@@ -82,8 +82,10 @@ function CommandRow({
           "aria-label": `/${command.name}`,
           onClick: () => onPick(command, input),
         },
-        `/${command.name}`,
-        command.description ?? undefined,
+        {
+          text: `/${command.name}`,
+          description: command.description ?? undefined,
+        },
       )}
       {command.inputHint ? (
         <input
