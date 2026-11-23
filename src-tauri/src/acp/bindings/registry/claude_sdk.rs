@@ -66,10 +66,10 @@ fn capabilities(
     binding
         .revalidate()
         .map_err(|_| RegistryAdmissionUnavailable::Drift)?;
-    ceiling()
+    ceiling(binding.harness_version())
 }
 
-fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
+fn ceiling(version: &str) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
     Ok(CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
         protocol_version: RequiredText::new("protocolVersion", "1")
@@ -80,7 +80,7 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         close_session: false,
         prompt: true,
         cancel: true,
-        rewind: crate::acp::bindings::claude::sdk::rewind_capability(),
+        rewind: crate::acp::bindings::claude::sdk::rewind_capability(version),
         native_session_compact: true,
         native_session_import: false,
         native_review: false,
@@ -119,6 +119,6 @@ pub(super) fn launch_models(
 mod tests {
     #[test]
     fn the_sdk_route_admits_the_image_blocks_its_bridge_forwards() {
-        assert!(super::ceiling().expect("ceiling").prompt_images);
+        assert!(super::ceiling("2.1.326").expect("ceiling").prompt_images);
     }
 }

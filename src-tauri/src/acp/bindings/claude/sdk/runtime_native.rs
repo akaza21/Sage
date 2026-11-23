@@ -87,7 +87,12 @@ impl ClaudeSdkRuntime {
     }
 
     pub(super) fn answered(&mut self, reply: Option<NativeRpcReply>, usage: Option<UsageReply>) {
-        if let Some(reply) = reply {
+        if let Some(mut reply) = reply {
+            if let (NativeRpcReply::FileRewindPlan(files), Some(cwd)) = (&mut reply, &self.cwd) {
+                for file in files.iter_mut().filter(|file| file.is_relative()) {
+                    *file = cwd.join(&*file);
+                }
+            }
             self.native = Some(reply);
         }
         match usage {
@@ -122,23 +127,37 @@ impl ClaudeSdkRuntime {
 }
 
 /// The session's capabilities and its `Initialized` event must agree.
-pub(super) fn sdk_capabilities(mut capabilities: CapabilitySnapshotV1) -> CapabilitySnapshotV1 {
+pub(super) fn sdk_capabilities(
+    mut capabilities: CapabilitySnapshotV1,
+    version: &str,
+) -> CapabilitySnapshotV1 {
     capabilities.active_turn_steer = capabilities.prompt;
     capabilities.native_session_compact = capabilities.prompt;
     capabilities.rewind = if capabilities.prompt {
-        rewind_capability()
+        rewind_capability(version)
     } else {
         Default::default()
     };
     capabilities
 }
 
-pub(crate) fn rewind_capability() -> sage_acp_protocol::intent::RewindCapability {
+/// The oldest Claude Code release seen to honour `dry_run` on
+/// `rewind_files` (its control schema and `rewindFiles` client, read in the
+/// 2.1.326 and 2.1.328 binaries). One that ignores the field would restore
+/// files while Sage asked only for a preview.
+const FILE_REWIND_PREVIEW_MINIMUM: &str = "2.1.326";
+
+pub(crate) fn rewind_capability(version: &str) -> sage_acp_protocol::intent::RewindCapability {
+    use crate::acp::bindings::release_version::ReleaseVersion;
     use sage_acp_protocol::intent::{RewindCapability, RewindEffects, RewindTargets};
+    let file_preview = ReleaseVersion::parse(version)
+        .zip(ReleaseVersion::parse(FILE_REWIND_PREVIEW_MINIMUM))
+        .is_some_and(|(found, minimum)| found >= minimum);
     RewindCapability {
         effects: RewindEffects {
             conversation: true,
             files: true,
+            file_preview,
         },
         targets: RewindTargets::AnyUserMessage,
         fork_at: true,

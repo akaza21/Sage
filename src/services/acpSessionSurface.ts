@@ -55,7 +55,7 @@ export function decodeSessionSurface(
 }
 
 export type SessionControlIntent =
-  | { kind: "rewindConversation"; before: string }
+  | { kind: "rewindConversation"; before: string; files?: true }
   | { kind: "undoTurn"; turnId: string }
   | { kind: "stopActivity"; activityKey: string };
 

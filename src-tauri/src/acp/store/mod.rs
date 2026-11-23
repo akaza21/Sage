@@ -1,6 +1,7 @@
 mod activation_outcome;
 mod activity_ingress;
 mod adapter_batch;
+pub(crate) mod agent_writes;
 pub(crate) mod browser_operations;
 #[cfg(test)]
 mod browser_permission_tests;

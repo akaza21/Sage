@@ -12,7 +12,7 @@ use sage_acp_protocol::{
 fn running(binding: &str) -> (Fixture, AcpService) {
     let mut caps: sage_acp_protocol::intent::CapabilitySnapshotV1 =
         serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
-    caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability();
+    caps.rewind = crate::acp::bindings::claude::sdk::rewind_capability("2.1.326");
     if binding == "checkpoint-fixture" {
         caps.rewind.effects.files = false;
         caps.rewind.targets = sage_acp_protocol::intent::RewindTargets::LatestTurn;
@@ -183,4 +183,113 @@ fn runtime_checkpoint_undo_cannot_undo_consecutively() {
     assert_eq!(offer(&checkpoint, "turn-1"), (None, false));
     checkpoint.0.turn("turn-3", 2);
     assert_eq!(offer(&checkpoint, "turn-3"), (Some("turn-3".into()), true));
+}
+
+#[test]
+fn a_cut_refused_after_files_are_restored_rolls_back_and_says_the_files_were_restored() {
+    use super::TurnUndo;
+    use crate::acp::{
+        errors::SessionControlError,
+        goal::NativeRpcReply,
+        service::file_rewind::RESTORED_NOT_CUT,
+        store::{AdapterStoreOwner, agent_writes, rewind_tests::history},
+        transcript_quote::Prompt,
+    };
+    use crate::project_registry::ProjectRegistryStore;
+    use sage_acp_protocol::{
+        contract::SageRootId,
+        intent::{ExternalId, SafeResourceRef},
+        session_control::SessionControl,
+    };
+    use sha2::Digest;
+    // The service starts first: its startup recovery would settle a runtime it
+    // does not run, as in `running`.
+    let fixture = crate::acp::store::turn_undo::fixture::Fixture::new();
+    let service = AcpService::new(fixture.database.clone()).unwrap();
+    fixture.run();
+    let mut history = history::History {
+        fixture,
+        turns: Vec::new(),
+    };
+    history.turn(Prompt::new("prompt", "edit a.rs").unwrap(), None);
+    let fixture = &history.fixture;
+    let turn = history.turns[0].clone();
+    let target = history.target(0).unwrap();
+    let owner = RuntimeOwner {
+        project_id: fixture.project.clone(),
+        chat_id: fixture.chat.clone(),
+        session_id: SageAgentSessionId::parse("session-a").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(fixture.epoch() as u64).unwrap(),
+    };
+    // The agent wrote a.rs in that turn, and the file still holds its bytes.
+    let root = fixture
+        .database
+        .root_records(fixture.project.as_str())
+        .unwrap()
+        .remove(0);
+    let file = root.absolute_path.join("a.rs");
+    std::fs::write(&file, "fn agent() {}\n").unwrap();
+    let mut connection = fixture.database.write_connection().unwrap();
+    let transaction = connection.transaction().unwrap();
+    agent_writes::record(
+        &transaction,
+        &AdapterStoreOwner {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            turn_id: turn.clone(),
+            binding_digest: "c2".repeat(32),
+            external_session_id: ExternalId::new("externalSessionId", "thread-a").unwrap(),
+        },
+        &SafeResourceRef::new(SageRootId::parse(&root.id).unwrap(), "a.rs").unwrap(),
+        Some(&sha2::Sha256::digest(b"fn agent() {}\n").into()),
+        1,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    drop(connection);
+    let undo = TurnUndo::from_capability(crate::acp::bindings::claude::sdk::rewind_capability(
+        "2.1.326",
+    ))
+    .unwrap();
+    // The harness restores the file, then refuses the cut.
+    let sent = std::sync::Mutex::new(Vec::new());
+    let mut control = |control: SessionControl| {
+        let (step, reply) = match control {
+            SessionControl::RewindFiles { dry_run: true, .. } => (
+                "dry run",
+                Ok(NativeRpcReply::FileRewindPlan(vec![file.clone()])),
+            ),
+            SessionControl::RewindFiles { .. } => (
+                "restore",
+                Ok(NativeRpcReply::FileRewindPlan(vec![file.clone()])),
+            ),
+            SessionControl::RewindConversation { .. } => {
+                ("cut", Err(SessionControlError::Refused(None)))
+            }
+            _ => panic!("only file and conversation rewinds"),
+        };
+        sent.lock().unwrap().push(step);
+        reply
+    };
+    let result = tauri::async_runtime::block_on(service.rewind_files_then_cut(
+        &owner,
+        &target,
+        &mut control,
+        || service.prepare_rewind(&owner, turn.clone(), undo, true, || Ok::<_, String>(None)),
+    ));
+    assert!(matches!(
+        result,
+        Err(SessionControlError::Refused(Some(text))) if text.as_str() == RESTORED_NOT_CUT
+    ));
+    assert_eq!(*sent.lock().unwrap(), ["dry run", "restore", "cut"]);
+    // The staged cut rolled back: nothing is pending and the turn stays.
+    crate::acp::store::turn_undo::intent::ensure_settled(
+        &fixture.database.connection(),
+        fixture.project.as_str(),
+        fixture.chat.as_str(),
+    )
+    .unwrap();
+    assert_eq!(fixture.page_turns(), [turn.as_str()]);
 }
