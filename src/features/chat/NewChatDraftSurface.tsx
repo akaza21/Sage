@@ -30,8 +30,11 @@ export function NewChatDraftSurface({
   const discoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
-  const discoveryError = useWorkbenchStore(
-    (state) => state.harnessDiscoveryError,
+  // A failed discovery leaves no model to send with; its error says why.
+  const discoveryError = useWorkbenchStore((state) =>
+    state.harnessDiscoveryPhase === "error"
+      ? state.harnessDiscoveryError
+      : null,
   );
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -209,12 +212,9 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
           disabledReason={
-            !available
-              ? "Choose an available harness before sending."
-              : // A failed discovery leaves no model to send with; say why.
-                discoveryPhase === "error"
-                ? discoveryError
-                : null
+            available
+              ? discoveryError
+              : "Choose an available harness before sending."
           }
           project={shownProject}
           newChat
