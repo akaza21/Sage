@@ -30,21 +30,21 @@ export function NewChatDraftSurface({
   const discoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
-  // A failed discovery leaves no model to send with; its error says why.
-  const discoveryError = useWorkbenchStore((state) =>
-    state.harnessDiscoveryPhase === "error"
-      ? state.harnessDiscoveryError
-      : null,
+  // Set only while discovery has failed, which leaves no model to send with.
+  const discoveryError = useWorkbenchStore(
+    (state) => state.harnessDiscoveryError,
   );
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const pendingFirstSend = useWorkbenchStore((state) => state.pendingFirstSend);
-  const reload = useWorkbenchStore((state) => state.reloadNewChatDraft);
-  const discard = useWorkbenchStore((state) => state.discardNewChatDraft);
-  const update = useWorkbenchStore((state) => state.updateNewChatDraft);
-  const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
-  const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
+  const {
+    reloadNewChatDraft: reload,
+    discardNewChatDraft: discard,
+    updateNewChatDraft: update,
+    selectDraftHarness: chooseHarness,
+    selectDraftModel: chooseModel,
+  } = useWorkbenchStore.getState();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
   const submitting = draft?.submission.status === "submitting";
