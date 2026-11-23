@@ -5,14 +5,14 @@ import { StrictMode } from "react";
 
 afterEach(cleanup);
 
-it("announces a warning politely once per identity and keeps standing warnings quiet", () => {
+it("announces a warning politely as an inserted alert once per identity and keeps standing warnings quiet", () => {
   const props = { identity: "preview:chat-a", severity: "warning" as const };
   const { container, rerender } = render(
     <Notice {...props} message="Preview failed." />,
   );
   const notice = container.querySelector(".notice")!;
   expect(notice).toHaveAttribute("aria-live", "polite");
-  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("alert")).toBe(notice);
   rerender(<Notice {...props} message="Preview failed." />);
   expect(container.querySelector(".notice")).toBe(notice);
   rerender(<Notice {...props} message="Preview exited." />);

@@ -56,7 +56,9 @@ function NoticeContent({
             : "off"
       }
       data-notice-identity={identity}
-      role={error && announce ? "alert" : progress ? "status" : undefined}
+      // Screen readers read an inserted alert, not an inserted polite region, so
+      // an announcing warning is an alert too; aria-live keeps it polite.
+      role={live ? "alert" : progress ? "status" : undefined}
     >
       <Icon size={14} />
       <div className="notice__body">
