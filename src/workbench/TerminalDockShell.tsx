@@ -4,7 +4,7 @@ import { usePortalHost } from "../ui/usePortalHost";
 
 import { IconButton } from "../ui/IconButton";
 import { useWorkbenchStore } from "../app/store";
-import type { TerminalOpenRequest } from "../app/terminalDockStore";
+import type { TerminalHandoff } from "../app/terminalDockStore";
 import {
   closeUserTerminal,
   createUserTerminal,
@@ -13,7 +13,7 @@ import {
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
-import { createDockSession, useTerminalOpen } from "./terminalDockHandoff";
+import { useTerminalHandoff } from "./terminalDockHandoff";
 import { firstChatTabId } from "./workbenchWindowMode";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./terminal-dock.css";
@@ -25,13 +25,10 @@ import {
   X,
 } from "../ui/leanIcons";
 
+const INITIAL_COLUMNS = 80;
+const INITIAL_ROWS = 24;
 const TERMINAL_MAX_PER_CHAT = 4;
 const loadTerminalView = () => import("./TerminalDock");
-const terminalPort = {
-  createUserTerminal,
-  writeUserTerminal,
-  closeUserTerminal,
-};
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -156,16 +153,14 @@ export function TerminalDockShell({
   });
 
   const create = useCallback(
-    async (request?: TerminalOpenRequest) => {
+    async (handoff?: TerminalHandoff) => {
       const owner = ownerRef.current;
       if (
         owner.creating ||
         owner.disposed ||
         owner.entries.length >= TERMINAL_MAX_PER_CHAT
       ) {
-        request?.finish(
-          new Error("Terminal is busy or its tab limit was reached."),
-        );
+        handoff?.finish("Terminal is busy or its tab limit was reached.");
         return;
       }
       const lifecycle = owner.lifecycle;
@@ -173,12 +168,20 @@ export function TerminalDockShell({
       setCreating(true);
       setMessage(null);
       try {
-        const session = await createDockSession(
+        const session = await createUserTerminal(
           scope,
-          () => owner.lifecycle === lifecycle,
-          request,
-          terminalPort,
+          INITIAL_COLUMNS,
+          INITIAL_ROWS,
         );
+        try {
+          if (owner.lifecycle !== lifecycle) throw new Error("stale");
+          // The prefill goes through the keystroke write path, unterminated.
+          if (handoff) await writeUserTerminal(scope, session, handoff.text);
+          if (owner.lifecycle !== lifecycle) throw new Error("stale");
+        } catch (error) {
+          await closeUserTerminal(scope, session).catch(() => undefined);
+          throw error;
+        }
         const next = [
           ...owner.entries,
           { session, ended: false, message: null },
@@ -188,11 +191,13 @@ export function TerminalDockShell({
         setEntries(next);
         setActiveId(session.sessionId);
         setCollapsed(false);
-        request?.finish();
+        handoff?.finish();
       } catch (error) {
-        if (owner.lifecycle === lifecycle)
-          setMessage(terminalErrorLabel(error));
-        request?.finish(new Error(terminalErrorLabel(error)));
+        const live = owner.lifecycle === lifecycle;
+        if (live) setMessage(terminalErrorLabel(error));
+        handoff?.finish(
+          live ? terminalErrorLabel(error) : "Terminal opening was cancelled.",
+        );
       } finally {
         if (owner.lifecycle === lifecycle) {
           owner.creating = false;
@@ -219,7 +224,7 @@ export function TerminalDockShell({
     };
   }, [scope]);
 
-  useTerminalOpen(scope, visible, entries.length, ownerRef, create);
+  useTerminalHandoff(scope, visible, entries.length, ownerRef, create);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;

@@ -514,5 +514,4 @@ test("a typed terminal-only command offers copy, text and a focused terminal wit
     ),
   ).toEqual(['claude --resume "4f1c2a"']);
   expect(await sent()).toEqual(["/hooks"]);
-  await page.screenshot({ path: "output/playwright/t6b-open-in-terminal.png" });
 });

@@ -10,11 +10,12 @@ import { useRef, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { useTerminalDockStore } from "../app/terminalDockStore";
-import { ComposerTerminalCatch } from "../features/chat/ComposerTerminalCatch";
-import { catchTerminalCommand } from "../services/terminalHandoff";
+import {
+  ComposerTerminalCatch,
+  catchTerminalCommand,
+} from "../features/chat/ComposerTerminalCatch";
 import TerminalDockForWorkbench from "./TerminalDockShell";
 import { connectTerminalDock } from "./terminalDockCommands";
-import { openTerminalWith } from "./terminalDockHandoff";
 
 const backend = vi.hoisted(() => ({
   sessions: new Map<string, { scope: unknown; input: string }>(),
@@ -66,7 +67,7 @@ afterEach(() => {
   useTerminalDockStore.setState({
     visible: false,
     ready: false,
-    pendingOpen: null,
+    handoff: null,
   });
   backend.sessions.clear();
   backend.failWrite = false;
@@ -148,22 +149,32 @@ it("opens a caught command in its project terminal through the dock API and clea
     },
   ]);
   expect(screen.getByRole("textbox")).toHaveValue("/hooks");
-  expect(useTerminalDockStore.getState().pendingOpen).toBeNull();
+  expect(useTerminalDockStore.getState().handoff).toBeNull();
 });
 
-it("creates a new tab with exact input and rejects unsafe input, capacity and write failures", async () => {
+// Stores a request in the core slot and shows the dock, as the composer does.
+async function handOff(input: string) {
+  let settled!: Promise<void>;
+  act(() => {
+    settled = new Promise<void>((resolve, reject) => {
+      useTerminalDockStore.setState({
+        handoff: {
+          chatId: "chat-1",
+          text: input,
+          finish: (error) => (error ? reject(new Error(error)) : resolve()),
+        },
+      });
+      useTerminalDockStore.getState().setVisible(true);
+    });
+  });
+  // Await outside act so React can commit the request the dock takes.
+  return settled;
+}
+
+it("writes the handoff as unrun input to a new tab and rejects unsafe input, write failures and capacity", async () => {
   await mount();
-  // Await outside act so React can commit the pending request it consumes.
-  const start = () => openTerminalWith({ chatId: "chat-1", text });
-  let result!: Promise<void>;
-  act(() => {
-    result = start();
-  });
-  await result;
-  act(() => {
-    result = start();
-  });
-  await result;
+  await handOff(text);
+  await handOff(text);
   await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(2));
   expect(
     [...backend.sessions.values()].map((session) => session.input),
@@ -173,28 +184,15 @@ it("creates a new tab with exact input and rejects unsafe input, capacity and wr
     text + "\r",
     "\u001b[200~",
     "x".repeat(4097),
-  ]) {
-    await expect(
-      openTerminalWith({ chatId: "chat-1", text: value }),
-    ).rejects.toThrow("one line");
-  }
+  ])
+    await expect(handOff(value)).rejects.toThrow("one line");
   backend.failWrite = true;
-  act(() => {
-    result = start();
-  });
-  await expect(result).rejects.toThrow("not reading");
+  await expect(handOff(text)).rejects.toThrow("not reading");
   expect(backend.sessions.size).toBe(2);
   backend.failWrite = false;
-  for (let index = 0; index < 2; index++) {
-    act(() => {
-      result = start();
-    });
-    await result;
-  }
-  act(() => {
-    result = start();
-  });
-  await expect(result).rejects.toThrow("limit");
+  await handOff(text);
+  await handOff(text);
+  await expect(handOff(text)).rejects.toThrow("limit");
   expect(backend.sessions.size).toBe(4);
-  expect(useTerminalDockStore.getState().pendingOpen).toBeNull();
+  expect(useTerminalDockStore.getState().handoff).toBeNull();
 });

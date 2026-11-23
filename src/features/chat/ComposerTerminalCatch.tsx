@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore } from "../../app/store";
-import { isTauriRuntime } from "../../ports/nativeInvoke";
-import { openTerminalWith } from "../../workbench/terminalDockHandoff";
-import { useTerminalDockStore } from "../../app/terminalDockStore";
 import {
-  registerTerminalCatch,
-  type CaughtTerminalCommand as Caught,
-} from "../../services/terminalHandoff";
+  useTerminalDockStore as dock,
+  type TerminalHandoff,
+} from "../../app/terminalDockStore";
 
+type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
+// One mounted composer field per chat owns its caught command.
+const catchers = new Map<string, Catcher>();
+
+/** The send path's hand-off: true when the chat's field took the command. */
+// eslint-disable-next-line react-refresh/only-export-components -- the send path and the choice it opens share this chunk
+export const catchTerminalCommand = (chatId: string, caught: Caught) =>
+  !!catchers.get(chatId)?.(caught);
 
 /**
  * Owns the one pending choice for a typed terminal-only command. Nothing is
@@ -33,16 +38,12 @@ export function ComposerTerminalCatch({
   const hasProject = useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
   );
-  const dockAvailable = useTerminalDockStore(
-    (state) => state.ready && !!state.open,
-  );
+  const ready = dock((state) => state.ready);
   const unavailable = !hasProject
     ? "Open this chat's project first."
-    : !isTauriRuntime()
-      ? "Terminals require the desktop app."
-      : !dockAvailable
-        ? "Terminal dock is unavailable or still loading."
-        : undefined;
+    : !ready
+      ? "The terminal is unavailable here or still loading."
+      : undefined;
   const message =
     caught &&
     `/${caught.name} only runs in the terminal. Copy the command to resume this chat there, then type /${caught.name}.`;
@@ -66,10 +67,40 @@ export function ComposerTerminalCatch({
       setError("");
       return true;
     };
-    return registerTerminalCatch(chatId, take);
+    catchers.set(chatId, take);
+    return () => {
+      if (catchers.get(chatId) === take) catchers.delete(chatId);
+    };
   }, [chatId, fieldRef]);
   if (!caught) return null;
   const { input, name, command } = caught;
+  // Hands the Copy text to the lazy dock as unrun input. A request the dock
+  // has not taken in time fails; a taken one settles when its terminal does.
+  const openInTerminal = () => {
+    let settled = false;
+    const handoff: TerminalHandoff = {
+      chatId,
+      text: command,
+      finish: (failure) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (dock.getState().handoff === handoff) dock.setState({ handoff: null });
+        setOpening(false);
+        if (failure) setError(failure);
+        else setCaught((current) => (current === caught ? null : current));
+      },
+    };
+    const timer = setTimeout(() => {
+      if (dock.getState().handoff === handoff)
+        handoff.finish("The terminal did not open. Try again.");
+    }, 10_000);
+    setOpening(true);
+    setError("");
+    dock.getState().handoff?.finish("A newer terminal request replaced this one.");
+    dock.setState({ handoff });
+    dock.getState().setVisible(true);
+  };
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a
     // file conflict. The field's status region announces it.
@@ -89,22 +120,7 @@ export function ComposerTerminalCatch({
           className="button button--compact"
           disabled={opening || !!unavailable}
           title={unavailable}
-          onClick={async () => {
-            setOpening(true);
-            setError("");
-            try {
-              await openTerminalWith({ chatId, text: command });
-              setCaught((current) => (current === caught ? null : current));
-            } catch (error) {
-              setError(
-                error instanceof Error
-                  ? error.message
-                  : "Terminal failed to open.",
-              );
-            } finally {
-              setOpening(false);
-            }
-          }}
+          onClick={openInTerminal}
         >
           Open in terminal
         </button>

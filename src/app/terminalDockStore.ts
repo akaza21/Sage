@@ -4,20 +4,22 @@ import {
   getTerminalDockVisible,
   setTerminalDockVisible,
 } from "../services/terminalDockSettingsDesktop";
-import type { UserTerminalScope } from "../services/userTerminalDesktop";
 
-export type TerminalOpenRequest = {
-  scope: UserTerminalScope;
+/**
+ * The one pending "open a terminal holding this input" request. The composer
+ * stores it and shows the dock; the lazy dock takes it and settles it.
+ */
+export type TerminalHandoff = {
+  chatId: string;
   text: string;
-  finish: (error?: Error) => void;
+  finish: (error?: string) => void;
 };
 
 interface TerminalDockStore {
   visible: boolean;
   ready: boolean;
   error: string | null;
-  pendingOpen: TerminalOpenRequest | null;
-  open: (() => void) | null;
+  handoff: TerminalHandoff | null;
   restore: () => Promise<void>;
   flush: () => Promise<void>;
   setVisible: (visible: boolean) => void;
@@ -29,8 +31,7 @@ export const useTerminalDockStore = create<TerminalDockStore>((set, get) => ({
   visible: false,
   ready: false,
   error: null,
-  pendingOpen: null,
-  open: null,
+  handoff: null,
   restore: async () => {
     await writes.idle();
     try {
