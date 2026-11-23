@@ -7,7 +7,6 @@ mod title;
 mod undo;
 pub(crate) use title::TitleCapability;
 
-use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::acp::bindings::{
     claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
     codex::{AdmittedCodexBinding, CodexBindingRegistration},
@@ -17,6 +16,7 @@ use crate::acp::bindings::{
         OpenCodeBindingRegistration, StandardAcpBindingSource,
     },
 };
+use crate::project_registry::ProjectRootAcquisitionError;
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
 use sage_domain::harness::{HarnessCharacterisation, ModelOption};
 
@@ -364,14 +364,14 @@ impl AdmittedBindingRecord<'_> {
         &self,
         database: &sage_db::database::Database,
         context: &crate::state::ActiveProjectContext<'_>,
-    ) -> Result<BindingProjectRoot, ()> {
+    ) -> Result<BindingProjectRoot, ProjectRootAcquisitionError> {
         match self.record.root_policy {
             RootPolicy::Pi => super::record_root::single_root_authority(database, context)
                 .map(BindingProjectRoot::Pi),
-            RootPolicy::Codex => database
-                .codex_project_root_authority(context)
-                .map(BindingProjectRoot::Codex)
-                .map_err(|_| ()),
+            RootPolicy::Codex => {
+                crate::acp::bindings::codex::CodexProjectRootAuthority::acquire(database, context)
+                    .map(BindingProjectRoot::Codex)
+            }
             RootPolicy::Claude => super::record_root::single_root_authority(database, context)
                 .map(BindingProjectRoot::Claude),
             RootPolicy::StandardAcp => super::record_root::single_root_authority(database, context)

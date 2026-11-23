@@ -8,6 +8,23 @@ use sage_core::error::{AppError, AppResult};
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_workspace::{RootIdentity, Workspace, root_identity_path};
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ProjectRootAcquisitionError {
+    #[error(transparent)]
+    Intent(#[from] AppError),
+    #[error("project folder is missing, moved or changed: {0}")]
+    Folder(AppError),
+}
+
+impl From<ProjectRootAcquisitionError> for AppError {
+    fn from(error: ProjectRootAcquisitionError) -> Self {
+        match error {
+            ProjectRootAcquisitionError::Intent(error)
+            | ProjectRootAcquisitionError::Folder(error) => error,
+        }
+    }
+}
+
 /// It has no path-based production constructor and is intentionally not Clone.
 pub(crate) struct ProjectRootAuthority {
     project_id: SageProjectId,

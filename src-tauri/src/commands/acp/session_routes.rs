@@ -131,7 +131,7 @@ pub(crate) async fn activate_acp_session_inner(
         .map_err(|_| binding_unavailable())?;
     let project_root = admitted
         .project_root(&state.database, &transition)
-        .map_err(|_| binding_unavailable())?;
+        .map_err(errors::project_root_error)?;
     // The session takes over the chat's access before it runs; one the
     // activation goes on in instead (a resume on a later harness release
     // links a new session) takes it once activated. A read of either's
