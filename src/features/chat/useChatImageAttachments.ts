@@ -6,6 +6,15 @@ import {
 } from "../../domain/attachedContext";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 
+const transfer = () => import("./chatImageTransfer");
+
+// The store and the chat that owns this composer, captured for one action.
+function capture(chatId: string | undefined) {
+  const state = useWorkbenchStore.getState();
+  const owner = chatId ?? state.activeTabId ?? undefined;
+  return { state, intent: owner ? state.captureChatOwnership(owner) : null };
+}
+
 export function useChatImageAttachments(
   chatId: string | undefined,
   attachedContext: readonly AttachedContext[],
@@ -47,14 +56,12 @@ export function useChatImageAttachments(
     );
     stale.forEach(release);
     if (stale.length) publish();
-    const state = useWorkbenchStore.getState();
-    const owner = chatId ?? state.activeTabId ?? undefined;
-    const intent = owner ? state.captureChatOwnership(owner) : null;
+    const { intent } = capture(chatId);
     if (!intent || !isTauriRuntime()) return;
     for (const id of ids) {
       if (!id || loaded.has(id)) continue;
       loaded.set(id, null);
-      void import("./chatImageTransfer")
+      void transfer()
         .then(({ readChatImageThumbnail }) =>
           readChatImageThumbnail(intent, id),
         )
@@ -76,9 +83,7 @@ export function useChatImageAttachments(
 
   async function addImages(files: File[]) {
     if (imageUploadBusy.current) return;
-    const state = useWorkbenchStore.getState();
-    const owner = chatId ?? state.activeTabId ?? undefined;
-    const intent = owner ? state.captureChatOwnership(owner) : null;
+    const { state, intent } = capture(chatId);
     if (!intent || !isTauriRuntime()) return;
     const existing = state.chatUiById[intent.chatId]?.attachedContext ?? [];
     if (
@@ -90,7 +95,7 @@ export function useChatImageAttachments(
     imageUploadBusy.current = true;
     setImageUploading(true);
     try {
-      const { uploadChatImages } = await import("./chatImageTransfer");
+      const { uploadChatImages } = await transfer();
       await uploadChatImages(intent, files);
     } catch (error) {
       useWorkbenchStore.getState().setChatActionState(intent, {
@@ -106,9 +111,7 @@ export function useChatImageAttachments(
 
   function removeAttachedContext(context: AttachedContext) {
     const contextKey = attachedContextKey(context);
-    const state = useWorkbenchStore.getState();
-    const owner = chatId ?? state.activeTabId ?? undefined;
-    const intent = owner ? state.captureChatOwnership(owner) : null;
+    const { state, intent } = capture(chatId);
     if (!intent) return;
     const image = state.chatUiById[intent.chatId]?.attachedContext.find(
       (context) =>
@@ -124,7 +127,7 @@ export function useChatImageAttachments(
       removing.current.delete(id);
       return;
     }
-    void import("./chatImageTransfer")
+    void transfer()
       .then(({ removeChatImage }) => removeChatImage(intent, id))
       .then(() => {
         removing.current.delete(id);

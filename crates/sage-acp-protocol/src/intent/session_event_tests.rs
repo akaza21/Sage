@@ -241,3 +241,36 @@ fn a_cleared_title_replaces_the_title_and_a_repeat_clear_is_no_change() {
     pending.push(cleared.clone());
     assert_eq!(pending.take(), [cleared]);
 }
+
+#[test]
+fn chrome_lives_only_in_its_epoch_and_is_evicted_before_notices() {
+    let chrome: SessionScopedEvent = serde_json::from_str(
+        r#"{"kind":"chrome","statuses":[{"key":"demo","text":"Turn 1"}],
+            "widgets":[{"key":"demo","placement":"below","lines":["Line"],"hiddenLines":2}],
+            "editorText":{"revision":3,"text":"Suggested"},"subtitle":"Demo"}"#,
+    )
+    .unwrap();
+    let mut surface = SessionSurface::default();
+    assert_eq!(surface.apply(1, &chrome), Some(SurfaceChange::SendNeutral));
+    assert_eq!(surface.apply(1, &chrome), None);
+    let view = serde_json::to_value(surface.view(Some(1))).unwrap();
+    assert_eq!(view["chrome"]["editorText"]["key"], "1-3");
+    assert_eq!(view["chrome"]["widgets"][0]["hiddenLines"], 2);
+    // A session that is not live, or another epoch, shows no chrome.
+    assert!(surface.view(None).chrome.is_none());
+    assert!(surface.view(Some(2)).chrome.is_none());
+    // The offer, then the widgets, give way before any notice.
+    surface.apply(1, &notice("kept"));
+    assert!(surface.evict_oldest());
+    assert!(surface.chrome.editor_text.is_none());
+    assert!(surface.evict_oldest());
+    assert!(surface.chrome.widgets.as_slice().is_empty());
+    assert_eq!(surface.chrome.statuses.as_slice().len(), 1);
+    assert_eq!(surface.notices.len(), 1);
+    // A new epoch drops the old epoch's chrome as a neutral change.
+    assert_eq!(
+        surface.apply(2, &title("Next")),
+        Some(SurfaceChange::SendNeutral)
+    );
+    assert!(surface.chrome.is_empty());
+}

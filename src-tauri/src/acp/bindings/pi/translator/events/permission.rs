@@ -24,6 +24,8 @@ impl PiTranslator {
             .and_then(Value::as_str)
             .unwrap_or_default();
         if method == "notify" {
+            // Pi names no extension source, so each message stays its own
+            // notice; the store merges only exact repeats.
             let level = match value.get("notifyType").and_then(Value::as_str) {
                 Some("error") => SessionNoticeLevel::Error,
                 Some("warning") => SessionNoticeLevel::Warning,
@@ -31,19 +33,8 @@ impl PiTranslator {
             };
             return Ok(vec![super::notice(level, "Pi", value.get("message"))]);
         }
-        if matches!(
-            method,
-            "setStatus" | "setWidget" | "setTitle" | "set_editor_text"
-        ) {
-            let live = self
-                .active
-                .as_ref()
-                .is_some_and(|turn| turn.lifecycle.terminal().is_none() && !turn.authority_denied);
-            return Ok(vec![if live {
-                AdapterOutput::Absorbed
-            } else {
-                AdapterOutput::LateIgnored
-            }]);
+        if let Some(update) = crate::acp::bindings::pi::chrome::parse(method, value) {
+            return Ok(vec![AdapterOutput::Chrome(update)]);
         }
         if !matches!(method, "confirm" | "select" | "input" | "editor") {
             if self

@@ -330,6 +330,8 @@ pub enum AdapterOutput {
         text: String,
     },
     Title(String),
+    /// A fire-and-forget extension UI request.
+    Chrome(super::chrome::ChromeUpdate),
     DialogCancelled {
         external_id: String,
     },

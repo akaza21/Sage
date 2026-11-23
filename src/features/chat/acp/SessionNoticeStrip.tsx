@@ -14,7 +14,7 @@ export {
   MessageActionsTrigger,
   PromptActions,
 } from "../MessageActionsTrigger";
-
+export { ComposerChromeGate } from "./ComposerChromeGate";
 const versionOf = (notice: SessionNotice) =>
   JSON.stringify([
     notice.identity,

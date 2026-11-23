@@ -19,15 +19,6 @@ pub(super) fn updates() -> Vec<Value> {
     .collect()
 }
 
-pub(super) fn notifications() -> Vec<Value> {
-    vec![
-        json!({"type":"extension_ui_request","id":"status","method":"setStatus","statusKey":"loop","statusText":"Reading"}),
-        json!({"type":"extension_ui_request","id":"widget","method":"setWidget","widgetKey":"loop","widgetLines":["Reading"]}),
-        json!({"type":"extension_ui_request","id":"title","method":"setTitle","title":"Reading"}),
-        json!({"type":"extension_ui_request","id":"editor","method":"set_editor_text","text":"Reading"}),
-    ]
-}
-
 fn assistant(content: Value, timestamp: u64, stop: &str) -> Value {
     json!({"role":"assistant","content":content,"api":"openai-responses","provider":"openai","model":"fixture-model","usage":{"input":12,"output":7,"cacheRead":0,"cacheWrite":0,"totalTokens":19,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":stop,"timestamp":timestamp})
 }
@@ -103,18 +94,6 @@ async fn pi_pump_content_free_updates_live() {
 async fn pi_pump_content_free_updates_closed() {
     exercise(Row::ContentFree, State::Closed).await;
 }
-#[tokio::test]
-async fn pi_pump_fire_and_forget_ui_idle() {
-    exercise(Row::FireAndForget, State::Idle).await;
-}
-#[tokio::test]
-async fn pi_pump_fire_and_forget_ui_live() {
-    exercise(Row::FireAndForget, State::Live).await;
-}
-#[tokio::test]
-async fn pi_pump_fire_and_forget_ui_closed() {
-    exercise(Row::FireAndForget, State::Closed).await;
-}
 
 #[tokio::test]
 async fn pi_pump_read_only_fixture_preserves_real_stream_content() {
@@ -175,11 +154,11 @@ async fn pi_pump_content_free_frames_remain_absorbed_until_settlement() {
                 .unwrap();
         }
         fixture.observed.lock().unwrap().clear();
-        for value in updates().into_iter().chain(notifications()) {
+        for value in updates() {
             pump.push_stdout_chunk(&line(value), 4).await.unwrap();
         }
         let events = fixture.observed.lock().unwrap().clone();
-        assert_eq!(events.len(), 9);
+        assert_eq!(events.len(), 5);
         assert!(
             events
                 .iter()
@@ -194,4 +173,56 @@ async fn pi_pump_content_free_frames_remain_absorbed_until_settlement() {
         .unwrap();
     assert!(pump.completed_turn_ready());
     fixture.finish().await;
+}
+
+/// A fire-and-forget extension UI request is chrome: one session event and
+/// no transcript item, whether the Turn is live, closed, idle or denied.
+#[tokio::test]
+async fn pi_pump_fire_and_forget_ui_is_one_chrome_event_in_every_state() {
+    use sage_acp_protocol::intent::session_event::SessionScopedEvent;
+    let status = json!({"type":"extension_ui_request","id":"status","method":"setStatus","statusKey":"loop","statusText":"Reading"});
+    for state in ["live", "closed", "idle", "denied"] {
+        let fixture = Fixture::new();
+        let mut pump = fixture.pump(ready_adapter());
+        start(&mut pump).await;
+        match state {
+            "closed" | "idle" => settle(&mut pump).await,
+            "denied" => {
+                let denied = json!({"type":"tool_execution_start","toolCallId":"write-denied","toolName":"write","args":{}});
+                pump.push_stdout_chunk(&line(denied), 5).await.unwrap();
+            }
+            _ => {}
+        }
+        let items = fixture.item_count();
+        fixture.observed.lock().unwrap().clear();
+        if state == "idle" {
+            let mut idle = pump
+                .try_into_completed_parts()
+                .unwrap_or_else(|_| panic!("idle handoff"));
+            idle.accept_idle_stdout_chunk(&line(status.clone()), 10, &mut Capture::default())
+                .await
+                .unwrap();
+        } else {
+            pump.push_stdout_chunk(&line(status.clone()), 10)
+                .await
+                .unwrap();
+            assert!(!pump.teardown_required(), "{state}");
+        }
+        let events = fixture.observed.lock().unwrap().clone();
+        let chrome = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    AdapterEvent::Session {
+                        event: SessionScopedEvent::Chrome(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(chrome, 1, "{state}: {events:?}");
+        assert_eq!(fixture.item_count(), items, "{state}");
+        fixture.finish().await;
+    }
 }

@@ -90,6 +90,7 @@ impl PiRuntime {
             native_pending: None,
             native_rpc_reply: None,
             usage: std::sync::Arc::default(),
+            chrome: Default::default(),
             fork: None,
             forks: Vec::new(),
             launch: None,

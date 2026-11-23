@@ -16,8 +16,7 @@ import {
 } from "../../ui/listNavigation";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
-import { lazyParts } from "../chat/lazyParts";
-import type * as ResultsChunk from "./ChatSearchResults";
+import { ChatSearchResults } from "./ChatSearchResults";
 import {
   chatSearchResultKey,
   type ChatSearchFanoutPick,
@@ -28,9 +27,6 @@ import {
   type ChatSearchFolderOption,
 } from "./chatSearchScope";
 
-const ResultsPart = lazyParts<typeof ResultsChunk>(
-  () => import("./ChatSearchResults"),
-);
 const ACTIONS = [
   {
     id: "action:new-chat",
@@ -277,8 +273,7 @@ export function ChatSearchPalette({
                   </div>
                 ) : null}
                 {filter !== "Actions" ? (
-                  <ResultsPart
-                    part="ChatSearchResults"
+                  <ChatSearchResults
                     response={shown}
                     error={error}
                     folders={folders}

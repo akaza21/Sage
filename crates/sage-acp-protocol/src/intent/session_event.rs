@@ -13,6 +13,10 @@ pub const SESSION_NOTICES_MAX: usize = 16;
 /// Live activity rows kept per session; terminal rows are evicted first.
 pub const SESSION_ACTIVITIES_MAX: usize = 16;
 
+#[path = "session_chrome.rs"]
+mod chrome;
+pub use chrome::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionNoticeLevel {
@@ -87,6 +91,8 @@ pub enum SessionScopedEvent {
         model_id: ModelId,
     },
     Activity(SessionActivity),
+    /// The harness's whole composer chrome; each snapshot replaces the last.
+    Chrome(SessionChrome),
 }
 
 impl SessionScopedEvent {
@@ -95,7 +101,7 @@ impl SessionScopedEvent {
     /// classified here before it compiles.
     pub(crate) fn is_send_neutral(&self) -> bool {
         match self {
-            Self::Notice(_) | Self::Title { .. } | Self::Activity(_) => true,
+            Self::Notice(_) | Self::Title { .. } | Self::Activity(_) | Self::Chrome(_) => true,
             // The effective model changes what a send runs against.
             Self::TurnModel { .. } => false,
         }
@@ -104,7 +110,8 @@ impl SessionScopedEvent {
     pub fn superseded_by(&self, next: &Self) -> bool {
         match (self, next) {
             (Self::Title { .. }, Self::Title { .. })
-            | (Self::TurnModel { .. }, Self::TurnModel { .. }) => true,
+            | (Self::TurnModel { .. }, Self::TurnModel { .. })
+            | (Self::Chrome(_), Self::Chrome(_)) => true,
             (Self::Activity(pending), Self::Activity(next)) => pending.id == next.id,
             _ => false,
         }
@@ -154,8 +161,8 @@ pub enum SurfaceChange {
     SendRelevant,
 }
 
-/// The title and notices are durable history. The model and activities describe
-/// one live runtime epoch and reset when a new epoch reports.
+/// The title and notices are durable history. The model, activities and
+/// chrome describe one live runtime epoch and reset when a new epoch reports.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSurface {
@@ -164,6 +171,8 @@ pub struct SessionSurface {
     pub live_epoch: u64,
     pub model_id: Option<ModelId>,
     pub activities: Vec<SessionActivity>,
+    #[serde(default, skip_serializing_if = "SessionChrome::is_empty")]
+    pub chrome: SessionChrome,
 }
 
 impl SessionSurface {
@@ -182,11 +191,12 @@ impl SessionSurface {
         if self.live_epoch != runtime_epoch {
             if self.model_id.take().is_some() {
                 change = Some(SurfaceChange::SendRelevant);
-            } else if !self.activities.is_empty() {
+            } else if !self.activities.is_empty() || !self.chrome.is_empty() {
                 change = Some(SurfaceChange::SendNeutral);
             }
             self.live_epoch = runtime_epoch;
             self.activities.clear();
+            self.chrome = SessionChrome::default();
         }
         let changed = match event {
             SessionScopedEvent::Title { title } => replace(&mut self.title, title.as_ref()),
@@ -195,6 +205,11 @@ impl SessionSurface {
             }
             SessionScopedEvent::Notice(notice) => self.push_notice(notice),
             SessionScopedEvent::Activity(activity) => self.upsert_activity(activity),
+            SessionScopedEvent::Chrome(chrome) => {
+                let changed = &self.chrome != chrome;
+                self.chrome = chrome.clone();
+                changed
+            }
         };
         if changed {
             change = change.max(Some(if event.is_send_neutral() {
@@ -206,10 +221,14 @@ impl SessionSurface {
         change
     }
 
-    /// Drops the least valuable display row: the oldest notice, then the
-    /// oldest finished activity, then the oldest running one. Returns false
-    /// when nothing is left to drop.
+    /// Drops the least valuable display row: the harness's composer offer,
+    /// then its widgets, then the oldest notice, then the oldest finished
+    /// activity, then the oldest running one. Returns false when nothing is
+    /// left to drop.
     pub fn evict_oldest(&mut self) -> bool {
+        if self.chrome.evict_largest() {
+            return true;
+        }
         if !self.notices.is_empty() {
             self.notices.remove(0);
             return true;
@@ -285,6 +304,9 @@ fn replace<T: Clone + PartialEq>(slot: &mut Option<T>, value: Option<&T>) -> boo
 #[serde(rename_all = "camelCase")]
 pub struct SessionSurfaceView {
     pub activities: Vec<SessionActivityView>,
+    /// The live epoch's harness chrome, when it has any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chrome: Option<SessionChromeView>,
     /// The latest turn, when the running session can undo its file changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_turn: Option<crate::contract::SageTurnId>,
@@ -324,6 +346,7 @@ impl SessionSurface {
                     stoppable: activity.stoppable && !activity.state.is_terminal(),
                 })
                 .collect(),
+            chrome: (live && !self.chrome.is_empty()).then(|| self.chrome.view(self.live_epoch)),
             undo_turn: None,
             undo_keeps_files: false,
         }

@@ -17,22 +17,18 @@ const LocationPart = lazyParts<typeof LocationChunk>(
   () => import("./ComposerLocationStrip"),
 );
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
+import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
-import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
+import { NoticePart, SlashPart } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
-import type * as SlashChunk from "./ComposerSlashController";
-
-const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
-  () => import("./ComposerSlashController"),
-);
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
@@ -231,6 +227,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <div className="composer__input-area">
+              {chatAuth?.page?.sessionSurface ? (
+                <NoticePart part="ComposerChromeGate" {...props} />
+              ) : null}
               <textarea
                 ref={composerRef}
                 id={fieldId}
