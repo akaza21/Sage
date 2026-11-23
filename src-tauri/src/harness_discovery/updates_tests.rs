@@ -173,8 +173,14 @@ fn the_runner_sees_no_npm_call_once_checking_is_off() {
         run(node, args, dir)
     };
     let live = catalog.update_check_live(epoch, || switch.get());
-    assert_eq!(lookup_releases(&sources, &live, npm, &run_then_toggle), None);
-    assert_eq!(calls.borrow().as_slice(), [["view", "@openai/codex", "version"]]);
+    assert_eq!(
+        lookup_releases(&sources, &live, npm, &run_then_toggle),
+        None
+    );
+    assert_eq!(
+        calls.borrow().as_slice(),
+        [["view", "@openai/codex", "version"]]
+    );
     let epoch = catalog.begin_update_check(&["codex", "pi"]).unwrap();
     let live = catalog.update_check_live(epoch, || switch.get());
     let found = lookup_releases(&sources, &live, npm, &run).unwrap();
