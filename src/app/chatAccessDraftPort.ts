@@ -1,3 +1,11 @@
+/** Moves the draft's files to the created chat and resolves to the staged
+ * batch its first turn names, if any; without a chat it undoes that move and
+ * resolves to a notice when the files had to stay in the chat. */
+export interface DraftFileHandoff {
+  (chatId: string): Promise<{ revision: string } | undefined>;
+  (): Promise<string>;
+}
+
 /**
  * Drafts register here as they load, so the send path carries none of their
  * code.
@@ -16,7 +24,6 @@ export const chatAccessDraftPort: {
   spendEffort?: (chatId: string) => void;
   /** The new-chat draft's image handoff; registered with its first image. */
   uploadDraftImages?: (chatId?: string) => Promise<void>;
-  /** The new-chat draft's file handoff; registered with its staging part.
-   * Resolves to the created chat's staged revision, if it moved any. */
-  handOffDraftFiles?: (chatId?: string) => Promise<string | undefined>;
+  /** The new-chat draft's file handoff; registered with its staging part. */
+  handOffDraftFiles?: DraftFileHandoff;
 } = {};

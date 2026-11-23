@@ -8,8 +8,8 @@ import {
   type PasteAttachability,
 } from "./composerPasteText";
 import { ComposerPasteNotices } from "./ComposerPasteNotices";
-// The draft's first send reaches its file handoff through the draft port.
-import "./draftFileHandoff";
+// Also registers the draft's file handoff on the draft port.
+import { noteDraftFiles } from "./draftFileHandoff";
 import { PastedTextChips } from "./PastedTextChips";
 import {
   pasteOver,
@@ -71,12 +71,11 @@ export function ComposerPaste({
     draft ? state.newChatDraft?.fileToken : undefined,
   );
   const owner = useMemo<StagedOwner>(() => {
-    const publish = (next: PastedTextState) =>
-      onStaged({
-        revision: next.items.length ? next.revision : null,
-        busy: next.busy,
-        settled: settled.current,
-      });
+    const publish = (next: PastedTextState) => {
+      const revision = next.items.length ? next.revision : null;
+      onStaged({ revision, busy: next.busy, settled: settled.current });
+      if (draft) noteDraftFiles(draftToken, revision);
+    };
     return {
       chatId: draft ? draftToken : chatId,
       draft,

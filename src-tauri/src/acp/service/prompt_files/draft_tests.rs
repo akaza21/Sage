@@ -1,5 +1,6 @@
 use super::super::{Resource, Selection};
 use super::*;
+use crate::chat_lifecycle::create::ChatCreateStore;
 use crate::project_registry::create::ProjectCreateStore;
 use crate::workbench_persistence::store::WorkbenchStore;
 use serde_json::json;
@@ -11,6 +12,7 @@ struct Fixture {
     state: AppState,
     project: String,
     chat: String,
+    second_chat: String,
     root: std::path::PathBuf,
 }
 impl Fixture {
@@ -24,15 +26,29 @@ impl Fixture {
             .unwrap()
             .active_tab_id
             .unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let second_chat = database
+            .create_chat(&sage_domain::chat::ProjectLayoutRequest {
+                project_id: project.clone(),
+                tabs: snapshot.tabs,
+                active_tab_id: snapshot.active_tab_id,
+                selected_root_id: snapshot.selected_root_id,
+                selected_resource: snapshot.selected_resource,
+            })
+            .unwrap();
         Self {
             state: AppState::new(database),
             project,
             chat,
+            second_chat,
             root,
         }
     }
     fn chat(&self) -> serde_json::Value {
         json!({"projectId": self.project, "chatId": self.chat, "projectGeneration": 0})
+    }
+    fn second(&self) -> serde_json::Value {
+        json!({"projectId": self.project, "chatId": self.second_chat, "projectGeneration": 0})
     }
     async fn stage(&self, token: &str, name: &str) -> Result<Option<StagedFiles>, String> {
         let request = serde_json::from_value(json!({
@@ -119,20 +135,90 @@ fn a_draft_batch_goes_whole_to_the_created_chat_and_is_sent_once() {
 }
 
 #[test]
-fn a_failed_handoff_returns_the_batch_and_chats_never_trade_batches() {
+fn a_draft_batch_goes_back_only_to_undo_its_own_handoff_and_never_reaches_another_chat() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let (a, b) = (fixture.chat(), fixture.second());
+        let staged = fixture.stage(DRAFT, "a.rs").await.unwrap().unwrap();
+        let moved = fixture
+            .hand_off(draft(DRAFT), a.clone(), &staged.revision)
+            .await
+            .unwrap();
+        // Chat to chat is refused, and a stale undo moves nothing.
+        assert!(
+            fixture
+                .hand_off(a.clone(), b.clone(), &moved.revision)
+                .await
+                .is_err()
+        );
+        assert!(
+            fixture
+                .hand_off(a.clone(), draft(DRAFT), "stale")
+                .await
+                .is_err()
+        );
+        // The undo of that exact move returns the batch, once.
+        let back = fixture
+            .hand_off(a.clone(), draft(DRAFT), &moved.revision)
+            .await
+            .unwrap();
+        assert_eq!(fixture.listed("", DRAFT), Some(vec!["a.rs".into()]));
+        assert_eq!(fixture.listed(&fixture.project, &fixture.chat), None);
+        let again = fixture
+            .hand_off(draft(DRAFT), a.clone(), &back.revision)
+            .await
+            .unwrap();
+        fixture
+            .state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .clear_chat(&fixture.project, &fixture.chat);
+        assert!(
+            fixture
+                .hand_off(a.clone(), draft(DRAFT), &again.revision)
+                .await
+                .is_err()
+        );
+
+        // Two hops: a chat's own files never pass through the draft to another chat.
+        let chat_a = json!({"owner": a, "pick": "files", "expectedRevision": null});
+        let request = serde_json::from_value(chat_a).unwrap();
+        let picked = Resources(std::sync::Arc::new(vec![Resource {
+            id: "own-id".into(),
+            name: "own.txt".into(),
+            bytes: b"chat".to_vec(),
+        }]));
+        let own = stage_with(&fixture.state, request, move || Ok(Some(picked)))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            fixture
+                .hand_off(a.clone(), draft(LEFTOVER), &own.revision)
+                .await
+                .is_err()
+        );
+        assert_eq!(fixture.listed("", LEFTOVER), None);
+        assert_eq!(fixture.listed(&fixture.project, &fixture.second_chat), None);
+        assert_eq!(
+            fixture.listed(&fixture.project, &fixture.chat),
+            Some(vec!["own.txt".into()])
+        );
+    });
+}
+
+#[test]
+fn a_project_switch_returns_a_handed_unsent_batch_to_its_draft() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();
         let staged = fixture.stage(DRAFT, "a.rs").await.unwrap().unwrap();
-        let moved = fixture
+        fixture
             .hand_off(draft(DRAFT), fixture.chat(), &staged.revision)
             .await
             .unwrap();
-        let chat_to_chat = fixture.hand_off(fixture.chat(), fixture.chat(), &moved.revision);
-        assert!(chat_to_chat.await.is_err());
-        fixture
-            .hand_off(fixture.chat(), draft(DRAFT), &moved.revision)
-            .await
-            .unwrap();
+        fixture.state.acp.file_stages.lock().unwrap().clear_chats();
         assert_eq!(fixture.listed("", DRAFT), Some(vec!["a.rs".into()]));
         assert_eq!(fixture.listed(&fixture.project, &fixture.chat), None);
     });

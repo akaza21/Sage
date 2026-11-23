@@ -210,10 +210,8 @@ export function NewChatDraftSurface({
           }
           project={shownProject}
           newChat
-          onSubmit={(event, staged) => {
+          onSubmit={(event) => {
             event.preventDefault();
-            // The send hands over the files the composer shows.
-            update({ fileRevision: staged ?? null });
             const send = useWorkbenchStore.getState().sendNewChatDraft;
             void (intake?.finally(send) ?? send());
           }}

@@ -8,6 +8,7 @@ import type {
   PromptPick,
   StagedPromptFiles,
 } from "../../ports/promptAttachments";
+import { draftEnded } from "./draftFileHandoff";
 import {
   lineCount,
   pasteAttachmentRefusal,
@@ -163,6 +164,8 @@ export async function pickFiles(
       expectedRevision: staged.ref.current.revision,
     });
     if (!result) return;
+    // A draft discarded while its picker was open keeps nothing.
+    if (staged.draft && draftEnded(staged.chatId)) return;
     apply(staged, result);
     const count = result.files.length;
     announce(

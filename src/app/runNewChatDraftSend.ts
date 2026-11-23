@@ -3,6 +3,7 @@ import { boundedChatError } from "../domain/chatOwnership";
 import { currentProjectLayout } from "./projectProjection";
 import { errorMessage } from "../domain/errors";
 import { draftChatAccess } from "./chatAccessDrafts";
+import type { DraftFileHandoff } from "./chatAccessDraftPort";
 import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { DraftCreation, NewChatDraft } from "./newChatDraftSlice";
@@ -22,7 +23,7 @@ export async function runNewChatDraftSend(
   /** The draft's image handoff, registered with its first image. */
   uploadDraftImages?: (chatId?: string) => Promise<void>,
   /** The draft's file handoff, registered with its staging part. */
-  handOffDraftFiles?: (chatId?: string) => Promise<string | undefined>,
+  handOffDraftFiles?: DraftFileHandoff,
 ) {
   let creation = attempt.submission.creation;
   let opening = false;
@@ -189,7 +190,7 @@ export async function runNewChatDraftSend(
               projectId: owner.projectId,
               chatId,
               text: draft.text,
-              ...(staged && { staged: { revision: staged } }),
+              staged,
             }
           : null,
     });
@@ -198,7 +199,7 @@ export async function runNewChatDraftSend(
     // All or nothing: a failed handoff takes the images and files back out of
     // the chat before the draft is shown again and reads its files.
     void uploadDraftImages?.();
-    await handOffDraftFiles?.();
+    const kept = await handOffDraftFiles?.();
     // Opening the chat moved the center to it; unless the user navigated
     // since, a failed handoff returns to the draft that still holds the prompt.
     if (
@@ -209,7 +210,7 @@ export async function runNewChatDraftSend(
       set({ agentCenter: "draft" });
     return {
       submission: creation,
-      error: boundedChatError(errorMessage(error)),
+      error: boundedChatError(errorMessage(error) + (kept ?? "")),
     };
   }
 }

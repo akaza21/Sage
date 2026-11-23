@@ -24,6 +24,7 @@ export function installDraftFilesFixture() {
     }
   ).__TAURI_INTERNALS__;
   const batches = new Map<string, Batch>();
+  let handed: { draft: string; chat: string; revision: string } | null = null;
   const control = {
     handOffs: [] as { from: string; to: string }[],
     released: 0,
@@ -65,6 +66,14 @@ export function installDraftFilesFixture() {
     }
     if (command === "hand_off_prompt_files") {
       const [from, to] = [key(request.from), key(request.to)];
+      // As native: a draft to a chat, or back only to undo that exact move.
+      const admitted = from.startsWith("draft:")
+        ? to.startsWith("chat:")
+        : to === handed?.draft &&
+          from === handed.chat &&
+          request.revision === handed.revision;
+      if (!admitted)
+        throw "Attachments move only from a draft to its chat, and back.";
       const batch = batches.get(from);
       if (batch?.revision !== request.revision || batches.has(to))
         throw "Attachments changed; review them and send again.";
@@ -73,6 +82,9 @@ export function installDraftFilesFixture() {
       batches.delete(from);
       const moved = { ...batch, revision: crypto.randomUUID() };
       batches.set(to, moved);
+      handed = from.startsWith("draft:")
+        ? { draft: from, chat: to, revision: moved.revision }
+        : null;
       return moved;
     }
     return undefined;

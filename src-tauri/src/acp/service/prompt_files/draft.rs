@@ -36,6 +36,14 @@ pub(super) fn is_draft(project: &str) -> bool {
     project == DRAFT_PROJECT
 }
 
+/// A draft batch handed to a chat: the chat key, the draft token and the
+/// revision the batch got in the chat. Only this move may be undone.
+pub(super) struct Handed {
+    chat: (String, String),
+    token: String,
+    revision: String,
+}
+
 impl FileStages {
     /// One draft holds files at a time. Staging for a draft drops any other
     /// draft's batch, which also sweeps one a reloaded or crashed WebView
@@ -48,31 +56,67 @@ impl FileStages {
     pub(crate) fn release_draft(&mut self, project: &str, token: &str) {
         if is_draft(project) {
             self.batches.remove(&(project.to_owned(), token.to_owned()));
+            if self.handed.as_ref().is_some_and(|h| h.token == token) {
+                self.handed = None;
+            }
         }
     }
 
-    /// Chats end with a project switch; the draft is not owned by a project
-    /// and keeps its batch for the chat its send creates.
+    /// The chat's first turn went, or the chat ended: its handoff is final.
+    pub(super) fn forget_handoff(&mut self, project: &str, chat: &str) {
+        if self
+            .handed
+            .as_ref()
+            .is_some_and(|h| h.chat.0 == project && h.chat.1 == chat)
+        {
+            self.handed = None;
+        }
+    }
+
+    /// Chats end with a project switch. The draft is not owned by a project
+    /// and keeps its batch for the chat its send creates; a batch handed to
+    /// a chat and not yet sent goes back to its draft first.
     pub(crate) fn clear_chats(&mut self) {
+        if let Some(handed) = self.handed.take() {
+            let Handed { chat, token, .. } = handed;
+            if let Some(batch) = self.batches.remove(&chat) {
+                self.release_other_drafts(&token);
+                let back = Batch {
+                    revision: uuid::Uuid::new_v4().to_string(),
+                    attached_at: DRAFT_ATTACHMENT,
+                    resources: batch.resources,
+                };
+                self.batches.insert((DRAFT_PROJECT.to_owned(), token), back);
+            }
+        }
         self.batches.retain(|(project, _), _| is_draft(project));
         self.sent.clear();
     }
 
-    /// Moves the batch at `from` whole to the empty owner `to`, or nothing.
-    /// Exactly one side is a draft, so no batch passes from one chat to
-    /// another. The revision is the one the person last saw at `from`; the
-    /// moved batch gets a fresh revision at `to`, and `from` is left empty.
+    /// Moves a batch whole, or nothing, from a draft to an empty chat, or
+    /// back from that chat to its draft to undo exactly that move. No other
+    /// move is admitted, so no batch ever passes from one chat to another.
+    /// The revision is the one the person last saw at `from`; the moved
+    /// batch gets a fresh revision at `to`, and `from` is left empty.
     pub(crate) fn hand_off(
         &mut self,
         from: (&str, &str),
         to: (&str, &str, i64),
         revision: &str,
     ) -> Result<StagedFiles, &'static str> {
-        if is_draft(from.0) == is_draft(to.0) {
-            return Err("Attachments move only between a draft and its chat.");
-        }
         let source = (from.0.to_owned(), from.1.to_owned());
         let target = (to.0.to_owned(), to.1.to_owned());
+        let admitted = match (is_draft(from.0), is_draft(to.0)) {
+            (true, false) => true,
+            (false, true) => self
+                .handed
+                .as_ref()
+                .is_some_and(|h| h.chat == source && h.token == to.1 && h.revision == revision),
+            _ => false,
+        };
+        if !admitted {
+            return Err("Attachments move only from a draft to its chat, and back.");
+        }
         if self
             .batches
             .get(&source)
@@ -97,6 +141,11 @@ impl FileStages {
             resources,
         };
         let moved = summary(&batch);
+        self.handed = (!is_draft(to.0)).then(|| Handed {
+            chat: target.clone(),
+            token: from.1.to_owned(),
+            revision: batch.revision.clone(),
+        });
         self.batches.insert(target, batch);
         Ok(moved)
     }

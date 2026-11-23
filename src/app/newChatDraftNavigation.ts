@@ -3,8 +3,6 @@ import { agentChatFocus } from "./agentChatOwner";
 import { sessionAccessModeCandidates } from "../domain/sessionAccessMode";
 import { preferredAvailableHarness } from "../domain/harness";
 import { preferredModelId } from "./harnessSlice";
-import { isTauriRuntime } from "../ports/nativeInvoke";
-import { nativePromptAttachments } from "../ports/nativePromptAttachments";
 import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
@@ -33,6 +31,7 @@ export async function openNewChatDraft(
     !!draft &&
     (draft.text ||
       draft.images?.length ||
+      draft.fileRevision ||
       draft.submission.status !== "released");
   const retainedDraft =
     draft &&
@@ -45,7 +44,7 @@ export async function openNewChatDraft(
       (holdsWork && !explicit))
       ? draft
       : draft && holdsWork
-        ? { ...draft, targetProjectId: projectId, fileToken: newFileToken() }
+        ? { ...draft, targetProjectId: projectId }
         : null;
   const draftFocusRequest = state.draftFocusRequest;
   const preferred = preferredAvailableHarness(
@@ -102,22 +101,12 @@ export async function openNewChatDraft(
     },
   });
   const opened = get().newChatDraft;
-  if (opened?.fileToken !== draft?.fileToken) releaseDraftFiles(draft);
   if (opened?.harnessId && opened.harnessId !== get().selectedHarnessId)
     return selectDraftHarness(set, get, opened.harnessId);
 }
-/** A fresh, empty native file slot for a new or retargeted draft. */
-export const newFileToken = () => crypto.randomUUID();
-
-/** A draft's staged files stay with the destination they were picked for:
- * discarding or retargeting the draft releases its native slot. */
-export function releaseDraftFiles(draft: NewChatDraft | null | undefined) {
-  const draftToken = draft?.fileToken;
-  if (draftToken && isTauriRuntime())
-    void nativePromptAttachments
-      .releaseDraftPromptFiles({ draftToken })
-      .catch(() => undefined);
-}
+/** A new draft's own, empty native file slot. Its staged files are byte
+ * snapshots, so they stay with the draft when it is retargeted. */
+const newFileToken = () => crypto.randomUUID();
 
 /**
  * The choices a draft sends with under the current catalog, or null while

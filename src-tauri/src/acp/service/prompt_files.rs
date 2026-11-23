@@ -155,6 +155,8 @@ pub(crate) struct FileStages {
     batches: BTreeMap<(String, String), Batch>,
     sent: BTreeMap<(String, String), Sent>,
     sequence: u64,
+    /// The draft batch last handed to a chat, the one move that may undo.
+    handed: Option<draft::Handed>,
 }
 impl FileStages {
     pub(crate) fn stage(
@@ -338,6 +340,7 @@ impl FileStages {
     /// staged after it stays, even when the send cannot be recorded for
     /// Retry; otherwise the next message would carry the same files again.
     pub(crate) fn unstage_sent(&mut self, project: &str, chat: &str, sent: &Resources) {
+        self.forget_handoff(project, chat);
         let key = (project.to_owned(), chat.to_owned());
         if self
             .batches
@@ -386,11 +389,13 @@ impl FileStages {
         }
     }
     pub(crate) fn clear_chat(&mut self, project: &str, chat: &str) {
+        self.forget_handoff(project, chat);
         let key = (project.to_owned(), chat.to_owned());
         self.batches.remove(&key);
         self.sent.remove(&key);
     }
     pub(crate) fn clear(&mut self) {
+        self.handed = None;
         self.batches.clear();
         self.sent.clear();
     }

@@ -4,12 +4,7 @@ import {
   validateChatComposerText,
 } from "../domain/chatOwnership";
 import { chatAccessDraftPort } from "./chatAccessDraftPort";
-import {
-  newFileToken,
-  openNewChatDraft,
-  releaseDraftFiles,
-  selectDraftHarness,
-} from "./newChatDraftNavigation";
+import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import {
   liveDraftCreation,
   type NewChatDraft,
@@ -94,21 +89,7 @@ export function createNewChatDraftActions(
       if (!draft || draft.submission.status === "submitting") return;
       try {
         if (patch.text !== undefined) validateChatComposerText(patch.text);
-        // Undefined keeps the owner project, so naming it is no retarget.
-        const target = (id: string | null | undefined) =>
-          id === undefined ? draft.projectId : id;
-        const retargeted =
-          "targetProjectId" in patch &&
-          target(patch.targetProjectId) !== target(draft.targetProjectId);
-        set({
-          newChatDraft: {
-            ...draft,
-            ...patch,
-            ...(retargeted && { fileToken: newFileToken() }),
-            error: null,
-          },
-        });
-        if (retargeted) releaseDraftFiles(draft);
+        set({ newChatDraft: { ...draft, ...patch, error: null } });
       } catch (error) {
         set({
           newChatDraft: { ...draft, error: boundedChatError(String(error)) },
@@ -150,11 +131,8 @@ export function createNewChatDraftActions(
       await submit(draft);
     },
     discardNewChatDraft: () => {
-      const draft = get().newChatDraft;
-      if (draft?.submission.status !== "submitting") {
+      if (get().newChatDraft?.submission.status !== "submitting")
         set({ newChatDraft: null, agentCenter: "chat" });
-        releaseDraftFiles(draft);
-      }
     },
     reloadNewChatDraft: async () => {
       const state = get();
