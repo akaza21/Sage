@@ -18,10 +18,7 @@ import { type FindControl, type FindOpenRequest } from "./FileFindBar";
 import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
 import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
 
-const loadMarkdownPreview = () =>
-  import("./FileMarkdownPreview").then(({ FileMarkdownPreview }) => ({
-    default: FileMarkdownPreview,
-  }));
+const loadMarkdownPreview = () => import("./FileMarkdownPreview");
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 

@@ -22,12 +22,20 @@ const COMPACT: &str = "compact";
 const SESSION: &str = "session";
 
 /// One entry of Pi's `get_commands`. Its `source` says what the command
-/// is; only extension commands run as command turns.
+/// is; only extension commands run as command turns. An extension Pi ships
+/// itself (`sourceInfo.source: "builtin"`, such as `builtin:mcp`) is listed as
+/// built in, so curated placement may give it a native control, while it still
+/// runs as Pi's own command turn.
 fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
-    let source = CommandSource::from_wire(value["source"].as_str());
-    let dispatch = match source {
+    let wire = CommandSource::from_wire(value["source"].as_str());
+    let dispatch = match wire {
         CommandSource::Extension => CommandDispatch::CommandTurn,
         _ => CommandDispatch::Prompt,
+    };
+    let source = if wire == CommandSource::Extension && value["sourceInfo"]["source"] == "builtin" {
+        CommandSource::Builtin
+    } else {
+        wire
     };
     let description = match value.get("description") {
         None => "",
@@ -56,7 +64,9 @@ fn source_label(value: &Value) -> Option<&str> {
             .next()
             .filter(|name| !name.is_empty())
     }
-    if let Some(package) = info["baseDir"].as_str().and_then(leaf) {
+    if info["origin"] == "package"
+        && let Some(package) = info["baseDir"].as_str().and_then(leaf)
+    {
         return Some(package);
     }
     let file = info["path"].as_str().and_then(leaf)?;
@@ -102,7 +112,9 @@ impl PiRuntime {
             .and_then(|launch| launch.harness_version())
             .and_then(crate::acp::bindings::release_version::ReleaseVersion::parse);
         let supports = |control| match control {
-            NativeControl::Compact | NativeControl::UsagePanel => self.initialized,
+            NativeControl::Compact | NativeControl::UsagePanel | NativeControl::McpPanel => {
+                self.initialized
+            }
             NativeControl::ModelPicker => self.initialized && !self.available_models.is_empty(),
             _ => false,
         };
@@ -164,6 +176,9 @@ impl PiRuntime {
         let egress = self.begin_one(operation, RequestKind::Prompt)?;
         if command_turn {
             self.translator.mark_command_turn().map_err(super::map_pi)?;
+            // An extension command may change the model without an event;
+            // the next prompt reads the configuration again.
+            self.configuration_dirty = true;
         }
         Ok(egress)
     }

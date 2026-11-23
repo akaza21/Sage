@@ -170,6 +170,16 @@ export function composerNativeRows(
     "mcpPanel",
     false,
   );
+  action(
+    "extensions",
+    "addOns",
+    "Extensions",
+    props.onOpenExtensions,
+    undefined,
+    undefined,
+    undefined,
+    false,
+  );
   if (props.planAccess)
     add(
       "plan",

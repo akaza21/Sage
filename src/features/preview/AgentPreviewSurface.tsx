@@ -26,10 +26,7 @@ import {
 } from "./previewPresentation";
 import { usePreviewProjection } from "./previewProjectionStore";
 
-const loadAgentPreviewPresentation = () =>
-  import("./AgentPreviewPresentation").then(({ AgentPreviewPresentation }) => ({
-    default: AgentPreviewPresentation,
-  }));
+const loadAgentPreviewPresentation = () => import("./AgentPreviewPresentation");
 
 /** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; a selected preview keeps its canvas while the pane is collapsed. */
 export function AgentPreviewSurface({

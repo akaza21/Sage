@@ -22,6 +22,8 @@ import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
 import { isWorkingTool, workingToolStatus } from "./workingTool";
 
+const loadExtensionMessage = () => import("./ExtensionMessage");
+
 const loadMarkdown = () =>
   import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
     default: ChatMarkdown,
@@ -70,6 +72,14 @@ export const ItemView = memo(
     command?: AcpTurnCommand;
   }) {
     switch (item.kind) {
+      case "extensionMessage":
+        return (
+          <LazyModuleBoundary
+            label="Extension message"
+            load={loadExtensionMessage}
+            render={(Message) => <Message item={item} />}
+          />
+        );
       case "userPrompt":
       case "text": {
         const role = item.kind === "text" ? item.payload.role : "user";
@@ -170,9 +180,7 @@ export const ItemView = memo(
   (left, right) =>
     left.item.id === right.item.id &&
     left.item.revision === right.item.revision &&
-    (left.item.kind !== "plan"
-      ? true
-      : left.workingItems === right.workingItems) &&
+    (left.item.kind !== "plan" || left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
     left.turnState === right.turnState &&
     left.command === right.command &&

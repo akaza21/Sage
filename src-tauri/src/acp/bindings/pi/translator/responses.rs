@@ -1,6 +1,22 @@
 use super::*;
 
 impl PiTranslator {
+    /// A configuration read or change is in flight; a refresh waits for it.
+    pub(in crate::acp::bindings::pi) fn configuration_refresh_pending(&self) -> bool {
+        self.pending.values().any(|request| {
+            matches!(
+                request.kind,
+                PendingKind::Configuration
+                    | PendingKind::ConfigurationModels
+                    | PendingKind::Models
+                    | PendingKind::ThinkingLevels
+                    | PendingKind::State
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+            )
+        })
+    }
+
     pub(super) fn ingest_response(
         &mut self,
         response: Response,
@@ -43,6 +59,15 @@ impl PiTranslator {
                 command,
                 data: None,
             }]);
+        }
+        // A read Sage made on its own is retried with the next prompt, quietly.
+        if !response.success
+            && matches!(
+                kind,
+                PendingKind::Configuration | PendingKind::ConfigurationModels
+            )
+        {
+            return Ok(vec![AdapterOutput::ConfigurationChanged]);
         }
         if !response.success && kind == PendingKind::Commands {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
@@ -87,6 +112,16 @@ impl PiTranslator {
             return Ok(output);
         }
         match kind {
+            PendingKind::Configuration => Ok(vec![parse_state(&response.data).map_or(
+                AdapterOutput::ConfigurationChanged,
+                AdapterOutput::Configuration,
+            )]),
+            PendingKind::ConfigurationModels => {
+                Ok(vec![parse_models(&response.data).map_or(
+                    AdapterOutput::ConfigurationChanged,
+                    AdapterOutput::Models,
+                )])
+            }
             PendingKind::State => {
                 let state = match parse_state(&response.data) {
                     Ok(state) => state,

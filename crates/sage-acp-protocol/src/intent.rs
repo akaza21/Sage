@@ -226,6 +226,13 @@ pub enum NormalizedPayload {
     Text {
         text: SafeText<262144>,
     },
+    /// A harness extension's displayed custom message: its type, text and
+    /// optional details, each bounded.
+    ExtensionMessage {
+        label: SafeText<128>,
+        text: SafeText<16384>,
+        details: Option<SafeText<16384>>,
+    },
     /// A message the user steered into the running Turn. Sage journals it
     /// when the harness accepts the steer; bindings never emit it.
     UserPrompt {
@@ -388,7 +395,9 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. } | Self::UserPrompt { .. } => ItemKind::Text,
+            Self::Text { .. } | Self::UserPrompt { .. } | Self::ExtensionMessage { .. } => {
+                ItemKind::Text
+            }
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,

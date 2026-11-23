@@ -23,10 +23,11 @@ import {
 import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
-import type { AcpCommandPanel } from "../../domain/acpCommand";
 import { lazyParts } from "./lazyParts";
 import type * as PanelChunk from "./ComposerCommandPanel";
+import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
+import type { AcpCommandPanel } from "../../domain/acpCommand";
 // A new-chat draft's image intake and handoff upload ride in this chunk:
 // "Add images" lives here, and a draft's drops and sends load it too.
 // eslint-disable-next-line react-refresh/only-export-components -- the draft image actions, shared by this lazy chunk's importers
@@ -34,6 +35,9 @@ export { addDraftImages } from "./draftImages";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
+const ExtensionsPart = lazyParts<
+  Pick<typeof AddActionsChunk, "ExtensionsPopover">
+>(() => import("./ComposerAddActions"));
 
 function ComposerOptionsBrowser({
   load,
@@ -53,7 +57,9 @@ function ComposerOptionsBrowser({
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
+  const [panel, setPanel] = useState<
+    AcpCommandPanel | "managedMcp" | "extensions" | null
+  >(null);
   const fieldRef = useMemo(
     () => ({
       get current() {
@@ -111,6 +117,18 @@ function ComposerOptionsBrowser({
     }
     previousActionsKey.current = actionsKey;
   }, [actionsKey, focused, id, onDismiss, onModeRemoved]);
+  if (panel === "extensions" || panel === "managedMcp")
+    return (
+      <ExtensionsPart
+        part="ExtensionsPopover"
+        kind={panel}
+        load={load}
+        boundChatId={owner ?? undefined}
+        triggerRef={fieldRef}
+        onClose={onDismiss}
+        onRunCommand={(command) => pickCommand(command, "")}
+      />
+    );
   if (panel)
     return (
       <PanelPart
@@ -138,7 +156,15 @@ function ComposerOptionsBrowser({
         {...actions}
         load={load}
         onOpenUsage={() => setPanel("status")}
-        onOpenMcp={() => setPanel("mcp")}
+        onOpenMcp={() =>
+          setPanel(
+            load?.kind === "ready" &&
+              load.list.commands.some((command) => command.panel === "mcp")
+              ? "mcp"
+              : "managedMcp",
+          )
+        }
+        onOpenExtensions={() => setPanel("extensions")}
         onPickCommand={pickCommand}
       />
     </MenuPopover>
@@ -167,8 +193,18 @@ export function ComposerSectionRows({
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:
       load?.kind === "ready" &&
-      load.list.commands.some((command) => command.panel === "mcp")
+      // A Sage MCP panel, or the harness's own MCP command placed on the row.
+      load.list.commands.some(
+        (command) =>
+          command.panel === "mcp" || command.placement?.control === "mcpPanel",
+      )
         ? props.onOpenMcp
+        : undefined,
+    // Built from reported provenance only, so a harness reporting none has no row.
+    onOpenExtensions:
+      load?.kind === "ready" &&
+      load.list.commands.some((command) => command.sourceInfo)
+        ? props.onOpenExtensions
         : undefined,
   });
   const sections = composerMenuSections(

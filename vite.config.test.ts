@@ -312,6 +312,9 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  // An extension's custom message; grouped, it lives in the markdown chunk
+  // a transcript has already loaded.
+  "src/features/chat/acp/ExtensionMessage.tsx",
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",

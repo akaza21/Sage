@@ -34,6 +34,8 @@ const SESSION_NAME_BYTES: usize = sage_acp_protocol::intent::session_event::SESS
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
+    Configuration,
+    ConfigurationModels,
     State,
     Models,
     SetModel,
@@ -71,6 +73,8 @@ impl PendingKind {
 
     const fn command(self) -> &'static str {
         match self {
+            Self::Configuration => "get_state",
+            Self::ConfigurationModels => "get_available_models",
             Self::State => "get_state",
             Self::Models => "get_available_models",
             Self::SetModel => "set_model",
@@ -96,6 +100,8 @@ impl PendingKind {
 
 #[derive(Debug)]
 struct ActiveTurn {
+    /// Extension messages shown this turn; later ones are hidden.
+    extension_messages: u8,
     turn_key: String,
     prompt_command_id: String,
     lifecycle: TurnLifecycle,
@@ -246,6 +252,8 @@ impl PiTranslator {
 
     pub fn begin(&mut self, operation: Operation) -> Result<Vec<Outbound>, AdapterError> {
         match operation {
+            Operation::RefreshConfiguration => self.one(PendingKind::Configuration, Map::new()),
+            Operation::RefreshModels => self.one(PendingKind::ConfigurationModels, Map::new()),
             Operation::Initialize => self.begin_initialize(),
             Operation::GetModels => self.one(PendingKind::Models, Map::new()),
             Operation::SetModel { provider, id } => {
