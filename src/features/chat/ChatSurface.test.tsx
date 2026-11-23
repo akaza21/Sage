@@ -4083,7 +4083,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Git index is locked")).toBeNull();
   });
 
-  it("offers queueing by Enter during a running Turn with Stop in the action slot", () => {
+  it("offers queueing by Enter during a running Turn and keeps Send when Stop is unavailable", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);
     expect(document.querySelector(".message-list")).not.toHaveAttribute(
@@ -4096,7 +4096,7 @@ describe("ChatSurface ACP resource integration", () => {
       /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
     );
     expect(screen.queryByRole("button", { name: "Queue message" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Cancel turn" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
 
     hooks.actions.cancellableTurnId = "turn-a";
     rerender(<ChatSurface />);
@@ -4113,7 +4113,7 @@ describe("ChatSurface ACP resource integration", () => {
     setTurnState("cancelling");
     rerender(<ChatSurface />);
     expect(composer).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Cancel turn" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
     expect(composer).not.toHaveFocus();
   });
 
