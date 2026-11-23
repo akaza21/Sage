@@ -138,7 +138,7 @@ it("surfaces the native prompt limit for a full draft whose annotations escape h
 it("sends staged pasted text with an empty message, naming its revision", () => {
   const { submit } = model({ composerText: "" }, "rev-1");
   expect(submit).toHaveBeenCalledWith("", [], "binding-a", null, {
-    revision: "rev-1",
+    staged: { revision: "rev-1" },
   });
 });
 

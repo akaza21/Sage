@@ -75,7 +75,7 @@
 }
 
 @media (hover: none) {
-  .acp-prompt-actions {
+  .chat-transcript-actions.acp-prompt-actions {
     opacity: 1;
   }
 }

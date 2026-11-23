@@ -26,9 +26,9 @@ export function ComposerTurnControl({
   // a press that ends without a click forgets it. Only pointerdown, Enter and
   // Space activate the button; any other key leaves the press unrecorded.
   const pressedStop = useRef(false);
-  const notePress = ({ key = " ", repeat }: { key?: string; repeat?: boolean }) =>
-    repeat ||
-    (key !== " " && key !== "Enter") ||
+  const notePress = (event: { type: string; key?: string; repeat?: boolean }) =>
+    event.repeat ||
+    (event.type === "keydown" && event.key !== " " && event.key !== "Enter") ||
     (pressedStop.current = dictation.listening);
   const forgetPress = () => (pressedStop.current = false);
   const reason = (sendDisabled && disabledReason) || undefined;
