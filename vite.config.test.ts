@@ -105,7 +105,6 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/ProjectScopeChip.tsx",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
-  "src/features/chat/FirstChatSend.tsx",
   "src/features/chat/ChatSessionHeader.tsx",
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
@@ -339,7 +338,6 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/chatEffortDraft.ts",
     "src/features/chat/DraftEffortControl.tsx",
     "src/app/runCreateChat.ts",
-    "src/features/chat/FirstChatSend.tsx",
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",
     "src/features/chat/NewChatDraftSurface.tsx",
@@ -958,12 +956,17 @@ describe("desktop-native chunk topology", () => {
         );
       }
     }
-    // A new-chat draft's image intake rides in the + menu's section chunk.
-    expect(
-      groupedGraph.moduleFiles.get("src/features/chat/draftImages.ts"),
-    ).toBe(
-      groupedGraph.moduleFiles.get("src/features/chat/ComposerSectionMenu.tsx"),
-    );
+    // A new-chat draft's image intake and built-in commands ride in the +
+    // menu's section chunk.
+    for (const module of [
+      "src/features/chat/draftImages.ts",
+      "src/features/chat/draftBuiltinCommands.ts",
+    ])
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(
+        groupedGraph.moduleFiles.get(
+          "src/features/chat/ComposerSectionMenu.tsx",
+        ),
+      );
     // Its file handoff rides with the composer's staging part, which stages
     // the draft's files; the send path carries neither.
     expect(

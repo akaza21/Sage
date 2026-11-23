@@ -71,6 +71,8 @@ export interface NewChatDraftSlice {
         ownershipEpoch: number;
         /** The text handed to the chat; a different composer text cancels. */
         text: string;
+        /** Sent, and waiting for the session's catalog to run a command. */
+        held?: true;
         /** The staged batch the draft's files moved to, sent with it. */
         staged?: { revision: string };
       }

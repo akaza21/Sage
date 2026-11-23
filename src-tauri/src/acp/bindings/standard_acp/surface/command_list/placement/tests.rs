@@ -206,3 +206,35 @@ fn an_upgrade_unlocks_exactly_the_known_commands_introduced_after_the_installed_
         );
     }
 }
+
+#[test]
+fn a_draft_lists_only_session_free_builtins_its_installed_release_has() {
+    let claude = include_bytes!("../../../../claude/known_commands.json").as_slice();
+    let codex = include_bytes!("../../../../codex/known_commands.json").as_slice();
+    let pi = include_bytes!("../../../../pi/known_commands.json").as_slice();
+    // Native controls, terminal-only rows and newer releases stay out.
+    let gated = br#"[
+        {"name":"compact","section":"session","control":"compact"},
+        {"name":"agents","section":"session"},
+        {"name":"hooks","section":"addOns","terminalOnly":true},
+        {"name":"fresh","section":"skillsAndCommands","since":"2.1.152"}
+    ]"#
+    .as_slice();
+    for (bytes, installed, expected) in [
+        (claude, Some("9.0.0"), vec!["fast", "agents"]),
+        (claude, None, vec!["fast", "agents"]),
+        (codex, Some("9.0.0"), vec!["skills"]),
+        (pi, Some("9.0.0"), vec![]),
+        (gated, Some("2.1.151"), vec!["agents"]),
+        (gated, Some("2.1.152"), vec!["agents", "fresh"]),
+        (gated, None, vec!["agents"]),
+    ] {
+        let table = KnownCommandTable::parse(bytes).unwrap();
+        let installed = installed.and_then(ReleaseVersion::parse);
+        assert_eq!(
+            table.draft_builtins(installed.as_ref()).collect::<Vec<_>>(),
+            expected,
+            "{installed:?}"
+        );
+    }
+}

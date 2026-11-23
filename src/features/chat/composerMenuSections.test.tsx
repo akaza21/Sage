@@ -232,9 +232,10 @@ it.each([
     commands: ["link", "recipe", "tune", "status"],
   },
   // Fails closed: rows that do not declare needing nothing (effort) and
-  // every catalog command stay hidden before a session exists. Files stage
-  // in the draft's own native slot.
-  { sessionless: true, rows: ["files", "images", "plan"], commands: [] },
+  // every catalog command stay hidden before a session exists; only the
+  // draft's curated built-ins show. Files stage in the draft's own native
+  // slot.
+  { sessionless: true, rows: ["files", "images", "plan"], commands: ["fast"] },
 ])(
   "before a session exists keeps only rows declaring they need none (sessionless $sessionless)",
   ({ sessionless, rows, commands }) => {
@@ -277,7 +278,7 @@ it.each([
         command("status", "usage"),
       ],
       "",
-      sessionless,
+      sessionless ? [command("fast", "skillsAndCommands")] : undefined,
     );
     const shown = sections.flatMap((section) =>
       section.groups.flatMap((group) => group.rows),

@@ -84,6 +84,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInputDisabledReason = null,
     onAddImages,
     onCancelTurn,
+    onStop,
     onDeleteQueuedPrompt,
     onRetryQueuedPrompt,
     onSteerQueuedPrompt,
@@ -396,8 +397,8 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              onCancelTurn={onCancelTurn}
-              cancelDisabled={actionDisabled}
+              onCancelTurn={onStop ?? onCancelTurn}
+              cancelDisabled={actionDisabled && !onStop}
               sendDisabled={dispatchBlocked}
             />
           </div>

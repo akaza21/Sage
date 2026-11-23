@@ -38,9 +38,9 @@ import type * as SessionHeaderChunk from "./ChatSessionHeader";
 const SessionHeaderPart = lazyParts<typeof SessionHeaderChunk>(
   () => import("./ChatSessionHeader"),
 );
-import type * as FirstSendChunk from "./FirstChatSend";
-const FirstSendPart = lazyParts<typeof FirstSendChunk>(
-  () => import("./FirstChatSend"),
+import type * as SlashChunk from "./ComposerSlashController";
+const FirstSendPart = lazyParts<Pick<typeof SlashChunk, "FirstChatSend">>(
+  () => import("./ComposerSlashController"),
 );
 
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
@@ -186,11 +186,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       : undefined;
   };
   const retry = acpPage && latestRetryPrompt(acpPage);
+  // Offered only while idle and with a retry (see onRetry), and it closes over
+  // that same render's values.
   const retryLastTurn = () => {
-    if (!retry || actionBusy || activeAcpTurn) return;
-    if (retry.action) return void acpActions.runSessionAction(retry.action);
+    if (retry!.action) return void acpActions.runSessionAction(retry!.action);
     // Retry resends what that turn carried, never the next one's paste.
-    const { prompt, bindingId, modelId, turnId } = retry;
+    const { prompt, bindingId, modelId, turnId } = retry!;
     void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
@@ -225,10 +226,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
-      {chatId && firstSendPending ? (
+      {/* A pending first send is always this chat's (see firstSendPending). */}
+      {firstSendPending ? (
         <FirstSendPart
           part="FirstChatSend"
-          chatId={chatId}
+          chatId={chatId!}
           page={acpPage}
           actions={acpActions}
         />
@@ -304,7 +306,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         enabled={composerEnabled && !firstSendPending}
         sendBlocked={sendBlocked}
         actionBusy={actionBusy || firstSendPending}
-        activeTurn={Boolean(activeAcpTurn)}
+        activeTurn={Boolean(activeAcpTurn) || firstSendPending}
+        onStop={
+          firstSendPending
+            ? () => useWorkbenchStore.setState({ pendingFirstSend: null })
+            : undefined
+        }
         queueAvailable={queueAvailable}
         queuedPrompts={queuedPrompts}
         steerAvailable={steerAvailable}

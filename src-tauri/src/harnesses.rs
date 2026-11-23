@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod builtin_commands;
 mod catalog_definition;
 mod claude_auth;
 mod custom_acp;

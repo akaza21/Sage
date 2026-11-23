@@ -82,7 +82,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     // Sharing its tiny controllers avoids request/import overhead while
     // keeping all of them outside Agent and Editor startup. First-send
     // project ownership and handoff retain their own bounded dynamic entry.
-    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|runCreateChat|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|FirstChatSend|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
+    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|runCreateChat|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
   },
   {
     name: "codemirror-deps",
