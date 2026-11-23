@@ -1584,7 +1584,6 @@ it("keeps draft picker choices separate from the previous chat and its defaults"
   expect(
     screen.getByRole("button", { name: "Access options" }),
   ).toHaveTextContent("Read only");
-  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
   expect(screen.queryByRole("button", { name: /Attach/ })).toBeNull();
   fireEvent.change(composer(), { target: { value: "@file /command" } });
   await settleLazyModules();

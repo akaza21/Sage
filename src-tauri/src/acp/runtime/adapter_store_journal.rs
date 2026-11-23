@@ -369,6 +369,7 @@ fn store_error_variant(error: &StoreError) -> &'static str {
         StoreError::CommitUnknown => "commitUnknown",
         StoreError::CounterExhausted => "counterExhausted",
         StoreError::RewindUnavailable { .. } => "rewindUnavailable",
+        StoreError::RepositoryBusy => "repositoryBusy",
     }
 }
 

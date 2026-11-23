@@ -15,7 +15,7 @@ export function ComposerTurnControl({
   dictation: ReturnType<typeof useComposerDictation>;
   activeTurn: boolean;
   hasContent: boolean;
-  onCancelTurn: (() => void) | null;
+  onCancelTurn?: (() => void) | null;
   cancelDisabled: boolean;
   sendDisabled: boolean;
   disabledReason?: string | null;

@@ -13,6 +13,7 @@ import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures
 export function installConversationRewindFixture(
   inPlace = true,
   residency: "hot" | "cold" = "hot",
+  availability: "all" | "latestTurn" = "all",
   files?: { files: string[]; conflicts: string[]; unverified?: string[] },
 ) {
   installTranscriptSelectionFixture(false, true);
@@ -49,6 +50,12 @@ export function installConversationRewindFixture(
   page = {
     ...page,
     turns: [first, second],
+    // Both turns stay conversation targets; a latest-turn offer acts only at
+    // its undo turn, so the earlier prompt must show no trigger.
+    sessionSurface:
+      availability === "latestTurn"
+        ? { activities: [], undoTurn: second.id }
+        : page.sessionSurface,
     sessions: page.sessions.map((session) => ({
       ...session,
       residency,
@@ -56,7 +63,7 @@ export function installConversationRewindFixture(
         ...session.capabilities,
         rewind: {
           effects: { conversation: inPlace, files: !!files },
-          targets: "anyTurn",
+          targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,
         },

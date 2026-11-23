@@ -34,9 +34,9 @@
       },
       {
         "entry": "src/features/chat/ComposerLocationStrip.tsx",
-        "maxGzipBytes": 1250,
+        "maxGzipBytes": 1750,
         "maxCssGzipBytes": 850,
-        "reason": "Local execution target picker and project location strip load only for a new chat; no remote execution plumbing or retained closed-menu DOM."
+        "reason": "Execution target, project and Git branch chips load only for a new chat; the branch menu loads on first open. No remote execution plumbing or retained closed-menu DOM."
       },
       {
         "entry": "src/workbench/CollapsedProjectStatus.tsx",
@@ -293,9 +293,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 1845,
+        "maxGzipBytes": 2445,
         "maxCssGzipBytes": 737,
-        "reason": "Session strip: dismissible harness notices, background activities with Stop, and the latest turn's Undo; loads only when one exists. Measured JS 1724 B and CSS 689 B plus 7%."
+        "reason": "Session notices, activities, Undo and the prompt actions trigger with its rewind/fork eligibility check. Measured JS 2310 B, CSS 449 B; cap moved from ConversationActions."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -592,9 +592,9 @@
       },
       {
         "entry": "src/features/chat/ConversationActions.tsx",
-        "maxGzipBytes": 5200,
+        "maxGzipBytes": 4750,
         "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork actions, confirmations with the T11b file-rewind preview, legacy last-turn controls and fork history share one deferred chunk. No hidden DOM kept."
+        "reason": "Prompt rewind/fork menus, confirmations with the T11b file-rewind preview, legacy last-turn controls and fork history. 600 B of cap went to SessionNoticeStrip."
       }
     ],
     "windowsInstallerMb": 45,
