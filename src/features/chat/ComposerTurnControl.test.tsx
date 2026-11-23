@@ -48,32 +48,36 @@ afterEach(() => {
   native.emit = null;
 });
 
-it("keeps dictation on one control until stopped and disables it during the turn", async () => {
-  class Speech implements BrowserRecognition {
-    static latest: Speech;
-    continuous = false;
-    interimResults = false;
-    lang = "";
-    onresult: BrowserRecognition["onresult"] = null;
-    onerror: BrowserRecognition["onerror"] = null;
-    onend: BrowserRecognition["onend"] = null;
-    constructor() {
-      Speech.latest = this;
-    }
-    start() {}
-    stop() {
-      this.onend?.();
-    }
-    abort() {
-      this.onend?.();
-    }
-    emit(text: string) {
-      this.onresult?.({
-        resultIndex: 0,
-        results: [{ isFinal: true, 0: { transcript: text } }],
-      });
-    }
+class Speech implements BrowserRecognition {
+  static latest: Speech;
+  static starts = 0;
+  continuous = false;
+  interimResults = false;
+  lang = "";
+  onresult: BrowserRecognition["onresult"] = null;
+  onerror: BrowserRecognition["onerror"] = null;
+  onend: BrowserRecognition["onend"] = null;
+  constructor() {
+    Speech.latest = this;
   }
+  start() {
+    Speech.starts += 1;
+  }
+  stop() {
+    this.onend?.();
+  }
+  abort() {
+    this.onend?.();
+  }
+  emit(text: string) {
+    this.onresult?.({
+      resultIndex: 0,
+      results: [{ isFinal: true, 0: { transcript: text } }],
+    });
+  }
+}
+
+it("keeps dictation on one control until stopped and disables it during the turn", async () => {
   vi.stubGlobal("SpeechRecognition", Speech);
   let dictation!: ReturnType<typeof useComposerDictation>;
   function Composer() {
@@ -191,4 +195,77 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
     "Review the composer",
   );
   expect(input).toHaveValue("");
+});
+
+it("never restarts dictation from a Stop press that outlived the recording", async () => {
+  vi.stubGlobal("SpeechRecognition", Speech);
+  Speech.starts = 0;
+  function Composer() {
+    const input = useRef<HTMLTextAreaElement>(null);
+    const [text, setText] = useState("");
+    const dictation = useComposerDictation(text, setText, "chat", false, input);
+    return (
+      <ComposerTurnControl
+        dictation={dictation}
+        activeTurn={false}
+        hasContent={Boolean(text.trim())}
+        cancelDisabled={false}
+        sendDisabled={!text.trim()}
+      />
+    );
+  }
+  render(<Composer />);
+  fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+  const stop = await screen.findByRole("button", { name: "Stop dictation" });
+  fireEvent.pointerDown(stop);
+  act(() => Speech.latest.onend?.());
+  expect(stop).toHaveAccessibleName("Start dictation");
+  fireEvent.click(stop);
+  await act(async () => {});
+  expect(stop).toHaveAccessibleName("Start dictation");
+  expect(Speech.starts).toBe(1);
+});
+
+it("keeps Send for typed text while an uncancellable turn runs and queues it", () => {
+  function Composer() {
+    const [text, setText] = useState("");
+    const [queued, setQueued] = useState<string[]>([]);
+    const input = useRef<HTMLTextAreaElement>(null);
+    const dictation = useComposerDictation(text, setText, "chat", true, input);
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setQueued((rows) => [...rows, text]);
+          setText("");
+        }}
+      >
+        <textarea
+          ref={input}
+          aria-label="Prompt"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+        <output aria-label="Queued">{queued.join("|")}</output>
+        <ComposerTurnControl
+          dictation={dictation}
+          activeTurn
+          hasContent={Boolean(text.trim())}
+          onCancelTurn={null}
+          cancelDisabled={false}
+          sendDisabled={!text.trim()}
+        />
+      </form>
+    );
+  }
+  render(<Composer />);
+  expect(screen.getByRole("button", { name: "Cancel turn" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), {
+    target: { value: "Next step" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  expect(screen.getByRole("status", { name: "Queued" })).toHaveTextContent(
+    "Next step",
+  );
+  expect(screen.getByRole("button", { name: "Cancel turn" })).toBeDisabled();
 });

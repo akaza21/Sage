@@ -22,23 +22,30 @@ export function ComposerTurnControl({
   disabledReasonId?: string;
 }) {
   const hadFocus = useRef(false);
+  // A press that began on Stop only ever stops, even if recording ended
+  // on its own before the click landed.
+  const pressedStop = useRef(false);
+  const notePress = () => (pressedStop.current = dictation.listening);
   const reason = (sendDisabled && disabledReason) || undefined;
+  const canCancel = !cancelDisabled && !!onCancelTurn;
   const [name, Icon, action]: [
     "cancel" | "dictate" | "send",
     typeof Square,
     ButtonHTMLAttributes<HTMLButtonElement>,
-  ] = activeTurn
+  ] =
+    // Without a usable Cancel, typed text keeps Send so a click queues it.
+    activeTurn && (canCancel || !hasContent)
     ? [
         "cancel",
         Square,
         {
           className: "send-button send-button--cancel",
           "aria-label": "Cancel turn",
-          disabled: cancelDisabled || !onCancelTurn,
+          disabled: !canCancel,
           onClick: onCancelTurn ?? undefined,
         },
       ]
-    : dictation.listening || !hasContent
+    : !activeTurn && (dictation.listening || !hasContent)
       ? [
           "dictate",
           Mic,
@@ -54,9 +61,15 @@ export function ComposerTurnControl({
               : "Voice input is unavailable in this WebView",
             disabled: dictation.disabled,
             "aria-pressed": dictation.listening,
+            onPointerDown: notePress,
+            onKeyDown: notePress,
             onMouseDown: (event) => event.preventDefault(),
-            onClick: () =>
-              dictation.listening ? dictation.stop() : void dictation.start(),
+            onClick: () => {
+              const stop = pressedStop.current || dictation.listening;
+              pressedStop.current = false;
+              if (stop) dictation.stop();
+              else void dictation.start();
+            },
           },
         ]
       : [
