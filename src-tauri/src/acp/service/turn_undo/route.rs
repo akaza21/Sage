@@ -78,9 +78,13 @@ impl AcpService {
         }
     }
 
-    /// The undo's rewind target, or `None` when the turn can't be targeted:
-    /// no identity (older), never correlated, or behind a compaction. Any
-    /// other failure refuses rather than falling back to the conversation.
+    /// The undo's rewind target, or `None` when the turn can't be targeted.
+    /// `RewindUnavailable` is a turn with no identity (older). The store's
+    /// one admission query answers `Conflict{rewindTarget}` for every other
+    /// miss, which it can't tell apart: the turn is missing, unfinished,
+    /// uncorrelated, not visible, not prompted, not in the head session, at
+    /// or before a compaction, or another turn is running. Any other failure
+    /// refuses rather than falling back to the conversation.
     fn undo_target(
         &self,
         owner: &RuntimeOwner,
