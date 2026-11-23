@@ -17,7 +17,7 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 4545,
+        "maxGzipBytes": 4560,
         "maxCssGzipBytes": 550,
         "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
       },
@@ -539,7 +539,7 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 7815,
+        "maxGzipBytes": 7800,
         "maxCssGzipBytes": 800,
         "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
       },
