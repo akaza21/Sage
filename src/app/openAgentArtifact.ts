@@ -58,9 +58,8 @@ export async function openAgentArtifact(
     // Summary-only edits use the ordinary Git Diff resource. Never downgrade
     // an invalid or stale saved snapshot reference to a working-tree diff.
     if (intent.diffRef) return false;
-    const { resolveAgentWorkingDiffRepository } =
-      await import("./agentWorkingDiffRepository");
-    const resolved = await resolveAgentWorkingDiffRepository(
+    const working = await import("./agentWorkingDiffRepository");
+    const resolved = await working.resolveAgentWorkingDiffRepository(
       intent,
       projectGeneration,
     );
@@ -68,18 +67,17 @@ export async function openAgentArtifact(
     repository = resolved.repository;
     await useWorkbenchStore.getState().openDiff(intent.resource, repository);
   } else {
-    const { selectedSnapshotIsCurrent, snapshotProjectionRevision } =
-      await import("./agentDiffAdmission");
+    const admission = await import("./agentDiffAdmission");
     const ref = intent.diffRef;
     if (
       !ref ||
       !sameAgentArtifactOwner(intent.owner, ref) ||
       !sameResource(intent.resource, ref) ||
       !agentArtifactOwnerIsCurrent(intent.owner, projectGeneration) ||
-      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+      !admission.selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
-    const revision = snapshotProjectionRevision(
+    const revision = admission.snapshotProjectionRevision(
       useWorkbenchStore.getState(),
       ref,
     );
@@ -87,9 +85,11 @@ export async function openAgentArtifact(
       .getState()
       .openDiff(intent.resource, undefined, ref);
     if (
-      snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
-        revision ||
-      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+      admission.snapshotProjectionRevision(
+        useWorkbenchStore.getState(),
+        ref,
+      ) !== revision ||
+      !admission.selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
   }

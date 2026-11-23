@@ -7,7 +7,6 @@ export function ComposerTurnControl({
   activeTurn,
   hasContent,
   onCancelTurn,
-  cancelDisabled,
   sendDisabled,
   disabledReason,
   disabledReasonId,
@@ -15,26 +14,35 @@ export function ComposerTurnControl({
   dictation: ReturnType<typeof useComposerDictation>;
   activeTurn: boolean;
   hasContent: boolean;
+  /** Absent while Cancel is unavailable. */
   onCancelTurn?: (() => void) | null;
-  cancelDisabled: boolean;
   sendDisabled: boolean;
   disabledReason?: string | null;
   disabledReasonId?: string;
 }) {
   const hadFocus = useRef(false);
+  // A press that began on Stop only ever stops, even if recording ended
+  // on its own before the click landed. Key repeats keep the first press;
+  // a press that ends without a click forgets it.
+  const pressedStop = useRef(false);
+  const notePress = (event: { type: string; repeat?: boolean }) =>
+    event.repeat || (pressedStop.current = dictation.listening);
+  const forgetPress = () => (pressedStop.current = false);
   const reason = (sendDisabled && disabledReason) || undefined;
+  // Without a usable Cancel, typed text keeps Send so a click queues it.
+  const cancel = activeTurn && (onCancelTurn || !hasContent);
   const [name, Icon, action]: [
     "cancel" | "dictate" | "send",
     typeof Square,
     ButtonHTMLAttributes<HTMLButtonElement>,
-  ] = activeTurn
+  ] = cancel
     ? [
         "cancel",
         Square,
         {
           className: "send-button send-button--cancel",
           "aria-label": "Cancel turn",
-          disabled: cancelDisabled || !onCancelTurn,
+          disabled: !onCancelTurn,
           onClick: onCancelTurn ?? undefined,
         },
       ]
@@ -54,9 +62,17 @@ export function ComposerTurnControl({
               : "Voice input is unavailable in this WebView",
             disabled: dictation.disabled,
             "aria-pressed": dictation.listening,
+            onPointerDown: notePress,
+            onKeyDown: notePress,
+            onMouseLeave: forgetPress,
+            onPointerCancel: forgetPress,
+            onBlur: forgetPress,
             onMouseDown: (event) => event.preventDefault(),
-            onClick: () =>
-              dictation.listening ? dictation.stop() : void dictation.start(),
+            onClick: () => {
+              if (pressedStop.current || dictation.listening) dictation.stop();
+              else void dictation.start();
+              forgetPress();
+            },
           },
         ]
       : [

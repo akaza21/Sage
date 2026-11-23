@@ -177,8 +177,8 @@ export const acpDesktop = {
     ),
 
   async answerUserInput(request: AnswerUserInputRequest) {
-    const { answerUserInput } = await import("./acpDesktopUserInputAnswer");
-    return answerUserInput(request, invokeAcp);
+    const answer = await import("./acpDesktopUserInputAnswer");
+    return answer.answerUserInput(request, invokeAcp);
   },
 
   async recordAgentEditDisposition(
