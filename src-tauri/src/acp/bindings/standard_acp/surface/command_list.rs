@@ -189,7 +189,7 @@ impl CommandState {
         }
         Ok(())
     }
-    fn revision(&self) -> Option<u64> {
+    pub(crate) fn revision(&self) -> Option<u64> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

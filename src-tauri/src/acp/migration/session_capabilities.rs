@@ -9,7 +9,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentChildThreadStates
         | SchemaClass::CurrentPrivateProjects
         | SchemaClass::CurrentSignInEvidenceIndexes
-        | SchemaClass::CurrentAgentFileWrites => {
+        | SchemaClass::CurrentAgentFileWrites
+        | SchemaClass::CurrentCatalogCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentImportedHistory => {}

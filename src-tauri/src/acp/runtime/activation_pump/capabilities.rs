@@ -3,7 +3,7 @@ use sage_core::limits::LIMITS;
 
 use super::ActivationPumpError;
 
-pub(super) fn intersect(
+pub(crate) fn intersect(
     curated: &CapabilitySnapshotV1,
     advertised: &CapabilitySnapshotV1,
     policy: &CapabilitySnapshotV1,

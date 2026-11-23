@@ -378,16 +378,115 @@ fn capabilities_cannot_change_without_a_resume_commit() {
             .contains("agent session identity is immutable")
     );
     complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
+    // A ready session never refreshes its capabilities with a state or
+    // native-session change, nor to invalid JSON.
+    for assignment in [
+        "capabilities_json=?1,state='active'",
+        "capabilities_json=?1,external_session_id='other-thread'",
+        "capabilities_json=substr(?1,2)",
+    ] {
+        refused(&connection, session.as_str(), assignment);
+        assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
+    }
+    // Migration 035 admits a capabilities-only refresh from ready and
+    // active alone; every other state still needs a resume commit.
+    for (ordinal, state) in [
+        "created",
+        "starting",
+        "ready",
+        "active",
+        "recovering",
+        "closing",
+        "closed",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = format!("session-{state}");
+        let (residency, terminal) = match state {
+            "created" | "closed" => ("cold", if state == "closed" { "1" } else { "NULL" }),
+            _ => ("hot", "NULL"),
+        };
+        // One session per chat: a chat holds at most one live session.
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+                     VALUES('chat-{state}','project-one',?1,'Chat',0,1,1)"
+                ),
+                [10 + ordinal as i64],
+            )
+            .unwrap();
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
+                     external_session_id,capabilities_json,state,residency,created_at,updated_at,terminal_at)
+                     VALUES(?1,'project-one','chat-{state}',0,'binding',?2,'thread-{state}',?3,'{state}',
+                     '{residency}',1,1,{terminal})"
+                ),
+                rusqlite::params![id, "a".repeat(64), OLD_CODEX],
+            )
+            .unwrap();
+        let before = row(&connection, &id);
+        let refreshed = connection.execute(
+            "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
+            [NEW_CODEX, id.as_str()],
+        );
+        if matches!(state, "ready" | "active") {
+            assert_eq!(refreshed.unwrap(), 1, "{state}");
+            assert_eq!(
+                row(&connection, &id),
+                before,
+                "{state}: only capabilities move"
+            );
+            let stored: String = connection
+                .query_row(
+                    "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(stored, NEW_CODEX, "{state}");
+            if state == "active" {
+                refused(&connection, &id, "capabilities_json=?1,state='ready'");
+            }
+        } else {
+            let error = refreshed.unwrap_err().to_string();
+            assert!(
+                error.contains("agent session identity is immutable"),
+                "{state}: {error}"
+            );
+            assert_eq!(row(&connection, &id), before, "{state}");
+        }
+    }
+}
+
+/// Every column but the capabilities, as one comparable row.
+fn row(connection: &Connection, id: &str) -> String {
+    connection
+        .query_row(
+            "SELECT json_array(state,residency,external_session_id,revision,projection_revision,
+             updated_at,terminal_at,model_id,binding_digest,ordinal) || '|' ||
+             CASE WHEN state IN ('ready','active') THEN '' ELSE capabilities_json END
+             FROM agent_sessions WHERE id=?1",
+            [id],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+/// `assignment` (binding the old capabilities as ?1) is refused by the identity trigger.
+fn refused(connection: &Connection, id: &str, assignment: &str) {
     let error = connection
         .execute(
-            "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
-            [OLD_CODEX, session.as_str()],
+            &format!("UPDATE agent_sessions SET {assignment} WHERE id=?2"),
+            [OLD_CODEX, id],
         )
-        .unwrap_err();
+        .unwrap_err()
+        .to_string();
     assert!(
-        error
-            .to_string()
-            .contains("agent session identity is immutable")
+        error.contains("agent session identity is immutable"),
+        "{assignment}: {error}"
     );
-    assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
 }

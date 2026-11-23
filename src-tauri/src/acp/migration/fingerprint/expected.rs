@@ -349,37 +349,15 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             .pragma_update(None, "user_version", undo_indexes)
             .db()?;
     }
-    let imported = super::super::imported_history::VERSION;
-    if version >= imported {
-        expected
-            .execute_batch(super::super::imported_history::SQL)
-            .db()?;
-        expected
-            .execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
-                [imported],
-            )
-            .db()?;
-        expected
-            .pragma_update(None, "user_version", imported)
-            .db()?;
-    }
-    let capabilities = super::super::session_capabilities::VERSION;
-    if version >= capabilities {
-        expected
-            .execute_batch(super::super::session_capabilities::SQL)
-            .db()?;
-        expected
-            .execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
-                [capabilities],
-            )
-            .db()?;
-        expected
-            .pragma_update(None, "user_version", capabilities)
-            .db()?;
-    }
     for (migration_version, sql) in [
+        (
+            super::super::imported_history::VERSION,
+            super::super::imported_history::SQL,
+        ),
+        (
+            super::super::session_capabilities::VERSION,
+            super::super::session_capabilities::SQL,
+        ),
         (
             super::super::child_thread_states::VERSION,
             super::super::child_thread_states::SQL,
@@ -395,6 +373,10 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         (
             super::super::agent_file_writes::VERSION,
             super::super::agent_file_writes::SQL,
+        ),
+        (
+            super::super::catalog_capabilities::VERSION,
+            super::super::catalog_capabilities::SQL,
         ),
     ] {
         if version >= migration_version {

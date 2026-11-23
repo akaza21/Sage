@@ -217,6 +217,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             capabilities
         })
     }
+    /// Goal support follows the built-in `/goal` in the live catalog.
+    fn catalog_capabilities(&self) -> Option<CapabilitySnapshotV1> {
+        self.capabilities()
+    }
     fn session_control(
         &mut self,
         control: &sage_acp_protocol::session_control::SessionControl,

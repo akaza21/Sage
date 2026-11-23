@@ -91,7 +91,7 @@ impl SdkBridge {
         match pending {
             Pending::Commands => {
                 let commands = super::commands::commands(reply);
-                inbound.acp.push(self.update(json!({"sessionUpdate":"available_commands_update","availableCommands":commands})));
+                inbound.acp.push(self.catalog_update(commands));
             }
             Pending::Initialize(id) => {
                 self.settings =
@@ -102,8 +102,7 @@ impl SdkBridge {
                         .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
                     return Ok(());
                 }
-                self.commands = super::commands::commands(reply);
-                self.refresh_goal_capability();
+                self.commands = self.goal_support(super::commands::commands(reply));
                 inbound.acp.push(acp_result(
                     id,
                     json!({
