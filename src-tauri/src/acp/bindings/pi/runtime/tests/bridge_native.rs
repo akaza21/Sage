@@ -73,6 +73,14 @@ impl Pi {
         input.write_all(b"\n").unwrap();
         input.flush().unwrap();
     }
+    fn send_reply(&mut self, runtime: &mut PiRuntime, reply: AdapterEgress) {
+        // Match the pump: acknowledge durable cancellation before queueing
+        // mandatory egress, including a bridge withdrawal's separate reply.
+        if reply.token().is_mandatory() {
+            runtime.commit_mandatory_egress(reply.token()).unwrap();
+        }
+        self.send(deliver(runtime, reply));
+    }
     fn next(&self) -> Value {
         self.next_with_timeout(Duration::from_secs(30))
     }
@@ -227,7 +235,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                                 )
                                 .unwrap();
                             for reply in batch.into_parts().1 {
-                                pi.send(deliver(&mut j.runtime, reply));
+                                pi.send_reply(&mut j.runtime, reply);
                             }
                         }
                         if value["type"] == "tool_execution_end" {
@@ -247,7 +255,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                             .unwrap();
                         let (events, egress) = batch.into_parts();
                         for reply in egress {
-                            pi.send(deliver(&mut j.runtime, reply));
+                            pi.send_reply(&mut j.runtime, reply);
                         }
                         for event in events {
                             if let AdapterEvent::PermissionRequest {
@@ -308,10 +316,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                                         decision: decision.clone(),
                                     })
                                     .unwrap();
-                                if decision == PermissionDecision::Deny {
-                                    j.runtime.commit_mandatory_egress(reply.token()).unwrap();
-                                }
-                                pi.send(deliver(&mut j.runtime, reply));
+                                pi.send_reply(&mut j.runtime, reply);
                             }
                         }
                         if settled {
