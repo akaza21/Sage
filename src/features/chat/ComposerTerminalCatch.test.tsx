@@ -63,6 +63,8 @@ const list: AcpCommandList = {
 
 function composer(initial: string) {
   let intent = 0;
+  // The access check refuses a send before it reaches the send route.
+  const access = { settled: true };
   const sendTurn = vi.fn(async (_request: { prompt: string }) => ({
     projection: page,
   }));
@@ -77,11 +79,13 @@ function composer(initial: string) {
       page,
     }),
     applyAuthoritativePage: () => "accepted",
+    settleAccessMode: async () => access.settled,
     createIntentId: () => `intent-${++intent}` as ClientIntentId,
   });
   function Composer() {
     const fieldRef = useRef<HTMLTextAreaElement>(null);
     const [text, setText] = useState(initial);
+    const [status, setStatus] = useState("");
     return (
       <form
         aria-label="Composer"
@@ -99,13 +103,16 @@ function composer(initial: string) {
         <ComposerTerminalCatch
           chatId="chat-a"
           fieldRef={fieldRef}
+          onAnnounce={setStatus}
           text={text}
         />
+        {/* The field's status region, mounted ahead of any catch. */}
+        <span role="status">{status}</span>
       </form>
     );
   }
   render(<Composer />);
-  return { sendTurn, runCommand };
+  return { sendTurn, runCommand, access };
 }
 
 const HELD =
@@ -120,7 +127,9 @@ it("holds a terminal-only command for a choice, copies the terminal command and 
   const sent = composer("/hooks");
 
   submit();
-  await screen.findByText(HELD);
+  await vi.waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(HELD),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Copy terminal command" }),
   );
@@ -145,8 +154,33 @@ it("asks again after one consented send and releases the choice on edit", async 
     target: { value: "/hooks" },
   });
   submit();
-  await screen.findByText(HELD);
+  await screen.findByRole("group", { name: "Terminal-only command" });
   expect(sent.sendTurn).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "/hook" } });
-  expect(screen.queryByText(/only runs in the terminal/u)).toBeNull();
+  expect(
+    screen.queryByRole("group", { name: "Terminal-only command" }),
+  ).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
+it("disarms an unused consent when the text changes, so the command asks again", async () => {
+  const sent = composer("/hooks");
+  submit();
+  await screen.findByRole("group", { name: "Terminal-only command" });
+  // The consented send is refused before it reaches the send route.
+  sent.access.settled = false;
+  fireEvent.click(screen.getByRole("button", { name: "Send as text anyway" }));
+  await vi.waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Send as text anyway" }),
+    ).toBeNull(),
+  );
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "/hook" } });
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "/hooks" },
+  });
+  sent.access.settled = true;
+  submit();
+  await screen.findByRole("group", { name: "Terminal-only command" });
+  expect(sent.sendTurn).not.toHaveBeenCalled();
 });

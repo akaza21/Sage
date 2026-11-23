@@ -97,6 +97,7 @@ export function ComposerSlashController({
   const [picked, setPicked] = useState<PickedSlashCommand | null>(null);
   const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
   const [status, setStatus] = useState("");
+  const [terminalStatus, setTerminalStatus] = useState("");
   const [mounted, setMounted] = useState(false);
   const [failed, setFailed] = useState(false);
   if (scope !== boundChatId) {
@@ -244,14 +245,15 @@ export function ComposerSlashController({
         <ComposerTerminalCatch
           chatId={boundChatId}
           fieldRef={fieldRef}
+          onAnnounce={setTerminalStatus}
           text={text}
         />
       ) : null}
-      {/* Mounted with the usable field, ahead of the menu, so its first
-          announcement is not lost. */}
+      {/* Mounted with the usable field, ahead of the menu and any caught
+          command, so its first announcement is not lost. */}
       {disabled ? null : (
         <span className="sr-only" role="status" aria-live="polite">
-          {open ? status : ""}
+          {open ? status : terminalStatus}
         </span>
       )}
     </>

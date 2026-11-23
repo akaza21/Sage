@@ -18,13 +18,21 @@ export const catchTerminalCommand = (chatId: string, caught: Caught) =>
 export function ComposerTerminalCatch({
   chatId,
   fieldRef,
+  onAnnounce,
   text,
 }: {
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
+  /** Posts to the field's status region, mounted before any catch. */
+  onAnnounce: (message: string) => void;
   text: string;
 }) {
   const [caught, setCaught] = useState<Caught | null>(null);
+  const message =
+    caught &&
+    `/${caught.name} only runs in the terminal. Copy the command to resume this chat there, then type /${caught.name}.`;
+  useEffect(() => onAnnounce(message || ""), [message, onAnnounce]);
+  useEffect(() => () => onAnnounce(""), [onAnnounce]);
   // "Send as text anyway" consents to the next send of exactly this input.
   const consent = useRef("");
   if (caught && text.trim() !== caught.input) setCaught(null);
@@ -51,16 +59,16 @@ export function ComposerTerminalCatch({
   const { input, name, command } = caught;
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a
-    // file conflict. The region announces the choice when it appears.
+    // file conflict. The field's status region announces it.
     <div
       className="composer__terminal-command"
-      role="status"
+      role="group"
       aria-label="Terminal-only command"
     >
       <Notice
         identity={`terminal-command:${name}`}
         severity="info"
-        message={`/${name} only runs in the terminal. Copy the command to resume this chat there, then type /${name}.`}
+        message={message}
       />
       <span>
         <button

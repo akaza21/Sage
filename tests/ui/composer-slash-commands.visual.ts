@@ -422,10 +422,14 @@ test("a typed terminal-only command is held at send with a copy or text choice",
   await expect(page.locator(".composer-slash-menu")).toBeVisible();
   await page.keyboard.press("Escape");
   await field.press("Enter");
-  const choice = page.getByRole("status", { name: "Terminal-only command" });
-  await expect(choice).toContainText(
-    "/hooks only runs in the terminal. Copy the command to resume this chat there, then type /hooks.",
-  );
+  const held =
+    "/hooks only runs in the terminal. Copy the command to resume this chat there, then type /hooks.";
+  const choice = page.getByRole("group", { name: "Terminal-only command" });
+  await expect(choice).toContainText(held);
+  // The field's status region, mounted before the catch, announces it.
+  await expect(
+    page.locator(".composer__input-area > [role='status']"),
+  ).toHaveText(held);
   await expect(
     choice.getByRole("button", { name: "Copy terminal command" }),
   ).toBeVisible();

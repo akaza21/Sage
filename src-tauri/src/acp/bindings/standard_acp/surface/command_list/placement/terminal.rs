@@ -49,10 +49,12 @@ fn token(value: &str) -> bool {
 
 /// The command is copied for the user, never run. Double quotes keep spaces in
 /// cmd, PowerShell and POSIX shells; anything a shell would expand, a leading
-/// `-` the harness would parse as an option, or a trailing `\` that would
-/// escape the closing quote fails closed to the bare harness command.
+/// `-` the harness would parse as an option, a trailing `\` that would escape
+/// the closing quote, or surrounding whitespace fails closed to the bare
+/// harness command.
 fn resumable(session: &str) -> bool {
     !session.is_empty()
+        && session.trim() == session
         && session.len() <= MAX_SESSION_BYTES
         && !session.starts_with('-')
         && !session.ends_with('\\')
@@ -169,6 +171,9 @@ mod tests {
             Some("a\"b"),
             Some("--dangerously-skip-permissions"),
             Some("-x"),
+            Some(" "),
+            Some(" -x"),
+            Some("id "),
             Some("C:\\Users\\me\\"),
             Some("x".repeat(MAX_SESSION_BYTES + 1).as_str()),
         ] {
