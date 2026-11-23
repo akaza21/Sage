@@ -49,8 +49,8 @@ pub(crate) fn stage_turn_undo<E: std::fmt::Display>(
     };
     let mut connection = database
         .write_connection()
-        .map_err(|_| SessionControlError::RecoveryRequired)?;
+        .map_err(|_| SessionControlError::RecoveryRequired(None))?;
     crate::acp::store::turn_undo::intent::start(&mut connection, &command)
-        .map_err(|_| SessionControlError::RecoveryRequired)?;
+        .map_err(|_| SessionControlError::RecoveryRequired(None))?;
     Ok(command)
 }

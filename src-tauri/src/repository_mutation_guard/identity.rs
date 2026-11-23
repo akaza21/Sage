@@ -141,19 +141,28 @@ where
 {
     let mut seen = BTreeMap::<&str, Option<bool>>::new();
     let mut projects = BTreeMap::<&str, (Option<bool>, Vec<String>)>::new();
+    let mut unprobed = roots
+        .iter()
+        .map(|(_, folder)| folder.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len() as u32;
     for (project, folder) in roots {
         let shares = match seen.get(folder.as_str()) {
             Some(known) => *known,
             None => {
-                let known = if tokio::time::Instant::now() >= deadline {
+                let now = tokio::time::Instant::now();
+                // Each folder gets its own share of the time left, so one
+                // stalled probe can't leave the folders after it unprobed.
+                let known = if now >= deadline {
                     None
                 } else {
-                    tokio::time::timeout_at(deadline, probe(folder))
+                    tokio::time::timeout_at(now + (deadline - now) / unprobed, probe(folder))
                         .await
                         .ok()
                         .flatten()
                         .map(|identity| identity.overlaps(target))
                 };
+                unprobed -= 1;
                 seen.insert(folder, known);
                 known
             }
@@ -186,7 +195,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn total_deadline_keeps_verified_roots_and_leaves_the_rest_unverified() {
+    async fn a_stalled_root_takes_only_its_share_of_the_total_deadline() {
         let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-probe-deadline-{}", uuid::Uuid::new_v4()));
         let target_root = root.join("target");
@@ -200,9 +209,9 @@ mod tests {
             ("stalled".into(), "stalled-folder".into()),
             ("unprobed".into(), target_root.to_str().unwrap().to_owned()),
         ];
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(5),
             classify_with(&target, &roots, deadline, |folder| {
                 let root = PathBuf::from(folder);
                 async move {
@@ -220,7 +229,9 @@ mod tests {
             result.unrelated,
             BTreeMap::from([("verified".into(), vec![unrelated])])
         );
-        assert_eq!(result.unverified, ["stalled", "unprobed"]);
+        // The stalled folder used only its share: the target's own folder,
+        // probed after it, is still verified as shared and leased.
+        assert_eq!(result.unverified, ["stalled"]);
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 }

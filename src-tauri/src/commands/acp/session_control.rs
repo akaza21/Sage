@@ -156,7 +156,7 @@ pub(crate) async fn control_acp_session(
                 request.session_id.as_str(),
                 &activity_key,
             )
-            .map_err(|_| control_error(SessionControlError::RecoveryRequired))?
+            .map_err(|_| control_error(SessionControlError::RecoveryRequired(None)))?
             .ok_or(control_error(SessionControlError::Unavailable))?;
             SessionControl::StopActivity { activity_id }
         }
@@ -187,10 +187,12 @@ pub(super) fn control_error(error: SessionControlError) -> AcpIpcError {
             reason: AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("The agent did not answer in time; it may still finish."),
         },
-        SessionControlError::RecoveryRequired => AcpIpcError::RecoveryRequired {
-            message: safe_message(
-                "The outcome is unknown; reload the session before trying again.",
-            ),
+        SessionControlError::RecoveryRequired(message) => AcpIpcError::RecoveryRequired {
+            message: message
+                .and_then(|message| SafeText::new("message", message.as_str()).ok())
+                .unwrap_or_else(|| {
+                    safe_message("The outcome is unknown; reload the session before trying again.")
+                }),
         },
     }
 }

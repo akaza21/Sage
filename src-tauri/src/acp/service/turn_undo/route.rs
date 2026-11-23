@@ -3,11 +3,14 @@
 //! conflict refusal, then stage, restore and cut. Other sessions undo as
 //! their binding offers.
 use super::{AcpService, SessionControlError, TurnUndo, file_rewind};
-use crate::acp::{goal::NativeRpcReply, store::TurnUndoneCommand};
+use crate::acp::{
+    goal::NativeRpcReply,
+    store::{StoreError, TurnUndoneCommand},
+};
 use sage_acp_protocol::{
     contract::{SafeText, SageTurnId},
     scheduler::RuntimeOwner,
-    session_control::SessionControl,
+    session_control::{ConversationTarget, SessionControl},
 };
 
 pub(crate) const FILES_STAY: &str = "Last turn removed; files stay as they are.";
@@ -53,8 +56,8 @@ impl AcpService {
                     .await;
             }
             Rewind::Undo { keep_files } => {
-                return match self.rewind_target(owner, turn_id) {
-                    Ok(target) if !keep_files => {
+                return match self.undo_target(owner, turn_id)? {
+                    Some(target) if !keep_files => {
                         self.checked(owner, turn_id, undo, false, &target, control, resolve_cut)
                             .await
                     }
@@ -67,9 +70,35 @@ impl AcpService {
         match control(native) {
             Ok(NativeRpcReply::Controlled(summary)) => Ok((command, summary, false)),
             Ok(_) => {
-                Err(self.abandon_staged(owner, &command, SessionControlError::RecoveryRequired))
+                Err(self.abandon_staged(owner, &command, SessionControlError::RecoveryRequired(None)))
             }
             Err(error) => Err(self.abandon_staged(owner, &command, error)),
+        }
+    }
+
+    /// The undo's rewind target, or `None` when the turn can't be targeted:
+    /// no identity (older), never correlated, or behind a compaction. Any
+    /// other failure refuses rather than falling back to the conversation.
+    fn undo_target(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: &SageTurnId,
+    ) -> Result<Option<ConversationTarget>, SessionControlError> {
+        match crate::acp::store::rewind::target(
+            &self.database.connection(),
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+            owner.session_id.as_str(),
+            turn_id.as_str(),
+        ) {
+            Ok(target) => Ok(Some(target)),
+            Err(
+                StoreError::RewindUnavailable { .. }
+                | StoreError::Conflict {
+                    resource: "rewindTarget",
+                },
+            ) => Ok(None),
+            Err(_) => Err(SessionControlError::Unavailable),
         }
     }
 
@@ -80,7 +109,7 @@ impl AcpService {
         turn_id: &SageTurnId,
         undo: TurnUndo,
         conversation_only: bool,
-        target: &sage_acp_protocol::session_control::ConversationTarget,
+        target: &ConversationTarget,
         control: file_rewind::Control<'_>,
         resolve_cut: impl FnOnce() -> Result<Option<String>, E>,
     ) -> Result<Staged, SessionControlError> {
