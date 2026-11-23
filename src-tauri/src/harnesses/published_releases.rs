@@ -108,6 +108,19 @@ impl PublishedReleases {
     }
 }
 
+impl super::HarnessCatalog {
+    /// What a check begun at `epoch` asks before each npm lookup: the switch,
+    /// read again each time, is on, and turning it off since (even back on)
+    /// has not replaced the check's epoch.
+    pub(crate) fn update_check_live<'a>(
+        &'a self,
+        epoch: u64,
+        enabled: impl Fn() -> bool + 'a,
+    ) -> impl Fn() -> bool + 'a {
+        move || enabled() && self.published.check_current(epoch)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -130,10 +130,6 @@ impl HarnessCatalog {
         self.published.begin_check(harness_ids)
     }
 
-    pub(crate) fn update_check_current(&self, epoch: u64) -> bool {
-        self.published.check_current(epoch)
-    }
-
     pub(crate) fn finish_update_check(
         &self,
         epoch: u64,

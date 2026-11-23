@@ -31,14 +31,11 @@ impl AppState {
                 use tauri::Emitter;
                 // The switch is read again before each npm lookup, and a check
                 // begun before it turned off is dropped by its epoch.
-                let found = crate::harness_discovery::published_releases(&sources, &|| {
-                    Self::npm_check_enabled(&app)
-                        && app
-                            .state::<AppState>()
-                            .harnesses
-                            .update_check_current(epoch)
-                });
                 let harnesses = &app.state::<AppState>().harnesses;
+                let found = crate::harness_discovery::published_releases(
+                    &sources,
+                    &harnesses.update_check_live(epoch, || Self::npm_check_enabled(&app)),
+                );
                 harnesses.finish_update_check(epoch, found);
                 let _ = app.emit("harness-discovery-changed-v1", harnesses.definitions());
             });
