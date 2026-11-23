@@ -141,6 +141,9 @@ export function TerminalDockShell({
   const [collapsed, setCollapsed] = useState(false);
   if (!open && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
+  // A pending handoff takes the next new tab and leaves the slot when called;
+  // it stays pending while another tab opens.
+  const handoff = useWorkbenchStore((state) => state.terminalHandoff);
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
@@ -158,9 +161,6 @@ export function TerminalDockShell({
       owner.entries.length >= TERMINAL_MAX_PER_CHAT
     )
       return;
-    // A pending handoff takes this tab and leaves the slot when called; it
-    // stays pending while another tab opens.
-    const handoff = useWorkbenchStore.getState().terminalHandoff;
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
@@ -192,7 +192,7 @@ export function TerminalDockShell({
         if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
       }
     }
-  }, [scope, onClose]);
+  }, [scope, onClose, handoff]);
 
   useEffect(() => {
     const owner = ownerRef.current;
@@ -208,7 +208,6 @@ export function TerminalDockShell({
     };
   }, [scope]);
 
-  const handoff = useWorkbenchStore((state) => state.terminalHandoff);
   useEffect(() => {
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
