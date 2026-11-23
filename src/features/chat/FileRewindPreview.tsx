@@ -59,7 +59,7 @@ export function useFileRewindPreview(
   turnId: string | null | undefined,
   asked = 0,
 ): Found | undefined {
-  const key = turnId && turnId + asked;
+  const key = turnId ? turnId + asked : null;
   const [found, setFound] = useState<[string, Found]>();
   useEffect(() => {
     if (!key || !turnId) return;
