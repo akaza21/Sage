@@ -266,6 +266,9 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
         StoreError::RewindUnavailable { reason } => AcpIpcError::Rejected {
             message: safe_message(reason),
         },
+        StoreError::RepositoryBusy => AcpIpcError::Rejected {
+            message: safe_message(crate::repository_mutation_guard::TURN_BLOCKED),
+        },
         StoreError::Capacity { limit, .. } => AcpIpcError::Capacity {
             resource: AcpCapacityResource::History,
             limit,
@@ -408,6 +411,14 @@ mod tests {
     #[test]
     fn a_failed_launch_names_the_step_that_failed() {
         for (error, expected) in [
+            (
+                // Regression: a harness that could not be prepared read as a
+                // stale or foreign session identity.
+                crate::acp::service::CodexSessionError::from_launch_preparation(
+                    crate::acp::bindings::adapter::AdapterRuntimeError::LaunchUnavailable,
+                ),
+                "Native launch failed safely while preparing the harness (its installed files or the project folder are missing or changed); retry the session.",
+            ),
             (
                 crate::acp::service::CodexSessionError::LaunchSetup(
                     crate::acp::service::CodexLaunchSetupError::RunnerStartApprovalBridge,

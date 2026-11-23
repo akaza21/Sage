@@ -6,6 +6,7 @@ import {
   type SessionAccessMode,
 } from "../../domain/sessionAccessMode";
 import type { PlanAccessTarget } from "./ComposerPlanAccess";
+import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import type { EndedPage } from "./endedSession";
 
 /**
@@ -18,6 +19,7 @@ export function usePlanAccess({
   harness,
   available,
   draftChatId,
+  draftPickers,
   endedPage,
   sessionConfig,
   accessOpen,
@@ -26,18 +28,19 @@ export function usePlanAccess({
   harness: HarnessDefinition | undefined;
   available: boolean;
   draftChatId?: string;
+  /** The new-chat draft, whose own access the "+" menu's Plan mode drives. */
+  draftPickers?: ControlledDraftPickers;
   endedPage?: EndedPage;
   sessionConfig: AcpSessionConfig | null;
   accessOpen: boolean;
   openAccess: () => void;
 }) {
-  const target = [
+  // A binding id and Sage ids never contain a comma.
+  const target = String([
     harness?.bindingId,
     draftChatId,
     sessionConfig?.sageAgentSessionId,
-  ]
-    .map(String)
-    .join("\n");
+  ]);
   const [held, setHeld] = useState<{
     target: string;
     mode: SessionAccessMode;
@@ -48,7 +51,7 @@ export function usePlanAccess({
     available &&
     harness?.bindingId &&
     governedPlanMode(harness.accessModes) &&
-    (draftChatId || (sessionConfig && !sessionConfig.removed))
+    (draftChatId || draftPickers || (sessionConfig && !sessionConfig.removed))
       ? {
           bindingId: harness.bindingId,
           chatId: draftChatId,

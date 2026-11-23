@@ -129,11 +129,12 @@ async function createOnActiveProject(input: {
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
+    const archived = snapshot.archivedChats.some((chat) => chat.id === chatId);
     if (
       snapshot.transitionEpoch === input.expectedTransitionEpoch &&
       snapshot.project?.id === input.current?.projectId &&
       !snapshot.tabs.some((tab) => tab.id === chatId) &&
-      !snapshot.archivedChats.some((chat) => chat.id === chatId)
+      !archived
     )
       return "unchanged" as const;
     if (
@@ -144,7 +145,7 @@ async function createOnActiveProject(input: {
       return null;
     if (
       snapshot.tabs.some((tab) => tab.kind === "chat" && tab.id === chatId) ||
-      snapshot.archivedChats.some((chat) => chat.id === chatId)
+      archived
     ) {
       return "committed" as const;
     }

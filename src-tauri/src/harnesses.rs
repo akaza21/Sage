@@ -7,6 +7,7 @@ mod discovery_state;
 mod install_state;
 mod persisted_binding;
 mod published_releases;
+mod version_details;
 use catalog_definition::{CuratedProtocol, definition, safe_display_version};
 use discovery_state::DiscoveryState;
 use published_releases::PublishedReleases;
@@ -123,16 +124,21 @@ impl HarnessCatalog {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// False while a recent check covers them.
-    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
+    /// `None` while a recent check covers them; otherwise the check's epoch.
+    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> Option<u64> {
         self.published.begin_check(harness_ids)
     }
 
     pub(crate) fn finish_update_check(
         &self,
+        epoch: u64,
         found: Option<Vec<crate::harness_discovery::PublishedRelease>>,
     ) {
-        self.published.finish_check(found);
+        self.published.finish_check(epoch, found);
+    }
+
+    pub(crate) fn forget_published_releases(&self) {
+        self.published.forget();
     }
 
     #[cfg(test)]
@@ -303,9 +309,7 @@ impl HarnessCatalog {
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
-            definition.update = self
-                .published
-                .update_for(&definition.id, definition.version.as_deref());
+            version_details::annotate(definition, spec, &self.published, &self.registry);
             definition.version_checking = self.discovered.is_version_checking(&definition.id);
             let Some(record) = self.registry.for_harness(&definition.id) else {
                 continue;
@@ -832,7 +836,10 @@ mod tests {
                     "unavailableReason",
                     "signIn",
                     "brand",
-                    "update"
+                    "update",
+                    "latestVersion",
+                    "runsVersion",
+                    "directFromVersion"
                 ]
                 .into_iter()
                 .collect()

@@ -28,6 +28,10 @@ import type * as PanelChunk from "./ComposerCommandPanel";
 import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
+// A new-chat draft's image intake and handoff upload ride in this chunk:
+// "Add images" lives here, and a draft's drops and sends load it too.
+// eslint-disable-next-line react-refresh/only-export-components -- the draft image actions, shared by this lazy chunk's importers
+export { addDraftImages } from "./draftImages";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
@@ -49,7 +53,7 @@ function ComposerOptionsBrowser({
   ...given
 }: ComposerOptionsProps & {
   load: SessionCommandsLoad | null;
-  insertCommand: typeof pickComposerSlashCommand;
+  insertCommand?: typeof pickComposerSlashCommand;
 }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
@@ -77,7 +81,7 @@ function ComposerOptionsBrowser({
     const field = fieldRef.current;
     if (!field || field.disabled) return;
     given.onClose();
-    insertCommand(field, command, input);
+    insertCommand?.(field, command, input);
   };
   const actions = {
     ...given,
@@ -207,6 +211,7 @@ export function ComposerSectionRows({
     rows,
     load?.kind === "ready" ? load.list.commands : [],
     query,
+    !!props.draftPickers,
   );
   return (
     <div
@@ -312,6 +317,9 @@ export function ComposerSectionMenu(props: ComposerAddActionsProps) {
 export function ComposerOptionsMenu(props: ComposerOptionsProps) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner ?? undefined;
+  // No session has a catalog yet, and another chat's must not show.
+  if (props.draftPickers)
+    return <ComposerOptionsBrowser {...props} load={null} />;
   return (
     <CatalogPart
       part="ComposerCommandCatalog"

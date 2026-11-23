@@ -28,6 +28,26 @@ pub(crate) enum CodexSessionError {
     LaunchSetup(CodexLaunchSetupError),
 }
 
+impl CodexSessionError {
+    /// A runtime that could not be constructed, or whose launch could not be
+    /// specified, never launched. Sign-in, a pending undo and the approval
+    /// bridge map to their own errors; any other failure is a launch that
+    /// could not be prepared, never a stale or foreign session identity.
+    pub(crate) fn from_launch_preparation(
+        error: crate::acp::bindings::adapter::AdapterRuntimeError,
+    ) -> Self {
+        use crate::acp::bindings::adapter::AdapterRuntimeError;
+        match error {
+            AdapterRuntimeError::SignInRequired => Self::SignInRequired,
+            AdapterRuntimeError::RewindUnavailable => Self::RewindUnavailable,
+            AdapterRuntimeError::ApprovalBridgeUnavailable => {
+                Self::LaunchSetup(CodexLaunchSetupError::RunnerStartApprovalBridge)
+            }
+            _ => Self::LaunchSetup(CodexLaunchSetupError::RuntimeConstruction),
+        }
+    }
+}
+
 pub(crate) enum SessionDispatchError {
     Binding,
     Operation(CodexSessionError),
