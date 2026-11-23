@@ -25,7 +25,7 @@ export function ComposerTurnControl({
   // on its own before the click landed. Key repeats keep the first press;
   // a press that ends without a click forgets it.
   const pressedStop = useRef(false);
-  const notePress = (event: { repeat?: boolean }) =>
+  const notePress = (event: { type: string; repeat?: boolean }) =>
     event.repeat || (pressedStop.current = dictation.listening);
   const forgetPress = () => (pressedStop.current = false);
   const reason = (sendDisabled && disabledReason) || undefined;
