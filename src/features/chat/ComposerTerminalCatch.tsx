@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
-import { useWorkbenchStore } from "../../app/store";
-import {
-  useTerminalDockStore,
-  type TerminalHandoff,
-} from "../../app/terminalDockStore";
+import { useWorkbenchStore, type TerminalHandoff } from "../../app/store";
+import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
@@ -36,14 +33,12 @@ export function ComposerTerminalCatch({
   const [caught, setCaught] = useState<Caught | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
-  const hasProject = useWorkbenchStore(
+  const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
-  );
-  const ready = useTerminalDockStore((state) => state.ready);
-  const unavailable = !hasProject
+  )
     ? "Open this chat's project first."
-    : !ready
-      ? "The terminal is unavailable here or still loading."
+    : !isTauriRuntime()
+      ? "Terminals need the desktop app."
       : undefined;
   const message =
     caught &&
@@ -75,11 +70,16 @@ export function ComposerTerminalCatch({
   }, [chatId, fieldRef]);
   if (!caught) return null;
   const { input, name, command } = caught;
-  // Hands the Copy text to the lazy dock as unrun input. A request the dock
-  // has not taken in time fails; a taken one settles when its terminal does.
+  // Hands the Copy text to the lazy dock as typed, unrun input: one line, no
+  // control character, so nothing presses Enter. A request the dock has not
+  // taken in time fails; a taken one settles when its terminal does.
   const openInTerminal = () => {
-    const dock = useTerminalDockStore;
-    const pending = () => dock.getState().handoff === handoff;
+    if (/\p{Cc}/u.test(command)) {
+      setError("This command cannot be typed into a terminal.");
+      return;
+    }
+    const store = useWorkbenchStore;
+    const pending = () => store.getState().terminalHandoff === handoff;
     let settled = false;
     const handoff: TerminalHandoff = {
       chatId,
@@ -88,7 +88,7 @@ export function ComposerTerminalCatch({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (pending()) dock.setState({ handoff: null });
+        if (pending()) store.setState({ terminalHandoff: null });
         setOpening(false);
         if (failure) setError(failure);
         else setCaught((current) => (current === caught ? null : current));
@@ -99,9 +99,8 @@ export function ComposerTerminalCatch({
     }, 10_000);
     setOpening(true);
     setError("");
-    dock.getState().handoff?.finish(notOpened);
-    dock.setState({ handoff });
-    dock.getState().setVisible(true);
+    store.getState().terminalHandoff?.finish(notOpened);
+    store.setState({ terminalHandoff: handoff });
   };
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a

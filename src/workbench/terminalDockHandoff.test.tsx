@@ -64,11 +64,7 @@ afterEach(() => {
   disconnect?.();
   disconnect = undefined;
   useWorkbenchStore.setState(original, true);
-  useTerminalDockStore.setState({
-    visible: false,
-    ready: false,
-    handoff: null,
-  });
+  useTerminalDockStore.setState({ visible: false, ready: false });
   backend.sessions.clear();
   backend.failWrite = false;
 });
@@ -122,15 +118,19 @@ async function mount() {
   await waitFor(() => expect(useTerminalDockStore.getState().ready).toBe(true));
 }
 
-it("opens a caught command in its project terminal through the dock API and clears the choice", async () => {
-  await mount();
+const catchCommand = (command: string) =>
   act(() => {
-    catchTerminalCommand("chat-1", {
-      input: "/hooks",
-      name: "hooks",
-      command: text,
-    });
+    catchTerminalCommand("chat-1", { input: "/hooks", name: "hooks", command });
   });
+
+it("opens a caught command as unrun input in its chat's project terminal and clears the choice", async () => {
+  await mount();
+  // A command that would press Enter is never handed to the terminal.
+  catchCommand(text + "\n");
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("cannot be typed");
+  expect(useTerminalDockStore.getState().visible).toBe(false);
+  catchCommand(text);
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
   await waitFor(() =>
     expect(
@@ -149,29 +149,29 @@ it("opens a caught command in its project terminal through the dock API and clea
     },
   ]);
   expect(screen.getByRole("textbox")).toHaveValue("/hooks");
-  expect(useTerminalDockStore.getState().handoff).toBeNull();
+  expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
 });
 
-// Stores a request in the core slot and shows the dock, as the composer does.
+// Stores a request in the workbench slot, as the composer does; the dock
+// controller opens the dock and the shell takes it.
 async function handOff(input: string) {
   let settled!: Promise<void>;
   act(() => {
     settled = new Promise<void>((resolve, reject) => {
-      useTerminalDockStore.setState({
-        handoff: {
+      useWorkbenchStore.setState({
+        terminalHandoff: {
           chatId: "chat-1",
           text: input,
           finish: (error) => (error ? reject(new Error(error)) : resolve()),
         },
       });
-      useTerminalDockStore.getState().setVisible(true);
     });
   });
   // Await outside act so React can commit the request the dock takes.
   return settled;
 }
 
-it("writes the handoff as unrun input to a new tab and rejects unsafe input, write failures and capacity", async () => {
+it("writes each handoff to a new tab and closes the tab when the write fails or input is over the bound", async () => {
   await mount();
   await handOff(text);
   await handOff(text);
@@ -179,13 +179,7 @@ it("writes the handoff as unrun input to a new tab and rejects unsafe input, wri
   expect(
     [...backend.sessions.values()].map((session) => session.input),
   ).toEqual([text, text]);
-  for (const value of [
-    text + "\n",
-    text + "\r",
-    "\u001b[200~",
-    "x".repeat(4097),
-  ])
-    await expect(handOff(value)).rejects.toThrow("one line");
+  await expect(handOff("x".repeat(4097))).rejects.toThrow("failed");
   backend.failWrite = true;
   await expect(handOff(text)).rejects.toThrow("not reading");
   expect(backend.sessions.size).toBe(2);
@@ -194,5 +188,5 @@ it("writes the handoff as unrun input to a new tab and rejects unsafe input, wri
   await handOff(text);
   await expect(handOff(text)).rejects.toThrow("limit");
   expect(backend.sessions.size).toBe(4);
-  expect(useTerminalDockStore.getState().handoff).toBeNull();
+  expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
 });

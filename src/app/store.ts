@@ -82,6 +82,16 @@ export type ResourceState<T> =
   | { phase: "ready"; value: T }
   | { phase: "error"; message: string };
 
+/**
+ * One pending request to open a terminal holding unrun input. The composer
+ * stores it; the lazy terminal dock opens, takes it and settles it.
+ */
+export type TerminalHandoff = {
+  chatId: string;
+  text: string;
+  finish: (error?: string) => void;
+};
+
 export interface WorkbenchState
   extends
     ChatSlice,
@@ -108,6 +118,7 @@ export interface WorkbenchState
   phase: "booting" | "ready" | "error";
   error: string | null;
   browserClearNotice: string | null;
+  terminalHandoff: TerminalHandoff | null;
   projects: ProjectListItem[];
   unscopedChats: ProjectListItem[];
   project: ProjectSummary | null;
@@ -153,6 +164,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     phase: "booting",
     error: null,
     browserClearNotice: null,
+    terminalHandoff: null,
     projects: [],
     unscopedChats: [],
     project: null,

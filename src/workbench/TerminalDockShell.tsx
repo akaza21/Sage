@@ -3,8 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePortalHost } from "../ui/usePortalHost";
 
 import { IconButton } from "../ui/IconButton";
-import { useWorkbenchStore } from "../app/store";
-import type { TerminalHandoff } from "../app/terminalDockStore";
+import { useWorkbenchStore, type TerminalHandoff } from "../app/store";
 import {
   closeUserTerminal,
   createUserTerminal,
@@ -160,7 +159,7 @@ export function TerminalDockShell({
         owner.disposed ||
         owner.entries.length >= TERMINAL_MAX_PER_CHAT
       ) {
-        handoff?.finish("Terminal is busy or its tab limit was reached.");
+        handoff?.finish(terminalErrorLabel({ code: "capacity" }));
         return;
       }
       const lifecycle = owner.lifecycle;
@@ -174,13 +173,17 @@ export function TerminalDockShell({
           INITIAL_ROWS,
         );
         try {
-          if (owner.lifecycle !== lifecycle) throw new Error("stale");
-          // The prefill goes through the keystroke write path, unterminated.
-          if (handoff) await writeUserTerminal(scope, session, handoff.text);
-          if (owner.lifecycle !== lifecycle) throw new Error("stale");
+          // A handoff is typed through the keystroke write path, unterminated.
+          if (handoff && owner.lifecycle === lifecycle)
+            await writeUserTerminal(scope, session, handoff.text);
         } catch (error) {
           await closeUserTerminal(scope, session).catch(() => undefined);
           throw error;
+        }
+        if (owner.lifecycle !== lifecycle) {
+          await closeUserTerminal(scope, session).catch(() => undefined);
+          handoff?.finish(terminalErrorLabel({ code: "invalid_scope" }));
+          return;
         }
         const next = [
           ...owner.entries,
@@ -193,11 +196,9 @@ export function TerminalDockShell({
         setCollapsed(false);
         handoff?.finish();
       } catch (error) {
-        const live = owner.lifecycle === lifecycle;
-        if (live) setMessage(terminalErrorLabel(error));
-        handoff?.finish(
-          live ? terminalErrorLabel(error) : "Terminal opening was cancelled.",
-        );
+        if (owner.lifecycle === lifecycle)
+          setMessage(terminalErrorLabel(error));
+        handoff?.finish(terminalErrorLabel(error));
       } finally {
         if (owner.lifecycle === lifecycle) {
           owner.creating = false;
@@ -224,7 +225,14 @@ export function TerminalDockShell({
     };
   }, [scope]);
 
-  useTerminalHandoff(scope, visible, entries.length, ownerRef, create);
+  useTerminalHandoff(
+    scope,
+    visible,
+    creating,
+    entries.length,
+    ownerRef,
+    create,
+  );
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
