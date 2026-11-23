@@ -31,7 +31,7 @@ use sage_workspace::Workspace;
 
 pub use create::project_name;
 pub use identity::conservative_overlap_key;
-pub(crate) use launch_root::ProjectRootAuthority;
+pub(crate) use launch_root::{ProjectRootAcquisitionError, ProjectRootAuthority};
 pub use sage_core::win32_path::authority_path_key;
 
 use self::rail::load_project_list;
@@ -66,7 +66,7 @@ pub(crate) trait ProjectRegistryStore {
         &self,
         context: &ActiveProjectContext<'_>,
         root_id: &SageRootId,
-    ) -> AppResult<ProjectRootAuthority>;
+    ) -> Result<ProjectRootAuthority, ProjectRootAcquisitionError>;
 
     fn project_count(&self) -> AppResult<i64>;
 
@@ -109,42 +109,51 @@ impl ProjectRegistryStore for Database {
             AppError::InvalidRequest("selected project root identity is invalid".into())
         })?;
         self.project_root_authority(context, &root_id)
+            .map_err(Into::into)
     }
 
     fn project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,
         root_id: &SageRootId,
-    ) -> AppResult<ProjectRootAuthority> {
+    ) -> Result<ProjectRootAuthority, ProjectRootAcquisitionError> {
         if self.active_project_id()?.as_deref() != Some(context.project_id().as_str()) {
             return Err(AppError::InvalidRequest(
                 "project changed while resolving the process root".into(),
-            ));
+            )
+            .into());
         }
         let record = self.root_record(root_id.as_str())?;
         if record.project_id != context.project_id().as_str() {
             return Err(AppError::InvalidRequest(
                 "selected root does not belong to the active project".into(),
-            ));
+            )
+            .into());
         }
         let canonical = record.absolute_path.canonicalize().map_err(|_| {
-            AppError::InvalidRequest("selected project root is missing or unavailable".into())
+            ProjectRootAcquisitionError::Folder(AppError::InvalidRequest(
+                "selected project root is missing or unavailable".into(),
+            ))
         })?;
         if authority_path_key(&canonical) != authority_path_key(&record.absolute_path)
             || !canonical.is_dir()
         {
-            return Err(AppError::InvalidRequest(
-                "registered project root is not its canonical directory identity".into(),
+            return Err(ProjectRootAcquisitionError::Folder(
+                AppError::InvalidRequest(
+                    "registered project root is not its canonical directory identity".into(),
+                ),
             ));
         }
         let workspace =
-            Workspace::open_registered_root(&record.project_id, &record.id, &record.absolute_path)?;
+            Workspace::open_registered_root(&record.project_id, &record.id, &record.absolute_path)
+                .map_err(ProjectRootAcquisitionError::Folder)?;
         ProjectRootAuthority::acquire(
             workspace,
             context.project_id().clone(),
             context.generation(),
             root_id.clone(),
         )
+        .map_err(ProjectRootAcquisitionError::Folder)
     }
 
     fn project_count(&self) -> AppResult<i64> {

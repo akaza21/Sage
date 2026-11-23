@@ -2,7 +2,8 @@ use super::RegistryAdmissionUnavailable;
 use crate::acp::{
     bindings::codex::CodexProjectRootAuthority, resource_mapper::ConfiguredResourceRoot,
 };
-use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::{ProjectRegistryStore, ProjectRootAcquisitionError};
+use sage_core::error::AppError;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RootPolicy {
@@ -32,18 +33,16 @@ pub(crate) enum BindingProjectRootError {
 pub(super) fn single_root_authority(
     database: &sage_db::database::Database,
     context: &crate::state::ActiveProjectContext<'_>,
-) -> Result<crate::project_registry::ProjectRootAuthority, ()> {
-    let roots = database
-        .root_records(context.project_id().as_str())
-        .map_err(|_| ())?;
+) -> Result<crate::project_registry::ProjectRootAuthority, ProjectRootAcquisitionError> {
+    let roots = database.root_records(context.project_id().as_str())?;
     let [root] = roots.as_slice() else {
-        return Err(());
+        return Err(
+            AppError::InvalidRequest("the project requires exactly one root".into()).into(),
+        );
     };
-    let root_id =
-        sage_acp_protocol::contract::SageRootId::parse(root.id.clone()).map_err(|_| ())?;
-    database
-        .project_root_authority(context, &root_id)
-        .map_err(|_| ())
+    let root_id = sage_acp_protocol::contract::SageRootId::parse(root.id.clone())
+        .map_err(|_| AppError::InvalidRequest("project root identity is invalid".into()))?;
+    database.project_root_authority(context, &root_id)
 }
 
 impl BindingProjectRoot {

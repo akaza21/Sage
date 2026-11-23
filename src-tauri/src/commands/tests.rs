@@ -1981,6 +1981,62 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
 
 #[cfg(windows)]
 #[test]
+fn deleted_project_folder_reports_the_launch_step_on_activate_and_start() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let session_id = start_admitted_command_session(&state, &project_id, &chat_id).await;
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        fs::remove_dir(&root).unwrap();
+        fn launch_step<T>(result: Result<T, AcpIpcError>) -> bool {
+            matches!(
+                result,
+                Err(AcpIpcError::Unavailable {
+                    reason: AcpUnavailableReason::CapabilityUnavailable,
+                    message,
+                }) if message.as_str() == "Native launch failed safely while opening the project folder (it is missing, moved or changed); retry the session."
+            )
+        }
+
+        let activated = activate_acp_session_inner(
+            &state,
+            ActivateAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id,
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            },
+        )
+        .await;
+        assert!(launch_step(activated));
+
+        let started = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+                model_id: None,
+                effort: None,
+            },
+        )
+        .await;
+        assert!(launch_step(started));
+    });
+}
+
+#[cfg(windows)]
+#[test]
 fn admitted_codex_activate_command_reaches_launch_gate_and_rolls_back_exact_owner() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, chat, root) = state_with_admitted_codex_project();
