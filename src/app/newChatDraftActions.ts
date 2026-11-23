@@ -59,6 +59,7 @@ export function createNewChatDraftActions(
         submittingDraft,
         submission,
         chatAccessDraftPort.uploadDraftImages,
+        chatAccessDraftPort.handOffDraftFiles,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));

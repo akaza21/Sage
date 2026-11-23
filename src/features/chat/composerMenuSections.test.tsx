@@ -231,9 +231,10 @@ it.each([
     ],
     commands: ["link", "recipe", "tune", "status"],
   },
-  // Fails closed: rows that do not declare needing nothing (files, effort)
-  // and every catalog command stay hidden before a session exists.
-  { sessionless: true, rows: ["images", "plan"], commands: [] },
+  // Fails closed: rows that do not declare needing nothing (effort) and
+  // every catalog command stay hidden before a session exists. Files stage
+  // in the draft's own native slot.
+  { sessionless: true, rows: ["files", "images", "plan"], commands: [] },
 ])(
   "before a session exists keeps only rows declaring they need none (sessionless $sessionless)",
   ({ sessionless, rows, commands }) => {

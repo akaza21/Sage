@@ -216,6 +216,55 @@ test("an image attached on the draft reaches the first turn once", async ({
   expect((await captured(page)).sent).toHaveLength(1);
 });
 
+test("a file staged on the draft goes with the first turn once", async ({
+  page,
+}) => {
+  const opened = await openDraft(page, () =>
+    page.evaluate(async () => {
+      const { installDraftFilesFixture } =
+        await import("/tests/ui/fixtures/draftFilesFixture.ts");
+      installDraftFilesFixture();
+    }),
+  );
+  const { draft, plus, menu, field } = opened;
+  const files = (scope: typeof draft) =>
+    scope.getByRole("list", { name: "Attachments for the next message" });
+  await plus.click();
+  await menu.getByRole("menuitem", { name: "Files and folders" }).click();
+  await page
+    .getByRole("menu", { name: "Attach" })
+    .getByRole("menuitem", { name: "Files…" })
+    .click();
+  await expect(files(draft).getByRole("listitem")).toHaveText([
+    "notes.txt · 2 KB",
+  ]);
+  await page.screenshot({ path: `${captureDir}/draft-files-chip.png` });
+  await field.fill("Read this");
+  await field.press("Enter");
+
+  await expect(draft).toHaveCount(0);
+  await expect.poll(async () => (await captured(page)).sent.length).toBe(1);
+  const turn = await page.evaluate(() => {
+    const { draftPlus, draftFiles } = window as never as {
+      draftPlus: { sent: { prompt: string; staged?: { revision: string } }[] };
+      draftFiles: { handOffs: { from: string; to: string }[] };
+    };
+    return { sent: draftPlus.sent, handOffs: draftFiles.handOffs };
+  });
+  expect(turn.sent[0].prompt).toBe("Read this");
+  expect(turn.sent[0].staged?.revision).toEqual(expect.any(String));
+  expect(turn.handOffs).toEqual([{ from: "draft", to: "chat" }]);
+  // The turn consumed the batch: the chat shows none, a fresh draft none.
+  await expect(
+    files(page.locator(".agent-chat-pane form.composer")),
+  ).toHaveCount(0);
+  await reopenDraft(page);
+  const fresh = page.getByRole("region", { name: "New chat draft" });
+  await expect(fresh).toBeVisible();
+  await expect(files(fresh)).toHaveCount(0);
+  expect((await captured(page)).sent).toHaveLength(1);
+});
+
 test("a cancelled first send keeps the images in the created chat", async ({
   page,
 }) => {
