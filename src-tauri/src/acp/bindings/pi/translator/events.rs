@@ -359,7 +359,6 @@ pub(super) fn notice(
             level,
             source,
             text,
-            identity: None,
         }
     })
 }

@@ -24,17 +24,14 @@ impl PiTranslator {
             .and_then(Value::as_str)
             .unwrap_or_default();
         if method == "notify" {
-            // One notice per extension source and kind; the newest replaces it.
-            let (level, identity) = match value.get("notifyType").and_then(Value::as_str) {
-                Some("error") => (SessionNoticeLevel::Error, "pi-extension-notify:error"),
-                Some("warning") => (SessionNoticeLevel::Warning, "pi-extension-notify:warning"),
-                _ => (SessionNoticeLevel::Info, "pi-extension-notify:info"),
+            // Pi names no extension source, so each message stays its own
+            // notice; the store merges only exact repeats.
+            let level = match value.get("notifyType").and_then(Value::as_str) {
+                Some("error") => SessionNoticeLevel::Error,
+                Some("warning") => SessionNoticeLevel::Warning,
+                _ => SessionNoticeLevel::Info,
             };
-            let mut notice = super::notice(level, "Pi", value.get("message"));
-            if let AdapterOutput::Notice { identity: slot, .. } = &mut notice {
-                *slot = Some(identity);
-            }
-            return Ok(vec![notice]);
+            return Ok(vec![super::notice(level, "Pi", value.get("message"))]);
         }
         if let Some(update) = crate::acp::bindings::pi::chrome::parse(method, value) {
             return Ok(vec![AdapterOutput::Chrome(update)]);

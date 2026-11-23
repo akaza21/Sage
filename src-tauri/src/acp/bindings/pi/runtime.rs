@@ -142,13 +142,13 @@ pub(crate) struct PiRuntime {
 
 impl HarnessAdapter for PiRuntime {
     fn next_request_deadline(&self) -> Option<std::time::Instant> {
-        self.next_question_deadline()
+        self.next_deadline()
     }
     fn poll_request_deadlines(
         &mut self,
         _resources: &dyn ResourceMapper,
     ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
-        self.expire_queued_questions()
+        self.poll_deadlines()
     }
     fn cancel_permission(
         &mut self,

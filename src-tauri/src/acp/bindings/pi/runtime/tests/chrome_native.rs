@@ -5,6 +5,13 @@ use sage_acp_protocol::intent::session_event::{
     ChromePlacement, SessionChrome, SessionNotice, SessionScopedEvent,
 };
 
+fn session_events(events: Vec<AdapterEvent>) -> impl Iterator<Item = SessionScopedEvent> {
+    events.into_iter().filter_map(|event| match event {
+        AdapterEvent::Session { event, .. } => Some(event),
+        _ => None,
+    })
+}
+
 fn pump(runtime: &mut PiRuntime, pi: &mut Pi, sent: &Value, events: &mut Vec<SessionScopedEvent>) {
     for _ in 0..256 {
         let value = pi.next();
@@ -13,11 +20,15 @@ fn pump(runtime: &mut PiRuntime, pi: &mut Pi, sent: &Value, events: &mut Vec<Ses
         for request in egress {
             pi.send(deliver(runtime, request));
         }
-        events.extend(batch.into_iter().filter_map(|event| match event {
-            AdapterEvent::Session { event, .. } => Some(event),
-            _ => None,
-        }));
+        events.extend(session_events(batch));
         if done {
+            // A burst of chrome changes is sent once its gap has passed.
+            if let Some(due) = runtime.next_request_deadline() {
+                std::thread::sleep(due.saturating_duration_since(std::time::Instant::now()));
+                if let Some(batch) = runtime.poll_request_deadlines(&Mapper).unwrap() {
+                    events.extend(session_events(batch.into_parts().0));
+                }
+            }
             return;
         }
     }
@@ -35,15 +46,16 @@ fn chrome(events: &[SessionScopedEvent]) -> SessionChrome {
         .expect("a chrome snapshot")
 }
 
-fn notices(events: &[SessionScopedEvent]) -> Vec<(String, String)> {
+fn notices(events: &[SessionScopedEvent]) -> Vec<(Option<String>, String)> {
     events
         .iter()
         .filter_map(|event| match event {
-            SessionScopedEvent::Notice(SessionNotice {
-                identity: Some(identity),
-                text,
-                ..
-            }) => Some((identity.as_str().to_owned(), text.as_str().to_owned())),
+            SessionScopedEvent::Notice(SessionNotice { identity, text, .. }) => Some((
+                identity
+                    .as_ref()
+                    .map(|identity| identity.as_str().to_owned()),
+                text.as_str().to_owned(),
+            )),
             _ => None,
         })
         .collect()
@@ -152,10 +164,8 @@ fn installed_pi_150_extension_status_widget_editor_text_and_title_are_bounded_ch
     );
     assert_eq!(
         notices(&events),
-        [(
-            "pi-extension-notify:info".to_owned(),
-            "Editor prefilled".to_owned()
-        )]
+        // Pi names no extension source, so the notice keeps no identity.
+        [(None, "Editor prefilled".to_owned())]
     );
     command(runtime, "/fixture-chrome caps", &mut events);
     let capped = chrome(&events);
@@ -184,7 +194,7 @@ fn installed_pi_150_extension_status_widget_editor_text_and_title_are_bounded_ch
     assert_eq!(
         notices(&events)
             .into_iter()
-            .map(|(identity, _)| identity)
+            .filter_map(|(identity, _)| identity)
             .collect::<Vec<_>>(),
         [
             "pi-extension-ui:status-limit",

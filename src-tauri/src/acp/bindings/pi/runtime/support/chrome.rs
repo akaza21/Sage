@@ -1,4 +1,4 @@
-use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
+use crate::acp::bindings::adapter::{AdapterBatch, AdapterEvent, AdapterRuntimeError};
 use sage_acp_protocol::{
     contract::RequiredText,
     intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent},
@@ -29,8 +29,35 @@ impl PiRuntime {
     /// extensions set while Pi starts up still shows once the chat opens.
     pub(super) fn chrome_snapshot(&mut self) -> Option<AdapterEvent> {
         self.external_session.as_ref()?;
-        let chrome = self.chrome.take_snapshot()?;
+        let chrome = self.chrome.take_snapshot(self.translator.question_now())?;
         Some(self.session_event(SessionScopedEvent::Chrome(chrome)))
+    }
+
+    /// The next question expiry or coalesced chrome change.
+    pub(in crate::acp::bindings::pi::runtime) fn next_deadline(
+        &self,
+    ) -> Option<std::time::Instant> {
+        let chrome = self
+            .external_session
+            .as_ref()
+            .and_then(|_| self.chrome.deadline());
+        self.next_question_deadline()
+            .into_iter()
+            .chain(chrome)
+            .min()
+    }
+
+    /// Expired questions and a chrome change that waited out its gap.
+    pub(in crate::acp::bindings::pi::runtime) fn poll_deadlines(
+        &mut self,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        let expired = self.expire_queued_questions()?;
+        let Some(chrome) = self.chrome_snapshot() else {
+            return Ok(expired);
+        };
+        let (mut events, egress) = expired.map(AdapterBatch::into_parts).unwrap_or_default();
+        events.push(chrome);
+        AdapterBatch::new(events, egress).map(Some)
     }
 
     /// A session notice; notices of one identity replace each other.

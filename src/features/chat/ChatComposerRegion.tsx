@@ -16,16 +16,14 @@ import type * as LocationChunk from "./ComposerLocationStrip";
 const LocationPart = lazyParts<typeof LocationChunk>(
   () => import("./ComposerLocationStrip"),
 );
-import {
-  ComposerStatusNotices,
-  composerProblem,
-} from "./ComposerStatusNotices";
+import { ComposerStatusNotices } from "./ComposerStatusNotices";
+import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
-import { SlashPart, harnessChrome } from "./composerLazyParts";
+import { NoticePart, SlashPart } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -229,6 +227,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </span>
             ) : null}
             <div className="composer__input-area">
+              {chatAuth?.page?.sessionSurface ? (
+                <NoticePart part="ComposerChromeGate" {...props} />
+              ) : null}
               <textarea
                 ref={composerRef}
                 id={fieldId}
@@ -294,7 +295,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   onTextChange={onTextChange}
                 />
               ) : null}
-              {harnessChrome(props)}
             </div>
             <ComposerPasteSlot
               paste={paste}

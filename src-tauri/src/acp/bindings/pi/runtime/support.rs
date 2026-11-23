@@ -329,8 +329,7 @@ impl PiRuntime {
                 level,
                 source,
                 text,
-                identity,
-            } => (Some(self.notice(level, source, &text, identity)?), None),
+            } => (Some(self.notice(level, source, &text, None)?), None),
             AdapterOutput::Title(title) => (
                 Some(
                     crate::acp::bindings::session_title::harness_title_event(&title)

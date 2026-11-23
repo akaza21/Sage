@@ -13,6 +13,7 @@ use sage_acp_protocol::{
     },
 };
 use serde_json::Value;
+use std::time::{Duration, Instant};
 
 use super::decode::redact_structured_text;
 use crate::acp::redaction::text::{clip_display, neutralized};
@@ -186,7 +187,12 @@ pub(crate) struct PiChrome {
     revision: u64,
     noted: u8,
     dirty: bool,
+    /// When the last snapshot left, so a ticking status coalesces.
+    sent_at: Option<Instant>,
 }
+
+/// The shortest gap between two snapshots; changes in between are merged.
+pub(crate) const CHROME_SNAPSHOT_GAP: Duration = Duration::from_millis(250);
 
 impl PiChrome {
     /// Applies one update. Returns a note the first time this runtime
@@ -270,11 +276,22 @@ impl PiChrome {
         self.dirty |= self.editor_text.take().is_some();
     }
 
-    /// The whole chrome, once per change.
-    pub(crate) fn take_snapshot(&mut self) -> Option<SessionChrome> {
-        if !std::mem::take(&mut self.dirty) {
+    /// When a pending change may next be sent, if one is waiting.
+    pub(crate) fn deadline(&self) -> Option<Instant> {
+        self.dirty
+            .then(|| self.sent_at.map(|sent| sent + CHROME_SNAPSHOT_GAP))
+            .flatten()
+    }
+
+    /// The whole chrome after a change, at most once per
+    /// [`CHROME_SNAPSHOT_GAP`]; a later change inside the gap waits for
+    /// [`Self::deadline`] and is sent merged with any others.
+    pub(crate) fn take_snapshot(&mut self, now: Instant) -> Option<SessionChrome> {
+        if !self.dirty || self.deadline().is_some_and(|due| now < due) {
             return None;
         }
+        self.dirty = false;
+        self.sent_at = Some(now);
         Some(SessionChrome {
             statuses: BoundedVec::new("chromeStatuses", self.statuses.clone()).ok()?,
             widgets: BoundedVec::new("chromeWidgets", self.widgets.clone()).ok()?,

@@ -1,6 +1,5 @@
-import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import type * as SlashChunk from "./ComposerSlashController";
-import { NoticePart, lazyParts } from "./lazyParts";
+import { lazyParts } from "./lazyParts";
 
 /** The `/` controller facade: composer commands and a chat's first send. */
 export const SlashPart = lazyParts<
@@ -8,11 +7,8 @@ export const SlashPart = lazyParts<
 >(() => import("./ComposerSlashController"));
 
 /**
- * A harness's composer chrome. Its gate rides in the session strip's chunk,
- * which the transcript already loads for any chat with a session surface,
- * and fetches the chrome itself only while the session reports some.
+ * The session strip's chunk. The composer mounts its chrome gate from it,
+ * which the transcript already loads for any chat with a session surface;
+ * the gate fetches the chrome itself only while the session reports some.
  */
-export const harnessChrome = (props: ChatComposerRegionProps) =>
-  props.chatAuth?.page?.sessionSurface ? (
-    <NoticePart part="ComposerChromeGate" {...props} />
-  ) : null;
+export { NoticePart } from "./lazyParts";

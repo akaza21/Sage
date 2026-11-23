@@ -221,16 +221,20 @@ impl SessionSurface {
         change
     }
 
-    /// Drops the least valuable display row: the oldest notice, then the
-    /// oldest finished activity, then the oldest running one, then the
-    /// largest chrome. Returns false when nothing is left to drop.
+    /// Drops the least valuable display row: the harness's composer offer,
+    /// then its widgets, then the oldest notice, then the oldest finished
+    /// activity, then the oldest running one. Returns false when nothing is
+    /// left to drop.
     pub fn evict_oldest(&mut self) -> bool {
+        if self.chrome.evict_largest() {
+            return true;
+        }
         if !self.notices.is_empty() {
             self.notices.remove(0);
             return true;
         }
         if self.activities.is_empty() {
-            return self.chrome.evict_largest();
+            return false;
         }
         let evicted = self
             .activities
