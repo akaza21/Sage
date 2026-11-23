@@ -207,24 +207,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createHarnessSlice(set, get, store),
     ...createBrowserSlice(set, get, store),
 
-    selectRoot: (selectedRootId) => {
-      if (
-        get().projectTransitioning ||
-        get().fileRenameInFlight ||
-        get().resourceTrashInFlight
-      )
-        return;
-      set({
-        selectedRootId,
-        selectedResource: childResource(selectedRootId),
-        fileCreateError: null,
-        fileCreateNotice: null,
-        folderCreateError: null,
-        folderCreateNotice: null,
-        fileRenameError: null,
-        fileRenameNotice: null,
-      });
-      void get().loadDirectory(childResource(selectedRootId));
+    // A root is its top directory: select it as one, then list it once the
+    // selection took (it refuses during a transition, rename or trash).
+    selectRoot: (rootId) => {
+      const resource = childResource(rootId);
+      get().selectDirectory(resource);
+      if (get().selectedResource === resource)
+        void get().loadDirectory(resource);
     },
 
     activateTab: async (tabId, submission) => {
