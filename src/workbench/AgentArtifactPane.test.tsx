@@ -94,6 +94,7 @@ import {
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane as Pane } from "./AgentArtifactPane";
+import { getWarning, queryWarning } from "../test/notice";
 function AgentArtifactPane(props: ComponentProps<typeof Pane>) {
   const publish = usePreviewTargetLifetime();
   return <Pane {...props} onPreviewTargetChange={publish} />;
@@ -1335,9 +1336,10 @@ describe("Agent artifact file chips", () => {
         },
       } as unknown as PreviewProjectionChangedEvent),
     );
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
-    expect(screen.getByRole("alert")).toHaveTextContent("Health timeout");
+    expect(document.querySelectorAll(".notice")).toHaveLength(1);
+    expect(getWarning()).toHaveTextContent(
+      "Preview did not become healthy before its deadline.",
+    );
     expect(screen.queryByText("Preview is unavailable")).toBeNull();
     expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
       "data-preview-phase",
@@ -1515,10 +1517,8 @@ describe("Agent artifact file chips", () => {
       "src",
       "http://127.0.0.1:5174/manual",
     );
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
-    expect(screen.getByRole("alert")).toHaveTextContent("Health timeout");
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(document.querySelectorAll(".notice")).toHaveLength(1);
+    expect(getWarning()).toHaveTextContent(
       "Preview did not become healthy before its deadline.",
     );
     previewBridge.start.mockRejectedValueOnce(
@@ -1540,14 +1540,8 @@ describe("Agent artifact file chips", () => {
     );
     expect(screen.queryByTitle("Sage browser")).toBeNull();
     expect(
-      screen
-        .getAllByRole("alert")
-        .some((alert) =>
-          alert.textContent?.includes(
-            "Preview did not become healthy before its deadline.",
-          ),
-        ),
-    ).toBe(true);
+      document.querySelector(".agent-preview-lifecycle .notice--warning"),
+    ).toHaveTextContent("Preview did not become healthy before its deadline.");
     view.unmount();
     await waitFor(() =>
       expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target),
@@ -1603,10 +1597,16 @@ describe("Agent artifact file chips", () => {
     );
     emit("3", "stopping", null);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByText("Stopping process")).toBeInTheDocument();
+    expect(
+      screen.getByText("Stopping the native Preview process."),
+    ).toBeInTheDocument();
     emit("4", "stopped", null);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByText("Preview stopped")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Preview has stopped. Start it again when you are ready.",
+      ),
+    ).toBeInTheDocument();
 
     emit("5", "starting", null);
     emit("6", "waitingForOrigin", null);
@@ -1684,11 +1684,12 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    const conflict = screen
-      .getByText("Ownership conflict")
-      .closest('[role="status"]');
-    expect(conflict).toHaveTextContent("Starting process");
-    expect(conflict).toHaveTextContent("Ownership conflict");
+    // A conflict warns once; restarting cannot clear it, so no action.
+    expect(getWarning()).toHaveTextContent(
+      "Another Preview operation is already active.",
+    );
+    expect(document.querySelectorAll(".notice")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Start again" })).toBeNull();
     act(() =>
       receive?.({
         kind: "preview",
@@ -1702,7 +1703,9 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(screen.getByText("Preview failed")).toBeInTheDocument();
+    expect(getWarning()).toHaveTextContent(
+      "Preview did not become healthy before its deadline.",
+    );
     act(() =>
       receive?.({
         kind: "preview",
@@ -1729,8 +1732,9 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(screen.getByText("Preview exited")).toBeInTheDocument();
-    expect(screen.getByText("Early exit")).toBeInTheDocument();
+    expect(getWarning()).toHaveTextContent(
+      "Preview exited before it became ready.",
+    );
     act(() =>
       receive?.({
         kind: "preview",
@@ -1758,9 +1762,7 @@ describe("Agent artifact file chips", () => {
       } as PreviewProjectionChangedEvent),
     );
     expect(screen.getByText("Stopping process")).toBeInTheDocument();
-    expect(
-      screen.getByText("Stopping the native Preview process."),
-    ).toBeInTheDocument();
+    expect(queryWarning()).toBeNull();
     act(() =>
       receive?.({
         kind: "preview",
@@ -1775,11 +1777,6 @@ describe("Agent artifact file chips", () => {
       } as PreviewProjectionChangedEvent),
     );
     expect(screen.getByText("Preview stopped")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Preview has stopped. Start it again when you are ready.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("keeps a pinned File when Preview arrives and resumes Follow latest", () => {

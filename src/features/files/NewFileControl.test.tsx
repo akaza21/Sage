@@ -51,6 +51,22 @@ async function createWith(after: ActiveEditorState | null) {
 }
 
 describe("New File focus", () => {
+  it("keeps a rejected file name beside its field", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "p", name: "Sage", roots: [] },
+    });
+    render(<NewFileControl parent={parent} rootName="Sage" />);
+    fireEvent.click(screen.getByRole("button", { name: "New File" }));
+    const field = screen.getByRole("textbox", { name: "File name" });
+    fireEvent.change(field, { target: { value: "../escape.ts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    const notice = field.closest(
+      ".new-file-dialog__field",
+    )!.nextElementSibling!;
+    expect(notice.querySelector(".notice--warning")).toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription(/File/);
+  });
   it("hands focus to the editor of the File it opened", async () => {
     const trigger = await createWith(ready(created));
     await waitFor(() =>

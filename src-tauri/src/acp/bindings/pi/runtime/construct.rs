@@ -59,6 +59,7 @@ impl PiRuntime {
             session_id,
             external_session: None,
             session_dir: None,
+            session_file: None,
             active_turn: None,
             steering: support::Steering::default(),
             deny: None,

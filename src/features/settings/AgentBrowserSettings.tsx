@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { errorMessage } from "../../domain/errors";
 import { BrowserClearData } from "../browser/BrowserClearData";
 import { useBrowserDownloads } from "../browser/useBrowserDownloads";
+import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { BrowserSitePermissions } from "../browser/BrowserSitePermissions";
 import { BrowserSitePermissionsGroup } from "../browser/BrowserSiteSettings";
@@ -50,7 +51,11 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
     <section aria-label="Browsing history">
       <p>Recent pages visited by this live tab.</p>
       {error ? (
-        <p role="alert">{error}</p>
+        <Notice
+          identity={`history:${tabId}`}
+          severity="warning"
+          message={error}
+        />
       ) : entries === null ? (
         <p role="status">Loading browsing history...</p>
       ) : entries.length ? (
@@ -216,7 +221,18 @@ export function AgentBrowserSettings() {
         </button>
       </div>
       <div className="agent-settings__card">
-        <SettingsRow title="Browser tab">
+        <SettingsRow
+          title="Browser tab"
+          notice={
+            error ? (
+              <Notice
+                identity="browser-tabs"
+                severity="warning"
+                message={error}
+              />
+            ) : null
+          }
+        >
           <select
             className="select"
             aria-label="Browser tab"
@@ -236,10 +252,9 @@ export function AgentBrowserSettings() {
         </SettingsRow>
         {live ? <LiveTabRows key={live} tabId={live} /> : null}
       </div>
-      {error ? <p role="alert">{error}</p> : null}
       {loading ? (
         <p role="status">Loading browser tabs...</p>
-      ) : tabId ? null : (
+      ) : tabId || error ? null : (
         <p role="status">
           Open a browser tab in Files and preview to manage its history, site
           permissions and downloads.

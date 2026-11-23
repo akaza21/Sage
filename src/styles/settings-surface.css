@@ -329,10 +329,6 @@
   text-align: right;
 }
 
-.settings-surface__row .browser-clear-data [role="alert"] {
-  color: var(--color-danger);
-}
-
 .settings-surface__site-permissions {
   display: grid;
   gap: var(--space-2);
@@ -426,11 +422,10 @@
   font-size: var(--font-size-sm);
 }
 
-.settings-surface__loading {
+.settings-surface__notice {
+  width: 100%;
   max-width: var(--settings-measure);
   margin: 0 auto;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
 }
 
 @media (max-width: 760px) {

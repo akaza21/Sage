@@ -32,7 +32,7 @@ test.describe("Explorer actions on the open File", () => {
     const dialog = page.getByRole("dialog", { name: "Rename File" });
     await dialog.getByLabel("File name").fill(`renamed-${open.title}`);
     await dialog.getByRole("button", { name: "Rename" }).click();
-    await expect(dialog.getByRole("alert")).toContainText(
+    await expect(dialog.locator(".notice--warning")).toContainText(
       "File rename requires the native Sage desktop",
     );
     await dialog.getByRole("button", { name: "Cancel" }).click();

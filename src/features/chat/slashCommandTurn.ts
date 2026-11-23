@@ -6,6 +6,8 @@ import type {
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
 import { pickedCommandFor } from "./slashCommandPicks";
+import { terminalOnlyCommand } from "../../services/terminalHandoff";
+import { catchTerminalCommand } from "./ComposerTerminalCatch";
 
 export type SlashCommandPort = Pick<
   typeof acpCommandsDesktop,
@@ -20,12 +22,12 @@ export function parseSlashCommand(
 }
 
 // The typed command route marks the turn as a command; Pi's extension commands
-// depend on that.
+// depend on that. `false` means the composer took the command; nothing is sent.
 export async function slashCommandTurn(
   request: SendAcpTurnRequest,
   nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],
   port?: SlashCommandPort,
-): Promise<(() => Promise<AcpMutationResult>) | null> {
+): Promise<(() => Promise<AcpMutationResult>) | null | false> {
   if (request.target !== "session") return null;
   const { prompt, attachedContext } = request;
   const command = parseSlashCommand(prompt);
@@ -52,6 +54,17 @@ export async function slashCommandTurn(
         ...(command.input ? { input: command.input } : {}),
       });
   }
+  const terminal = list && terminalOnlyCommand(list, command.name);
+  // A caught terminal-only command waits for the user's choice.
+  if (
+    terminal &&
+    catchTerminalCommand(request.chatId, {
+      input: prompt,
+      name: command.name,
+      command: terminal,
+    })
+  )
+    return false;
   if (pickedCommandFor(request.chatId) === command.name) {
     throw new AcpDesktopError({
       kind: "invalidRequest",

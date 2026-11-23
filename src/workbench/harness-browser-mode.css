@@ -69,10 +69,7 @@
 }
 
 .harness-browser__denied {
-  margin: 0;
-  padding: var(--space-1) var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  padding: 0 var(--space-2);
   grid-row: 2;
 }
 

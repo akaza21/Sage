@@ -101,6 +101,15 @@ fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeE
 }
 
 impl PiRuntime {
+    /// Called on every list read; an unchanged projection allocates nothing.
+    pub(in crate::acp::bindings::pi::runtime) fn project_terminal_handoff(&self) {
+        self.commands.update_terminal_handoff(
+            crate::acp::bindings::pi::manifest::terminal_metadata(),
+            self.session_file
+                .as_ref()
+                .map(sage_acp_protocol::contract::RequiredText::as_str),
+        );
+    }
     pub(super) fn list_commands(
         &mut self,
         value: Value,

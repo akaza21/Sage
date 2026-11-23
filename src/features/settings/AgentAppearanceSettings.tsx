@@ -4,6 +4,7 @@ import {
   UI_FONT_SIZES,
   uiDensityCopy,
 } from "../../domain/uiAppearance";
+import { Notice } from "../../ui/Notice";
 import { SettingsRow } from "./SettingsRow";
 
 export function AgentAppearanceSettings() {
@@ -66,20 +67,15 @@ export function AgentAppearanceSettings() {
           </select>
         </SettingsRow>
       </div>
-      {!ready && !error ? (
-        <p role="status">Loading appearance settings...</p>
-      ) : null}
       {error ? (
-        <div role="alert">
-          {error}
-          <button
-            type="button"
-            className="button button--compact"
-            onClick={() => void restore()}
-          >
-            Reload appearance
-          </button>
-        </div>
+        <Notice
+          identity="settings:appearance"
+          severity="warning"
+          message={error}
+          action={{ label: "Reload appearance", onClick: () => void restore() }}
+        />
+      ) : !ready ? (
+        <p role="status">Loading appearance settings...</p>
       ) : null}
     </>
   );

@@ -24,6 +24,61 @@ fn content(account: CodexAccountSnapshot) -> CodexDiscoveryContent {
 }
 
 #[test]
+fn a_new_project_generation_joins_running_discovery_and_receives_its_own_scope() {
+    let (manager, owner, _joined) =
+        admitted_joined_flight("generation-join", CodexDiscoveryDeadline::new().unwrap());
+    manager.cache.clear();
+    let mut request = owner.request.clone();
+    request.project_generation = ProjectGeneration::new(30).unwrap();
+    let root = owner.project_root.as_ref().unwrap();
+    let next_root = CodexProjectRootAuthority::for_test(
+        ProjectRootAuthority::for_test(
+            request.project_id.clone(),
+            request.project_generation,
+            root.root_id().clone(),
+            root.as_path(),
+        )
+        .unwrap(),
+    );
+    let (started_tx, started_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    let running = Arc::clone(&manager);
+    let worker = thread::spawn(move || {
+        running.discover_with(owner, |binding, root, epoch, _, _| {
+            started_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            Ok(AdmittedDiscovery::for_test(
+                binding,
+                root,
+                epoch,
+                content(CodexAccountSnapshot::ManagedChatgpt),
+            ))
+        })
+    });
+    started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let next = manager.prepare(
+        request.clone(),
+        next_root,
+        CodexDiscoveryDeadline::new().unwrap(),
+    );
+    // Always release the running probe, including on the regression's Busy path.
+    release_tx.send(()).unwrap();
+    let original = worker.join().unwrap().unwrap();
+    let response = manager
+        .discover(next.expect("a layout generation must join, not return Busy"))
+        .unwrap();
+    assert_eq!(
+        original.project_generation,
+        ProjectGeneration::new(29).unwrap()
+    );
+    assert_eq!(response.project_generation, request.project_generation);
+    assert_eq!(response.runtime_epoch, original.runtime_epoch);
+    assert_eq!(response.models, original.models);
+    assert_eq!(response.models[0].id.as_str(), "refreshed-model");
+    assert!(manager.gate.prepare().is_ok());
+}
+
+#[test]
 fn a_refresh_cancelled_before_control_registration_preserves_the_cached_catalog() {
     let (manager, owner, _joined) = admitted_joined_flight(
         "refresh-cancel-before-control",

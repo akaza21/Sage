@@ -1,6 +1,7 @@
 import type { FormEvent, RefObject } from "react";
 import { Check, MessageSquare, X } from "../ui/leanIcons";
 import { MAX_CHAT_TITLE_BYTES } from "../domain/chatTitle";
+import { Notice } from "../ui/Notice";
 
 export function ProjectChatRename({
   chatId,
@@ -63,9 +64,13 @@ export function ProjectChatRename({
         <X size={14} aria-hidden="true" />
       </button>
       {error ? (
-        <span className="project-chat-edit__error" id={errorId} role="alert">
-          {error}
-        </span>
+        <div className="project-chat-edit__error" id={errorId}>
+          <Notice
+            identity={`chat-rename:${chatId}`}
+            severity="warning"
+            message={error}
+          />
+        </div>
       ) : null}
     </form>
   );

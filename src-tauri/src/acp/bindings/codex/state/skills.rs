@@ -138,6 +138,14 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
 }
 
 impl CodexAdapter {
+    /// Called on every list read; an unchanged projection allocates nothing.
+    pub(crate) fn project_terminal_handoff(&self) {
+        self.skills.list.update_terminal_handoff(
+            super::super::manifest::terminal_metadata(),
+            self.external_thread_id.as_ref().map(|id| id.as_str()),
+        );
+    }
+
     pub(crate) fn command_catalog_path(
         &self,
         bytes: &[u8],

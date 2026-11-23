@@ -1,4 +1,5 @@
 import { useWorkbenchStore } from "../app/store";
+import { Notice } from "../ui/Notice";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
@@ -84,22 +85,27 @@ export function SettingsSurface() {
         }}
       />
       <p className="settings-surface__description">{activePage?.description}</p>
-      {persistencePhase === "loading" ? (
-        <p className="settings-surface__loading" role="status">
-          Loading editor settings…
-        </p>
-      ) : null}
       {persistenceMessage ? (
-        <div className="settings-surface__error" role="alert">
-          <span>{persistenceMessage}</span>
-          <button
-            className="button button--compact"
-            type="button"
-            disabled={persistenceClosing}
-            onClick={retryPersistence}
-          >
-            Retry
-          </button>
+        <div className="settings-surface__notice">
+          <Notice
+            identity="settings:editor-persistence"
+            severity="warning"
+            message={persistenceMessage}
+            action={
+              persistenceClosing
+                ? undefined
+                : { label: "Retry", onClick: retryPersistence }
+            }
+          />
+        </div>
+      ) : persistencePhase === "loading" ? (
+        <div className="settings-surface__notice">
+          <Notice
+            identity="settings:editor-persistence:loading"
+            severity="info"
+            message="Loading editor settings…"
+            progress
+          />
         </div>
       ) : null}
       {visible.size === 0 ? (
@@ -111,9 +117,14 @@ export function SettingsSurface() {
       ) : activePageId === "passwords" ? (
         <Suspense
           fallback={
-            <p className="settings-surface__loading" role="status">
-              Loading saved passwords…
-            </p>
+            <div className="settings-surface__notice">
+              <Notice
+                identity="settings:passwords:loading"
+                severity="info"
+                message="Loading saved passwords…"
+                progress
+              />
+            </div>
           }
         >
           <SettingsPasswordsPage visible={visible} />

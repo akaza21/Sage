@@ -23,6 +23,7 @@ import {
   clearAcpProjectionRegistry,
 } from "../../app/acpProjectionRegistry";
 import { page as chatPage } from "../chat/acp/acpProjection.fixture";
+import { findWarning } from "../../test/notice";
 
 const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
@@ -518,8 +519,11 @@ it("keeps failed restores visible and sends foreign project identity to unarchiv
   fireEvent.click(
     screen.getByRole("button", { name: "Unarchive Other archived chat" }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Native restore refused",
+  const refusal = await findWarning();
+  expect(refusal).toHaveTextContent("Native restore refused");
+  // The refusal sits on the row of the chat that could not be restored.
+  expect(refusal.closest(".agent-settings__row")).toHaveTextContent(
+    "Other archived chat",
   );
   expect(restoreChat).toHaveBeenCalledWith("chat-other", "foreign");
   expect(

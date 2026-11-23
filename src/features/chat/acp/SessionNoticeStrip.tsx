@@ -110,6 +110,8 @@ export function SessionNoticeStrip({
                 severity={notice.level === "error" ? "blocking" : notice.level}
                 message={notice.text}
                 details={notice.source ? `Source: ${notice.source}` : undefined}
+                // Saved notices replay on every mount; only errors interrupt, as before.
+                announce={notice.level === "error"}
               />
               <button
                 type="button"

@@ -28,6 +28,7 @@ import {
   performBrowserShortcut,
   useBrowserShortcuts,
 } from "./browserShortcuts";
+import { Notice } from "../../ui/Notice";
 import { useBrowserDeviceTrigger } from "./useBrowserDeviceTrigger";
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import { useBrowserScreenshot } from "./useBrowserScreenshot";
@@ -338,8 +339,12 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         </Suspense>
       ) : null}
       {error ? (
-        <div className="browser-surface__error" role="alert">
-          {error}
+        <div className="browser-surface__notice">
+          <Notice
+            identity={`browser:${tab.id}:page`}
+            severity="warning"
+            message={error}
+          />
         </div>
       ) : null}
       {screenshotStatus ? (

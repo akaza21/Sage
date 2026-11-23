@@ -17,6 +17,7 @@ import { BrowserNewTab } from "./BrowserNewTab";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import { useBrowserPreferencesStore } from "./browserPreferencesStore";
+import { findWarning } from "../../test/notice";
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
 const browserPageContext = vi.fn();
@@ -539,7 +540,7 @@ it("shows a browser error when the clipboard denies a screenshot write", async (
   await screen.findByLabelText("Secure connection");
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Screenshot could not be copied",
   );
   expect(screen.queryByRole("status")).toBeNull();
@@ -582,7 +583,7 @@ it("does not alter the clipboard when the page changes before capture", async ()
   await screen.findByLabelText("Secure connection");
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "browser page changed; retry screenshot",
   );
   expect(write).not.toHaveBeenCalled();
@@ -850,7 +851,7 @@ it("shows a failed history retry without offering a mismatched origin", async ()
     error: "Back or Forward could not reach the saved page",
   });
   render(<BrowserSurface tab={tab} />);
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "Back or Forward could not reach the saved page",
   );
   expect(screen.getByLabelText("No page")).toBeInTheDocument();

@@ -410,12 +410,7 @@
   flex: 1 1 120px;
   min-width: 0;
 }
-.browser-surface__error {
-  z-index: var(--z-raised);
-  color: var(--color-danger);
-  padding: 4px 8px;
-  background: var(--bg);
-}
+.browser-surface__notice,
 .browser-surface__status {
   z-index: var(--z-raised);
   margin: 0;

@@ -11,7 +11,7 @@
       style="position: relative; width: 560px; height: 400px"
     >
       <div id="toolbar" class="browser-surface__toolbar"></div>
-      <div id="error" class="browser-surface__error" role="alert" hidden></div>
+      <div id="notice"></div>
     </div>
     <script type="module">
       import React from "react";
@@ -22,6 +22,7 @@
       import { BrowserAgentPresence } from "/src/features/browser/BrowserAgentPresence.tsx";
       import { useAgentArtifactPaneFocus } from "/src/workbench/useAgentArtifactPaneFocus.ts";
       import { BrowserClearData } from "/src/features/browser/BrowserClearData.tsx";
+      import { Notice } from "/src/ui/Notice.tsx";
       import "/src/styles/global.css";
       import "/src/styles/shared-dialogs.css";
       import "/src/features/browser/browser.css";
@@ -92,11 +93,21 @@
                     projectId: "project-visual",
                     tabId: "browser-visual",
                     ready: true,
-                    onError: (message) => {
-                      const row = document.getElementById("error");
-                      row.textContent = message ?? "";
-                      row.hidden = !message;
-                    },
+                    // Mirrors BrowserSurface: the page notice beside the toolbar.
+                    onError: (message) =>
+                      noticeRoot.render(
+                        message
+                          ? React.createElement(
+                              "div",
+                              { className: "browser-surface__notice" },
+                              React.createElement(Notice, {
+                                identity: "browser:browser-visual:page",
+                                severity: "warning",
+                                message,
+                              }),
+                            )
+                          : null,
+                      ),
                     chats: [
                       { id: "chat-visual", title: chatTitle },
                       ...params.getAll("also").map((title, index) => ({
@@ -158,6 +169,7 @@
             )
           : controls;
       }
+      const noticeRoot = createRoot(document.getElementById("notice"));
       createRoot(document.getElementById("toolbar")).render(
         React.createElement(Fixture),
       );

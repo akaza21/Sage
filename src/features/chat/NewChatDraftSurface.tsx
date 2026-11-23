@@ -30,15 +30,21 @@ export function NewChatDraftSurface({
   const discoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
+  // Set only while discovery has failed, which leaves no model to send with.
+  const discoveryError = useWorkbenchStore(
+    (state) => state.harnessDiscoveryError,
+  );
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const pendingFirstSend = useWorkbenchStore((state) => state.pendingFirstSend);
-  const reload = useWorkbenchStore((state) => state.reloadNewChatDraft);
-  const discard = useWorkbenchStore((state) => state.discardNewChatDraft);
-  const update = useWorkbenchStore((state) => state.updateNewChatDraft);
-  const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
-  const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
+  const {
+    reloadNewChatDraft: reload,
+    discardNewChatDraft: discard,
+    updateNewChatDraft: update,
+    selectDraftHarness: chooseHarness,
+    selectDraftModel: chooseModel,
+  } = useWorkbenchStore.getState();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
   const submitting = draft?.submission.status === "submitting";
@@ -206,7 +212,9 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
           disabledReason={
-            available ? null : "Choose an available harness before sending."
+            available
+              ? discoveryError
+              : "Choose an available harness before sending."
           }
           project={shownProject}
           newChat

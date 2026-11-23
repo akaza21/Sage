@@ -61,11 +61,20 @@ export function AgentPreviewPresentation({
     projection &&
     projection.phase !== "idle",
   );
+  const scope = `${owner ? `${owner.projectId}:${owner.chatId}` : "none"}:${
+    activeTarget ? `${activeTarget.rootId}:${activeTarget.scriptName}` : ""
+  }`;
+  const restart =
+    activeTarget && owner && desktopAvailable && listenerReady && !busy
+      ? () => onStart(activeTarget)
+      : undefined;
   const replacement =
     replacesNativePresentation && projection ? (
       <PreviewLifecycleStatus
         failure={projection.failure}
         phase={projection.phase}
+        scope={scope}
+        onRestart={restart}
       />
     ) : undefined;
   const targetRows = useMemo(
@@ -148,6 +157,8 @@ export function AgentPreviewPresentation({
           compact
           failure={projection.failure}
           phase={projection.phase}
+          scope={scope}
+          onRestart={restart}
         />
       ) : null}
       {targetRows.length > 0 ? (

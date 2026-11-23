@@ -667,6 +667,38 @@ afterEach(() => {
   resetBrowserDesktopForTests();
 });
 
+it.each([
+  "Codex discovery is already running; retry it.",
+  "Account unavailable.",
+])(
+  "says in one visible line why a failed discovery blocks the Home draft (%s)",
+  async (reason) => {
+    useWorkbenchStore.setState({
+      models: [],
+      harnessDiscoveryPhase: "error",
+      harnessDiscoveryError: reason,
+    });
+    mount();
+    await settleLazyModules();
+    fireEvent.change(composer(), { target: { value: "Keep my first prompt" } });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+    expect(screen.getByText(reason)).toHaveClass("composer__disabled-reason");
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    expect(prompts).toEqual([]);
+    expect(composer()).toHaveValue("Keep my first prompt");
+    act(() =>
+      useWorkbenchStore.setState({
+        models,
+        harnessDiscoveryPhase: "ready",
+        harnessDiscoveryError: null,
+      }),
+    );
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  },
+);
+
 it("labels a session-less existing chat with its default and starts with the model picked before sending", async () => {
   const chatId = await existingSessionlessChat();
   useWorkbenchStore.setState({ models: [...models].reverse() });

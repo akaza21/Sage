@@ -82,18 +82,18 @@ function sessionRequest<SessionId, Epoch>(
 export function createAcpSessionActions(
   dependencies: SessionActionDependencies,
 ) {
-  const steer = (
+  const steer = async (
     prompt: string,
     attachedContext: readonly AttachedContext[],
     queuedMessageId?: ClientIntentId,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
-    if (!captured) return Promise.resolve("rejected");
+    if (!captured) return "rejected";
     let boundedContext: readonly AttachedContext[];
     try {
       boundedContext = validateAttachedContexts(attachedContext);
     } catch {
-      return Promise.resolve("rejected");
+      return "rejected";
     }
     // An attachment-only (queued) steer carries the idle-send prompt.
     const normalizedPrompt =
@@ -107,7 +107,7 @@ export function createAcpSessionActions(
       !session?.runtimeEpoch ||
       !session.capabilities?.activeTurnSteer
     )
-      return Promise.resolve("rejected");
+      return "rejected";
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const current = dependencies.getContext();
       if (!dependencies.sameScope(current, captured)) return "ignoredStale";
@@ -153,10 +153,10 @@ export function createAcpSessionActions(
       }
     });
   };
-  const cancel = (turnId: SageTurnId): Promise<AcpActionOutcome> => {
+  const cancel = async (turnId: SageTurnId): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     if (!captured || cancellableTurnId(captured.page) !== turnId) {
-      return Promise.resolve("rejected");
+      return "rejected";
     }
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
@@ -201,7 +201,7 @@ export function createAcpSessionActions(
     });
   };
 
-  const finishSession = (close: boolean): Promise<AcpActionOutcome> => {
+  const finishSession = async (close: boolean): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const session = captured ? currentSession(captured.page) : null;
     if (
@@ -209,7 +209,7 @@ export function createAcpSessionActions(
       !session?.runtimeEpoch ||
       Boolean(session.capabilities.closeSession) !== close
     ) {
-      return Promise.resolve("rejected");
+      return "rejected";
     }
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
@@ -287,21 +287,21 @@ export function createAcpSessionActions(
       }
     });
 
-  const configure = (mutation: Mutation): Promise<AcpActionOutcome> => {
+  const configure = async (mutation: Mutation): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const config = captured?.page.sessionConfig;
     const modeId = "modeId" in mutation ? mutation.modeId : null;
     const restored = captured?.page.restoredSessionConfig;
     if (captured && !config && restored)
       return queue(captured, restored.sageAgentSessionId, mutation);
-    if (!captured || !config) return Promise.resolve("rejected");
+    if (!captured || !config) return "rejected";
     if (
       modeId !== null &&
       (config.removed ||
         !config.modes ||
         !config.modes.availableModes.some((mode) => mode.id === modeId))
     ) {
-      return Promise.resolve("rejected");
+      return "rejected";
     }
     return dependencies.enqueue(captured, "mode", async (updateState) => {
       const context = dependencies.getContext();

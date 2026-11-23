@@ -42,6 +42,7 @@ impl PiRuntime {
         self.commands_pending = false;
         self.commands_discovered = false;
         self.external_session = Some(external.clone());
+        self.session_file = None;
         self.recent_cancelled_dialogs.clear();
         self.available_thinking.clear();
         Ok((
