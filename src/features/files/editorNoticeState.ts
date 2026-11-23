@@ -38,20 +38,31 @@ function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   return editor?.phase === "ready" ? editor : null;
 }
 
-export function markDeleted(bridge: EditorStateBridge): void {
+/** A disk conflict explains itself, so it replaces any operation failure. */
+function setConflict(
+  bridge: EditorStateBridge,
+  conflict: EditorConflict,
+  disk?: DocumentVersion,
+): void {
   const active = currentReady(bridge);
-  if (active) {
+  if (active)
     bridge.setActiveEditor(
       {
         ...active,
-        document: { ...active.document, conflict: DELETION_CONFLICT },
         message: null,
         details: undefined,
+        document: {
+          ...active.document,
+          disk: disk ?? active.document.disk,
+          conflict,
+        },
       },
       { tabStatus: "failed" },
     );
-  }
 }
+
+const markDeleted = (bridge: EditorStateBridge) =>
+  setConflict(bridge, DELETION_CONFLICT);
 
 /**
  * Windows ends the watch of a deleted folder with a notice, so absent must
@@ -88,27 +99,6 @@ export function reread(
       dirty: document.dirty,
       tabStatus: document.conflict ? "failed" : null,
     },
-  );
-}
-
-export function setExternalChangeConflict(
-  bridge: EditorStateBridge,
-  disk: DocumentVersion | undefined,
-): void {
-  const active = currentReady(bridge);
-  if (!active) return;
-  bridge.setActiveEditor(
-    {
-      ...active,
-      message: null,
-      details: undefined,
-      document: {
-        ...active.document,
-        disk: disk ?? active.document.disk,
-        conflict: EXTERNAL_CHANGE,
-      },
-    },
-    { tabStatus: "failed" },
   );
 }
 
@@ -234,7 +224,7 @@ export async function applyWatchNotice(
       current.document.disk.fingerprint === document.disk.fingerprint &&
       current.document.lineEnding === document.lineEnding;
     if (!completedMatchingSave) {
-      setExternalChangeConflict(bridge, document?.disk);
+      setConflict(bridge, EXTERNAL_CHANGE, document?.disk);
       return;
     }
   }
