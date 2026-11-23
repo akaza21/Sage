@@ -38,9 +38,9 @@ import type * as SessionHeaderChunk from "./ChatSessionHeader";
 const SessionHeaderPart = lazyParts<typeof SessionHeaderChunk>(
   () => import("./ChatSessionHeader"),
 );
-import type * as FirstSendChunk from "./FirstChatSend";
-const FirstSendPart = lazyParts<typeof FirstSendChunk>(
-  () => import("./FirstChatSend"),
+import type * as SlashChunk from "./ComposerSlashController";
+const FirstSendPart = lazyParts<Pick<typeof SlashChunk, "FirstChatSend">>(
+  () => import("./ComposerSlashController"),
 );
 
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
@@ -306,7 +306,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         sendBlocked={sendBlocked}
         actionBusy={actionBusy || firstSendPending}
         activeTurn={Boolean(activeAcpTurn) || firstSendPending}
-        stopFirstSend={
+        onStop={
           firstSendPending
             ? () => useWorkbenchStore.setState({ pendingFirstSend: null })
             : undefined

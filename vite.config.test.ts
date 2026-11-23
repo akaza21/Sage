@@ -105,7 +105,6 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/ProjectScopeChip.tsx",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
-  "src/features/chat/FirstChatSend.tsx",
   "src/features/chat/ChatSessionHeader.tsx",
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
@@ -336,7 +335,6 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/chatEffortDraft.ts",
     "src/features/chat/DraftEffortControl.tsx",
     "src/app/runCreateChat.ts",
-    "src/features/chat/FirstChatSend.tsx",
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",
     "src/features/chat/NewChatDraftSurface.tsx",

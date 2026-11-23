@@ -1,9 +1,19 @@
-import type { ComponentProps } from "react";
+import { useEffect, type ComponentProps } from "react";
 import { lazyParts } from "./lazyParts";
 import type * as Runtime from "./ComposerCommandRuntime";
+import { draftShownFor } from "../../app/newChatDraftSlice";
 import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
+import type {
+  AcpChatPage,
+  CuratedBindingId,
+  CuratedModelId,
+} from "../../domain/acp";
 import { invokeNative } from "../../ports/nativeInvoke";
 import { AcpDesktopError } from "../../services/acpDesktop";
+import {
+  currentContext,
+  type useAcpChatActions,
+} from "./acp/useAcpChatActions";
 const loadRuntime = () => import("./ComposerCommandRuntime");
 const RuntimePart =
   lazyParts<Pick<typeof Runtime, "ComposerSlashController">>(loadRuntime);
@@ -80,8 +90,7 @@ export async function slashCommandTurn(
  * curated built-in commands (installation metadata only). One of those waits
  * for the session's catalog in slashCommandTurn; anything else is sent now.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- the first send's command path
-export async function sendFirstCommand(
+async function sendFirstCommand(
   chatId: string,
   harnessId: string,
   pending: Extract<WorkbenchState["pendingFirstSend"], { text: string }>,
@@ -119,4 +128,63 @@ export function ComposerSlashController(
   props: ComponentProps<typeof Runtime.ComposerSlashController>,
 ) {
   return <RuntimePart part="ComposerSlashController" {...props} />;
+}
+
+/**
+ * Sends a new chat's first message once its page loads. It rides in this
+ * facade's chunk because a first `/command` may wait in slashCommandTurn.
+ */
+export function FirstChatSend({
+  chatId,
+  page,
+  actions,
+}: {
+  chatId: string;
+  page: AcpChatPage | null | undefined;
+  actions: ReturnType<typeof useAcpChatActions>;
+}) {
+  const pending = useWorkbenchStore((state) => state.pendingFirstSend);
+  const transitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  useEffect(() => {
+    // A held first send (see sendFirstCommand) is already on its way.
+    if (pending?.chatId !== chatId || transitioning || pending.held) return;
+    const state = useWorkbenchStore.getState();
+    if (state.pendingFirstSend !== pending) return;
+    const entry = state.chatUiById[chatId];
+    const harness = state.harnesses.find(
+      (harness) => harness.id === entry?.harnessId,
+    );
+    if (
+      harness?.transport === "acp" &&
+      (!page || currentContext(chatId)?.page !== page)
+    )
+      return;
+    useWorkbenchStore.setState({ pendingFirstSend: null });
+    if (
+      draftShownFor(state, chatId) ||
+      state.activeTabId !== chatId ||
+      state.project?.id !== pending.projectId ||
+      state.chatOwnershipEpoch !== pending.ownershipEpoch ||
+      // The draft's text is never empty, so this also needs a composer entry.
+      entry?.composerText !== pending.text ||
+      harness?.installState !== "available"
+    )
+      return;
+    if (harness.transport === "legacySimulator") {
+      void state.sendPrompt();
+    } else if (harness.bindingId) {
+      void sendFirstCommand(chatId, harness.id, pending, () =>
+        // Images a draft handed over are already in this composer.
+        actions.submit(
+          pending.text.trim(),
+          entry.attachedContext,
+          harness.bindingId as CuratedBindingId,
+          (entry.modelId ?? null) as CuratedModelId | null,
+        ),
+      );
+    }
+  }, [actions, chatId, page, pending, transitioning]);
+  return null;
 }
