@@ -12,6 +12,7 @@ import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
 const notOpened = "The terminal did not open. Try again.";
+const notTyped = "This command could not be typed into the terminal.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -78,32 +79,38 @@ export function ComposerTerminalCatch({
   if (!caught) return null;
   const { input, name, command } = caught;
   // Hands the Copy text to the lazy dock as typed, unrun input: one line, no
-  // control character, so nothing presses Enter. One that has not settled in
-  // time fails here, whether or not the dock took it.
+  // control character, so nothing presses Enter. A request that has not
+  // settled in time fails here, whether or not the dock took it.
   const openInTerminal = () => {
     if (/\p{Cc}/u.test(command)) {
-      setError("This command cannot be typed into a terminal.");
+      setError(notTyped);
       return;
     }
     const store = useWorkbenchStore;
     let settled = false;
-    const handoff: TerminalHandoff = {
-      text: command,
-      finish: (failure) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (store.getState().terminalHandoff === handoff)
-          store.setState({ terminalHandoff: null });
-        setOpening(false);
-        if (failure) setError(failure);
-        else setCaught((current) => (current === caught ? null : current));
-      },
+    const settle = (failure?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (store.getState().terminalHandoff === handoff)
+        store.setState({ terminalHandoff: null });
+      setOpening(false);
+      if (failure) setError(failure);
+      else setCaught((current) => (current === caught ? null : current));
     };
-    const timer = setTimeout(() => handoff.finish(notOpened), 10_000);
+    // The dock calls this with its new tab's keystroke writer and reports a
+    // failed write in its own status line too.
+    const handoff: TerminalHandoff = (type) =>
+      type(command).then(
+        () => settle(),
+        (error: unknown) => {
+          settle(notTyped);
+          throw error;
+        },
+      );
+    const timer = setTimeout(() => settle(notOpened), 10_000);
     setOpening(true);
     setError("");
-    store.getState().terminalHandoff?.finish(notOpened);
     store.setState({ terminalHandoff: handoff });
     // The Agent tools seam opens the dock; the dock takes the request.
     tools.launch("terminal", chatId);

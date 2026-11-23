@@ -133,7 +133,7 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   // A command that would press Enter is never handed to the terminal.
   catchCommand(text + "\n");
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("cannot be typed");
+  expect(screen.getByRole("alert")).toHaveTextContent("could not be typed");
   expect(useTerminalDockStore.getState().visible).toBe(false);
   catchCommand(text);
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
@@ -164,10 +164,11 @@ async function handOff(input: string) {
   act(() => {
     settled = new Promise<void>((resolve, reject) => {
       useWorkbenchStore.setState({
-        terminalHandoff: {
-          text: input,
-          finish: (error) => (error ? reject(new Error(error)) : resolve()),
-        },
+        terminalHandoff: (type) =>
+          type(input).then(resolve, (error: unknown) => {
+            reject(error);
+            throw error;
+          }),
       });
       useTerminalDockStore.getState().setVisible(true);
     });
@@ -181,9 +182,15 @@ it("writes each handoff to a new tab, keeps a tab whose write failed, and holds 
   await handOff(text);
   await handOff(text);
   backend.failWrite = true;
-  await expect(handOff(text)).rejects.toThrow("not reading");
+  await expect(handOff(text)).rejects.toMatchObject({ code: "busy" });
+  // The dock reports it; the tab stays open for the user to type into.
+  await waitFor(() =>
+    expect(screen.getByRole("region", { name: "Terminal" })).toHaveTextContent(
+      "not reading",
+    ),
+  );
   backend.failWrite = false;
-  await expect(handOff("x".repeat(4097))).rejects.toThrow("failed");
+  await expect(handOff("x".repeat(4097))).rejects.toThrow("4096");
   await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(4));
   expect(
     [...backend.sessions.values()].map((session) => session.input),
@@ -191,6 +198,6 @@ it("writes each handoff to a new tab, keeps a tab whose write failed, and holds 
   // At the tab limit the request stays pending for its sender to time out.
   void handOff(text);
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-  expect(useWorkbenchStore.getState().terminalHandoff?.text).toBe(text);
+  expect(useWorkbenchStore.getState().terminalHandoff).toBeTypeOf("function");
   expect(backend.sessions.size).toBe(4);
 });

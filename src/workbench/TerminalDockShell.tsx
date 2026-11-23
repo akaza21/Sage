@@ -182,12 +182,9 @@ export function TerminalDockShell({
       setActiveId(session.sessionId);
       setCollapsed(false);
       // Typed through the keystroke write path, unterminated, so it stays unrun.
-      if (handoff) await writeUserTerminal(scope, session, handoff.text);
-      handoff?.finish();
+      await handoff?.((text) => writeUserTerminal(scope, session, text));
     } catch (error) {
-      const label = terminalErrorLabel(error);
-      if (owner.lifecycle === lifecycle) setMessage(label);
-      handoff?.finish(label);
+      if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
     } finally {
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;

@@ -83,14 +83,14 @@ export type ResourceState<T> =
   | { phase: "error"; message: string };
 
 /**
- * One pending request to open a terminal in the project holding unrun input.
- * The composer stores it; the lazy dock opens, takes and settles it. Left
- * unset at startup, so the slot adds no startup code.
+ * One pending request to open a project terminal holding unrun input. The
+ * composer stores it; the lazy dock takes it, opens a new tab and calls it
+ * with that tab's keystroke writer. Left unset at startup, so the slot adds
+ * no startup code.
  */
-export type TerminalHandoff = {
-  text: string;
-  finish: (error?: string) => void;
-};
+export type TerminalHandoff = (
+  type: (text: string) => Promise<void>,
+) => Promise<void>;
 
 export interface WorkbenchState
   extends
