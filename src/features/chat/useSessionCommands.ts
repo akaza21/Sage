@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import type {
@@ -38,48 +38,22 @@ export function useSessionCommands(
     liveOwnerKey(state.page),
   );
   const [load, setLoad] = useState<SessionCommandsLoad>(LOADING);
-  const [revision, changed] = useReducer((value: number) => value + 1, 0);
-  // The owner whose change listener is installed. The list is read only
-  // after it, so an update that lands during the read is not missed.
-  const [listening, setListening] = useState("");
   useEffect(() => {
     if (!owner) return;
-    const [sessionId, runtimeEpoch] = JSON.parse(owner) as [string, string];
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-    void acpCommandsDesktop
-      .subscribeCommandChanges((event) => {
-        if (
-          event.sageAgentSessionId === sessionId &&
-          event.runtimeEpoch === runtimeEpoch
-        )
-          changed();
-      })
-      .then(
-        (dispose) => {
-          if (disposed) return dispose();
-          unlisten = dispose;
-          setListening(owner);
-        },
-        () => !disposed && setListening(owner),
-      );
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [owner]);
-  useEffect(() => {
-    if (!owner || listening !== owner) return;
     const [sessionId, runtimeEpoch] = JSON.parse(owner) as [
       SageAgentSessionId,
       RuntimeEpoch,
     ];
-    let current = true;
-    void Promise.resolve()
-      .then(() => {
+    let disposed = false;
+    let revision = 0;
+    let unlisten: (() => void) | null = null;
+    const read = async () => {
+      if (disposed) return;
+      const reading = ++revision;
+      try {
         const context = currentContext(boundChatId);
         if (!context) throw new Error("This chat is not ready.");
-        return acpCommandsDesktop.listCommands({
+        const list = await acpCommandsDesktop.listCommands({
           ...context.scope,
           projectGeneration: context.commandProjectGeneration,
           expectedProjectionRevision: context.page.projectionRevision,
@@ -87,27 +61,43 @@ export function useSessionCommands(
           sessionId,
           runtimeEpoch,
         });
+        if (!disposed && reading === revision)
+          setLoad({ kind: "ready", owner, list });
+      } catch (error) {
+        if (!disposed && reading === revision)
+          setLoad({
+            kind: "error",
+            owner,
+            message:
+              error instanceof Error
+                ? error.message
+                : "The command list could not be read.",
+          });
+      }
+    };
+    // Subscribe before reading so a catalog update during the first read is
+    // observed. Only the latest read may publish; cleanup revokes them all.
+    void acpCommandsDesktop
+      .subscribeCommandChanges((event) => {
+        if (
+          event.sageAgentSessionId === sessionId &&
+          event.runtimeEpoch === runtimeEpoch
+        )
+          void read();
       })
       .then(
-        (list) => {
-          if (current) setLoad({ kind: "ready", owner, list });
+        (dispose) => {
+          if (disposed) return dispose();
+          unlisten = dispose;
+          void read();
         },
-        (error: unknown) => {
-          if (current)
-            setLoad({
-              kind: "error",
-              owner,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "The command list could not be read.",
-            });
-        },
+        () => void read(),
       );
     return () => {
-      current = false;
+      disposed = true;
+      unlisten?.();
     };
-  }, [boundChatId, listening, owner, revision]);
+  }, [boundChatId, owner]);
   if (!owner) return null;
   return load.kind === "loading" || load.owner === owner ? load : LOADING;
 }

@@ -401,7 +401,6 @@ impl AdapterBatch {
         Ok(builder.finish())
     }
 
-    #[cfg(test)]
     pub(crate) fn events(&self) -> &[AdapterEvent] {
         &self.events
     }

@@ -78,6 +78,15 @@ fn a_saved_chat_reopens_from_pis_session_file() {
         matches!(batch.events(), [AdapterEvent::SessionReady { id: ready, loaded: false }]
         if ready.external_id.as_str() == id)
     );
+    let query = runtime
+        .discover_commands()
+        .unwrap()
+        .expect("resume reads commands");
+    let query = deliver(&mut runtime, query);
+    assert_eq!(query["type"], "get_commands");
+    runtime
+        .ingest(&response(&query, json!({"commands":[]})), &Mapper)
+        .unwrap();
     running(&mut runtime);
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -48,6 +48,18 @@
   margin-left: var(--space-1);
 }
 
+.text-field-suggestions__footer button {
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.text-field-suggestions__footer button:disabled {
+  opacity: 0.6;
+}
+
 .text-field-suggestions__footer {
   flex: 0 0 auto;
   margin: var(--space-1) var(--space-2);
