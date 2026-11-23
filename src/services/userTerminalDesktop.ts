@@ -9,6 +9,9 @@ export const TERMINAL_MAX_COLUMNS = 500;
 export const TERMINAL_MAX_ROWS = 300;
 export const TERMINAL_INPUT_BYTES = 4_096;
 
+// Internal validation failures; users see `terminalErrorLabel`, never these.
+const invalid = (what: string) => new Error(`Invalid terminal ${what}`);
+
 function validateDimensions(columns: number, rows: number): void {
   if (
     !Number.isInteger(columns) ||
@@ -18,7 +21,7 @@ function validateDimensions(columns: number, rows: number): void {
     rows < 1 ||
     rows > TERMINAL_MAX_ROWS
   ) {
-    throw new Error("Invalid terminal dimensions");
+    throw invalid("dimensions");
   }
 }
 
@@ -70,14 +73,14 @@ const base64Pattern =
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Invalid terminal response");
+    throw invalid("response");
   }
   return value as Record<string, unknown>;
 }
 
 function decimal(value: unknown): string {
   if (typeof value !== "string" || !decimalPattern.test(value)) {
-    throw new Error("Invalid terminal cursor or revision");
+    throw invalid("cursor or revision");
   }
   return value;
 }
@@ -87,7 +90,7 @@ function validHandle(handle: UserTerminalHandle): void {
     !handlePattern.test(handle.sessionId) ||
     decimal(handle.revision) === "0"
   ) {
-    throw new Error("Invalid terminal handle");
+    throw invalid("handle");
   }
 }
 
@@ -114,7 +117,7 @@ export async function createUserTerminal(
   };
   validHandle(session);
   if (session.shellPath.length === 0 || session.shellPath.length > 32_767) {
-    throw new Error("Invalid terminal shell metadata");
+    throw invalid("shell metadata");
   }
   return session;
 }
@@ -165,7 +168,7 @@ export async function readUserTerminal(
     !base64Pattern.test(encoded) ||
     typeof response.truncated !== "boolean"
   ) {
-    throw new Error("Invalid terminal output page");
+    throw invalid("output page");
   }
   // The validated base64 is at most 64,000 characters: at most 48,000 bytes.
   return {

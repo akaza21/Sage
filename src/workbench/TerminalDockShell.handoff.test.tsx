@@ -164,11 +164,13 @@ async function handOff(input: string) {
   act(() => {
     settled = new Promise<void>((resolve, reject) => {
       useWorkbenchStore.setState({
-        terminalHandoff: (type) =>
-          type(input).then(resolve, (error: unknown) => {
+        terminalHandoff: (type) => {
+          useWorkbenchStore.setState({ terminalHandoff: null });
+          return type(input).then(resolve, (error: unknown) => {
             reject(error);
             throw error;
-          }),
+          });
+        },
       });
       useTerminalDockStore.getState().setVisible(true);
     });

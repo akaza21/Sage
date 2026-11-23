@@ -87,27 +87,32 @@ export function ComposerTerminalCatch({
       return;
     }
     const store = useWorkbenchStore;
+    const leave = () => {
+      if (store.getState().terminalHandoff === handoff)
+        store.setState({ terminalHandoff: null });
+    };
     let settled = false;
     const settle = (failure?: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (store.getState().terminalHandoff === handoff)
-        store.setState({ terminalHandoff: null });
+      leave();
       setOpening(false);
       if (failure) setError(failure);
       else setCaught((current) => (current === caught ? null : current));
     };
-    // The dock calls this with its new tab's keystroke writer and reports a
-    // failed write in its own status line too.
-    const handoff: TerminalHandoff = (type) =>
-      type(command).then(
+    // The dock calls this once with its new tab's keystroke writer, and reports
+    // a failed write in its own status line too.
+    const handoff: TerminalHandoff = (type) => {
+      leave();
+      return type(command).then(
         () => settle(),
         (error: unknown) => {
           settle(notTyped);
           throw error;
         },
       );
+    };
     const timer = setTimeout(() => settle(notOpened), 10_000);
     setOpening(true);
     setError("");

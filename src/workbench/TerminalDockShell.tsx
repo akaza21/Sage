@@ -158,9 +158,9 @@ export function TerminalDockShell({
       owner.entries.length >= TERMINAL_MAX_PER_CHAT
     )
       return;
-    // A pending handoff takes this tab; it stays pending while another opens.
+    // A pending handoff takes this tab and leaves the slot when called; it
+    // stays pending while another tab opens.
     const handoff = useWorkbenchStore.getState().terminalHandoff;
-    if (handoff) useWorkbenchStore.setState({ terminalHandoff: null });
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
