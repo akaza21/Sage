@@ -211,10 +211,10 @@ export function TerminalDockShell({
   useEffect(() => {
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
-    if (!visible) return;
+    if (!visible || (entries.length && !handoff)) return;
+    // A tab in flight holds `create`; one that lands changes `entries` first.
     queueMicrotask(() => {
-      if (owner.lifecycle === lifecycle && (handoff || !owner.entries.length))
-        void create();
+      if (owner.lifecycle === lifecycle) void create();
     });
   }, [create, visible, entries.length, handoff]);
 
