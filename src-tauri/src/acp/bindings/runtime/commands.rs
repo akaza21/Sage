@@ -23,7 +23,17 @@ impl NativeRuntime {
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let commands = self.0.available_commands();
         let result = if commands.take_refresh_request() {
-            self.0.refresh_commands()
+            let result = self.0.refresh_commands();
+            // A refused refresh stays asked for until the next discovery. A
+            // read already out answers it; a harness that cannot refresh never will.
+            let sent = matches!(
+                result,
+                Ok(Some(_)) | Err(AdapterRuntimeError::UnsupportedCommand)
+            );
+            if !sent && !self.0.commands_refreshing() {
+                commands.request_refresh();
+            }
+            result
         } else {
             self.0.discover_commands()
         };

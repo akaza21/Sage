@@ -209,6 +209,47 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
 }
 
 #[test]
+fn a_refresh_refused_during_a_turn_is_sent_at_the_next_discovery_once() {
+    let mut pi = fixture_runtime(1);
+    ready(&mut pi);
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(pi);
+    let catalog = |names: &[&str]| {
+        json!({"commands": names.iter().map(|name| json!({"name":name,"source":"extension"})).collect::<Vec<_>>()})
+    };
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    runtime
+        .ingest(&response(&query, catalog(&["review"])), &Mapper)
+        .unwrap();
+    let mut prompt = Prompt::new("prompt", "/review").unwrap();
+    prompt.command_revision = Some(runtime.available_commands().snapshot().revision);
+    let send = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "refresh-turn").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let send = deliver(&mut runtime, send);
+    runtime.available_commands().request_refresh();
+    assert!(runtime.discover_commands().unwrap().is_none());
+    runtime
+        .ingest(&response(&send, Value::Null), &Mapper)
+        .unwrap();
+    let refresh = runtime.discover_commands().unwrap().expect("retried");
+    let refresh = deliver(&mut runtime, refresh);
+    assert_eq!(refresh["type"], "get_commands");
+    runtime.available_commands().request_refresh();
+    assert!(runtime.discover_commands().unwrap().is_none());
+    runtime
+        .ingest(&response(&refresh, catalog(&["review", "deploy"])), &Mapper)
+        .unwrap();
+    let list = runtime.available_commands().snapshot();
+    list.validate(list.revision, "/deploy").unwrap();
+    assert!(runtime.discover_commands().unwrap().is_none());
+}
+
+#[test]
 fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     let mut runtime = PiRuntime::fixture(
         RuntimeEpoch::new(1).unwrap(),

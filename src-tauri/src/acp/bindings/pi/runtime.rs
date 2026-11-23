@@ -216,6 +216,9 @@ impl HarnessAdapter for PiRuntime {
         self.commands_discovered = false;
         self.discover_commands()
     }
+    fn commands_refreshing(&self) -> bool {
+        self.commands_pending
+    }
     fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.model_session_config()
     }
