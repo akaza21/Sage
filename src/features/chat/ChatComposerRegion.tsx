@@ -214,16 +214,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               Message agent
             </label>
             <span className="sr-only" id={descriptionId}>
-              {queueing ? "Queue" : "Send"} a message to the selected harness
-              and model
+              {`${queueing ? "Queue" : "Send"} a message to the selected harness and model`}
             </span>
             {!composerDisabled ? (
               <span className="sr-only" id={shortcutDescriptionId}>
-                {shortcutLabel} focuses the composer.{" "}
-                {queueing
-                  ? "Enter queues a message while this turn runs."
-                  : "Enter sends."}{" "}
-                Shift+Enter adds a new line.
+                {`${shortcutLabel} focuses the composer. ${
+                  queueing
+                    ? "Enter queues a message while this turn runs."
+                    : "Enter sends."
+                } Shift+Enter adds a new line.`}
               </span>
             ) : null}
             <div className="composer__input-area">

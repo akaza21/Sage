@@ -51,7 +51,7 @@ export function useComposerDictation(
     change.current = onTextChange;
   }, [onTextChange]);
   const cancel = useCallback(() => {
-    generation.current += 1;
+    ++generation.current;
     recording.current?.cancel();
     recording.current = null;
     setListening(false);
