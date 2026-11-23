@@ -170,22 +170,21 @@ async function handOff(input: string) {
   return settled;
 }
 
-it("writes each handoff to a new tab and closes the tab when the write fails or input is over the bound", async () => {
+it("writes each handoff to a new tab, keeps a tab whose write failed, and holds a handoff at capacity", async () => {
   await mount();
   await handOff(text);
   await handOff(text);
-  await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(2));
-  expect(
-    [...backend.sessions.values()].map((session) => session.input),
-  ).toEqual([text, text]);
-  await expect(handOff("x".repeat(4097))).rejects.toThrow("failed");
   backend.failWrite = true;
   await expect(handOff(text)).rejects.toThrow("not reading");
-  expect(backend.sessions.size).toBe(2);
   backend.failWrite = false;
-  await handOff(text);
-  await handOff(text);
-  await expect(handOff(text)).rejects.toThrow("limit");
+  await expect(handOff("x".repeat(4097))).rejects.toThrow("failed");
+  await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(4));
+  expect(
+    [...backend.sessions.values()].map((session) => session.input),
+  ).toEqual([text, text, "", ""]);
+  // At the tab limit the request stays pending for its sender to time out.
+  void handOff(text);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(useWorkbenchStore.getState().terminalHandoff?.text).toBe(text);
   expect(backend.sessions.size).toBe(4);
-  expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
 });

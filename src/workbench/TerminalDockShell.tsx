@@ -3,12 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePortalHost } from "../ui/usePortalHost";
 
 import { IconButton } from "../ui/IconButton";
-import { useWorkbenchStore, type TerminalHandoff } from "../app/store";
+import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
   createUserTerminal,
-  writeUserTerminal,
   terminalErrorLabel,
+  writeUserTerminal,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
@@ -150,65 +150,52 @@ export function TerminalDockShell({
     dismissWhenCreateSettles: false,
   });
 
-  const create = useCallback(
-    async (handoff?: TerminalHandoff | null) => {
-      const owner = ownerRef.current;
-      if (
-        owner.creating ||
-        owner.disposed ||
-        owner.entries.length >= TERMINAL_MAX_PER_CHAT
-      ) {
-        handoff?.finish(terminalErrorLabel({ code: "capacity" }));
+  const create = useCallback(async () => {
+    const owner = ownerRef.current;
+    if (
+      owner.creating ||
+      owner.disposed ||
+      owner.entries.length >= TERMINAL_MAX_PER_CHAT
+    )
+      return;
+    // A pending handoff takes this tab; it stays pending while another opens.
+    const handoff = useWorkbenchStore.getState().terminalHandoff;
+    if (handoff) useWorkbenchStore.setState({ terminalHandoff: null });
+    const lifecycle = owner.lifecycle;
+    owner.creating = true;
+    setCreating(true);
+    setMessage(null);
+    try {
+      const session = await createUserTerminal(
+        scope,
+        INITIAL_COLUMNS,
+        INITIAL_ROWS,
+      );
+      if (owner.lifecycle !== lifecycle) {
+        await closeUserTerminal(scope, session).catch(() => undefined);
         return;
       }
-      const lifecycle = owner.lifecycle;
-      owner.creating = true;
-      setCreating(true);
-      setMessage(null);
-      try {
-        const session = await createUserTerminal(
-          scope,
-          INITIAL_COLUMNS,
-          INITIAL_ROWS,
-        );
-        try {
-          // A handoff is typed through the keystroke write path, unterminated.
-          if (handoff && owner.lifecycle === lifecycle)
-            await writeUserTerminal(scope, session, handoff.text);
-        } catch (error) {
-          await closeUserTerminal(scope, session).catch(() => undefined);
-          throw error;
-        }
-        if (owner.lifecycle !== lifecycle) {
-          await closeUserTerminal(scope, session).catch(() => undefined);
-          handoff?.finish(terminalErrorLabel({ code: "invalid_scope" }));
-          return;
-        }
-        const next = [
-          ...owner.entries,
-          { session, ended: false, message: null },
-        ];
-        owner.entries = next;
-        owner.dismissWhenCreateSettles = false;
-        setEntries(next);
-        setActiveId(session.sessionId);
-        setCollapsed(false);
-        handoff?.finish();
-      } catch (error) {
-        const label = terminalErrorLabel(error);
-        if (owner.lifecycle === lifecycle) setMessage(label);
-        handoff?.finish(label);
-      } finally {
-        if (owner.lifecycle === lifecycle) {
-          owner.creating = false;
-          setCreating(false);
-          if (owner.dismissWhenCreateSettles && !owner.entries.length)
-            onClose();
-        }
+      const next = [...owner.entries, { session, ended: false, message: null }];
+      owner.entries = next;
+      owner.dismissWhenCreateSettles = false;
+      setEntries(next);
+      setActiveId(session.sessionId);
+      setCollapsed(false);
+      // Typed through the keystroke write path, unterminated, so it stays unrun.
+      if (handoff) await writeUserTerminal(scope, session, handoff.text);
+      handoff?.finish();
+    } catch (error) {
+      const label = terminalErrorLabel(error);
+      if (owner.lifecycle === lifecycle) setMessage(label);
+      handoff?.finish(label);
+    } finally {
+      if (owner.lifecycle === lifecycle) {
+        owner.creating = false;
+        setCreating(false);
+        if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
       }
-    },
-    [scope, onClose],
-  );
+    }
+  }, [scope, onClose]);
 
   useEffect(() => {
     const owner = ownerRef.current;
@@ -230,11 +217,8 @@ export function TerminalDockShell({
     const lifecycle = owner.lifecycle;
     if (!visible || (entries.length && !handoff)) return;
     void Promise.resolve().then(() => {
-      const pending = useWorkbenchStore.getState().terminalHandoff;
-      if (owner.lifecycle !== lifecycle || owner.creating) return;
-      // A pending handoff takes a new tab; otherwise a shown dock opens one.
-      if (pending) useWorkbenchStore.setState({ terminalHandoff: null });
-      if (pending || !owner.entries.length) void create(pending);
+      if (owner.lifecycle === lifecycle && (handoff || !owner.entries.length))
+        void create();
     });
   }, [create, visible, entries.length, handoff]);
 
@@ -328,7 +312,7 @@ export function TerminalDockShell({
           <IconButton
             aria-label="New terminal"
             disabled={creating || entries.length >= TERMINAL_MAX_PER_CHAT}
-            onClick={() => void create()}
+            onClick={create}
           >
             <Plus size={16} />
           </IconButton>

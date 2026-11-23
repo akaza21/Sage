@@ -71,15 +71,14 @@ export function ComposerTerminalCatch({
   if (!caught) return null;
   const { input, name, command } = caught;
   // Hands the Copy text to the lazy dock as typed, unrun input: one line, no
-  // control character, so nothing presses Enter. A request the dock has not
-  // taken in time fails; a taken one settles when its terminal does.
+  // control character, so nothing presses Enter. One that has not settled in
+  // time fails here, whether or not the dock took it.
   const openInTerminal = () => {
     if (/\p{Cc}/u.test(command)) {
       setError("This command cannot be typed into a terminal.");
       return;
     }
     const store = useWorkbenchStore;
-    const pending = () => store.getState().terminalHandoff === handoff;
     let settled = false;
     const handoff: TerminalHandoff = {
       text: command,
@@ -87,15 +86,14 @@ export function ComposerTerminalCatch({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (pending()) store.setState({ terminalHandoff: null });
+        if (store.getState().terminalHandoff === handoff)
+          store.setState({ terminalHandoff: null });
         setOpening(false);
         if (failure) setError(failure);
         else setCaught((current) => (current === caught ? null : current));
       },
     };
-    const timer = setTimeout(() => {
-      if (pending()) handoff.finish(notOpened);
-    }, 10_000);
+    const timer = setTimeout(() => handoff.finish(notOpened), 10_000);
     setOpening(true);
     setError("");
     store.getState().terminalHandoff?.finish(notOpened);
