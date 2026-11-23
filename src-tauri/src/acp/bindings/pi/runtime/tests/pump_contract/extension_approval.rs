@@ -127,6 +127,11 @@ async fn abandoned_extension_approval_is_cancelled_before_withdrawal_reaches_pi(
     )
     .await;
     pump.flush_one(&mut transport).unwrap();
+    assert_eq!(
+        transport.0[1],
+        json!({"type":"extension_ui_response","id":"withdraw-next",
+            "value":Refusal::Withdrawn.message()})
+    );
     pump.accept_delivered_answers(7).await.unwrap();
     settle(&mut pump).await;
     assert!(!pump.teardown_required());
