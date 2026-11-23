@@ -55,6 +55,9 @@ it("keeps the saved preference when saving fails", async () => {
     await screen.findByText("notification preference could not be saved"),
   ).toBeTruthy();
   expect(control().value).toBe("off");
+  const row = control().closest(".agent-settings__row")!;
+  expect(row).toHaveTextContent("notification preference could not be saved");
+  expect(row.querySelectorAll(".notice--warning")).toHaveLength(1);
 });
 
 it("does not offer a native preference outside the desktop app", () => {

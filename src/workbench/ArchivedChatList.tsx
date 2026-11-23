@@ -122,7 +122,6 @@ function ArchivedChatRow({
       {error ? (
         <ChatRowErrorNotice
           error={error}
-          title={displayTitle}
           focusAfterDismiss={(action) =>
             action === "restore" ? restoreRef.current : deleteRef.current
           }

@@ -129,23 +129,23 @@ test("settings loading and persistence errors stay in the content flow", async (
         expected: Number.parseFloat(getComputedStyle(nav.parentElement!).gap),
       }));
     expect(headerGap.actual).toBeCloseTo(headerGap.expected, 1);
-    for (const selector of [
-      ".settings-surface__loading",
-      ".settings-surface__error",
-    ]) {
-      const status = page.locator(selector);
-      await expect(status).toBeVisible();
-      const geometry = await status.evaluate((element) => ({
-        margin: Number.parseFloat(getComputedStyle(element).marginTop),
-        gap:
-          element.getBoundingClientRect().top -
-          element.previousElementSibling!.getBoundingClientRect().bottom,
-        overflow: element.scrollWidth - element.clientWidth,
-      }));
-      expect.soft(geometry.margin).toBeGreaterThanOrEqual(0);
-      expect.soft(geometry.gap).toBeGreaterThanOrEqual(0);
-      expect.soft(geometry.overflow).toBeLessThanOrEqual(1);
-    }
+    // One explanation: the persistence error replaces the loading status.
+    await expect(page.locator(".settings-surface__notice")).toHaveCount(1);
+    await expect(
+      page.getByText("Loading editor settings…", { exact: true }),
+    ).toHaveCount(0);
+    const status = page.locator(".settings-surface__notice");
+    await expect(status).toContainText("Settings could not be saved");
+    const geometry = await status.evaluate((element) => ({
+      margin: Number.parseFloat(getComputedStyle(element).marginTop),
+      gap:
+        element.getBoundingClientRect().top -
+        element.previousElementSibling!.getBoundingClientRect().bottom,
+      overflow: element.scrollWidth - element.clientWidth,
+    }));
+    expect.soft(geometry.margin).toBeGreaterThanOrEqual(0);
+    expect.soft(geometry.gap).toBeGreaterThanOrEqual(0);
+    expect.soft(geometry.overflow).toBeLessThanOrEqual(1);
   }
 });
 

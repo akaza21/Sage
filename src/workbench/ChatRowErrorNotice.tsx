@@ -1,34 +1,34 @@
 import type { ChatRowAction, ChatRowError } from "../app/chatArchiveSlice";
 import { useWorkbenchStore } from "../app/store";
-import { X } from "../ui/leanIcons";
+import { Notice } from "../ui/Notice";
 import { chatRowErrorId } from "./chatRowError";
 
 export default function ChatRowErrorNotice({
   error,
-  title,
   focusAfterDismiss,
 }: {
   error: ChatRowError;
-  title: string;
   focusAfterDismiss: (action: ChatRowAction) => HTMLElement | null;
 }) {
   const dismiss = useWorkbenchStore((state) => state.dismissChatRowError);
   return (
-    <p className="chat-row-error" role="alert">
-      <span id={chatRowErrorId(error.projectId, error.chatId)}>
-        {error.message}
-      </span>
-      <button
-        type="button"
-        aria-label={`Dismiss error for ${title}`}
-        title="Dismiss"
-        onClick={() => {
-          dismiss();
-          focusAfterDismiss(error.action)?.focus();
+    <div className="chat-row-error">
+      <Notice
+        identity={`chat-row:${error.projectId}:${error.chatId}:${error.action}`}
+        severity="warning"
+        message={
+          <span id={chatRowErrorId(error.projectId, error.chatId)}>
+            {error.message}
+          </span>
+        }
+        action={{
+          label: "Dismiss",
+          onClick: () => {
+            dismiss();
+            focusAfterDismiss(error.action)?.focus();
+          },
         }}
-      >
-        <X size={12} aria-hidden="true" />
-      </button>
-    </p>
+      />
+    </div>
   );
 }

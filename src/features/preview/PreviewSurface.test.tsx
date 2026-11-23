@@ -37,6 +37,7 @@ import type {
 } from "../../domain/previewProjection";
 import { browseSessionForOwner, setHarnessBrowseOwner } from "./harnessBrowse";
 import { PreviewSurface } from "./PreviewSurface";
+import { getWarning, queryWarning } from "../../test/notice";
 
 const initialState = useWorkbenchStore.getState();
 const owner = {
@@ -272,7 +273,7 @@ describe("PreviewSurface", () => {
       expect(screen.getByRole("button", { name: "Start" })).toBeEnabled(),
     );
     deliver(eventFor(owner, "2", "healthFailed", { failure: "healthTimeout" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(getWarning()).toHaveTextContent(
       "Preview did not become healthy before its deadline.",
     );
     expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
@@ -315,7 +316,7 @@ describe("PreviewSurface", () => {
     seedOwnedSession(owner);
     act(() => setHarnessBrowseOwner(owner, ["chat-a"]));
     staleStart.reject(new Error("stale start failure"));
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(queryWarning()).toBeNull());
   });
 
   it("dispatches Stop and cleanup only for the captured active target", async () => {
@@ -347,7 +348,7 @@ describe("PreviewSurface", () => {
     expect(previewBridge.stop).toHaveBeenCalledWith(target);
     expect(previewBridge.stop).toHaveBeenCalledTimes(2);
     staleStop.reject(new Error("stale stop failure"));
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(queryWarning()).toBeNull());
     view.unmount();
     expect(previewBridge.stop).toHaveBeenCalledTimes(2);
   });

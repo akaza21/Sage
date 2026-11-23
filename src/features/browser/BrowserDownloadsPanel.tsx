@@ -6,6 +6,7 @@ import {
   type BrowserDownload,
 } from "../../ports/nativeBrowserDownloadsPort";
 import { FileText, FolderOpen, X } from "../../ui/leanIcons";
+import { Notice } from "../../ui/Notice";
 import { progressLabel, sourceHost } from "./browserDownloadLabel";
 import { isActiveDownload } from "./useBrowserDownloads";
 
@@ -78,9 +79,11 @@ export default function BrowserDownloadsPanel({
         <p className="browser-downloads__empty">No downloads yet</p>
       )}
       {error ? (
-        <p className="browser-downloads__error" role="alert">
-          {error}
-        </p>
+        <Notice
+          identity={`downloads:${tabId}:action`}
+          severity="warning"
+          message={error}
+        />
       ) : null}
     </>
   );

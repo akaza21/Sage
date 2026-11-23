@@ -9,11 +9,7 @@
   padding: var(--space-2);
   color: var(--browser-muted-text);
 }
-.browser-downloads__error {
-  margin: 0;
-  padding: 0 var(--space-2);
-  color: var(--color-danger);
-}
+
 .browser-downloads__list {
   display: grid;
   gap: calc(var(--space-1) / 2);

@@ -11,6 +11,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { Notice } from "../../ui/Notice";
 import { validateNewFilePath } from "./newFileContract";
 
 function NewEntryControl({
@@ -50,6 +51,7 @@ function NewEntryControl({
   const titleId = `new-${kind}-title`;
   const previewId = `new-${kind}-preview`;
   const errorId = `new-${kind}-error`;
+  const fieldError = localError ?? nativeError;
 
   const close = useCallback(
     (restoreFocus = true, force = false) => {
@@ -157,6 +159,7 @@ function NewEntryControl({
               <input
                 autoFocus
                 aria-describedby={`${previewId} ${errorId}`}
+                aria-invalid={fieldError ? true : undefined}
                 disabled={inFlight}
                 maxLength={255}
                 value={basename}
@@ -167,11 +170,17 @@ function NewEntryControl({
                 }}
               />
             </label>
+            {fieldError ? (
+              <div id={errorId}>
+                <Notice
+                  identity={errorId}
+                  severity="warning"
+                  message={fieldError}
+                />
+              </div>
+            ) : null}
             <p id={previewId} className="new-file-dialog__preview">
               Path: {preview}
-            </p>
-            <p id={errorId} className="new-file-dialog__error" role="alert">
-              {localError ?? nativeError ?? ""}
             </p>
             <div className="dirty-dialog__actions">
               <button

@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { BrowserDevice } from "../../ports/nativeBrowserPort";
 import { BrowserSurface } from "./BrowserSurface";
+import { findWarning } from "../../test/notice";
 
 const browserStatus = vi.fn();
 const setDeviceInvoke = vi.fn(
@@ -320,7 +321,7 @@ it("reports a failed preset and closes the toolbar Rust confirmed reset", async 
   fireEvent.change(screen.getByRole("combobox", { name: "Dimensions:" }), {
     target: { value: "pixel-7" },
   });
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "device toolbar could not update",
   );
   await waitFor(() =>
@@ -348,9 +349,7 @@ it("reopens a failed close on the device Rust confirmed is still held", async ()
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "device reset was refused",
-  );
+  expect(await findWarning()).toHaveTextContent("device reset was refused");
   expect(
     await screen.findByRole("toolbar", { name: "Device toolbar" }),
   ).toBeVisible();
@@ -372,7 +371,7 @@ it("marks an unconfirmed reset instead of guessing which device is on", async ()
   fireEvent.change(screen.getByRole("combobox", { name: "Dimensions:" }), {
     target: { value: "pixel-7" },
   });
-  expect(await screen.findByRole("alert")).toHaveTextContent(
+  expect(await findWarning()).toHaveTextContent(
     "device toolbar could not update the page. The page may still be partly emulated",
   );
   expect(screen.getByRole("status")).toHaveTextContent("Unconfirmed");

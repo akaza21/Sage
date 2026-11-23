@@ -5,11 +5,9 @@ import type {
   PreviewPhase,
 } from "../../domain/previewProjection";
 import {
-  previewFailureLabel,
   previewFailureMessage,
   previewPhaseDetail,
   previewPhaseLabel,
-  previewPhaseTone,
 } from "./previewPresentation";
 
 describe("Preview presentation semantics", () => {
@@ -25,33 +23,28 @@ describe("Preview presentation semantics", () => {
       phases.map((phase) => ({
         detail: previewPhaseDetail(phase),
         label: previewPhaseLabel(phase),
-        tone: previewPhaseTone(phase),
       })),
     ).toEqual([
       {
         detail: "Finding runnable preview targets for this chat.",
         label: "Discovering targets",
-        tone: "starting",
       },
       {
         detail: "Launching the selected Preview process.",
         label: "Starting process",
-        tone: "starting",
       },
       {
         detail: "The process started. Waiting for its safe loopback address.",
         label: "Waiting for origin",
-        tone: "starting",
       },
       {
         detail: "The loopback server responded. Confirming it is ready.",
         label: "Checking health",
-        tone: "starting",
       },
     ]);
   });
 
-  it("maps every typed failure to distinct reason chrome and actionable detail", () => {
+  it("maps every typed failure to distinct actionable detail", () => {
     const failures: PreviewFailure[] = [
       "scriptMissing",
       "originNotLoopback",
@@ -63,43 +56,17 @@ describe("Preview presentation semantics", () => {
       "internal",
     ];
 
-    const presentations = failures.map((failure) => ({
-      detail: previewFailureMessage(failure),
-      label: previewFailureLabel(failure),
-    }));
-    expect(presentations).toEqual([
-      {
-        detail: "No runnable Preview script was found.",
-        label: "Missing script",
-      },
-      {
-        detail: "Preview did not provide a safe loopback address.",
-        label: "Unsafe origin",
-      },
-      {
-        detail: "Preview supports http:// loopback origins only.",
-        label: "Unsupported origin",
-      },
-      {
-        detail: "Preview did not start before its deadline.",
-        label: "Startup timeout",
-      },
-      {
-        detail: "Preview did not become healthy before its deadline.",
-        label: "Health timeout",
-      },
-      {
-        detail: "Preview exited before it became ready.",
-        label: "Early exit",
-      },
-      {
-        detail: "Another Preview operation is already active.",
-        label: "Ownership conflict",
-      },
-      { detail: "Preview failed safely.", label: "Internal error" },
+    const details = failures.map(previewFailureMessage);
+    expect(details).toEqual([
+      "No runnable Preview script was found.",
+      "Preview did not provide a safe loopback address.",
+      "Preview supports http:// loopback origins only.",
+      "Preview did not start before its deadline.",
+      "Preview did not become healthy before its deadline.",
+      "Preview exited before it became ready.",
+      "Another Preview operation is already active.",
+      "Preview failed safely.",
     ]);
-    expect(new Set(presentations.map(({ label }) => label)).size).toBe(
-      failures.length,
-    );
+    expect(new Set(details).size).toBe(failures.length);
   });
 });

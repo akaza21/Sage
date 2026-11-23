@@ -109,6 +109,7 @@ export function HarnessDiscoveryNotice({
     builds.push({
       identity: build,
       severity: "warning",
+      announce: false,
       message: `${harness.name} ${harness.boundVersion ?? ""}${newer ? " is newer than tested; tested features stay on." : " hasn't been tested with Sage yet, so some features are off."}`,
       action: {
         label: "Dismiss build notice",

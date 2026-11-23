@@ -130,6 +130,7 @@ export default function FileConflictNotice({
         <Notice
           identity={`file-conflict:${key}:${conflict.kind}`}
           severity="warning"
+          announce={false}
           message={deleted ? DELETED_FILE : CHANGED_FILE}
         />
         {editable && ready ? (

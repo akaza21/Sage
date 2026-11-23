@@ -22,6 +22,7 @@ import {
   browserCancelDownload,
   browserShowDownloadInFolder,
 } from "../../ports/nativeBrowserDownloadsPort";
+import { findWarning } from "../../test/notice";
 
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: vi.fn(async () => ({ showFullUrl: false })),
@@ -222,9 +223,7 @@ it("shows native history failure rather than claiming history is empty", async (
   fireEvent.click(
     await screen.findByRole("button", { name: "Manage browsing history" }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "History unavailable",
-  );
+  expect(await findWarning()).toHaveTextContent("History unavailable");
   expect(screen.queryByText("No history for this tab yet.")).toBeNull();
 });
 

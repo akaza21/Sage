@@ -353,7 +353,6 @@ export function ProjectChatNavigation({
                 render={(Notice) => (
                   <Notice
                     error={archiveError}
-                    title={displayTitle}
                     focusAfterDismiss={() =>
                       renameTriggerRefs.current.get(tab.id) ?? null
                     }

@@ -11,6 +11,7 @@ import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { PreviewProjectionOwner } from "../../domain/previewProjection";
+import { Notice } from "../../ui/Notice";
 import { applyBrowseIntent } from "./harnessBrowse";
 import {
   discoverPreviewTargets,
@@ -176,11 +177,21 @@ function PreviewSession({
       {error ||
       subscriptionError ||
       previewFailureMessage(projection?.failure) ? (
-        <p role="alert">
-          {error ??
+        <Notice
+          identity={`preview:${owner ? `${owner.projectId}:${owner.chatId}` : "none"}:${
+            error
+              ? "action"
+              : subscriptionError
+                ? "subscription"
+                : projection?.failure
+          }`}
+          severity="warning"
+          message={
+            error ??
             subscriptionError ??
-            previewFailureMessage(projection?.failure)}
-        </p>
+            previewFailureMessage(projection?.failure)
+          }
+        />
       ) : null}
       {discovered &&
       targets.length === 0 &&

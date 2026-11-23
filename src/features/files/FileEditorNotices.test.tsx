@@ -73,6 +73,11 @@ describe("FileEditorNotices", () => {
     );
     expect(screen.queryByText(/Disk content changed/)).toBeNull();
     expect(container.querySelector(".notice")).toHaveClass("notice--warning");
+    expect(container.querySelector(".notice")).toHaveAttribute(
+      "aria-live",
+      "off",
+    );
+    expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
     expect(screen.queryByRole("alert")).toBeNull();
     for (const name of ["Reload", "Keep mine", "Compare"])
       expect(within(conflict).getByRole("button", { name })).toBeEnabled();

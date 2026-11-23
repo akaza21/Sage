@@ -219,10 +219,7 @@
 
 .project-chat-edit__error {
   grid-column: 2 / -1;
-  padding: 2px 4px 4px;
-  color: var(--color-danger);
-  font-size: var(--font-size-xs);
-  line-height: 1.25;
+  padding: 0 4px;
 }
 
 .project-chat__copy {

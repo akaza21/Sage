@@ -78,30 +78,22 @@ test.describe("AV-01 projection-fixture browser routes", () => {
         page,
         phase === "health-failed" ? "healthFailed" : phase,
       );
-      await expect(
-        resources.getByText(
-          phase === "starting"
-            ? "Starting process"
-            : phase === "health-failed"
-              ? "Preview failed"
-              : "Preview exited",
-          { exact: true },
-        ),
-      ).toBeVisible();
-      if (phase !== "starting") {
-        const detail =
-          phase === "health-failed"
+      // One lifecycle notice; a failure warns once with its one restart.
+      const notice = resources.locator(".agent-preview-lifecycle .notice");
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toContainText(
+        phase === "starting"
+          ? "Launching the selected Preview process."
+          : phase === "health-failed"
             ? "Preview did not become healthy before its deadline."
-            : "Preview exited before it became ready.";
-        const reason =
-          phase === "health-failed" ? "Health timeout" : "Early exit";
-        await expect(
-          resources.getByText(reason, { exact: true }),
-        ).toBeVisible();
-        await expect(resources.getByText(detail, { exact: true })).toHaveCount(
-          1,
-        );
-      }
+            : "Preview exited before it became ready.",
+      );
+      await expect(notice).toHaveClass(
+        phase === "starting" ? /notice--info/ : /notice--warning/,
+      );
+      await expect(notice.getByRole("button")).toHaveCount(
+        phase === "starting" ? 0 : 1,
+      );
       await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: "Toggle terminal", exact: true }),
@@ -1196,7 +1188,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     await activeAddress.fill("https://example.com/");
     await activeAddress.press("Enter");
     await expect(
-      resources.getByRole("alert").filter({
+      resources.locator(".harness-browser__denied .notice--warning", {
         hasText: "Only loopback HTTP(S) with a port",
       }),
     ).toBeVisible();
