@@ -58,6 +58,60 @@ function presentation(projection: AcpChatPage) {
 const turnSection = (ordinal: number) =>
   screen.getByRole("region", { name: `Turn ${ordinal}` });
 
+it("completes without a placeholder row before the worked summary", async () => {
+  const projection = forkable(page("completed"));
+  projection.sessions[0].capabilities.rewind = {
+    effects: { conversation: true, files: false },
+    targets: "anyTurn",
+    forkAt: true,
+    onResume: false,
+  };
+  const turn = projection.turns[0];
+  turn.terminalAt = 5001;
+  turn.items = [
+    {
+      ...textItem(),
+      id: "prompt" as never,
+      ordinal: 0,
+      lifecycle: "completed",
+      payload: { role: "user", text: "Check this change" },
+    },
+    {
+      ...textItem(),
+      id: "thought" as never,
+      ordinal: 1,
+      kind: "thoughtSummary",
+      lifecycle: "streaming",
+      payload: { summary: "" },
+    },
+    {
+      ...textItem(),
+      id: "empty" as never,
+      ordinal: 2,
+      payload: { role: "assistant", text: "" },
+    },
+    { ...textItem(), ordinal: 3, lifecycle: "completed" },
+  ];
+  presentation(projection);
+  const prompt = await screen.findByText("Check this change");
+  const trigger = await within(turnSection(1)).findByRole("button", {
+    name: "Message actions",
+  });
+  const summary = within(turnSection(1))
+    .getByText("Worked for 5s")
+    .closest(".chat-transcript-work")!;
+  // The ellipsis is an intentional prompt action, never a standalone row.
+  const promptRow = prompt.closest(".acp-message")!.parentElement!;
+  expect(promptRow).toContainElement(trigger);
+  expect(promptRow.nextElementSibling).toBe(summary);
+  expect(
+    turnSection(1).querySelector('[data-activity-kind="thought"]'),
+  ).toBeNull();
+  expect(
+    turnSection(1).querySelector('.acp-message[data-item-id="empty"]'),
+  ).toBeNull();
+});
+
 it("keeps a copy row under every completed answer, the latest included (Codex s2/f0149)", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });

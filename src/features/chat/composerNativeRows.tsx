@@ -10,6 +10,7 @@ import { attachRefusal } from "./composerAttachRefusal";
 import { ComposerPlanAccess } from "./ComposerPlanAccess";
 import type { ComposerAddActionsProps } from "./ComposerAddActions";
 import type { ComposerNativeRow } from "./composerMenuSections";
+import { composerMenuRow } from "./composerMenuRow";
 
 export function composerNativeRows(
   props: ComposerAddActionsProps & {
@@ -54,25 +55,19 @@ export function composerNativeRows(
       id,
       section,
       label,
-      <button
-        type="button"
-        role="menuitem"
-        className="menu-item composer__add-action"
-        aria-label={label}
-        aria-description={description}
-        disabled={disabled}
-        tabIndex={-1}
-        onClick={() => {
-          if (closeMenu) onClose();
-          run();
-        }}
-      >
-        {icon}
-        <span>{label}</span>
-        {description ? (
-          <span className="composer__action-description">{description}</span>
-        ) : null}
-      </button>,
+      composerMenuRow(
+        {
+          "aria-label": label,
+          disabled,
+          onClick: () => {
+            if (closeMenu) onClose();
+            run();
+          },
+        },
+        label,
+        description,
+        icon,
+      ),
       description,
       control,
     );
@@ -86,26 +81,20 @@ export function composerNativeRows(
       "files",
       "addToMessage",
       "Files and folders",
-      <button
-        type="button"
-        role="menuitem"
-        className="menu-item composer__add-action"
-        aria-label="Files and folders"
-        aria-description={refusal ?? undefined}
-        aria-disabled={refusal !== null}
-        tabIndex={-1}
-        onClick={() => {
-          if (refusal !== null) return;
-          onClose();
-          props.onAttachFiles?.();
-        }}
-      >
-        <Paperclip size={14} aria-hidden="true" />
-        <span>Files and folders</span>
-        {refusal ? (
-          <span className="composer__action-description">{refusal}</span>
-        ) : null}
-      </button>,
+      composerMenuRow(
+        {
+          "aria-label": "Files and folders",
+          "aria-disabled": refusal !== null,
+          onClick: () => {
+            if (refusal !== null) return;
+            onClose();
+            props.onAttachFiles?.();
+          },
+        },
+        "Files and folders",
+        refusal ?? undefined,
+        <Paperclip size={14} aria-hidden="true" />,
+      ),
       refusal ?? undefined,
       undefined,
       // The new-chat draft stages files in its own native slot.
@@ -118,19 +107,16 @@ export function composerNativeRows(
       "images",
       "addToMessage",
       "Add images",
-      <button
-        type="button"
-        role="menuitem"
-        className="menu-item composer__add-action"
-        disabled={disabled || imageAction.disabled}
-        tabIndex={-1}
-        onClick={() => {
-          onClose();
-          imageAction.onChoose();
-        }}
-      >
-        <span>Add images</span>
-      </button>,
+      composerMenuRow(
+        {
+          disabled: disabled || imageAction.disabled,
+          onClick: () => {
+            onClose();
+            imageAction.onChoose();
+          },
+        },
+        "Add images",
+      ),
       undefined,
       undefined,
       "none",
@@ -216,32 +202,27 @@ export function composerNativeRows(
       id,
       section,
       label,
-      <button
-        type="button"
-        role={role}
-        className="menu-item composer__add-action"
-        aria-label={label}
-        aria-description={
-          [description, sessionConfig?.restored].filter(Boolean).join(" ") ||
-          undefined
-        }
-        aria-checked={checked}
-        disabled={disabled || pending}
-        tabIndex={-1}
-        title={sessionConfig?.restored}
-        data-restored={sessionConfig?.restored ? true : undefined}
-        onClick={() => {
-          onClose();
-          run();
-        }}
-      >
-        {icon}
-        <span>{text}</span>
-        {description ? (
-          <span className="composer__action-description">{description}</span>
-        ) : null}
-        {checked ? <Check size={14} aria-hidden="true" /> : null}
-      </button>,
+      composerMenuRow(
+        {
+          role,
+          "aria-label": label,
+          "aria-description":
+            [description, sessionConfig?.restored].filter(Boolean).join(" ") ||
+            undefined,
+          "aria-checked": checked,
+          disabled: disabled || pending,
+          title: sessionConfig?.restored,
+          "data-restored": sessionConfig?.restored ? true : undefined,
+          onClick: () => {
+            onClose();
+            run();
+          },
+        },
+        text,
+        description,
+        icon,
+        checked ? <Check size={14} aria-hidden="true" /> : null,
+      ),
       description,
     );
   for (const mode of sessionModeActions(sessionConfig)) {
@@ -298,7 +279,7 @@ export function composerNativeRows(
             value: !option.currentValue,
           }),
         option.name,
-        undefined,
+        option.description,
         undefined,
         "menuitemcheckbox",
       );

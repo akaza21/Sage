@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import type { ComposerMenuSection } from "./composerMenuSections";
+import { composerMenuRow } from "./composerMenuRow";
 
 export function ComposerMenuSections({
   sections,
@@ -75,22 +76,15 @@ function CommandRow({
         }
       }}
     >
-      <button
-        type="button"
-        role="menuitem"
-        className="menu-item composer__add-action"
-        tabIndex={-1}
-        disabled={disabled}
-        aria-label={`/${command.name}`}
-        onClick={() => onPick(command, input)}
-      >
-        <span>/{command.name}</span>
-        {command.description ? (
-          <span className="composer__action-description">
-            {command.description}
-          </span>
-        ) : null}
-      </button>
+      {composerMenuRow(
+        {
+          disabled,
+          "aria-label": `/${command.name}`,
+          onClick: () => onPick(command, input),
+        },
+        `/${command.name}`,
+        command.description ?? undefined,
+      )}
       {command.inputHint ? (
         <input
           type="text"
