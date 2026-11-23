@@ -17,28 +17,30 @@ const surface = (key: string, text: string) => ({
 });
 
 /**
- * A composer as the chat region drives it: sending clears the field, and a
- * failed send puts the prompt back only into an empty field.
+ * A composer as the chat region drives it: a send clears the field, a failed
+ * send puts the prompt back only into an empty field, and a blocked submit
+ * changes nothing.
  */
 function Composer({
   scope,
   offer,
   draft,
-  sendFails = false,
+  send = "sent",
 }: {
   scope: string;
   offer: unknown;
   draft: string;
-  sendFails?: boolean;
+  send?: "sent" | "fails" | "blocked";
 }) {
   const [text, setText] = useState(draft);
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
+        if (send === "blocked") return;
         const prompt = text;
         setText("");
-        if (sendFails)
+        if (send === "fails")
           queueMicrotask(() => setText((current) => current || prompt));
       }}
     >
@@ -59,48 +61,64 @@ function Composer({
 }
 
 const field = () => screen.getByLabelText<HTMLTextAreaElement>("Message agent");
+const banner = () =>
+  screen.queryByText(/The agent suggests text/, { selector: ".notice span" });
 
-it("never overwrites a draft with harness-suggested text", () => {
+it("never changes the composer by itself, even when a send fails mid-offer", async () => {
   const { rerender } = render(
-    <Composer scope="a" offer={surface("7-1", "Suggested")} draft="My draft" />,
+    <Composer
+      scope="a"
+      offer={surface("7-1", "Suggested")}
+      draft=""
+      send="fails"
+    />,
   );
-  expect(field().value).toBe("My draft");
-  fireEvent.click(screen.getByRole("button", { name: "Ignore suggestion" }));
-  expect(field().value).toBe("My draft");
-  expect(screen.queryByText(/The agent suggests text/)).toBeNull();
-  // The ignored offer stays answered once the draft is cleared.
-  fireEvent.change(field(), { target: { value: "" } });
-  rerender(<Composer scope="a" offer={surface("7-1", "Suggested")} draft="" />);
   expect(field().value).toBe("");
-  // A new offer fills only the now empty composer.
-  rerender(<Composer scope="a" offer={surface("7-2", "Second")} draft="" />);
+  expect(banner()).toBeTruthy();
+  fireEvent.change(field(), { target: { value: "My prompt" } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    // A new offer arrives while the send is in flight.
+    rerender(
+      <Composer
+        scope="a"
+        offer={surface("7-2", "Second")}
+        draft=""
+        send="fails"
+      />,
+    );
+  });
+  expect(field().value).toBe("My prompt");
+});
+
+it("applies an offer only when the user uses it, and ignoring keeps the draft", () => {
+  const { rerender } = render(
+    <Composer scope="b" offer={surface("7-1", "Suggested")} draft="" />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+  expect(field().value).toBe("Suggested");
+  expect(banner()).toBeNull();
+  rerender(<Composer scope="b" offer={surface("7-2", "Second")} draft="" />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Replace draft with suggestion" }),
+  );
   expect(field().value).toBe("Second");
-  expect(screen.getByRole("status").textContent).toBe(
-    "Suggested text added to the message.",
-  );
+  rerender(<Composer scope="b" offer={surface("7-3", "Third")} draft="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Ignore suggestion" }));
+  expect(field().value).toBe("Second");
+  expect(banner()).toBeNull();
 });
 
-it("keeps the composer empty after sending past an offer shown beside the draft", () => {
-  render(
-    <Composer scope="b" offer={surface("7-1", "Suggested")} draft="My draft" />,
-  );
-  expect(screen.getByText(/The agent suggests text/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(field().value).toBe("");
-  expect(screen.queryByText(/The agent suggests text/)).toBeNull();
-});
-
-it("restores the user's prompt, not the offer, when a send fails", async () => {
+it("keeps the offer when a submit is blocked", () => {
   render(
     <Composer
       scope="c"
       offer={surface("7-1", "Suggested")}
       draft="My draft"
-      sendFails
+      send="blocked"
     />,
   );
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
   expect(field().value).toBe("My draft");
+  expect(banner()).toBeTruthy();
 });
