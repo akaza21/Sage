@@ -14,6 +14,8 @@ const MAX_REPOSITORY_PATH_BYTES: usize = 32 * 1024;
 // seconds while the caller holds the Project transition lock. Past this, a
 // folder counts as unverified, which the lease already handles safely.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+// Shared by the target and every registered root, under project_transitions.
+pub(super) const TOTAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Where a folder sits: its canonical authority key and, when it is inside a
 /// Git working tree, the canonical key of that repository's common directory.
@@ -44,11 +46,20 @@ pub(super) struct Classification {
 }
 
 /// identify within PROBE_TIMEOUT; None when the folder can't be verified.
-pub(super) async fn identify_bounded(root: &Path) -> Option<FolderIdentity> {
-    tokio::time::timeout(PROBE_TIMEOUT, identify(root))
-        .await
-        .ok()?
-        .ok()
+pub(super) async fn identify_bounded(
+    root: &Path,
+    deadline: tokio::time::Instant,
+) -> Option<FolderIdentity> {
+    if tokio::time::Instant::now() >= deadline {
+        return None;
+    }
+    tokio::time::timeout_at(
+        deadline.min(tokio::time::Instant::now() + PROBE_TIMEOUT),
+        identify(root),
+    )
+    .await
+    .ok()?
+    .ok()
 }
 
 async fn identify(root: &Path) -> AppResult<FolderIdentity> {
@@ -109,16 +120,40 @@ async fn common_directory(working_tree: &Path) -> AppResult<OsString> {
 pub(super) async fn classify(
     target: &FolderIdentity,
     roots: &[(String, String)],
+    deadline: tokio::time::Instant,
 ) -> Classification {
+    classify_with(target, roots, deadline, |folder| {
+        let root = PathBuf::from(folder);
+        async move { identify_bounded(&root, deadline).await }
+    })
+    .await
+}
+
+async fn classify_with<F, Fut>(
+    target: &FolderIdentity,
+    roots: &[(String, String)],
+    deadline: tokio::time::Instant,
+    mut probe: F,
+) -> Classification
+where
+    F: FnMut(&str) -> Fut,
+    Fut: std::future::Future<Output = Option<FolderIdentity>>,
+{
     let mut seen = BTreeMap::<&str, Option<bool>>::new();
     let mut projects = BTreeMap::<&str, (Option<bool>, Vec<String>)>::new();
     for (project, folder) in roots {
         let shares = match seen.get(folder.as_str()) {
             Some(known) => *known,
             None => {
-                let known = identify_bounded(Path::new(folder))
-                    .await
-                    .map(|identity| identity.overlaps(target));
+                let known = if tokio::time::Instant::now() >= deadline {
+                    None
+                } else {
+                    tokio::time::timeout_at(deadline, probe(folder))
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|identity| identity.overlaps(target))
+                };
                 seen.insert(folder, known);
                 known
             }
@@ -144,4 +179,48 @@ pub(super) async fn classify(
         }
     }
     classification
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn total_deadline_keeps_verified_roots_and_leaves_the_rest_unverified() {
+        let root = sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-probe-deadline-{}", uuid::Uuid::new_v4()));
+        let target_root = root.join("target");
+        let unrelated_root = root.join("unrelated");
+        tokio::fs::create_dir_all(&target_root).await.unwrap();
+        tokio::fs::create_dir_all(&unrelated_root).await.unwrap();
+        let target = identify(&target_root).await.unwrap();
+        let unrelated = unrelated_root.to_str().unwrap().to_owned();
+        let roots = vec![
+            ("verified".into(), unrelated.clone()),
+            ("stalled".into(), "stalled-folder".into()),
+            ("unprobed".into(), target_root.to_str().unwrap().to_owned()),
+        ];
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            classify_with(&target, &roots, deadline, |folder| {
+                let root = PathBuf::from(folder);
+                async move {
+                    if root == Path::new("stalled-folder") {
+                        std::future::pending().await
+                    } else {
+                        identify(&root).await.ok()
+                    }
+                }
+            }),
+        )
+        .await
+        .expect("the whole pass is bounded even when a probe never returns");
+        assert_eq!(
+            result.unrelated,
+            BTreeMap::from([("verified".into(), vec![unrelated])])
+        );
+        assert_eq!(result.unverified, ["stalled", "unprobed"]);
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
 }

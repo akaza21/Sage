@@ -26,6 +26,6 @@ pub(crate) enum StoreError {
     #[error("a monotonic SQLite counter is exhausted")]
     CounterExhausted,
     /// Sage holds a repository lease (a branch switch) over this Project.
-    #[error("{}", crate::repository_mutation_guard::TURN_BLOCKED)]
-    RepositoryBusy,
+    #[error("{0}")]
+    RepositoryBusy(crate::repository_mutation_guard::RepositoryPause),
 }

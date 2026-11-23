@@ -48,6 +48,29 @@ pub(crate) const TURN_BLOCKED: &str =
 pub(crate) const LEASE_KEPT: &str =
     "Agent turns in this repository stay paused until Sage restarts.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RepositoryPause {
+    ChangingFiles,
+    UntilRestart,
+}
+
+impl RepositoryPause {
+    pub(crate) fn message(self) -> &'static str {
+        match self {
+            Self::ChangingFiles => TURN_BLOCKED,
+            Self::UntilRestart => {
+                "Can't start a turn while Sage is changing files in this repository. Agent turns in this repository stay paused until Sage restarts."
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for RepositoryPause {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
 // The registry admits at most this many roots; more means the store is
 // corrupt, and the guard fails closed rather than probe an unbounded set.
 const MAX_REGISTERED_ROOTS: i64 = MAX_PROJECTS * MAX_ROOTS_PER_PROJECT;
@@ -84,12 +107,12 @@ where
     result
 }
 
-/// True while a repository lease covers `project_id`. Turn openings call this
-/// inside their transaction on the store writer.
-pub(crate) fn project_leased(
+/// Why a repository lease pauses `project_id`, if any. Turn openings call
+/// this inside their transaction on the store writer; a kept lease wins.
+pub(crate) fn project_pause(
     connection: &rusqlite::Connection,
     project_id: &str,
-) -> rusqlite::Result<bool> {
+) -> rusqlite::Result<Option<RepositoryPause>> {
     let table: Option<i64> = connection
         .query_row(
             "SELECT 1 FROM temp.sqlite_master
@@ -99,12 +122,20 @@ pub(crate) fn project_leased(
         )
         .optional()?;
     if table.is_none() {
-        return Ok(false);
+        return Ok(None);
     }
     connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM temp.repository_leases WHERE project_id=?1)",
+        "SELECT MAX(kept) FROM temp.repository_leases WHERE project_id=?1",
         [project_id],
-        |row| row.get(0),
+        |row| {
+            Ok(row.get::<_, Option<bool>>(0)?.map(|kept| {
+                if kept {
+                    RepositoryPause::UntilRestart
+                } else {
+                    RepositoryPause::ChangingFiles
+                }
+            }))
+        },
     )
 }
 
@@ -117,15 +148,31 @@ struct Lease {
 impl Drop for Lease {
     fn drop(&mut self) {
         if self.kept {
+            if let Err(error) = self.database.connection().execute(
+                "UPDATE temp.repository_leases SET kept=1 WHERE lease_id=?1",
+                [&self.id],
+            ) {
+                tracing::error!(
+                    ?error,
+                    "repository lease restart hint could not be recorded"
+                );
+            }
             tracing::warn!("repository lease kept until restart: Git may still be running");
             return;
         }
         let connection = self.database.connection();
-        if let Err(error) = connection.execute(
-            "DELETE FROM temp.repository_leases WHERE lease_id=?1",
-            [&self.id],
-        ) {
-            tracing::error!(?error, "repository lease could not be cleared");
+        // Retry once so one transient DELETE failure does not keep a
+        // completed operation's Project paused until restart.
+        for attempt in 0..2 {
+            match connection.execute(
+                "DELETE FROM temp.repository_leases WHERE lease_id=?1",
+                [&self.id],
+            ) {
+                Ok(_) => break,
+                Err(error) => {
+                    tracing::error!(?error, attempt, "repository lease could not be cleared")
+                }
+            }
         }
     }
 }
@@ -135,7 +182,8 @@ async fn acquire(
     workspace: &Workspace,
     operation: RepositoryOperation,
 ) -> AppResult<Lease> {
-    let target = identity::identify_bounded(workspace.root())
+    let deadline = tokio::time::Instant::now() + identity::TOTAL_PROBE_TIMEOUT;
+    let target = identity::identify_bounded(workspace.root(), deadline)
         .await
         .ok_or_else(|| {
             AppError::InvalidRequest(
@@ -143,7 +191,7 @@ async fn acquire(
             )
         })?;
     let snapshot = registered_roots(&database.connection(), operation)?;
-    let classification = identity::classify(&target, &snapshot).await;
+    let classification = identity::classify(&target, &snapshot, deadline).await;
     let id = uuid::Uuid::new_v4().to_string();
     let mut connection = database.connection();
     let transaction = connection.transaction().db()?;
@@ -192,6 +240,7 @@ async fn acquire(
             "CREATE TEMP TABLE IF NOT EXISTS repository_leases(
                lease_id TEXT NOT NULL,
                project_id TEXT NOT NULL,
+               kept INTEGER NOT NULL DEFAULT 0,
                PRIMARY KEY (lease_id, project_id))",
         )
         .db()?;

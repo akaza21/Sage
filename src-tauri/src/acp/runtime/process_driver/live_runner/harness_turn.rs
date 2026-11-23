@@ -249,7 +249,7 @@ fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
                     | CoordinatorError::Scheduler(SchedulerError::TurnCapacity)
                     | CoordinatorError::Journal(JournalError::Store(
                         StoreError::Capacity { .. }
-                            | StoreError::RepositoryBusy
+                            | StoreError::RepositoryBusy(_)
                             | StoreError::Conflict {
                                 resource: "sessionEpoch"
                             }

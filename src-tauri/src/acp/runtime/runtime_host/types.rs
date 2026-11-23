@@ -62,6 +62,8 @@ pub(crate) enum HostOutcome {
 pub(crate) enum HostError {
     #[error("the bounded runtime-host queue is full")]
     Capacity,
+    #[error("{0}")]
+    RepositoryBusy(crate::repository_mutation_guard::RepositoryPause),
     #[error("the runtime host is unavailable")]
     Unavailable,
     #[error("the runtime-host intent is stale or foreign")]
