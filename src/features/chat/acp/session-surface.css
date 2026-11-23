@@ -59,6 +59,15 @@
   justify-self: start;
 }
 
+.acp-session-surface__preview p {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.acp-session-surface__preview [role="alert"] {
+  color: var(--color-warning);
+}
+
 .acp-session-surface__notice {
   margin: 0;
   color: var(--color-text-secondary);

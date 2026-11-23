@@ -288,6 +288,52 @@ test("T11b: files changed since the agent wrote them refuse a file rewind", asyn
   rewound(await sent(), {});
 });
 
+test("T11d: Undo confirms over Rewind's file preview, and a failed preview holds it", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  const failure = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "hot", "undo", {
+      files: ["src/app.ts", "src/app.test.ts"],
+      conflicts: [],
+    });
+    (window as { __failRewindPreview?: boolean }).__failRewindPreview = true;
+    return fixture.PREVIEW_FAILURE;
+  });
+  const surface = page.getByRole("region", { name: "Session activity" });
+  const undo = surface.getByRole("button", { name: "Undo last turn" });
+  const confirm = surface.getByRole("button", { name: "Confirm undo" });
+  const kinds = async () =>
+    (
+      (await page.evaluate(
+        () => (window as { __rewindControls?: unknown[] }).__rewindControls,
+      )) as { kind: string }[]
+    ).map((control) => control.kind);
+
+  await undo.click();
+  await expect(surface.getByRole("alert")).toContainText(failure);
+  await expect(confirm).toBeDisabled();
+  await confirm.click({ force: true });
+  expect(await kinds()).not.toContain("undoTurn");
+
+  // Leaving the confirm and opening it again asks for the preview again.
+  await page.evaluate(() => {
+    (window as { __failRewindPreview?: boolean }).__failRewindPreview = false;
+  });
+  await confirm.blur();
+  await undo.click();
+  await expect(surface.getByRole("listitem")).toHaveText([
+    "src/app.ts",
+    "src/app.test.ts",
+  ]);
+  await expect(surface.getByRole("alert")).toHaveCount(0);
+  await confirm.click();
+  await expect.poll(kinds).toContain("undoTurn");
+  expect(new Set(await kinds())).toEqual(new Set(["previewRewind", "undoTurn"]));
+});
+
 test("T22: a cold session's completed turns carry no ellipsis actions row", async ({
   page,
 }) => {

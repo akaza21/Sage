@@ -61,7 +61,7 @@
   font-size: 11px;
 }
 
-.fork-chat-dialog .rewind-files {
+.rewind-files {
   max-height: 160px;
   overflow: auto;
   margin: 0 var(--space-1) var(--space-2);

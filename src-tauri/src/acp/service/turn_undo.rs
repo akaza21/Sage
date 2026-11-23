@@ -140,16 +140,20 @@ impl AcpService {
                 .undo_cut(&external, turn_id.as_str())
                 .map_err(|error| error.to_string())
         };
-        let (command, summary, restored) = if files {
-            if !conversation_only || !file_rewind::offers_file_rewind(self.session_rewind(owner)?) {
-                return Err(SessionControlError::Unavailable);
-            }
-            let target = self.rewind_target(owner, &turn_id)?;
-            self.rewind_files_then_cut(
+        // An undo on a session that previews file rewinds restores its files
+        // through the same checked seam as a rewind with files.
+        let checked = file_rewind::offers_file_rewind(self.session_rewind(owner)?);
+        if files && (!conversation_only || !checked) {
+            return Err(SessionControlError::Unavailable);
+        }
+        let (command, summary, restored) = if files || (checked && !conversation_only) {
+            self.rewind_with_files(
                 owner,
-                &target,
+                &turn_id,
+                undo,
+                conversation_only,
                 &mut |control| self.session_control_reply(owner.clone(), control),
-                || self.prepare_rewind(owner, turn_id.clone(), undo, true, resolve_cut),
+                resolve_cut,
             )
             .await?
         } else {
@@ -192,6 +196,35 @@ impl AcpService {
             tracing::warn!(?refusal, "the runtime that undid a turn is not yet parked");
         }
         Ok(summary)
+    }
+
+    /// The one seam for Undo and Rewind that restore files: a dry run, the
+    /// conflict refusal, then stage, restore and cut before `turn_id`.
+    async fn rewind_with_files<E: std::fmt::Display>(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: &SageTurnId,
+        undo: TurnUndo,
+        conversation_only: bool,
+        control: file_rewind::Control<'_>,
+        resolve_cut: impl FnOnce() -> Result<Option<String>, E>,
+    ) -> Result<
+        (
+            crate::acp::store::TurnUndoneCommand,
+            Option<sage_acp_protocol::contract::SafeText<512>>,
+            bool,
+        ),
+        SessionControlError,
+    > {
+        let target = self.rewind_target(owner, turn_id)?;
+        let cut = sage_acp_protocol::session_control::SessionControl::RewindConversation {
+            before: target.clone(),
+        };
+        self.rewind_files_then_cut(owner, &target, control, || {
+            self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)
+                .map(|(command, _)| (command, cut))
+        })
+        .await
     }
 
     /// Resolve target eligibility only for the new conversation operation.

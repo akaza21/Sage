@@ -9,11 +9,17 @@ import type {
 import { acpDesktop } from "../../../src/services/acpDesktop";
 import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures";
 
-/** The native command boundary returns a rejection once, then commits the suffix. */
+/**
+ * The native command boundary returns a rejection once, then commits the
+ * suffix. `undo` offers any-turn rewind plus Undo on the latest turn, which
+ * the boundary accepts; while `window.__failRewindPreview` is set, a preview
+ * rejects with `PREVIEW_FAILURE`.
+ */
+export const PREVIEW_FAILURE = "Preview check failed.";
 export function installConversationRewindFixture(
   inPlace = true,
   residency: "hot" | "cold" = "hot",
-  availability: "all" | "latestTurn" = "all",
+  availability: "all" | "latestTurn" | "undo" = "all",
   files?: { files: string[]; conflicts: string[]; unverified?: string[] },
 ) {
   installTranscriptSelectionFixture(false, true);
@@ -53,9 +59,9 @@ export function installConversationRewindFixture(
     // Both turns stay conversation targets; a latest-turn offer acts only at
     // its undo turn, so the earlier prompt must show no trigger.
     sessionSurface:
-      availability === "latestTurn"
-        ? { activities: [], undoTurn: second.id }
-        : page.sessionSurface,
+      availability === "all"
+        ? page.sessionSurface
+        : { activities: [], undoTurn: second.id },
     sessions: page.sessions.map((session) => ({
       ...session,
       residency,
@@ -95,6 +101,12 @@ export function installConversationRewindFixture(
         if (command !== "control_acp_session") return null;
         const control = args.request?.control;
         sent.push(control);
+        if (
+          control?.kind === "previewRewind" &&
+          (window as { __failRewindPreview?: boolean }).__failRewindPreview
+        )
+          throw { kind: "rejected", message: PREVIEW_FAILURE };
+        if (control?.kind === "undoTurn") return {};
         if (control?.kind === "previewRewind")
           return files
             ? {
