@@ -28,13 +28,13 @@ export function ComposerTurnControl({
   const notePress = () => (pressedStop.current = dictation.listening);
   const reason = (sendDisabled && disabledReason) || undefined;
   const canCancel = !cancelDisabled && !!onCancelTurn;
+  // Without a usable Cancel, typed text keeps Send so a click queues it.
+  const cancel = activeTurn && (canCancel || !hasContent);
   const [name, Icon, action]: [
     "cancel" | "dictate" | "send",
     typeof Square,
     ButtonHTMLAttributes<HTMLButtonElement>,
-  ] =
-    // Without a usable Cancel, typed text keeps Send so a click queues it.
-    activeTurn && (canCancel || !hasContent)
+  ] = cancel
     ? [
         "cancel",
         Square,
