@@ -314,6 +314,10 @@ pub struct SessionSurfaceView {
     /// stay.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub undo_keeps_files: bool,
+    /// The session previews file rewinds, so Undo restores files only after
+    /// the same dry run and conflict check as Rewind.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub undo_previews_files: bool,
 }
 
 /// Its key is a digest of the harness's
@@ -349,6 +353,7 @@ impl SessionSurface {
             chrome: (live && !self.chrome.is_empty()).then(|| self.chrome.view(self.live_epoch)),
             undo_turn: None,
             undo_keeps_files: false,
+            undo_previews_files: false,
         }
     }
 

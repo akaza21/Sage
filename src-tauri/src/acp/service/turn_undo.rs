@@ -2,6 +2,9 @@ use super::{file_rewind, *};
 use crate::acp::{ipc::ProjectionChangedV1, store::UndoneThread, turn_undo::stage_turn_undo};
 use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
+mod route;
+use route::Rewind;
+
 impl AcpService {
     /// How the running session `owner` would undo `turn`, its chat's latest
     /// visible finished turn, or `None` when it cannot.
@@ -63,12 +66,15 @@ impl AcpService {
     /// Persist the resolved plan before native IO, then settle the effect and
     /// visibility in one store transaction. An unknown result keeps the intent
     /// pending and hands the exact runtime to the existing recovery machinery.
+    /// With `keep_files`, only the conversation is cut and files stay.
     pub(crate) async fn undo_turn(
         &self,
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
+        keep_files: bool,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
-        self.apply_rewind(owner, turn_id, false, false).await
+        self.apply_rewind(owner, turn_id, Rewind::Undo { keep_files })
+            .await
     }
 
     /// With `files`, the files changed since `before` are restored first,
@@ -79,15 +85,15 @@ impl AcpService {
         before: SageTurnId,
         files: bool,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
-        self.apply_rewind(owner, before, true, files).await
+        self.apply_rewind(owner, before, Rewind::Conversation { files })
+            .await
     }
 
     async fn apply_rewind(
         &self,
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
-        mut conversation_only: bool,
-        files: bool,
+        mut mode: Rewind,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
         let claim = self.claim_undo_lane(owner)?;
         crate::acp::store::turn_undo::intent::ensure_settled(
@@ -97,7 +103,7 @@ impl AcpService {
         )
         .map_err(|_| SessionControlError::RecoveryRequired)?;
 
-        let undo = if conversation_only {
+        let undo = if let Rewind::Conversation { files } = mode {
             let json: String = self
                 .database
                 .connection()
@@ -110,7 +116,11 @@ impl AcpService {
             let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
                 serde_json::from_str(&json).map_err(|_| SessionControlError::Unavailable)?;
             if capabilities.rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
-                conversation_only = false;
+                // A latest-turn offer rewinds by undo; with files it stays
+                // unavailable (see `rewind_turn`).
+                if !files {
+                    mode = Rewind::Undo { keep_files: false };
+                }
                 self.undoable_turn(owner, &turn_id)
                     .map_err(|_| SessionControlError::RecoveryRequired)?
                     .ok_or(SessionControlError::Unavailable)?
@@ -140,26 +150,16 @@ impl AcpService {
                 .undo_cut(&external, turn_id.as_str())
                 .map_err(|error| error.to_string())
         };
-        let (command, summary, restored) = if files {
-            if !conversation_only || !file_rewind::offers_file_rewind(self.session_rewind(owner)?) {
-                return Err(SessionControlError::Unavailable);
-            }
-            let target = self.rewind_target(owner, &turn_id)?;
-            self.rewind_files_then_cut(
+        let (command, summary, restored) = self
+            .rewind_turn(
                 owner,
-                &target,
+                &turn_id,
+                undo,
+                mode,
                 &mut |control| self.session_control_reply(owner.clone(), control),
-                || self.prepare_rewind(owner, turn_id.clone(), undo, true, resolve_cut),
+                resolve_cut,
             )
-            .await?
-        } else {
-            let (command, control) =
-                self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
-            match self.control_session(owner.clone(), control) {
-                Ok(summary) => (command, summary, false),
-                Err(error) => return Err(self.abandon_staged(owner, &command, error)),
-            }
-        };
+            .await?;
         let recorded = self
             .database
             .write_connection()

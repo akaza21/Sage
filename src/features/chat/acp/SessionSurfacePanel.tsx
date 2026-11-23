@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
+import { FileRewindPreview, useFileRewindPreview } from "../FileRewindPreview";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
 
@@ -19,10 +20,35 @@ export function SessionSurfacePanel({
 }) {
   const { status, run } = useSessionControl(chatId || undefined);
   const [confirming, setConfirming] = useState(false);
+  // Each confirm asks the native side again for what the undo would restore.
+  const [asked, setAsked] = useState(0);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
   const keepsFiles = decoded?.undoKeepsFiles === true;
   const undoTurn = decoded?.undoTurn;
+  // Only a session whose rewinds preview files is asked for one; any other
+  // undoes as its harness offers.
+  const previews = decoded?.undoPreviewsFiles;
+  const found = useFileRewindPreview(
+    chatId,
+    confirming && previews ? undoTurn : null,
+    asked,
+  );
+  // Files restore only once the preview lists nothing they would keep; a
+  // failed check or a changed file leaves the conversation-only undo.
+  const held =
+    confirming &&
+    previews &&
+    !(typeof found === "object" && (!!found?.caveat || !found?.fileCount));
+  const undo = (keepFiles?: true) => {
+    setConfirming(false);
+    void run(
+      { kind: "undoTurn", turnId: undoTurn!, ...(keepFiles && { keepFiles }) },
+      keepsFiles || keepFiles
+        ? "Last turn removed; files unchanged"
+        : "Changes undone",
+    );
+  };
   if (!activities.length && !undoTurn) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
@@ -60,29 +86,49 @@ export function SessionSurfacePanel({
         </ul>
       ) : null}
       {undoTurn ? (
-        <button
-          type="button"
-          className="acp-session-surface__undo"
-          disabled={status.kind === "pending"}
-          title={
-            keepsFiles
-              ? "Remove the last turn from the chat; files stay as they are"
-              : "Remove the last turn from the chat and restore the files it changed"
-          }
-          onClick={() => {
-            if (!confirming) return setConfirming(true);
-            setConfirming(false);
-            void run(
-              { kind: "undoTurn", turnId: undoTurn },
-              keepsFiles
-                ? "Last turn removed; files unchanged"
-                : "Changes undone",
-            );
+        <div
+          className="acp-session-surface__undo-group"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget))
+              setConfirming(false);
           }}
-          onBlur={() => setConfirming(false)}
         >
-          {confirming ? "Confirm undo" : "Undo last turn"}
-        </button>
+          <button
+            type="button"
+            className="acp-session-surface__undo"
+            disabled={status.kind === "pending"}
+            // Not `disabled`: that would drop focus and end the confirm.
+            aria-disabled={held || undefined}
+            title={
+              keepsFiles
+                ? "Remove the last turn from the chat; files stay as they are"
+                : "Remove the last turn from the chat and restore the files it changed"
+            }
+            onClick={() => {
+              if (!confirming) {
+                setAsked((count) => count + 1);
+                return setConfirming(true);
+              }
+              if (!held) undo();
+            }}
+          >
+            {confirming ? "Confirm undo" : "Undo last turn"}
+          </button>
+          {confirming ? (
+            <div className="acp-session-surface__preview">
+              <FileRewindPreview found={found} />
+              {held && found !== undefined ? (
+                <button
+                  type="button"
+                  className="acp-session-surface__undo"
+                  onClick={() => undo(true)}
+                >
+                  Undo conversation only; files stay
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       {status.kind === "done" || status.kind === "failed" ? (
         <p

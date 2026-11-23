@@ -49,6 +49,7 @@ export function decodeSessionSurface(
       ? {
           undoTurn: value.undoTurn,
           ...(value.undoKeepsFiles === true ? { undoKeepsFiles: true } : {}),
+          ...(value.undoPreviewsFiles === true && { undoPreviewsFiles: true }),
         }
       : {}),
   };
@@ -56,7 +57,7 @@ export function decodeSessionSurface(
 
 export type SessionControlIntent =
   | { kind: "rewindConversation"; before: string; files?: true }
-  | { kind: "undoTurn"; turnId: string }
+  | { kind: "undoTurn"; turnId: string; keepFiles?: true }
   | { kind: "stopActivity"; activityKey: string };
 
 export interface SessionControlRequest {

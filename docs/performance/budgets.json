@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 7756,
+        "maxGzipBytes": 7456,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B, CSS 698 B; 404 B of its 8 KB cap went to T6."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B went to T6, 300 B moved to ConversationActions (T11d)."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
@@ -592,9 +592,9 @@
       },
       {
         "entry": "src/features/chat/ConversationActions.tsx",
-        "maxGzipBytes": 4400,
+        "maxGzipBytes": 4700,
         "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork menus, confirmations, legacy last-turn controls and inherited fork history. Measured JS 3848 B; 600 B of cap moved to SessionNoticeStrip. Dialogs retain no hidden DOM."
+        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo with its file preview, fork history. Measured JS 4625 B; 600 B moved to SessionNoticeStrip, 300 B moved from QuickOpen (T11d)."
       }
     ],
     "windowsInstallerMb": 45,
