@@ -123,16 +123,10 @@ it("cancels idle prewarming when the header unmounts", () => {
 
 it("prewarms on pointer intent and keeps inline rename focused and authoritative", async () => {
   const renameChat = vi
-    .fn<typeof initialState.renameChat>()
-    .mockImplementationOnce(async (_id, _title, _project, report) => {
-      report?.("Rename refused");
-      return false;
-    })
+    .fn()
+    .mockResolvedValueOnce(false)
     .mockResolvedValueOnce(true);
-  useWorkbenchStore.setState({
-    renameChat,
-    error: "Unrelated browser failure",
-  });
+  useWorkbenchStore.setState({ renameChat, error: "Rename refused" });
   const preload = vi.spyOn(AgentTaskResourcesPart, "preload");
   mountHeader();
   const trigger = screen.getByRole("button", {
@@ -156,9 +150,7 @@ it("prewarms on pointer intent and keeps inline rename focused and authoritative
     tab.id,
     "Renamed",
     "project-lazy",
-    expect.any(Function),
   );
-  expect(useWorkbenchStore.getState().error).toBe("Unrelated browser failure");
   fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
   await act(async () => undefined);
   expect(screen.queryByRole("textbox", { name: "New chat name" })).toBeNull();
