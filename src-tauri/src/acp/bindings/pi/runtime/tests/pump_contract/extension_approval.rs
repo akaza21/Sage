@@ -20,14 +20,18 @@ fn adapter() -> ObservedPi {
 }
 
 async fn prepare(pump: &mut Pump, args: Value) -> Value {
+    prepare_as(pump, "extension-1", "extension-approval", args).await
+}
+
+async fn prepare_as(pump: &mut Pump, tool_id: &str, id: &str, args: Value) -> Value {
     push(
         pump,
         json!({"type":"tool_execution_start",
-        "toolCallId":"extension-1","toolName":"fixture_echo","args":args}),
+        "toolCallId":tool_id,"toolName":"fixture_echo","args":args}),
     )
     .await;
-    let request = json!({"type":"extension_ui_request","method":"input","id":"extension-approval",
-        "title":"sage.pi.prepare.v1","placeholder":json!({"version":1,"toolCallId":"extension-1",
+    let request = json!({"type":"extension_ui_request","method":"input","id":id,
+        "title":"sage.pi.prepare.v1","placeholder":json!({"version":1,"toolCallId":tool_id,
         "tool":"fixture_echo","kind":"extension","args":args}).to_string()});
     push(pump, request.clone()).await;
     request
@@ -37,6 +41,101 @@ async fn push(pump: &mut Pump, value: Value) {
     for chunk in line(value).chunks(8192) {
         pump.push_stdout_chunk(chunk, 4).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn abandoned_extension_approval_is_cancelled_before_withdrawal_reaches_pi() {
+    let fixture = Fixture::new();
+    let mut pump = fixture.pump(adapter());
+    start(&mut pump).await;
+    prepare(&mut pump, json!({"text":"nested-held"})).await;
+    let request_id: String = fixture
+        .database
+        .connection()
+        .query_row("SELECT id FROM server_requests", [], |row| row.get(0))
+        .unwrap();
+    let request_id = SageServerRequestId::parse(request_id).unwrap();
+    push(
+        &mut pump,
+        json!({"type":"extension_ui_request","method":"input","id":"withdraw-held",
+            "title":"sage.pi.withdraw.v1","placeholder":"extension-1"}),
+    )
+    .await;
+    {
+        let connection = fixture.database.connection();
+        let state: String = connection
+            .query_row("SELECT state FROM server_requests", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(state, "cancelled");
+        let page = load_chat_page(&connection, owner().project_id, owner().chat_id, None).unwrap();
+        assert!(
+            page.turns.as_slice()[0]
+                .items
+                .as_slice()
+                .iter()
+                .any(|item| {
+                    matches!(
+                        &item.content,
+                        crate::acp::projection::ItemContent::PermissionRequest { state, .. }
+                            if *state == sage_acp_protocol::lifecycle::ServerRequestState::Cancelled
+                    )
+                })
+        );
+    }
+    // A user decision already in flight cannot revive the withdrawn approval.
+    pump.resolve_permission(&request_id, PermissionDecision::AllowOnce, 5)
+        .await
+        .unwrap();
+    let mut transport = Capture::default();
+    pump.flush_one(&mut transport).unwrap();
+    assert_eq!(
+        transport.0,
+        [json!({"type":"extension_ui_response","id":"withdraw-held",
+            "value":Refusal::Withdrawn.message()})]
+    );
+    assert!(!pump.settle_written_permission(6).await.unwrap());
+    pump.accept_delivered_answers(6).await.unwrap();
+    push(
+        &mut pump,
+        json!({"type":"tool_execution_end","toolCallId":"extension-1",
+            "toolName":"fixture_echo","isError":true,
+            "result":{"content":[{"type":"text","text":Refusal::Withdrawn.message()}]}}),
+    )
+    .await;
+    // The next real prepare gets a fresh approval slot in the same turn.
+    prepare_as(
+        &mut pump,
+        "extension-2",
+        "extension-next",
+        json!({"text":"nested-after-timeout"}),
+    )
+    .await;
+    let states: Vec<String> = fixture
+        .database
+        .connection()
+        .prepare("SELECT state FROM server_requests ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(states, ["cancelled", "received"]);
+    push(
+        &mut pump,
+        json!({"type":"extension_ui_request","method":"input","id":"withdraw-next",
+            "title":"sage.pi.withdraw.v1","placeholder":"extension-2"}),
+    )
+    .await;
+    pump.flush_one(&mut transport).unwrap();
+    assert_eq!(
+        transport.0[1],
+        json!({"type":"extension_ui_response","id":"withdraw-next",
+            "value":Refusal::Withdrawn.message()})
+    );
+    pump.accept_delivered_answers(7).await.unwrap();
+    settle(&mut pump).await;
+    assert!(!pump.teardown_required());
+    fixture.finish().await;
 }
 
 #[tokio::test]
