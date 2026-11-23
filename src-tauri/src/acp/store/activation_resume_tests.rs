@@ -378,16 +378,33 @@ fn capabilities_cannot_change_without_a_resume_commit() {
             .contains("agent session identity is immutable")
     );
     complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
-    let error = connection
+    // A ready session may refresh only its capabilities: never with a state
+    // or native-session change, another identity column, or invalid JSON.
+    for assignment in [
+        "capabilities_json=?1,state='active'",
+        "capabilities_json=?1,external_session_id='other-thread'",
+        "capabilities_json=?1,model_id='other-model'",
+        "capabilities_json=substr(?1,2)",
+    ] {
+        let error = connection
+            .execute(
+                &format!("UPDATE agent_sessions SET {assignment} WHERE id=?2"),
+                [OLD_CODEX, session.as_str()],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("agent session identity is immutable"),
+            "{assignment}: {error}"
+        );
+        assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
+    }
+    connection
         .execute(
             "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
             [OLD_CODEX, session.as_str()],
         )
-        .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("agent session identity is immutable")
-    );
-    assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
+        .unwrap();
+    assert_eq!(stored_capabilities(&connection, &session), OLD_CODEX);
 }
