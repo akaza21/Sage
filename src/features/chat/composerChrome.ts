@@ -56,12 +56,9 @@ export function useComposerDictation(
     recording.current = null;
     setListening(false);
   }, []);
-  useEffect(() => {
-    if (suspended) queueMicrotask(cancel);
-  }, [cancel, suspended]);
   useEffect(() => () => cancel(), [cancel, scope]);
   useEffect(() => {
-    if (suspended) return;
+    if (suspended) return queueMicrotask(cancel);
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
   }, [cancel, suspended]);
@@ -74,9 +71,9 @@ export function useComposerDictation(
     const request = generation.current;
     setError(null);
     try {
-      const { createDictation } = await import("./composerDictationRuntime");
+      const runtime = await import("./composerDictationRuntime");
       if (generation.current !== request) return;
-      const current = createDictation({
+      const current = runtime.createDictation({
         sequence: request,
         text,
         input: inputRef.current,
@@ -108,8 +105,7 @@ export function useComposerDictation(
     }
   };
   const stop = () => {
-    generation.current += 1;
-    const epoch = generation.current;
+    const epoch = ++generation.current;
     recording.current?.stop((message) => {
       if (generation.current === epoch) setError(message);
     });
