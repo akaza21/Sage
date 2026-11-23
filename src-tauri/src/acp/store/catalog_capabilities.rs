@@ -29,7 +29,7 @@ pub(crate) fn refresh_catalog_capabilities(
     );
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let stored: Option<String> = transaction
+    let stored: String = transaction
         .query_row(
             "SELECT s.capabilities_json FROM agent_sessions s
              JOIN session_runtime_epochs e ON e.session_id=s.id
