@@ -3,7 +3,6 @@ import {
   type TerminalDockProjection,
 } from "./terminalDockProjection";
 import { useTerminalDockStore } from "../app/terminalDockStore";
-import { useWorkbenchStore } from "../app/store";
 import {
   formatKeymapChords,
   keymapBinding,
@@ -82,20 +81,11 @@ export function connectTerminalDock(
   const unsubscribe = useTerminalDockStore.subscribe((state, previous) => {
     if (state.visible !== previous.visible) publish();
   });
-  // A new terminal handoff opens the dock, which then takes the request.
-  const unsubscribeHandoff = useWorkbenchStore.subscribe((state, previous) => {
-    if (
-      state.terminalHandoff &&
-      state.terminalHandoff !== previous.terminalHandoff
-    )
-      setOpen(true);
-  });
   publish();
   void useTerminalDockStore.getState().restore();
   return () => {
     window.removeEventListener("keydown", keyDown, true);
     unsubscribe();
-    unsubscribeHandoff();
     onChange(DISCONNECTED_TERMINAL);
   };
 }

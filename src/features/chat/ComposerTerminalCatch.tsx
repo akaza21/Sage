@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore, type TerminalHandoff } from "../../app/store";
-import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
@@ -33,12 +39,13 @@ export function ComposerTerminalCatch({
   const [caught, setCaught] = useState<Caught | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
+  const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
   )
     ? "Open this chat's project first."
-    : !isTauriRuntime()
-      ? "Terminals need the desktop app."
+    : !tools.terminalAvailable
+      ? "The terminal is not available here."
       : undefined;
   const message =
     caught &&
@@ -98,6 +105,8 @@ export function ComposerTerminalCatch({
     setError("");
     store.getState().terminalHandoff?.finish(notOpened);
     store.setState({ terminalHandoff: handoff });
+    // The Agent tools seam opens the dock; the dock takes the request.
+    tools.launch("terminal", chatId);
   };
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a

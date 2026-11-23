@@ -16,6 +16,8 @@ import {
 } from "../features/chat/ComposerTerminalCatch";
 import TerminalDockForWorkbench from "./TerminalDockShell";
 import { connectTerminalDock } from "./terminalDockCommands";
+import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
+import { AgentToolsProvider } from "./AgentToolsProvider";
 
 const backend = vi.hoisted(() => ({
   sessions: new Map<string, { scope: unknown; input: string }>(),
@@ -93,12 +95,14 @@ async function mount() {
     return (
       <>
         <textarea ref={fieldRef} defaultValue="/hooks" />
-        <ComposerTerminalCatch
-          chatId="chat-1"
-          fieldRef={fieldRef}
-          onAnnounce={setStatus}
-          text="/hooks"
-        />
+        <AgentToolsProvider onOpenTerminal={() => terminal.open()}>
+          <ComposerTerminalCatch
+            chatId="chat-1"
+            fieldRef={fieldRef}
+            onAnnounce={setStatus}
+            text="/hooks"
+          />
+        </AgentToolsProvider>
         <span role="status">{status}</span>
         <TerminalDockForWorkbench
           container={document.body}
@@ -110,9 +114,10 @@ async function mount() {
       </>
     );
   }
+  let terminal = DISCONNECTED_TERMINAL;
   disconnect = connectTerminalDock(
     () => false,
-    () => undefined,
+    (projection) => (terminal = projection),
   );
   render(<Host />);
   await waitFor(() => expect(useTerminalDockStore.getState().ready).toBe(true));
@@ -152,8 +157,8 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
 });
 
-// Stores a request in the workbench slot, as the composer does; the dock
-// controller opens the dock and the shell takes it.
+// Stores a request in the workbench slot and shows the dock, as the composer
+// does through the Agent tools seam; the shell takes it.
 async function handOff(input: string) {
   let settled!: Promise<void>;
   act(() => {
@@ -164,6 +169,7 @@ async function handOff(input: string) {
           finish: (error) => (error ? reject(new Error(error)) : resolve()),
         },
       });
+      useTerminalDockStore.getState().setVisible(true);
     });
   });
   // Await outside act so React can commit the request the dock takes.
