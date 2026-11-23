@@ -27,9 +27,6 @@ const INITIAL_COLUMNS = 80;
 const INITIAL_ROWS = 24;
 const TERMINAL_MAX_PER_CHAT = 4;
 const loadTerminalView = () => import("./TerminalDock");
-// Best-effort close of a session the dock no longer shows.
-const release = (scope: UserTerminalScope, session: UserTerminalSession) =>
-  closeUserTerminal(scope, session).catch(() => undefined);
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -175,7 +172,7 @@ export function TerminalDockShell({
         INITIAL_ROWS,
       );
       if (owner.lifecycle !== lifecycle) {
-        await release(scope, session);
+        await closeUserTerminal(scope, session).catch(() => undefined);
         return;
       }
       const next = [...owner.entries, { session, ended: false, message: null }];
@@ -207,7 +204,7 @@ export function TerminalDockShell({
       owner.lifecycle += 1;
       owner.creating = false;
       for (const entry of owner.entries)
-        void release(scope, entry.session);
+        void closeUserTerminal(scope, entry.session).catch(() => undefined);
       owner.entries = [];
     };
   }, [scope]);
