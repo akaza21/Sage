@@ -64,7 +64,7 @@ const list: AcpCommandList = {
 function composer(initial: string) {
   let intent = 0;
   // The access check refuses a send before it reaches the send route.
-  const access = { settled: true };
+  const access = { settled: true, checks: 0 };
   const sendTurn = vi.fn(async (_request: { prompt: string }) => ({
     projection: page,
   }));
@@ -79,7 +79,10 @@ function composer(initial: string) {
       page,
     }),
     applyAuthoritativePage: () => "accepted",
-    settleAccessMode: async () => access.settled,
+    settleAccessMode: async () => {
+      access.checks += 1;
+      return access.settled;
+    },
     createIntentId: () => `intent-${++intent}` as ClientIntentId,
   });
   function Composer() {
@@ -170,11 +173,9 @@ it("disarms an unused consent when the text changes, so the command asks again",
   // The consented send is refused before it reaches the send route.
   sent.access.settled = false;
   fireEvent.click(screen.getByRole("button", { name: "Send as text anyway" }));
-  await vi.waitFor(() =>
-    expect(
-      screen.queryByRole("button", { name: "Send as text anyway" }),
-    ).toBeNull(),
-  );
+  // Wait for the refusal to settle, so the chat's action queue is free.
+  await vi.waitFor(() => expect(sent.access.checks).toBe(2));
+  await new Promise((resolve) => setTimeout(resolve, 0));
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "/hook" } });
   fireEvent.change(screen.getByRole("textbox"), {
     target: { value: "/hooks" },
