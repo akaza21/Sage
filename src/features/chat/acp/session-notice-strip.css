@@ -35,3 +35,45 @@
 .acp-session-notices__clear {
   justify-self: start;
 }
+
+/* The trigger hangs below its prompt row (the unclassed wrapper in
+   TurnPrompts) into the space the turn summary already keeps above itself
+   (the item gap plus its heading margin, 38px against the 24px button). So
+   mounting, unmounting or revealing it never moves the transcript, even when
+   a turn starts or ends. right: 0 lines it up with the bubble's right edge.
+   Opacity, not visibility, keeps the button in the Tab order while hidden. */
+.acp-turn__items > :has(> .acp-prompt-actions) {
+  position: relative;
+}
+
+/* Without a summary below, there is no space to hang into: reserve it. */
+.acp-turn__items
+  > :has(> .acp-prompt-actions):not(:has(+ .chat-transcript-work)) {
+  padding-bottom: var(--space-6);
+}
+
+.acp-turn__items > :not(:has(+ .chat-transcript-work)) > .acp-prompt-actions {
+  top: auto;
+  bottom: 0;
+}
+
+.acp-prompt-actions {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-height: 0;
+  opacity: 0;
+  animation: none;
+}
+
+.acp-turn__items > :hover > .acp-prompt-actions,
+.acp-turn__items > :focus-within > .acp-prompt-actions,
+.acp-prompt-actions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .acp-prompt-actions {
+    opacity: 1;
+  }
+}

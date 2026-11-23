@@ -34,9 +34,9 @@
       },
       {
         "entry": "src/features/chat/ComposerLocationStrip.tsx",
-        "maxGzipBytes": 1250,
+        "maxGzipBytes": 1750,
         "maxCssGzipBytes": 850,
-        "reason": "Local execution target picker and project location strip load only for a new chat; no remote execution plumbing or retained closed-menu DOM."
+        "reason": "Execution target, project and Git branch chips load only for a new chat; the branch menu loads on first open. No remote execution plumbing or retained closed-menu DOM."
       },
       {
         "entry": "src/workbench/CollapsedProjectStatus.tsx",
@@ -65,9 +65,9 @@
       },
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1300,
+        "maxGzipBytes": 1430,
         "maxCssGzipBytes": 490,
-        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
+        "reason": "Build, update and account notice (newer, too-old, update command, and the fallback-binding reason T13 adds); memoized while typing, off the ready first-Chat path. Measured 1361 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
@@ -242,8 +242,8 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1750,
-        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary and the account block. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%."
+        "maxGzipBytes": 2460,
+        "reason": "Harnesses page: install, versions (T13 installed/runs/latest, unlocks, npm switch) and sign-in per harness, custom agent and account blocks. Loaded only by Settings > Harnesses. Measured 2342 B."
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",
@@ -293,9 +293,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 2660,
+        "maxGzipBytes": 3700,
         "maxCssGzipBytes": 737,
-        "reason": "Session strip: harness notices, background activities with Stop, the last turn's Undo and harness composer chrome (status, widgets, text offer); loads only when one exists. JS 2405 B measured."
+        "reason": "Session notices, activities, Undo, the prompt actions trigger and harness composer chrome (status, widgets, text offer). Measured JS PENDING."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -592,9 +592,9 @@
       },
       {
         "entry": "src/features/chat/ConversationActions.tsx",
-        "maxGzipBytes": 5000,
+        "maxGzipBytes": 4400,
         "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork actions, confirmations, legacy last-turn controls and inherited fork history share one deferred chunk. Dialogs retain no hidden DOM or active session."
+        "reason": "Prompt rewind/fork menus, confirmations, legacy last-turn controls and inherited fork history. Measured JS 3848 B; 600 B of cap moved to SessionNoticeStrip. Dialogs retain no hidden DOM."
       }
     ],
     "windowsInstallerMb": 45,

@@ -101,6 +101,7 @@ export function ChatHarnessControls({
     harness: accessHarness,
     available: availableBinding,
     draftChatId,
+    draftPickers,
     endedPage,
     sessionConfig,
     accessOpen: active === "access",
@@ -116,7 +117,7 @@ export function ChatHarnessControls({
   // Both unsaved drafts and existing chats without a head draft the choices
   // consumed by the next native start. Only unsaved drafts control them here;
   // existing chats retain the native-bound chat access and effort stores.
-  const drafting = !!draftPickers || !!draftChatId;
+  const drafting = !!(draftPickers || draftChatId);
   const modelsLoading = drafting && (modelsPending || !knownModels);
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
@@ -195,10 +196,11 @@ export function ChatHarnessControls({
 
   const contextWindow = formatContextWindow(currentModel?.contextWindow);
   const chooseModel = (modelId: string) => {
-    const changed = modelId !== unchangedModelId;
-    if (changed && modelOption?.type === "select")
-      void onSetSessionConfigOption(modelOption.id, { value: modelId });
-    else if (changed) onSelectModel(modelId);
+    if (modelId !== unchangedModelId) {
+      if (modelOption?.type === "select")
+        void onSetSessionConfigOption(modelOption.id, { value: modelId });
+      else onSelectModel(modelId);
+    }
     dismiss();
     modelTrigger.current?.focus();
   };
@@ -216,8 +218,9 @@ export function ChatHarnessControls({
     !draftPickers && canSelectEffort,
     active !== null && active !== "options",
   );
+  // A draft picks its project in its location strip, so its "+" offers none.
   const projectAction =
-    (projectName && hasProjects) || internalProject ? (
+    !draftPickers && ((projectName && hasProjects) || internalProject) ? (
       <ProjectScopeChip
         projectName={projectName ?? "Choose project"}
         variant="menuItem"
@@ -226,14 +229,13 @@ export function ChatHarnessControls({
     ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
-  const hasActions = Boolean(
+  const hasActions =
     Object.values(addActions).some(Boolean) ||
     planAccess ||
     effortInMenu ||
     projectAction ||
     modeOptions.length > 0 ||
-    otherOptions.some((option) => option.type !== "unsupported"),
-  );
+    otherOptions.some((option) => option.type !== "unsupported");
   const closeActions = () => {
     dismiss();
     optionsTriggerRef.current?.focus();
@@ -256,24 +258,22 @@ export function ChatHarnessControls({
           }
         }}
       >
-        {!draftPickers ? (
-          <IconButton
-            ref={optionsTriggerRef}
-            id={optionsTriggerId}
-            className="composer__plus"
-            aria-label="Composer options"
-            title={hasActions ? undefined : "No options for this harness"}
-            aria-controls={optionsId}
-            aria-haspopup="menu"
-            aria-expanded={active === "options"}
-            disabled={
-              projectTransitioning || (!hasActions && active !== "options")
-            }
-            onClick={() => toggle("options")}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </IconButton>
-        ) : null}
+        <IconButton
+          ref={optionsTriggerRef}
+          id={optionsTriggerId}
+          className="composer__plus"
+          aria-label="Composer options"
+          title={hasActions ? undefined : "No options for this harness"}
+          aria-controls={optionsId}
+          aria-haspopup="menu"
+          aria-expanded={active === "options"}
+          disabled={
+            projectTransitioning || (!hasActions && active !== "options")
+          }
+          onClick={() => toggle("options")}
+        >
+          <Plus size={16} aria-hidden="true" />
+        </IconButton>
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
@@ -292,7 +292,7 @@ export function ChatHarnessControls({
           />
         ) : null}
         <ComposerHarnessPicker
-          canContinueInNewChat={!draftPickers && !availableBinding}
+          canContinueInNewChat={!(draftPickers || availableBinding)}
           discoveryPhase={discoveryPhase}
           open={active === "harness"}
           onOpenChange={setHarnessOpen}
@@ -363,6 +363,7 @@ export function ChatHarnessControls({
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
             {...addActions}
+            draftPickers={draftPickers}
             harnessName={selectedHarness?.name}
             onOpenEffort={
               effortInMenu

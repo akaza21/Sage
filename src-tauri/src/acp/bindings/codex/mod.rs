@@ -12,6 +12,7 @@ mod incoming;
 mod installed_role;
 mod managed;
 mod manifest;
+pub(crate) use manifest::known_commands;
 mod physical;
 mod policy;
 mod provisioning;

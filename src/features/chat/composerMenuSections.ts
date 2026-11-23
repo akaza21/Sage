@@ -17,6 +17,10 @@ export const sectionLabels = {
   more: "More",
 } satisfies Record<AcpCommandSection, string>;
 
+/** What a row needs before it acts. Undeclared rows, and every catalog
+ * command, need a live session: the requirement fails closed. */
+export type ComposerRowRequirement = "session" | "none";
+
 const sourceLabels = {
   builtin: "Commands",
   skill: "Skills",
@@ -34,6 +38,8 @@ export interface ComposerNativeRow {
   label: string;
   description?: string;
   control?: AcpNativeCommandControl;
+  /** Absent means "session". */
+  requires?: ComposerRowRequirement;
   content: ReactNode;
 }
 
@@ -49,12 +55,19 @@ export interface ComposerMenuSection {
 }
 
 /** Inputs are bounded by the command/config decoders. Only 50 matching rows
- * per section reach React; searching still considers the complete catalog. */
+ * per section reach React; searching still considers the complete catalog.
+ * Before a session exists (the new-chat draft) only rows declaring that they
+ * need none stay, and no catalog command does. */
 export function composerMenuSections(
-  native: readonly ComposerNativeRow[],
-  catalog: readonly AvailableAcpCommand[],
+  allNative: readonly ComposerNativeRow[],
+  allCatalog: readonly AvailableAcpCommand[],
   query: string,
+  sessionless = false,
 ): ComposerMenuSection[] {
+  const native = sessionless
+    ? allNative.filter((row) => row.requires === "none")
+    : allNative;
+  const catalog = sessionless ? [] : allCatalog;
   const needle = query.trim().toLocaleLowerCase();
   const controls = new Set(native.map((row) => row.control).filter(Boolean));
   const matches = (...text: (string | undefined | null)[]) =>

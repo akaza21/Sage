@@ -21,6 +21,7 @@ const ADAPTER_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
 const ADAPTER_ENTRY: &str = "dist/index.js";
 const PACKAGE_JSON: &str = "package.json";
 const SDK_PACKAGE: &str = "@agentclientprotocol/sdk";
+const BUNDLED_SDK_PACKAGE: &str = "@anthropic-ai/claude-agent-sdk";
 const PACKAGE_JSON_BYTES_MAX: u64 = 64 * 1024;
 const HASHED_FILE_BYTES_MAX: u64 = 512 * 1024 * 1024;
 const DIGEST_CACHE_BYTES_MAX: u64 = 16 * 1024;
@@ -243,6 +244,19 @@ pub(super) fn read_json(path: &Path) -> Option<Value> {
     (bytes.len() as u64 <= PACKAGE_JSON_BYTES_MAX)
         .then(|| serde_json::from_slice(&bytes).ok())
         .flatten()
+}
+
+/// The Claude Code release the adapter's bundled Agent SDK runs. Display only:
+/// it never decides admission, and an unreadable value is simply not shown.
+pub(crate) fn bundled_claude_code_version(adapter_entry: &Path) -> Option<String> {
+    let root = adapter_entry.parent()?.parent()?;
+    let manifest = Path::new("node_modules")
+        .join(BUNDLED_SDK_PACKAGE)
+        .join(PACKAGE_JSON);
+    if !authentic_descendant_file(root, &manifest) {
+        return None;
+    }
+    required_package_text(&read_json(&root.join(manifest))?, "claudeCodeVersion")
 }
 
 pub(super) fn required_package_text(value: &Value, key: &str) -> Option<String> {

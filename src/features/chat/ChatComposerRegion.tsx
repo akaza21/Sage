@@ -37,16 +37,16 @@ const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden = false,
+    hidden,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId = null,
+    sessionId,
     project,
-    newChat = false,
+    newChat,
     usage,
     onCompact,
     descriptionId,
@@ -57,7 +57,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked = false,
+    sendBlocked,
     actionBusy,
     activeTurn,
     queueAvailable,
@@ -155,6 +155,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
           disabled={actionDisabled || !!sessionId}
+          activeTurn={activeTurn}
         />
       ) : null}
       <div
@@ -200,14 +201,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           </div>
           <div className="composer__body">
             {harnessChrome("above", props)}
-            {goal.kind === "goal" ||
+            {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
-                (goal.kind === "noGoal" && goalCapabilities.set))) ? (
+                (goal?.kind === "noGoal" && goalCapabilities.set))) ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 key={dictationScope}
-                state={goal}
+                // Every chat passes its goal; only the new-chat draft has none.
+                state={goal!}
                 chatId={dictationScope}
                 details={goalDetails}
                 capabilities={goalCapabilities}

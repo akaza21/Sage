@@ -6,7 +6,13 @@ import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
-  "bindingId" | "chatId" | "endedPage" | "sessionConfig" | "capabilities"
+  | "bindingId"
+  | "chatId"
+  | "endedPage"
+  | "sessionConfig"
+  | "capabilities"
+  | "value"
+  | "onChange"
 > & {
   /** Opens the access menu, on `confirm`'s confirmation when given. */
   onOpenAccess: (confirm?: SessionAccessMode) => void;

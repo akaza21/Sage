@@ -1,12 +1,13 @@
-import { useId, useState, type ComponentProps } from "react";
+import { useContext, useId, useState, type ComponentProps } from "react";
 import { Ellipsis } from "../../ui/leanIcons";
 import { AnswerActionButton } from "./AnswerActions";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { lazyParts } from "./lazyParts";
 import type { AnswerMoreActions } from "./ForkChat";
 import type * as ConversationChunk from "./ConversationActions";
-import type { AcpItem } from "../../domain/acp";
-import { currentSession } from "./acp/acpTurnState";
+import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
+import { pageConversationActions } from "./conversationActionAvailability";
+import { PromptPageContext } from "./acp/TurnPrompts";
 
 const ConversationPart = lazyParts<typeof ConversationChunk>(
   () => import("./ConversationActions"),
@@ -28,23 +29,33 @@ export function ConversationView({ view, ...props }: ConversationViewProps) {
   );
 }
 
+// Every prompt re-renders on each page update; the page is folded once into
+// its offered turns, so each prompt is a lookup. Weak keys retain nothing
+// after a page is replaced.
+const folded = new WeakMap<
+  AcpChatPage,
+  ReturnType<typeof pageConversationActions>
+>();
+const offeredTurns = (page: AcpChatPage) => {
+  let offered = folded.get(page);
+  if (!offered) folded.set(page, (offered = pageConversationActions(page)));
+  return offered;
+};
+
+/** The trigger shows only when its menu would offer rewind or fork. */
 export function PromptActions({
   item,
-  interactive,
-  ...props
-}: ComponentProps<typeof MessageActionsTrigger> & {
-  item: Extract<AcpItem, { kind: "text" }>;
-  interactive: boolean;
+  turn,
+}: {
+  item: AcpItem;
+  turn: TurnProjection;
 }) {
-  const session = currentSession(props.page);
-  // Only a live session can act on a prompt; a cold one would open an empty
-  // menu, so its finished turns carry no actions row.
-  return session?.capabilities?.rewind &&
-    session.residency === "hot" &&
-    interactive &&
-    props.turn?.terminalAt != null &&
-    props.turn.conversationTarget ? (
-    <MessageActionsTrigger {...props} text={item.payload.text} />
+  const page = useContext(PromptPageContext);
+  return page &&
+    item.kind === "text" &&
+    item.payload.role === "user" &&
+    offeredTurns(page).has(turn.id) ? (
+    <MessageActionsTrigger page={page} turn={turn} text={item.payload.text} />
   ) : null;
 }
 
@@ -61,7 +72,7 @@ export function MessageActionsTrigger(
   const content = (
     <>
       <AnswerActionButton
-        label="More actions"
+        label={props.turn ? "Message actions" : "More actions"}
         aria-haspopup="menu"
         aria-expanded={!!trigger}
         aria-controls={trigger ? menuId : undefined}
@@ -89,13 +100,7 @@ export function MessageActionsTrigger(
     </>
   );
   return props.turn ? (
-    <div
-      className="chat-transcript-actions"
-      role="group"
-      aria-label="Prompt actions"
-    >
-      {content}
-    </div>
+    <div className="chat-transcript-actions acp-prompt-actions">{content}</div>
   ) : (
     content
   );

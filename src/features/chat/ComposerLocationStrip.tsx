@@ -5,6 +5,7 @@ import {
   type SearchablePickerOption,
 } from "../../ui/SearchablePicker";
 import { ProjectScopeChip } from "./LazyProjectScopeChip";
+import { ComposerBranchChip } from "./ComposerBranchChip";
 import "./composer-location.css";
 
 const Cloud = lucideIcon("cloud", [
@@ -30,9 +31,11 @@ const targets: readonly SearchablePickerOption[] = [
 export function ComposerLocationStrip({
   projectName,
   disabled,
+  activeTurn = false,
 }: {
   projectName: string;
   disabled: boolean;
+  activeTurn?: boolean;
 }) {
   return (
     <div className="composer-location" role="group" aria-label="Chat location">
@@ -54,6 +57,7 @@ export function ComposerLocationStrip({
         disabled={disabled}
         popoverPlacement="above-start"
       />
+      <ComposerBranchChip disabled={disabled} activeTurn={activeTurn} />
     </div>
   );
 }

@@ -62,7 +62,7 @@ export async function readChatImageThumbnail(
 
 export async function uploadChatImages(
   intent: ChatOwnershipIntent,
-  files: File[],
+  files: readonly File[],
 ) {
   for (const file of files) {
     if (

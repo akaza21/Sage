@@ -11,6 +11,7 @@ pub(crate) mod fixture_runtime;
 #[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
 mod fixture_tests;
 mod manifest;
+pub(crate) use manifest::known_commands;
 pub(crate) mod native_admission;
 pub(crate) mod native_runtime;
 mod protocol;
