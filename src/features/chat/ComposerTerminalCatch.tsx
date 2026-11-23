@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
+import { useWorkbenchStore } from "../../app/store";
+import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { openTerminalWith } from "../../workbench/terminalDockHandoff";
+import { useTerminalDockStore } from "../../app/terminalDockStore";
+import {
+  registerTerminalCatch,
+  type CaughtTerminalCommand as Caught,
+} from "../../services/terminalHandoff";
 
-type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
-// One mounted composer field per chat owns its caught command.
-const catchers = new Map<string, Catcher>();
-
-/** The send path's hand-off: true when the chat's field took the command. */
-// eslint-disable-next-line react-refresh/only-export-components -- the send path and the choice it opens share this chunk
-export const catchTerminalCommand = (chatId: string, caught: Caught) =>
-  !!catchers.get(chatId)?.(caught);
 
 /**
  * Owns the one pending choice for a typed terminal-only command. Nothing is
@@ -28,6 +28,21 @@ export function ComposerTerminalCatch({
   text: string;
 }) {
   const [caught, setCaught] = useState<Caught | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState("");
+  const hasProject = useWorkbenchStore(
+    (state) => !!state.project && !state.projectTransitioning,
+  );
+  const dockAvailable = useTerminalDockStore(
+    (state) => state.ready && !!state.open,
+  );
+  const unavailable = !hasProject
+    ? "Open this chat's project first."
+    : !isTauriRuntime()
+      ? "Terminals require the desktop app."
+      : !dockAvailable
+        ? "Terminal dock is unavailable or still loading."
+        : undefined;
   const message =
     caught &&
     `/${caught.name} only runs in the terminal. Copy the command to resume this chat there, then type /${caught.name}.`;
@@ -48,12 +63,10 @@ export function ComposerTerminalCatch({
       if (consented || fieldRef.current?.value.trim() !== next.input)
         return false;
       setCaught(next);
+      setError("");
       return true;
     };
-    catchers.set(chatId, take);
-    return () => {
-      if (catchers.get(chatId) === take) catchers.delete(chatId);
-    };
+    return registerTerminalCatch(chatId, take);
   }, [chatId, fieldRef]);
   if (!caught) return null;
   const { input, name, command } = caught;
@@ -71,6 +84,30 @@ export function ComposerTerminalCatch({
         message={message}
       />
       <span>
+        <button
+          type="button"
+          className="button button--compact"
+          disabled={opening || !!unavailable}
+          title={unavailable}
+          onClick={async () => {
+            setOpening(true);
+            setError("");
+            try {
+              await openTerminalWith({ chatId, text: command });
+              setCaught((current) => (current === caught ? null : current));
+            } catch (error) {
+              setError(
+                error instanceof Error
+                  ? error.message
+                  : "Terminal failed to open.",
+              );
+            } finally {
+              setOpening(false);
+            }
+          }}
+        >
+          Open in terminal
+        </button>
         <button
           type="button"
           className="button button--compact"
@@ -95,6 +132,7 @@ export function ComposerTerminalCatch({
           Send as text anyway
         </button>
       </span>
+      {error ? <span role="alert">{error}</span> : null}
     </div>
   );
 }

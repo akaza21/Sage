@@ -379,7 +379,7 @@ test("picking Codex's /review shows its input hint", async ({ page }) => {
   );
 });
 
-test("a typed terminal-only command is held at send with a copy or text choice", async ({
+test("a typed terminal-only command offers copy, text and a focused terminal with unrun input", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -445,4 +445,74 @@ test("a typed terminal-only command is held at send with a copy or text choice",
   await expect(choice).toHaveCount(0);
   await expect(field).toBeFocused();
   await expect.poll(sent).toEqual(["/hooks"]);
+  // The simulator has no PTY. Substitute only native terminal I/O, retaining
+  // the real dock controller, tab creation adapter, input adapter and xterm.
+  await page.evaluate(async () => {
+    const [{ useTerminalDockStore }, { useWorkbenchStore }] = await Promise.all(
+      [import("/src/app/terminalDockStore.ts"), import("/src/app/store.ts")],
+    );
+    const input: string[] = [];
+    Object.assign(window, { terminalInput: input });
+    const sessionId = "f99cd56a-32d9-4600-a1f6-000000000001";
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {
+        invoke: async (
+          command: string,
+          args?: { request: { text: string; cursor: string } },
+        ) => {
+          if (command === "get_terminal_dock_visible") return false;
+          if (
+            command === "set_terminal_dock_visible" ||
+            command === "terminal_resize" ||
+            command === "terminal_close"
+          )
+            return;
+          if (command === "terminal_create")
+            return { sessionId, revision: "1", shellPath: "simulated-shell" };
+          if (command === "terminal_write") {
+            if (input.length >= 4) throw new Error("Fixture input limit");
+            input.push(args!.request.text);
+            return;
+          }
+          if (command === "terminal_read") {
+            if (args!.request.cursor !== "0")
+              return new Promise(() => undefined);
+            return {
+              bytesBase64: btoa(`project> ${input.join("")}`),
+              nextCursor: "1",
+              truncated: false,
+            };
+          }
+          throw new Error(`Unsupported terminal fixture command: ${command}`);
+        },
+      },
+    });
+    await useTerminalDockStore.getState().restore();
+    useWorkbenchStore.setState((state) => ({
+      sidebarOpen: !state.sidebarOpen,
+    }));
+  });
+  await expect(
+    page.getByRole("button", { name: "Toggle terminal", exact: true }),
+  ).toBeVisible();
+  await field.fill("/hooks");
+  await field.press("Escape");
+  await field.press("Enter");
+  await choice.getByRole("button", { name: "Open in terminal" }).click();
+  await expect(choice).toHaveCount(0);
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  await expect(dock).toBeVisible();
+  await expect(dock.getByRole("tab")).toHaveCount(1);
+  await expect(dock.locator(".xterm-rows")).toContainText(
+    'project> claude --resume "4f1c2a"',
+  );
+  await expect(dock.locator(".xterm-helper-textarea")).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { terminalInput: string[] }).terminalInput,
+    ),
+  ).toEqual(['claude --resume "4f1c2a"']);
+  expect(await sent()).toEqual(["/hooks"]);
+  await page.screenshot({ path: "output/playwright/t6b-open-in-terminal.png" });
 });

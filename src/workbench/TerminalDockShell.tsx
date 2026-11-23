@@ -4,13 +4,16 @@ import { usePortalHost } from "../ui/usePortalHost";
 
 import { IconButton } from "../ui/IconButton";
 import { useWorkbenchStore } from "../app/store";
+import type { TerminalOpenRequest } from "../app/terminalDockStore";
 import {
   closeUserTerminal,
   createUserTerminal,
+  writeUserTerminal,
   terminalErrorLabel,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
+import { createDockSession, useTerminalOpen } from "./terminalDockHandoff";
 import { firstChatTabId } from "./workbenchWindowMode";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./terminal-dock.css";
@@ -22,10 +25,13 @@ import {
   X,
 } from "../ui/leanIcons";
 
-const INITIAL_COLUMNS = 80;
-const INITIAL_ROWS = 24;
 const TERMINAL_MAX_PER_CHAT = 4;
 const loadTerminalView = () => import("./TerminalDock");
+const terminalPort = {
+  createUserTerminal,
+  writeUserTerminal,
+  closeUserTerminal,
+};
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -149,44 +155,55 @@ export function TerminalDockShell({
     dismissWhenCreateSettles: false,
   });
 
-  const create = useCallback(async () => {
-    const owner = ownerRef.current;
-    if (
-      owner.creating ||
-      owner.disposed ||
-      owner.entries.length >= TERMINAL_MAX_PER_CHAT
-    )
-      return;
-    const lifecycle = owner.lifecycle;
-    owner.creating = true;
-    setCreating(true);
-    setMessage(null);
-    try {
-      const session = await createUserTerminal(
-        scope,
-        INITIAL_COLUMNS,
-        INITIAL_ROWS,
-      );
-      if (owner.lifecycle !== lifecycle) {
-        await closeUserTerminal(scope, session).catch(() => undefined);
+  const create = useCallback(
+    async (request?: TerminalOpenRequest) => {
+      const owner = ownerRef.current;
+      if (
+        owner.creating ||
+        owner.disposed ||
+        owner.entries.length >= TERMINAL_MAX_PER_CHAT
+      ) {
+        request?.finish(
+          new Error("Terminal is busy or its tab limit was reached."),
+        );
         return;
       }
-      const next = [...owner.entries, { session, ended: false, message: null }];
-      owner.entries = next;
-      owner.dismissWhenCreateSettles = false;
-      setEntries(next);
-      setActiveId(session.sessionId);
-      setCollapsed(false);
-    } catch (error) {
-      if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
-    } finally {
-      if (owner.lifecycle === lifecycle) {
-        owner.creating = false;
-        setCreating(false);
-        if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
+      const lifecycle = owner.lifecycle;
+      owner.creating = true;
+      setCreating(true);
+      setMessage(null);
+      try {
+        const session = await createDockSession(
+          scope,
+          () => owner.lifecycle === lifecycle,
+          request,
+          terminalPort,
+        );
+        const next = [
+          ...owner.entries,
+          { session, ended: false, message: null },
+        ];
+        owner.entries = next;
+        owner.dismissWhenCreateSettles = false;
+        setEntries(next);
+        setActiveId(session.sessionId);
+        setCollapsed(false);
+        request?.finish();
+      } catch (error) {
+        if (owner.lifecycle === lifecycle)
+          setMessage(terminalErrorLabel(error));
+        request?.finish(new Error(terminalErrorLabel(error)));
+      } finally {
+        if (owner.lifecycle === lifecycle) {
+          owner.creating = false;
+          setCreating(false);
+          if (owner.dismissWhenCreateSettles && !owner.entries.length)
+            onClose();
+        }
       }
-    }
-  }, [scope, onClose]);
+    },
+    [scope, onClose],
+  );
 
   useEffect(() => {
     const owner = ownerRef.current;
@@ -202,14 +219,7 @@ export function TerminalDockShell({
     };
   }, [scope]);
 
-  useEffect(() => {
-    const owner = ownerRef.current;
-    const lifecycle = owner.lifecycle;
-    if (!visible || entries.length) return;
-    void Promise.resolve().then(() => {
-      if (owner.lifecycle === lifecycle && !owner.entries.length) void create();
-    });
-  }, [create, visible, entries.length]);
+  useTerminalOpen(scope, visible, entries.length, ownerRef, create);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
@@ -301,7 +311,7 @@ export function TerminalDockShell({
           <IconButton
             aria-label="New terminal"
             disabled={creating || entries.length >= TERMINAL_MAX_PER_CHAT}
-            onClick={create}
+            onClick={() => void create()}
           >
             <Plus size={16} />
           </IconButton>

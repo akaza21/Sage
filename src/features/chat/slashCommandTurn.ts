@@ -6,8 +6,10 @@ import type {
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
 import { pickedCommandFor } from "./slashCommandPicks";
-import { terminalOnlyCommand } from "../../services/terminalHandoff";
-import { catchTerminalCommand } from "./ComposerTerminalCatch";
+import {
+  terminalOnlyCommand,
+  catchTerminalCommand,
+} from "../../services/terminalHandoff";
 
 export type SlashCommandPort = Pick<
   typeof acpCommandsDesktop,

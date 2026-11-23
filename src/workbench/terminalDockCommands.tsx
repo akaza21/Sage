@@ -17,6 +17,8 @@ export function connectTerminalDock(
   let returnFocus: HTMLElement | null = null;
   const setOpen = (open: boolean) => {
     const state = useTerminalDockStore.getState();
+    if (!open)
+      state.pendingOpen?.finish(new Error("Terminal opening was cancelled."));
     if (!state.ready || state.visible === open) return;
     if (open)
       returnFocus =
@@ -38,6 +40,8 @@ export function connectTerminalDock(
     }
   };
   const toggle = () => setOpen(!useTerminalDockStore.getState().visible);
+  const open = () => setOpen(true);
+  useTerminalDockStore.setState({ open });
   const keyDown = (event: KeyboardEvent) => {
     if (
       !useTerminalDockStore.getState().ready ||
@@ -84,6 +88,11 @@ export function connectTerminalDock(
   publish();
   void useTerminalDockStore.getState().restore();
   return () => {
+    if (useTerminalDockStore.getState().open === open)
+      useTerminalDockStore.setState({ open: null });
+    useTerminalDockStore
+      .getState()
+      .pendingOpen?.finish(new Error("Terminal dock was closed."));
     window.removeEventListener("keydown", keyDown, true);
     unsubscribe();
     onChange(DISCONNECTED_TERMINAL);
