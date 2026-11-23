@@ -1,13 +1,12 @@
 import type {
   AcpChatPage,
   FileChangeProjection,
-  TurnProjection,
 } from "../domain/acp";
 import type { TabKind } from "../domain/chat";
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
 import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
-import { terminalTurnStates } from "../features/chat/acp/statusSemantics";
+import { currentOrLatestTurn } from "../features/chat/acp/statusSemantics";
 
 export const ARTIFACT_CHIP_COUNT_CAP = 999;
 
@@ -21,22 +20,6 @@ export type ArtifactChipStats = {
   deletionsLabel: string | null;
 };
 
-function currentOrLatestTurn(page: AcpChatPage): TurnProjection | null {
-  if (!page.currentSessionId) return null;
-  let current: TurnProjection | null = null;
-  let latest: TurnProjection | null = null;
-  for (const turn of page.turns) {
-    if (turn.sessionId !== page.currentSessionId) continue;
-    if (!latest || turn.ordinal > latest.ordinal) latest = turn;
-    if (
-      !terminalTurnStates.has(turn.state) &&
-      (!current || turn.ordinal > current.ordinal)
-    ) {
-      current = turn;
-    }
-  }
-  return current ?? latest;
-}
 
 function formatChipCount(sign: "+" | "-", value: number | null): string | null {
   if (value === null) return null;
@@ -61,7 +44,9 @@ export function artifactChipStatsForTab(
   if ((tab.kind !== "file" && tab.kind !== "diff") || !resource || !page) {
     return null;
   }
-  const turn = currentOrLatestTurn(page);
+  const turn = page.currentSessionId
+    ? currentOrLatestTurn(page, page.currentSessionId)
+    : null;
   if (!turn) return null;
   const summary = projectAgentEditSummary(page, turn);
   const matched = summary.changes.find((change) =>

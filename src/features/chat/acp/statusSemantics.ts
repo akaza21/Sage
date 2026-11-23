@@ -1,4 +1,5 @@
 import type {
+  AcpChatPage,
   AcpItem,
   ItemLifecycle,
   ToolState,
@@ -21,6 +22,26 @@ export const terminalTurnStates: ReadonlySet<TurnState> = new Set([
   "failed",
   "deliveryUnknown",
 ]);
+
+/** The newest unfinished turn, else the newest; only `sessionId`'s if given. */
+export function currentOrLatestTurn(
+  page: AcpChatPage,
+  sessionId?: string,
+): TurnProjection | null {
+  let current: TurnProjection | null = null;
+  let latest: TurnProjection | null = null;
+  for (const turn of page.turns) {
+    if (sessionId !== undefined && turn.sessionId !== sessionId) continue;
+    if (!latest || turn.ordinal > latest.ordinal) latest = turn;
+    if (
+      !terminalTurnStates.has(turn.state) &&
+      (!current || turn.ordinal > current.ordinal)
+    ) {
+      current = turn;
+    }
+  }
+  return current ?? latest;
+}
 
 export const turnStateLabels: Record<TurnState, string> = {
   queued: "Queued",
