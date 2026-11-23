@@ -22,9 +22,6 @@ type Preview = {
   caveat: string | null;
 };
 
-/** After this failure the files are already back: only the conversation is left. */
-const RESTORED = "Files were restored";
-
 const listed = (
   value: Record<string, unknown>,
   paths: string,
@@ -91,6 +88,9 @@ export function RewindChatDialog({
   const [found, setFound] = useState<Preview | string>();
   const files = typeof found === "object" ? found : undefined;
   const [last, setLast] = useState(false);
+  // A failed file rewind may already have restored files: asking the native
+  // side again keeps the files choice true to what is left to restore.
+  const [asked, setAsked] = useState(0);
   useEffect(() => {
     let live = true;
     preview(chatId, turnId).then(
@@ -101,7 +101,7 @@ export function RewindChatDialog({
     return () => {
       live = false;
     };
-  }, [chatId, turnId]);
+  }, [chatId, turnId, asked]);
   const rewind = async (withFiles: boolean) => {
     if (pending.current) return;
     pending.current = true;
@@ -119,8 +119,13 @@ export function RewindChatDialog({
           // A file rewind always reports what it restored.
           "Conversation rewound; files unchanged",
         ))
-      )
+      ) {
+        if (withFiles) {
+          setFound(undefined);
+          setAsked((count) => count + 1);
+        }
         return;
+      }
       if (owner) useWorkbenchStore.getState().setChatComposer(owner, text);
       if (context) {
         const refreshed = await getGoalChatPage({
@@ -139,9 +144,7 @@ export function RewindChatDialog({
     }
   };
   const busy = status.kind === "pending";
-  const restored =
-    status.kind === "failed" && status.message.startsWith(RESTORED);
-  const restorable = !restored && !!files?.caveat;
+  const restorable = !!files?.caveat;
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -156,14 +159,12 @@ export function RewindChatDialog({
       {typeof found === "string" ? (
         <p>{found} Files stay as they are.</p>
       ) : null}
-      {files?.sections
-        .filter((section) => section.keeps || !restored)
-        .map((section) => (
-          <div key={section.note}>
-            <p role={section.keeps && "alert"}>{section.note}</p>
-            <Paths {...section} />
-          </div>
-        ))}
+      {files?.sections.map((section) => (
+        <div key={section.note}>
+          <p role={section.keeps && "alert"}>{section.note}</p>
+          <Paths {...section} />
+        </div>
+      ))}
       {restorable ? (
         <>
           <p>
@@ -191,7 +192,7 @@ export function RewindChatDialog({
       {status.kind === "failed" ? (
         <p role="status">
           {status.message}{" "}
-          <button type="button" onClick={() => void rewind(last && !restored)}>
+          <button type="button" onClick={() => void rewind(last && restorable)}>
             Retry
           </button>
         </p>

@@ -20,8 +20,9 @@ const HEADROOM_PERCENT: u64 = 90;
 /// `None` for a write whose bytes went unread.
 pub(crate) type LastWrites = HashMap<(String, String), Option<[u8; 32]>>;
 
-/// Records the Turn's write as the file's latest. Out of room, the write goes
-/// unrecorded and the batch still applies.
+/// Records the Turn's write as the file's latest. Out of room, a new file goes
+/// unrecorded and a known one is marked unread, so it reads as unverified
+/// rather than changed; the batch still applies.
 pub(crate) fn record(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -36,9 +37,7 @@ pub(crate) fn record(
         [session],
         |row| row.get(0),
     )?;
-    if used >= (LIMITS.durable.facts_per_session * HEADROOM_PERCENT / 100) as i64 {
-        return Ok(false);
-    }
+    let reserved = used >= (LIMITS.durable.facts_per_session * HEADROOM_PERCENT / 100) as i64;
     let known: bool = transaction
         .query_row(
             "SELECT 1 FROM acp_agent_file_writes
@@ -48,6 +47,11 @@ pub(crate) fn record(
         )
         .optional()?
         .is_some();
+    if reserved && !known {
+        return Ok(false);
+    }
+    // In the reserve the row is only updated, never added, and its bytes unread.
+    let digest = digest.filter(|_| !reserved);
     // A new file only: the count runs over the session's primary-key prefix.
     if !known {
         let files: i64 = transaction.query_row(

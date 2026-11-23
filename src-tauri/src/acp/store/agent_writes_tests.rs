@@ -72,8 +72,9 @@ fn a_write_from_a_cut_turn_verifies_nothing_and_keeps_no_older_write() {
 }
 
 #[test]
-fn recording_stops_short_of_the_session_fact_reserve_and_the_batch_still_applies() {
+fn in_the_session_fact_reserve_a_known_file_reads_unverified_and_no_row_is_added() {
     let fixture = recorded();
+    assert!(write(&fixture, FIRST, "src/known.rs", Some([1; 32])));
     let reserve = sage_core::limits::LIMITS.durable.facts_per_session * HEADROOM_PERCENT / 100;
     fixture
         .database
@@ -84,5 +85,11 @@ fn recording_stops_short_of_the_session_fact_reserve_and_the_batch_still_applies
         )
         .unwrap();
     assert!(!write(&fixture, FIRST, "src/a.rs", Some([1; 32])));
-    assert!(last(&fixture).is_empty());
+    assert!(write(&fixture, SECOND, "src/known.rs", Some([2; 32])));
+    let writes = last(&fixture);
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes.get(&("root-one".to_owned(), "src/known.rs".to_owned())),
+        Some(&None)
+    );
 }
