@@ -71,7 +71,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|UserInputField|SessionNoticeStrip|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|BackgroundTerminal|chatEditSummary|useGoalMutation|goalMutability|SessionSurfacePanel|useSessionControl|ComposerChrome|sessionChrome))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|ExtensionMessage|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|UserInputField|SessionNoticeStrip|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|BackgroundTerminal|chatEditSummary|useGoalMutation|goalMutability|SessionSurfacePanel|useSessionControl|ComposerChrome|sessionChrome))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "chat-setup",
@@ -82,7 +82,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     // Sharing its tiny controllers avoids request/import overhead while
     // keeping all of them outside Agent and Editor startup. First-send
     // project ownership and handoff retain their own bounded dynamic entry.
-    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|runCreateChat|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|FirstChatSend|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
+    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|runCreateChat|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
   },
   {
     name: "codemirror-deps",
@@ -93,7 +93,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/](?:MermaidFigureBoundary|ExtensionMessage)\.tsx$)/,
   },
   {
     name: "diff-rendering",

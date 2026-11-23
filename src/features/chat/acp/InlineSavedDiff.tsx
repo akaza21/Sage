@@ -172,3 +172,5 @@ export function InlineSavedDiff({
     </div>
   );
 }
+
+export default InlineSavedDiff;

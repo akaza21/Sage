@@ -75,6 +75,15 @@ pub(crate) trait ResourceMapper {
     fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
         None
     }
+
+    /// An owned handle that hashes the file's bytes off the caller's thread.
+    /// Agent writes are recorded with it.
+    fn content_probe(
+        &self,
+        _resource: &SafeResourceRef,
+    ) -> Option<crate::acp::resource_mapper::ContentProbe> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

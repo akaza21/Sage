@@ -27,6 +27,7 @@ mod fork;
 pub(super) use fork::{Fork, ForkCopy};
 mod identity;
 mod image;
+mod messages;
 mod native;
 mod permission;
 mod questions;
@@ -44,7 +45,7 @@ mod tool_output;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
-use identity::{external, model_event, text_payload};
+use identity::{external, text_payload};
 
 impl PiRuntime {
     pub(super) fn translate_outputs(
@@ -114,6 +115,13 @@ impl PiRuntime {
         resources: &dyn crate::acp::bindings::adapter::ResourceMapper,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let pair = match output {
+            AdapterOutput::Message(payload) => (Some(self.message_item(payload)?), None),
+            AdapterOutput::ConfigurationChanged => {
+                self.configuration_dirty = true;
+                self.configuration_models_pending = false;
+                (Some(AdapterEvent::IgnoredLate), None)
+            }
+            AdapterOutput::Configuration(state) => self.configuration_reply(state)?,
             AdapterOutput::InitializationProgress => (None, None),
             AdapterOutput::Initialized => {
                 self.initialized = true;
@@ -125,7 +133,11 @@ impl PiRuntime {
                 )
             }
             AdapterOutput::CommandAccepted { command } => {
-                let refresh = if command == "prompt"
+                let refresh = if command == "prompt" && self.configuration_dirty {
+                    // State, then models and levels if they may have changed,
+                    // inside the live turn; skipped when capacity is full.
+                    self.refresh_configuration()
+                } else if command == "prompt"
                     && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
                     && self.thinking_request_command.is_none()
                 {
@@ -144,17 +156,7 @@ impl PiRuntime {
             AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,
-            AdapterOutput::Models(models) => {
-                let event = model_event(models.clone(), self.current_model.as_deref())?;
-                if let AdapterEvent::Models { models, .. } = &event {
-                    self.model_count = models
-                        .len()
-                        .try_into()
-                        .map_err(|_| AdapterRuntimeError::BatchCount)?;
-                }
-                self.available_models = models;
-                (Some(event), None)
-            }
+            AdapterOutput::Models(models) => self.models_reply(models)?,
             AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
             AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,

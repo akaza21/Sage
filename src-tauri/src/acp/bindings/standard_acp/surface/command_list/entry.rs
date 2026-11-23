@@ -91,12 +91,13 @@ pub(crate) struct AvailableCommand {
     pub(crate) aliases: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source_label: Option<String>,
-    /// Harness provenance stays native; filesystem paths never enter the menu DTO.
-    #[serde(skip)]
+    /// Bounded provenance for the on-demand Extensions view; never used as a resource handle.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source_info: Option<Box<CommandSourceInfo>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CommandSourceInfo {
     pub(crate) path: Option<String>,
     pub(crate) source: Option<String>,
@@ -109,9 +110,9 @@ impl CommandSourceInfo {
     pub(crate) fn from_wire(value: &Value) -> Option<Self> {
         value.as_object()?;
         let field = |name: &str, cap| {
-            value[name]
-                .as_str()
-                .and_then(|text| clipped(text, cap).ok())
+            value[name].as_str().and_then(|text| {
+                crate::acp::redaction::text::redact_reply("commandSource", text, cap).ok()
+            })
         };
         Some(Self {
             path: field("path", 1024),

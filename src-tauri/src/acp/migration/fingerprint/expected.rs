@@ -392,6 +392,10 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             super::super::sign_in_evidence_indexes::VERSION,
             super::super::sign_in_evidence_indexes::SQL,
         ),
+        (
+            super::super::agent_file_writes::VERSION,
+            super::super::agent_file_writes::SQL,
+        ),
     ] {
         if version >= migration_version {
             expected.execute_batch(sql).db()?;

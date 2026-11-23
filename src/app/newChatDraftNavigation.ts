@@ -31,6 +31,7 @@ export async function openNewChatDraft(
     !!draft &&
     (draft.text ||
       draft.images?.length ||
+      draft.fileRevision ||
       draft.submission.status !== "released");
   const retainedDraft =
     draft &&
@@ -94,6 +95,7 @@ export async function openNewChatDraft(
           : null,
       access: null,
       effort: null,
+      fileToken: newFileToken(),
       submission: { status: "released" },
       error: null,
     },
@@ -102,6 +104,10 @@ export async function openNewChatDraft(
   if (opened?.harnessId && opened.harnessId !== get().selectedHarnessId)
     return selectDraftHarness(set, get, opened.harnessId);
 }
+/** A new draft's own, empty native file slot. Its staged files are byte
+ * snapshots, so they stay with the draft when it is retargeted. */
+const newFileToken = () => crypto.randomUUID();
+
 /**
  * The choices a draft sends with under the current catalog, or null while
  * its harness cannot send. The stored choices stay the user's preference, so

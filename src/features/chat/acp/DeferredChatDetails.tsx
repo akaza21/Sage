@@ -3,10 +3,7 @@ import type { InlineSavedDiff } from "./InlineSavedDiff";
 import type { TurnFileActivity } from "./TurnFileActivity";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 
-const loadInlineSavedDiff = () =>
-  import("./InlineSavedDiff").then(({ InlineSavedDiff }) => ({
-    default: InlineSavedDiff,
-  }));
+const loadInlineSavedDiff = () => import("./InlineSavedDiff");
 
 const loadTurnFiles = () =>
   import("./TurnFileActivity").then(({ TurnFileActivity }) => ({

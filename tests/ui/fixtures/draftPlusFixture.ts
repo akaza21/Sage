@@ -4,6 +4,7 @@ import { useWorkbenchStore } from "../../../src/app/store";
 import type { AcpChatPage, ProjectionRevision } from "../../../src/domain/acp";
 import type { SendAcpTurnRequest } from "../../../src/services/acpDesktop";
 import { acpDesktop } from "../../../src/services/acpDesktop";
+import { acpCommandsDesktop } from "../../../src/services/acpCommandsDesktop";
 
 const MAX_CAPTURED = 16;
 
@@ -41,11 +42,22 @@ export function installDraftPlusFixture() {
     sessions: 0,
     sent: [] as SendAcpTurnRequest[],
     access: [] as unknown[],
+    // Curated built-ins the draft lists, and the sessions' command catalog:
+    // null until a harness reports one (revision 0); undefined leaves the
+    // desktop command port alone.
+    builtins: [] as string[],
+    catalog: undefined as string[] | null | undefined,
+    ran: [] as string[],
+    lists: 0,
+    listHold: null as ReturnType<typeof deferred> | null,
     holdUploads() {
       control.uploadHold = deferred();
     },
     holdPage() {
       control.pageHold = deferred();
+    },
+    holdList() {
+      control.listHold = deferred();
     },
   };
   Object.assign(window, { draftPlus: control });
@@ -149,6 +161,27 @@ export function installDraftPlusFixture() {
     control.sent.push(structuredClone(request));
     return revised(request.chatId, () => {});
   };
+  const { listCommands, runCommand } = acpCommandsDesktop;
+  acpCommandsDesktop.listCommands = async (request) => {
+    if (control.catalog === undefined) return listCommands(request);
+    control.lists += 1;
+    await control.listHold?.promise;
+    return {
+      revision: control.catalog ? 1 : 0,
+      commands: (control.catalog ?? []).map((name) => ({
+        name,
+        description: "",
+        inputHint: null,
+        source: "builtin" as const,
+      })),
+    };
+  };
+  acpCommandsDesktop.runCommand = async (request) => {
+    if (control.catalog === undefined) return runCommand(request);
+    bounded(control.ran);
+    control.ran.push(request.name);
+    return revised(request.chatId, () => {});
+  };
   Object.defineProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__", {
     configurable: true,
     writable: true,
@@ -164,6 +197,7 @@ export function installDraftPlusFixture() {
           request?: { label?: string; dataBase64?: string; mode?: string };
         },
       ) => {
+        if (command === "list_builtin_commands") return control.builtins;
         if (command === "set_chat_access") {
           bounded(control.access);
           control.access.push(args.request);

@@ -417,3 +417,5 @@ mod chrome;
 mod load_failure;
 #[path = "questions_native.rs"]
 mod questions;
+#[path = "bridge_native_render.rs"]
+mod render;

@@ -16,6 +16,7 @@ const SectionPart = lazyParts<
 
 export { ListedHarnessModels } from "./ListedHarnessModels";
 export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";
+export { ComposerChrome } from "./acp/ComposerChrome";
 
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
@@ -63,6 +64,7 @@ export type ComposerAddActionsProps = {
   onOpenEffort?: () => void;
   onOpenUsage?: () => void;
   onOpenMcp?: () => void;
+  onOpenExtensions?: () => void;
   onPickCommand?: (command: AvailableAcpCommand, input: string) => void;
   onClose: () => void;
   onSetSessionMode: (id: string) => Promise<unknown>;
@@ -75,3 +77,6 @@ export type ComposerAddActionsProps = {
 export function ComposerAddActions(props: ComposerAddActionsProps) {
   return <SectionPart part="ComposerSectionMenu" {...props} />;
 }
+
+// The + menu Extensions and managed MCP views load with this menu chunk.
+export { ExtensionsPopover } from "./ComposerExtensions";

@@ -119,14 +119,18 @@ export function safeItem(value: unknown): AcpItem | null {
           }
         : null;
     }
+    // A compaction notice has no payload; an extension message's payload
+    // is decoded by its lazy view.
     case "compactionNotice":
-      return value.toolState === null && Object.keys(payload).length === 0
-        ? {
+    case "extensionMessage":
+      return value.toolState === null &&
+        (value.kind === "extensionMessage" || Object.keys(payload).length === 0)
+        ? ({
             ...identity,
-            kind: "compactionNotice",
+            kind: value.kind as AcpItem["kind"],
             toolState: null,
-            payload: {},
-          }
+            payload,
+          } as AcpItem)
         : null;
     case "plan": {
       if (

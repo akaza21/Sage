@@ -23,10 +23,13 @@ import {
 import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
-import type { AcpCommandPanel } from "../../domain/acpCommand";
 import { lazyParts } from "./lazyParts";
+import { useWorkbenchStore } from "../../app/store";
+import { useDraftBuiltinCommands } from "./draftBuiltinCommands";
 import type * as PanelChunk from "./ComposerCommandPanel";
+import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
+import type { AcpCommandPanel } from "../../domain/acpCommand";
 // A new-chat draft's image intake and handoff upload ride in this chunk:
 // "Add images" lives here, and a draft's drops and sends load it too.
 // eslint-disable-next-line react-refresh/only-export-components -- the draft image actions, shared by this lazy chunk's importers
@@ -34,6 +37,9 @@ export { addDraftImages } from "./draftImages";
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
+const ExtensionsPart = lazyParts<
+  Pick<typeof AddActionsChunk, "ExtensionsPopover">
+>(() => import("./ComposerAddActions"));
 
 function ComposerOptionsBrowser({
   load,
@@ -47,13 +53,16 @@ function ComposerOptionsBrowser({
   onModeRemoved,
   accessModes,
   ...given
-}: ComposerOptionsProps & {
-  load: SessionCommandsLoad | null;
-  insertCommand?: typeof pickComposerSlashCommand;
-}) {
+}: ComposerOptionsProps &
+  DraftBuiltinsProp & {
+    load: SessionCommandsLoad | null;
+    insertCommand?: typeof pickComposerSlashCommand;
+  }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
-  const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
+  const [panel, setPanel] = useState<
+    AcpCommandPanel | "managedMcp" | "extensions" | null
+  >(null);
   const fieldRef = useMemo(
     () => ({
       get current() {
@@ -111,6 +120,18 @@ function ComposerOptionsBrowser({
     }
     previousActionsKey.current = actionsKey;
   }, [actionsKey, focused, id, onDismiss, onModeRemoved]);
+  if (panel === "extensions" || panel === "managedMcp")
+    return (
+      <ExtensionsPart
+        part="ExtensionsPopover"
+        kind={panel}
+        load={load}
+        boundChatId={owner ?? undefined}
+        triggerRef={fieldRef}
+        onClose={onDismiss}
+        onRunCommand={(command) => pickCommand(command, "")}
+      />
+    );
   if (panel)
     return (
       <PanelPart
@@ -138,17 +159,32 @@ function ComposerOptionsBrowser({
         {...actions}
         load={load}
         onOpenUsage={() => setPanel("status")}
-        onOpenMcp={() => setPanel("mcp")}
+        onOpenMcp={() =>
+          setPanel(
+            load?.kind === "ready" &&
+              load.list.commands.some((command) => command.panel === "mcp")
+              ? "mcp"
+              : "managedMcp",
+          )
+        }
+        onOpenExtensions={() => setPanel("extensions")}
         onPickCommand={pickCommand}
       />
     </MenuPopover>
   );
 }
 
+interface DraftBuiltinsProp {
+  /** The new-chat draft's curated built-in commands, insert-only. */
+  draftBuiltins?: readonly AvailableAcpCommand[];
+}
+
 export function ComposerSectionRows({
   load = null,
+  draftBuiltins,
   ...props
-}: ComposerAddActionsProps & { load?: SessionCommandsLoad | null }) {
+}: ComposerAddActionsProps &
+  DraftBuiltinsProp & { load?: SessionCommandsLoad | null }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner;
   const page = useStore(acpProjectionStoreFor(owner), (state) => state.page);
@@ -167,15 +203,25 @@ export function ComposerSectionRows({
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:
       load?.kind === "ready" &&
-      load.list.commands.some((command) => command.panel === "mcp")
+      // A Sage MCP panel, or the harness's own MCP command placed on the row.
+      load.list.commands.some(
+        (command) =>
+          command.panel === "mcp" || command.placement?.control === "mcpPanel",
+      )
         ? props.onOpenMcp
+        : undefined,
+    // Built from reported provenance only, so a harness reporting none has no row.
+    onOpenExtensions:
+      load?.kind === "ready" &&
+      load.list.commands.some((command) => command.sourceInfo)
+        ? props.onOpenExtensions
         : undefined,
   });
   const sections = composerMenuSections(
     rows,
     load?.kind === "ready" ? load.list.commands : [],
     query,
-    !!props.draftPickers,
+    props.draftPickers ? (draftBuiltins ?? []) : undefined,
   );
   return (
     <div
@@ -261,6 +307,27 @@ export function ComposerSectionRows({
   );
 }
 
+/** The draft lists its harness's curated built-ins; a pick only inserts
+ * `/name ` into the draft's text. */
+function DraftOptionsBrowser(props: ComposerOptionsProps) {
+  const builtins = useDraftBuiltinCommands(
+    useWorkbenchStore((state) => state.newChatDraft?.harnessId ?? undefined),
+  );
+  return (
+    <ComposerOptionsBrowser
+      {...props}
+      load={null}
+      draftBuiltins={builtins}
+      // Through the field's editing commands, so Undo restores the text.
+      insertCommand={(field, { name }) =>
+        void import("./ComposerCommandRuntime").then((runtime) =>
+          runtime.insertSlashCommand(field, name),
+        )
+      }
+    />
+  );
+}
+
 const CatalogPart = lazyParts<
   Pick<typeof CommandRuntime, "ComposerCommandCatalog">
 >(() => import("./ComposerCommandRuntime"));
@@ -282,8 +349,7 @@ export function ComposerOptionsMenu(props: ComposerOptionsProps) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner ?? undefined;
   // No session has a catalog yet, and another chat's must not show.
-  if (props.draftPickers)
-    return <ComposerOptionsBrowser {...props} load={null} />;
+  if (props.draftPickers) return <DraftOptionsBrowser {...props} />;
   return (
     <CatalogPart
       part="ComposerCommandCatalog"

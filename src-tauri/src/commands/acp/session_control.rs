@@ -40,9 +40,22 @@ pub(crate) struct SessionControlRequest {
     deny_unknown_fields
 )]
 enum ControlIntent {
-    RewindConversation { before: SageTurnId },
-    UndoTurn { turn_id: SageTurnId },
-    StopActivity { activity_key: String },
+    RewindConversation {
+        before: SageTurnId,
+        /// Also restore the files changed since `before`, after a dry run.
+        #[serde(default)]
+        files: bool,
+    },
+    /// Lists what a file rewind to `before` would restore; restores nothing.
+    PreviewRewind {
+        before: SageTurnId,
+    },
+    UndoTurn {
+        turn_id: SageTurnId,
+    },
+    StopActivity {
+        activity_key: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -50,6 +63,8 @@ enum ControlIntent {
 pub(crate) struct SessionControlResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview: Option<crate::acp::service::file_rewind::FileRewindPreview>,
 }
 
 /// Undoes the latest turn or stops a background task in the chat's running
@@ -94,14 +109,26 @@ pub(crate) async fn control_acp_session(
         runtime_epoch: request.runtime_epoch,
     };
     let control = match request.control {
-        ControlIntent::RewindConversation { before } => {
+        ControlIntent::PreviewRewind { before } => {
+            let preview = state
+                .acp
+                .preview_file_rewind(&owner, &before)
+                .await
+                .map_err(control_error)?;
+            return Ok(SessionControlResponse {
+                summary: None,
+                preview,
+            });
+        }
+        ControlIntent::RewindConversation { before, files } => {
             let summary = state
                 .acp
-                .rewind_conversation(&owner, before)
+                .rewind_conversation(&owner, before, files)
                 .await
                 .map_err(control_error)?;
             return Ok(SessionControlResponse {
                 summary: summary.map(|s| s.as_str().to_owned()),
+                preview: None,
             });
         }
         ControlIntent::UndoTurn { turn_id } => {
@@ -112,6 +139,7 @@ pub(crate) async fn control_acp_session(
                 .map_err(control_error)?;
             return Ok(SessionControlResponse {
                 summary: summary.map(|summary| summary.as_str().to_owned()),
+                preview: None,
             });
         }
         ControlIntent::StopActivity { activity_key } => {
@@ -133,6 +161,7 @@ pub(crate) async fn control_acp_session(
         .map_err(control_error)?;
     Ok(SessionControlResponse {
         summary: summary.map(|summary| summary.as_str().to_owned()),
+        preview: None,
     })
 }
 

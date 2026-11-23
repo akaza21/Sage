@@ -1,4 +1,4 @@
-use super::*;
+use super::{file_rewind, *};
 use crate::acp::{ipc::ProjectionChangedV1, store::UndoneThread, turn_undo::stage_turn_undo};
 use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
@@ -68,15 +68,18 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
-        self.apply_rewind(owner, turn_id, false).await
+        self.apply_rewind(owner, turn_id, false, false).await
     }
 
+    /// With `files`, the files changed since `before` are restored first,
+    /// after a dry run and a check that none changed since the agent wrote it.
     pub(crate) async fn rewind_conversation(
         &self,
         owner: &RuntimeOwner,
         before: SageTurnId,
+        files: bool,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
-        self.apply_rewind(owner, before, true).await
+        self.apply_rewind(owner, before, true, files).await
     }
 
     async fn apply_rewind(
@@ -84,6 +87,7 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
         mut conversation_only: bool,
+        files: bool,
     ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
         let claim = self.claim_undo_lane(owner)?;
         crate::acp::store::turn_undo::intent::ensure_settled(
@@ -130,37 +134,30 @@ impl AcpService {
             .map_err(|_| SessionControlError::RecoveryRequired)?;
         let binding = sage_acp_protocol::intent::BindingId::new("bindingId", binding)
             .map_err(|_| SessionControlError::RecoveryRequired)?;
-        let (command, control) =
-            self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, || {
-                self.resolve_session_binding(&binding)
-                    .map_err(|_| "The conversation transcript is unavailable.".to_owned())?
-                    .undo_cut(&external, turn_id.as_str())
-                    .map_err(|error| error.to_string())
-            })?;
-        let summary = match self.control_session(owner.clone(), control) {
-            Ok(summary) => summary,
-            Err(error) => {
-                if matches!(
-                    error,
-                    SessionControlError::Refused(_) | SessionControlError::Unavailable
-                ) {
-                    let rollback =
-                        self.database
-                            .write_connection()
-                            .ok()
-                            .and_then(|mut connection| {
-                                crate::acp::store::turn_undo::intent::rollback(
-                                    &mut connection,
-                                    &command,
-                                )
-                                .ok()
-                            });
-                    if rollback.is_some() {
-                        return Err(error);
-                    }
-                }
-                self.recover_undo_runtime(owner);
-                return Err(SessionControlError::RecoveryRequired);
+        let resolve_cut = || {
+            self.resolve_session_binding(&binding)
+                .map_err(|_| "The conversation transcript is unavailable.".to_owned())?
+                .undo_cut(&external, turn_id.as_str())
+                .map_err(|error| error.to_string())
+        };
+        let (command, summary, restored) = if files {
+            if !conversation_only || !file_rewind::offers_file_rewind(self.session_rewind(owner)?) {
+                return Err(SessionControlError::Unavailable);
+            }
+            let target = self.rewind_target(owner, &turn_id)?;
+            self.rewind_files_then_cut(
+                owner,
+                &target,
+                &mut |control| self.session_control_reply(owner.clone(), control),
+                || self.prepare_rewind(owner, turn_id.clone(), undo, true, resolve_cut),
+            )
+            .await?
+        } else {
+            let (command, control) =
+                self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
+            match self.control_session(owner.clone(), control) {
+                Ok(summary) => (command, summary, false),
+                Err(error) => return Err(self.abandon_staged(owner, &command, error)),
             }
         };
         let recorded = self
@@ -172,7 +169,10 @@ impl AcpService {
             });
         let Some(recorded) = recorded else {
             self.recover_undo_runtime(owner);
-            return Err(SessionControlError::RecoveryRequired);
+            return Err(file_rewind::staged_error(
+                restored,
+                SessionControlError::RecoveryRequired,
+            ));
         };
         if let Some(projection_revision) = recorded.published {
             // Delivery is advisory: the page reloads from SQLite either way.
@@ -241,6 +241,32 @@ impl AcpService {
             resolve_cut,
         )?;
         Ok((command, control))
+    }
+
+    /// A staged cut whose native effect was refused is rolled back; any
+    /// other failure leaves the outcome unknown, for recovery to settle.
+    pub(super) fn abandon_staged(
+        &self,
+        owner: &RuntimeOwner,
+        command: &crate::acp::store::TurnUndoneCommand,
+        error: SessionControlError,
+    ) -> SessionControlError {
+        if matches!(
+            error,
+            SessionControlError::Refused(_) | SessionControlError::Unavailable
+        ) && self
+            .database
+            .write_connection()
+            .ok()
+            .and_then(|mut connection| {
+                crate::acp::store::turn_undo::intent::rollback(&mut connection, command).ok()
+            })
+            .is_some()
+        {
+            return error;
+        }
+        self.recover_undo_runtime(owner);
+        SessionControlError::RecoveryRequired
     }
 
     fn recover_undo_runtime(&self, owner: &RuntimeOwner) {

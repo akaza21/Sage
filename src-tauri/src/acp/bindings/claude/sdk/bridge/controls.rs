@@ -4,7 +4,7 @@ use super::{
     BridgeError, Inbound, Pending, SdkBridge,
     notices::{TASK_PREFIX, prose},
 };
-use crate::acp::{goal::NativeRpcReply, mcp::inventory::McpInventory};
+use crate::acp::{goal::NativeRpcReply, mcp::inventory::McpInventory, turn_undo::MAX_REWIND_FILES};
 use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
 
 /// Passive requests Claude Code has not answered after their callers gave
@@ -18,6 +18,8 @@ pub(super) enum PassiveRequest {
     McpList,
     McpReconnect,
     Usage,
+    /// A `rewind_files` dry run: it lists files and restores none.
+    FilePlan,
 }
 
 impl PassiveRequest {
@@ -25,9 +27,36 @@ impl PassiveRequest {
         match (self, reply) {
             (Self::McpList, Ok(reply)) => SdkBridge::mcp_listed(reply, inbound),
             (Self::Usage, reply) => super::usage::answered(reply.ok(), inbound),
-            (Self::McpList | Self::McpReconnect, reply) => SdkBridge::controlled(reply, inbound),
+            (Self::FilePlan, Ok(reply)) => file_plan(reply, inbound),
+            (Self::McpList | Self::McpReconnect | Self::FilePlan, reply) => {
+                SdkBridge::controlled(reply, inbound)
+            }
         }
     }
+}
+
+/// `filesChanged` names the files a dry run would restore, or a restore did.
+pub(super) fn file_plan(reply: &Value, inbound: &mut Inbound) {
+    if reply.get("canRewind").and_then(Value::as_bool) != Some(true) {
+        return SdkBridge::controlled(Ok(reply), inbound);
+    }
+    let files = match reply.get("filesChanged") {
+        None => Some(Vec::new()),
+        Some(Value::Array(files)) if files.len() <= MAX_REWIND_FILES => files
+            .iter()
+            .map(|file| {
+                file.as_str()
+                    .filter(|path| !path.is_empty())
+                    .map(Into::into)
+            })
+            .collect(),
+        Some(Value::Array(_)) => {
+            inbound.native = Some(NativeRpcReply::TooLarge);
+            return;
+        }
+        Some(_) => None,
+    };
+    inbound.native = Some(files.map_or(NativeRpcReply::Rejected, NativeRpcReply::FileRewindPlan));
 }
 
 impl SdkBridge {
@@ -46,6 +75,21 @@ impl SdkBridge {
                 "subtype": "rewind_files",
                 "user_message_id": message_uuid(turn_id.as_str()).ok_or(BridgeError::Unsupported)?,
             }),
+            // Claude Code checkpoints files at each prompt it was sent, under
+            // the prompt's `uuid`: Sage's turn id.
+            SessionControl::RewindFiles { target, dry_run } => {
+                pending = if *dry_run {
+                    Pending::Passive(PassiveRequest::FilePlan)
+                } else {
+                    Pending::Restore
+                };
+                json!({
+                    "subtype": "rewind_files",
+                    "user_message_id": message_uuid(target.turn_id.as_str())
+                        .ok_or(BridgeError::Unsupported)?,
+                    "dry_run": dry_run,
+                })
+            }
             SessionControl::StopActivity { activity_id } => {
                 let task = activity_id
                     .as_str()
@@ -94,7 +138,11 @@ impl SdkBridge {
         self.pending.values().any(|pending| {
             matches!(
                 pending,
-                Pending::Control | Pending::Passive(_) | Pending::Fork(_) | Pending::ForkAt(..)
+                Pending::Control
+                    | Pending::Restore
+                    | Pending::Passive(_)
+                    | Pending::Fork(_)
+                    | Pending::ForkAt(..)
             )
         })
     }

@@ -191,6 +191,7 @@ export const ComposerOptionsPart = lazyParts<
     | "ListedHarnessModels"
     | "ComposerNoticeSurface"
     | "HarnessAccountMenu"
+    | "ComposerChrome"
   >
 >(() => import("./ComposerAddActions"));
 

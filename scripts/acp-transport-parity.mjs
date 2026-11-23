@@ -40,7 +40,7 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "runtimeCheckpoint",
     "targets",
   ],
-  AcpRewindEffects: ["conversation", "files"],
+  AcpRewindEffects: ["conversation", "filePreview", "files"],
   AcpItemIdentity: [
     "activityId",
     "chatId",

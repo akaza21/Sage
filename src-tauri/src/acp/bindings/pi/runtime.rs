@@ -111,6 +111,10 @@ pub(crate) struct PiRuntime {
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
     commands_discovered: bool,
+    configuration_dirty: bool,
+    /// A configuration read asked for the model registry; its reply continues
+    /// to the thinking levels.
+    configuration_models_pending: bool,
     pub(super) thinking_request_session: Option<ExternalId>,
     pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
     pub(super) thinking_request_command: Option<String>,

@@ -12,30 +12,41 @@ export type SessionControlStatus =
   | { kind: "done"; message: string }
   | { kind: "failed"; message: string };
 
+/** `control` addressed to the chat's running session, or `null` when none runs. */
+export function sessionRequest<Control>(
+  chatId: string | null | undefined,
+  control: Control,
+) {
+  const context = currentContext(chatId);
+  const session = context?.page.sessions.find(
+    (item) => item.id === context.page.currentSessionId,
+  );
+  return context && session?.runtimeEpoch
+    ? {
+        ...context.scope,
+        projectGeneration: context.commandProjectGeneration,
+        sessionId: session.id,
+        runtimeEpoch: session.runtimeEpoch,
+        control,
+      }
+    : null;
+}
+
 export function useSessionControl(boundChatId?: string | null) {
   const [status, setStatus] = useState<SessionControlStatus>({ kind: "idle" });
   const pending = useRef(false);
   const run = useCallback(
     async (control: SessionControlIntent, done: string) => {
       if (pending.current) return false;
-      const context = currentContext(boundChatId);
-      const session = context?.page.sessions.find(
-        (item) => item.id === context.page.currentSessionId,
-      );
-      if (!context || !session?.runtimeEpoch) {
+      const request = sessionRequest(boundChatId, control);
+      if (!request) {
         setStatus({ kind: "failed", message: "The session is not running." });
         return false;
       }
       pending.current = true;
       setStatus({ kind: "pending" });
       try {
-        const summary = await controlAcpSession({
-          ...context.scope,
-          projectGeneration: context.commandProjectGeneration,
-          sessionId: session.id,
-          runtimeEpoch: session.runtimeEpoch,
-          control,
-        });
+        const summary = await controlAcpSession(request);
         setStatus({ kind: "done", message: summary ?? done });
         return true;
       } catch (error) {

@@ -4,11 +4,17 @@ export const PROMPT_ATTACHMENT_COUNT = 16;
 export const PROMPT_ATTACHMENT_TOTAL_BYTES = 96 * 1024;
 
 /** Native-only contract; staged bytes stay in Rust until a send consumes them. */
-export interface PromptFileOwner {
+export interface PromptChatOwner {
   projectId: string;
   chatId: string;
   projectGeneration: number;
 }
+/** The new-chat draft, before its chat exists, by a UUID it makes for itself. */
+export interface PromptDraftOwner {
+  draftToken: string;
+}
+/** A batch's owner: a chat, or the draft whose first send hands it over. */
+export type PromptFileOwner = PromptChatOwner | PromptDraftOwner;
 export interface StagedPromptFiles {
   revision: string;
   files: { id: string; name: string; bytes: number }[];
@@ -35,4 +41,11 @@ export interface PromptAttachmentsPort {
     revision: string;
     id: string;
   }): Promise<StagedPromptFiles | null>;
+  /** Moves a batch whole between a draft and a chat, or nothing. */
+  handOffPromptFiles(request: {
+    from: PromptFileOwner;
+    to: PromptFileOwner;
+    revision: string;
+  }): Promise<StagedPromptFiles>;
+  releaseDraftPromptFiles(draft: PromptDraftOwner): Promise<void>;
 }

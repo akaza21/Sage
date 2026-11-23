@@ -63,6 +63,7 @@ pub(crate) use permission::tests::support::{
 mod session;
 mod session_close;
 pub(crate) use permission::PermissionDecisionIntent;
+pub(crate) mod file_rewind;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;
 mod chat_fork;

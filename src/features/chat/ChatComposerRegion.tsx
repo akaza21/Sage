@@ -25,7 +25,7 @@ import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
-import { SlashPart } from "./composerLazyParts";
+import { ChromePart, SlashPart } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -82,6 +82,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInputDisabledReason = null,
     onAddImages,
     onCancelTurn,
+    onStop,
     onDeleteQueuedPrompt,
     onRetryQueuedPrompt,
     onSteerQueuedPrompt,
@@ -104,7 +105,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onAddImages,
   });
   const paste = useComposerPaste(
-    sessionFeatures && availableBinding,
+    availableBinding,
     activeTurn,
     disabledReasonId,
     onTextChange,
@@ -116,7 +117,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     (activeTurn && !queueAvailable) ||
     imageUploading ||
     imageInput.sendBlocked ||
-    (sessionFeatures && paste.blocksSend);
+    paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const hasContent = Boolean(
     text.trim() || attachedContext.length || paste.revision,
@@ -133,7 +134,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onPickFiles: paste.pickFiles,
     hidden: hidden || !sessionFeatures,
     disabled: composerDisabled,
-    attachable: sessionFeatures && availableBinding,
+    attachable: availableBinding,
   });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -197,7 +198,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            <SlashPart part="ComposerChrome" place="above" {...props} />
+            <ChromePart part="ComposerChrome" place="above" {...props} />
             {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
@@ -295,16 +296,16 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               ) : null}
             </div>
-            <SlashPart part="ComposerChrome" place="below" {...props} />
-            {sessionFeatures ? (
-              <ComposerPasteSlot
-                paste={paste}
-                chatId={dictationScope}
-                session={pasteSession}
-                text={text}
-                disabled={actionDisabled}
-              />
-            ) : null}
+            <ChromePart part="ComposerChrome" place="below" {...props} />
+            <ComposerPasteSlot
+              paste={paste}
+              chatId={dictationScope}
+              // The new-chat draft stages files in its own slot, a chat by id.
+              draft={!sessionFeatures}
+              session={pasteSession}
+              text={text}
+              disabled={actionDisabled}
+            />
             <ComposerAvailabilityNotice
               reason={disabledReason}
               id={disabledReasonId}
@@ -331,7 +332,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               </div>
             ) : null}
-            {sessionFeatures ? files.parts : null}
+            {files.parts}
             {!hidden ? (
               <ComposerStatusNotices
                 workbenchError={workbenchError}
@@ -396,8 +397,8 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               disabledReason={disabledReason}
               disabledReasonId={disabledReasonId}
               dictation={dictation}
-              onCancelTurn={onCancelTurn}
-              cancelDisabled={actionDisabled}
+              onCancelTurn={onStop ?? onCancelTurn}
+              cancelDisabled={actionDisabled && !onStop}
               sendDisabled={dispatchBlocked}
             />
           </div>

@@ -550,6 +550,8 @@ struct FakeState {
     refusal_detail: Option<RefusalDetail>,
     turn_unnamed: bool,
     config_pending: bool,
+    /// The session advertises file rewind with a preview.
+    file_preview: bool,
 }
 
 #[derive(Clone)]
@@ -562,7 +564,12 @@ struct FakeAdapter {
 
 impl HarnessAdapter for FakeAdapter {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        None
+        self.shared.0.lock().unwrap().file_preview.then(|| {
+            let mut capabilities: CapabilitySnapshotV1 =
+                serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
+            capabilities.rewind.effects.file_preview = true;
+            capabilities
+        })
     }
 
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -833,12 +840,25 @@ impl ProjectionPublisher for FakePublisher {
 
 struct Mapper;
 
+thread_local! {
+    /// Real roots whose files Mapper hands out probes for.
+    static PROBE_ROOTS: std::cell::RefCell<Option<crate::acp::resource_mapper::NativeResourceMapper>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
     ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
+    }
+
+    fn content_probe(
+        &self,
+        resource: &SafeResourceRef,
+    ) -> Option<crate::acp::resource_mapper::ContentProbe> {
+        PROBE_ROOTS.with(|roots| roots.borrow().as_ref()?.probe(resource))
     }
 }
 
@@ -2482,6 +2502,9 @@ fn runtime() -> tokio::runtime::Runtime {
         .build()
         .unwrap()
 }
+
+#[path = "agent_write_tests.rs"]
+mod agent_write_tests;
 
 #[path = "harness_turn_tests.rs"]
 mod harness_turn_tests;

@@ -1,5 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
+    RefreshConfiguration,
+    RefreshModels,
     Initialize,
     GetModels,
     SetModel {
@@ -230,6 +232,11 @@ pub enum ToolOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterOutput {
+    Message(sage_acp_protocol::intent::NormalizedPayload),
+    /// An extension changed the session configuration; Sage reads it again
+    /// with its next prompt.
+    ConfigurationChanged,
+    Configuration(StateSnapshot),
     InitializationProgress,
     Initialized,
     CommandAccepted {

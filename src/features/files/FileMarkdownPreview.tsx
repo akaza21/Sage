@@ -26,3 +26,5 @@ export function FileMarkdownPreview({
     </article>
   );
 }
+
+export default FileMarkdownPreview;
