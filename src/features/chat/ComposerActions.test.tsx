@@ -79,6 +79,48 @@ async function renderActions(
   };
 }
 
+it("renders Auto-compact with the shared label and description structure", async () => {
+  await renderActions(false, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      configOptions: [
+        {
+          id: "compact",
+          name: "Auto-compact",
+          description: "Automatically compact context when it fills",
+          type: "boolean",
+          currentValue: true,
+        },
+      ],
+    }),
+    addActions: { onCompact: () => {} },
+  });
+  const toggle = screen.getByRole("menuitemcheckbox", {
+    name: "Session auto-compact",
+  });
+  const sibling = screen.getByRole("menuitem", {
+    name: "Compact context",
+  });
+  const description = within(toggle).getByText(
+    "Automatically compact context when it fills",
+  );
+  const siblingDescription = within(sibling).getByText(
+    "Summarize earlier turns to free context",
+  );
+  expect(toggle.className).toBe(sibling.className);
+  expect(description.tagName).toBe(siblingDescription.tagName);
+  expect(description.className).toBe(siblingDescription.className);
+  expect(description.getAttribute("role")).toBe(
+    siblingDescription.getAttribute("role"),
+  );
+  expect(description.parentElement).toBe(toggle);
+  expect(toggle).toHaveAccessibleDescription(description.textContent!);
+  expect(toggle).toHaveAttribute("aria-checked", "true");
+});
+
 it("lists every advertised mode, including one whose id is default", async () => {
   const setMode = vi.fn().mockResolvedValue(undefined);
   await renderActions(true, {

@@ -3,6 +3,7 @@ import { ChatAccessView } from "./ChatAccessView";
 import type { SessionAccessMode } from "../../domain/sessionAccessMode";
 import { chooseAccess, CONFIRMED_ACCESS } from "./chatAccessChoice";
 import type { ComposerAccessControlProps } from "./ComposerAccessControl";
+import { composerMenuRow } from "./composerMenuRow";
 
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
@@ -40,27 +41,22 @@ export function ComposerPlanAccess({
         // A default that is Plan itself leaves the person to pick the mode.
         const next = !on ? "plan" : defaultMode !== "plan" ? defaultMode : null;
         const description = on ? "Turn plan mode off" : "Turn plan mode on";
-        return (
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            className="menu-item composer__add-action"
-            aria-label="Plan mode"
-            aria-description={description}
-            aria-checked={on}
-            disabled={disabled}
-            tabIndex={-1}
-            onClick={() => {
+        return composerMenuRow(
+          {
+            role: "menuitemcheckbox",
+            "aria-label": "Plan mode",
+            "aria-checked": on,
+            disabled,
+            onClick: () => {
               onClose();
               if (!next) onOpenAccess();
               else if (CONFIRMED_ACCESS.includes(next)) onOpenAccess(next);
               else chooseAccess({ sessionId, onDraft }, next);
-            }}
-          >
-            <Lightbulb size={14} aria-hidden="true" />
-            <span>Plan mode</span>
-            <span className="composer__action-description">{description}</span>
-          </button>
+            },
+          },
+          "Plan mode",
+          description,
+          <Lightbulb size={14} aria-hidden="true" />,
         );
       }}
     </ChatAccessView>
