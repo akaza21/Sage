@@ -88,8 +88,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onDeleteQueuedPrompt,
     onRetryQueuedPrompt,
     onSteerQueuedPrompt,
+    ...harnessControls
   } = props;
-  const sessionFeatures = !props.draftPickers;
+  const sessionFeatures = !harnessControls.draftPickers;
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || projectTransitioning;
   const actionDisabled = actionBusy || projectTransitioning;
@@ -357,10 +358,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             ) : null}
             {!hidden ? (
               <ChatHarnessControls
-                {...props}
+                {...harnessControls}
+                discoveryPhase={discoveryPhase}
                 modelsPending={
                   discoveryPhase === "checking" || discoveryPhase === "idle"
                 }
+                availableBinding={availableBinding}
+                canPrompt={canPrompt}
+                sessionHarnessId={sessionHarnessId}
+                selectedHarnessId={selectedHarnessId}
                 modelLabelScope={JSON.stringify([dictationScope, sessionId])}
                 inheritScope={dictationScope}
                 projectName={projectName}

@@ -8,11 +8,8 @@ import { useComposerFocusHotkey } from "./composerChrome";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { preferredAvailableHarness } from "../../domain/harness";
-import { LazyHarnessNotice } from "./lazyParts";
 
-const unchangedSession = async () => {
-  // Draft choices apply when the session starts.
-};
+const unchangedSession = () => Promise.resolve();
 // Images taken just before Send join the draft before it is sent: Send waits
 // for every drop still in flight, and with none acts at once.
 let intake: Promise<unknown> | undefined;
@@ -33,29 +30,28 @@ export function NewChatDraftSurface({
   const discoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
+  const discoveryError = useWorkbenchStore(
+    (state) => state.harnessDiscoveryError,
+  );
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const pendingFirstSend = useWorkbenchStore((state) => state.pendingFirstSend);
-  const {
-    reloadNewChatDraft: reload,
-    discardNewChatDraft: discard,
-    updateNewChatDraft: update,
-    selectDraftHarness: chooseHarness,
-    selectDraftModel: chooseModel,
-  } = useWorkbenchStore.getState();
+  const reload = useWorkbenchStore((state) => state.reloadNewChatDraft);
+  const discard = useWorkbenchStore((state) => state.discardNewChatDraft);
+  const update = useWorkbenchStore((state) => state.updateNewChatDraft);
+  const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
+  const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
-  const submission = draft?.submission;
-  const draftHarnessId = draft?.harnessId;
-  const released = submission?.status === "released";
-  const submitting = submission?.status === "submitting";
+  const submitting = draft?.submission.status === "submitting";
   const ownsChat = useWorkbenchStore((state) => !!draftOwnedChatId(state));
   const unconfirmed =
-    submission?.status === "unconfirmed" ||
-    (submitting && submission.creation.status === "unconfirmed");
+    draft?.submission.status === "unconfirmed" ||
+    (draft?.submission.status === "submitting" &&
+      draft.submission.creation.status === "unconfirmed");
   useComposerFocusHotkey(composerRef, !submitting && !transitioning);
-  const harness = harnesses.find((harness) => harness.id === draftHarnessId);
+  const harness = harnesses.find((harness) => harness.id === draft?.harnessId);
   useEffect(() => {
     (composerRef.current?.disabled
       ? surfaceRef.current
@@ -63,25 +59,26 @@ export function NewChatDraftSurface({
     )?.focus();
   }, [focusRequest]);
   useEffect(() => {
-    if (transitioning) return;
-    const harnessId =
-      (released
-        ? preferredAvailableHarness(harnesses, draftHarnessId)?.id
-        : null) ?? draftHarnessId;
+    const available = preferredAvailableHarness(harnesses, draft?.harnessId);
     if (
-      harnessId &&
-      (harnessId !== draftHarnessId || selectedHarnessId !== harnessId)
+      draft &&
+      draft.submission.status === "released" &&
+      !transitioning &&
+      available &&
+      draft.harnessId !== available.id
     ) {
-      void chooseHarness(harnessId);
+      void chooseHarness(available.id);
+      return;
     }
-  }, [
-    chooseHarness,
-    draftHarnessId,
-    released,
-    harnesses,
-    selectedHarnessId,
-    transitioning,
-  ]);
+    if (
+      draft &&
+      !transitioning &&
+      selectedHarnessId !== draft.harnessId &&
+      draft.harnessId
+    ) {
+      void chooseHarness(draft.harnessId);
+    }
+  }, [chooseHarness, draft, harnesses, selectedHarnessId, transitioning]);
   if (!draft) return null;
   const targetId =
     draft.targetProjectId === undefined
@@ -90,29 +87,29 @@ export function NewChatDraftSurface({
   // Only its name is shown.
   const shownProject = projects.find((item) => item.id === targetId);
   const available = harness?.installState === "available";
-  const bindingId = harness?.bindingId;
   const choice = effectiveDraftChoice(draft, {
     harnesses,
     selectedHarnessId,
     harnessDiscoveryPhase: discoveryPhase,
     models,
   });
-  const errorNotice = unconfirmed ? (
-    <>
-      {draft.error ??
-        "Chat creation is unconfirmed. Reload chats before trying again."}
-      <button
-        type="button"
-        className="button button--compact"
-        disabled={transitioning || !!pendingFirstSend}
-        onClick={reload}
-      >
-        Reload chats
-      </button>
-    </>
-  ) : (
-    draft.error
-  );
+  const errorNotice =
+    draft.error || unconfirmed ? (
+      <>
+        {draft.error ??
+          "Chat creation is unconfirmed. Reload chats before trying again."}
+        {unconfirmed ? (
+          <button
+            type="button"
+            className="button button--compact"
+            disabled={transitioning || !!pendingFirstSend}
+            onClick={() => void reload()}
+          >
+            Reload chats
+          </button>
+        ) : null}
+      </>
+    ) : null;
   return (
     <div
       className="agent-chat-center surface surface--card"
@@ -156,9 +153,6 @@ export function NewChatDraftSurface({
             ) : null}
           </div>
         </div>
-        {!choice && !errorNotice ? (
-          <LazyHarnessNotice harness={harness ?? null} compact />
-        ) : null}
         <ChatComposerRegion
           composerRef={composerRef}
           fieldId="new-chat-prompt"
@@ -168,9 +162,9 @@ export function NewChatDraftSurface({
           text={draft.text}
           attachedContext={draft.images ?? []}
           // Images go to a chat's native session, so only with a binding.
-          imageInputAvailable={!!bindingId}
+          imageInputAvailable={!!harness?.bindingId}
           onAddImages={
-            bindingId
+            harness?.bindingId
               ? (files) => {
                   // Each drop joins after the one before it, in drop order.
                   const next: Promise<unknown> = Promise.all([
@@ -193,7 +187,7 @@ export function NewChatDraftSurface({
           activeTurn={false}
           projectTransitioning={transitioning}
           chatError={composerProblem("create-chat", "new-chat", errorNotice)}
-          accessTarget={{ bindingId }}
+          accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
             access: (choice ?? draft).access,
             effort: (choice ?? draft).effort,
@@ -201,10 +195,10 @@ export function NewChatDraftSurface({
             onEffortChange: (effort) =>
               update({ effort: effort === "default" ? null : effort }),
           }}
-          availableBinding={!!bindingId}
+          availableBinding={!!harness?.bindingId}
           canPrompt={available}
           discoveryPhase={discoveryPhase}
-          selectedHarnessId={draftHarnessId ?? null}
+          selectedHarnessId={draft.harnessId}
           selectedModelId={(choice ?? draft).modelId}
           sessionConfig={null}
           modePending={false}
@@ -215,7 +209,13 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
           disabledReason={
-            available ? null : "Choose an available harness before sending."
+            !available
+              ? "Choose an available harness before sending."
+              : // A failed discovery leaves no model to send with; say why.
+                !choice && discoveryPhase === "error"
+                ? (discoveryError ??
+                  `Sage could not check ${harness.name}. Retry it from the harness menu.`)
+                : null
           }
           project={shownProject}
           newChat

@@ -668,26 +668,25 @@ afterEach(() => {
 });
 
 it.each([
-  ["checking", null, "Checking models for Draft harness…"],
-  ["error", "Discovery is busy; retry it.", "Discovery is busy; retry it."],
-  ["error", "Account unavailable.", "Account unavailable."],
-  ["signInRequired", null, "Finish signing in through your browser."],
+  [
+    "Codex discovery is already running; retry it.",
+    "Codex discovery is already running; retry it.",
+  ],
+  [null, "Sage could not check Draft harness. Retry it from the harness menu."],
 ] as const)(
-  "explains why the Home draft cannot send (%s, %s)",
-  async (phase, error, reason) => {
+  "says in one visible line why a failed discovery blocks the Home draft (%s)",
+  async (error, reason) => {
     useWorkbenchStore.setState({
-      harnesses: [{ ...harness, characterisation: "newerThanTested" }],
       models: [],
-      harnessDiscoveryPhase: phase,
+      harnessDiscoveryPhase: "error",
       harnessDiscoveryError: error,
     });
     mount();
     await settleLazyModules();
     fireEvent.change(composer(), { target: { value: "Keep my first prompt" } });
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
-    expect(screen.getByText(reason)).toBeVisible();
-    expect(screen.getByText(reason)).not.toHaveClass("sr-only");
-    expect(document.querySelectorAll(".notice")).toHaveLength(1);
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+    expect(screen.getByText(reason)).toHaveClass("composer__disabled-reason");
     fireEvent.keyDown(composer(), { key: "Enter" });
     expect(prompts).toEqual([]);
     expect(composer()).toHaveValue("Keep my first prompt");

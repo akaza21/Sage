@@ -13,34 +13,6 @@ afterEach(() => {
 });
 
 describe("HarnessDiscoveryNotice", () => {
-  it("shows the provided harness's discovery without inheriting another harness's error", () => {
-    const harness = {
-      id: "draft-fixture",
-      name: "Draft fixture",
-      description: "ACP",
-      source: "builtIn" as const,
-      transport: "acp" as const,
-      installState: "available" as const,
-      bindingId: "fixture-binding",
-      accountModelDiscovery: false,
-    };
-    useWorkbenchStore.setState({
-      harnesses: [harness, { ...harness, id: "other-fixture", name: "Other" }],
-      selectedHarnessId: "other-fixture",
-      harnessDiscoveryPhase: "error",
-      harnessDiscoveryError: "Other harness failed.",
-    });
-    const { rerender } = render(<HarnessDiscoveryNotice harness={harness} />);
-    expect(screen.queryByText("Other harness failed.")).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-    rerender(
-      <HarnessDiscoveryNotice harness={harness} discoveryPhase="checking" />,
-    );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Checking models for Draft fixture…",
-    );
-  });
-
   it("keeps Settings compatibility and update copy in its existing presentation", () => {
     const { container } = render(
       <HarnessDiscoveryNotice

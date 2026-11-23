@@ -13,7 +13,6 @@ import type {
 } from "./harnessNoticePresentation";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import "./build-notice.css";
-import { SIGN_IN_PHASES } from "./composerDisabledReason";
 
 /** Facts are shared; Settings retains its existing presentation until its phase. */
 export function HarnessDiscoveryNotice({
@@ -21,13 +20,11 @@ export function HarnessDiscoveryNotice({
   discoveryPhase,
   presentation: SettingsPresentation,
   dismissal,
-  compact = false,
 }: {
   harness?: HarnessDefinition | null;
   discoveryPhase?: HarnessDiscoveryPhase;
   presentation?: HarnessNoticePresentation;
   dismissal?: HarnessNoticeDismissal;
-  compact?: boolean;
 } = {}) {
   const harnesses = useWorkbenchStore((s) => s.harnesses);
   const selectedId = useWorkbenchStore((s) => s.selectedHarnessId);
@@ -48,24 +45,15 @@ export function HarnessDiscoveryNotice({
     provided === undefined
       ? harnesses.find((h) => h.id === selectedId)
       : provided;
-  const phase =
-    discoveryPhase ??
-    (harness?.id === selectedId && globalPhase !== "idle"
-      ? globalPhase
-      : compact
-        ? "checking"
-        : "idle");
+  const phase = discoveryPhase ?? globalPhase;
   const present = (facts: Omit<HarnessNoticePresentationProps, "harness">) =>
     SettingsPresentation ? (
       <SettingsPresentation harness={harness} {...facts} />
     ) : (
       <>
-        {[
-          facts.binding,
-          ...(compact ? [] : (facts.builds ?? [])),
-          facts.discovery,
-        ].map((notice) =>
-          notice ? <Notice key={notice.identity} {...notice} /> : null,
+        {[facts.binding, ...(facts.builds ?? []), facts.discovery].map(
+          (notice) =>
+            notice ? <Notice key={notice.identity} {...notice} /> : null,
         )}
         {facts.actions}
       </>
@@ -80,20 +68,19 @@ export function HarnessDiscoveryNotice({
     );
     const binding: NoticeProps = {
       identity: id,
-      severity: pending || compact ? "info" : "blocking",
+      severity: pending ? "info" : "blocking",
       progress: pending,
       message: pending
         ? "Checking…"
         : harness
           ? harnessUnavailableReason(harness.unavailableReason, harness.name)
           : "Choose a harness.",
-      action:
-        pending || compact
-          ? undefined
-          : {
-              label: "Open Settings",
-              onClick: () => useAgentSettingsState.getState().open("Harnesses"),
-            },
+      action: pending
+        ? undefined
+        : {
+            label: "Open Settings",
+            onClick: () => useAgentSettingsState.getState().open("Harnesses"),
+          },
       details: update?.command,
     };
     return present({ binding });
@@ -141,14 +128,17 @@ export function HarnessDiscoveryNotice({
     });
   const message =
     phase === "error"
-      ? (error ?? "Harness discovery failed.")
-      : phase === "checking"
-        ? `Checking models for ${harness.name}…`
-        : phase === "consent"
-          ? `Sage will open this harness's official sign-in page in your browser. ${harness.name} stores credentials; Sage does not receive or retain them.`
-          : SIGN_IN_PHASES.includes(phase)
-            ? "Finish signing in through your browser."
-            : null;
+      ? (error ?? "Harness discovery failed safely.")
+      : !harness.accountModelDiscovery ||
+          harness.characterisation === "uncharacterised"
+        ? null
+        : phase === "checking"
+          ? `Checking the ${harness.name} account and available models…`
+          : phase === "consent"
+            ? `Sage will open this harness's official sign-in page in your browser. ${harness.name} stores credentials; Sage does not receive or retain them.`
+            : phase === "waiting"
+              ? "Finish signing in through your browser."
+              : null;
   const actions =
     phase === "consent"
       ? ([
@@ -161,7 +151,6 @@ export function HarnessDiscoveryNotice({
           ? ([["Retry", retry]] as const)
           : [];
   const buttons =
-    !compact &&
     message &&
     actions.map(([label, run]) => (
       <button
