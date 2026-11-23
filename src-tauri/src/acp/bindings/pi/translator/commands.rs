@@ -178,6 +178,7 @@ impl PiTranslator {
         }) {
             return Err(AdapterError::StaleIntent);
         }
+        self.settle_injected(Some(&message));
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
         self.one(PendingKind::Steer, fields)

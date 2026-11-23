@@ -210,6 +210,22 @@ fn an_extension_sent_user_message_shows_once_per_marker_and_sages_echo_stays_abs
     assert!(!shown(&mut runtime, "queued 0"));
     assert!(shown(&mut runtime, "queued 8"));
     assert!(shown(&mut runtime, "queued 1"));
+    // A marker whose message never came (another input handler swallowed
+    // it) does not claim Sage's own steer of the same text.
+    marker(&mut runtime, "Use the cache");
+    let steer = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "Use the cache").unwrap(),
+            client_message_id: RequiredText::new("client", "steer").unwrap(),
+        })
+        .unwrap();
+    deliver(&mut runtime, steer);
+    assert!(!shown(&mut runtime, "Use the cache"));
+    // Pi ends the run only once both queues drain, so what is left is stale.
+    runtime
+        .ingest(&frame(json!({"type":"agent_end","messages":[]})), &Mapper)
+        .unwrap();
+    assert!(!shown(&mut runtime, "queued 2"));
 }
 
 #[test]

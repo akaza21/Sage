@@ -24,6 +24,7 @@ impl PiTranslator {
                     message.get("role").and_then(Value::as_str) == Some("assistant")
                 })
             });
+        self.settle_injected(None);
         self.end_run(message)
     }
 

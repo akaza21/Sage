@@ -33,6 +33,31 @@ impl PiTranslator {
         turn.injected_user_messages.push_back(digest);
     }
 
+    /// A marker whose message a later `input` handler rewrote or swallowed
+    /// never meets its echo. Pi's agent loop can hold a steer or follow-up
+    /// across several assistant messages, so no assistant boundary proves it
+    /// stale; only `agent_end`, after both queues drain, does. Until then a
+    /// Sage steer of the same text takes one such marker, so its own echo
+    /// cannot be shown twice (a real injected twin then stays hidden).
+    pub(in crate::acp::bindings::pi::translator) fn settle_injected(
+        &mut self,
+        sage_steer: Option<&str>,
+    ) {
+        let Some(turn) = self.active.as_mut() else {
+            return;
+        };
+        let pending = &mut turn.injected_user_messages;
+        match sage_steer {
+            None => pending.clear(),
+            Some(text) => {
+                let digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
+                if let Some(index) = pending.iter().position(|marked| *marked == digest) {
+                    pending.remove(index);
+                }
+            }
+        }
+    }
+
     pub(super) fn user_echo(
         &mut self,
         message: &Value,
