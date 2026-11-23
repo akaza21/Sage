@@ -135,9 +135,10 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
-  // Search execution warms on dialog open; results load with its body.
+  // Search execution warms on dialog open; results ride in the palette.
   "src/features/chatSearch/chatSearchExecution.ts",
-  "src/features/chatSearch/ChatSearchResults.tsx",
+  // A harness's composer chrome loads only while its session reports some.
+  "src/features/chat/acp/ComposerChrome.tsx",
   // Archived chats load with their settings page.
   "src/features/settings/AgentArchivedSettings.tsx",
   // The rail hover card loads only when a chat row is hovered.
@@ -949,6 +950,7 @@ describe("desktop-native chunk topology", () => {
         "src/features/chatSearch/chatSearchExecution.ts",
         "src/features/chatSearch/ChatSearchResults.tsx",
         "src/features/settings/AgentArchivedSettings.tsx",
+        "src/features/chat/acp/ComposerChrome.tsx",
         "src/workbench/ProjectChatHoverCard.tsx",
       ]) {
         expect(closureForModule(groupedGraph, facade)).not.toContain(

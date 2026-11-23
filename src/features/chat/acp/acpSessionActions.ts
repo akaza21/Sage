@@ -61,6 +61,24 @@ export function typedError(error: unknown): AcpDesktopError {
   });
 }
 
+// The fields every live-session command carries.
+function sessionRequest<SessionId, Epoch>(
+  captured: AcpActionContext,
+  page: AcpChatPage,
+  sessionId: SessionId,
+  runtimeEpoch: Epoch,
+  clientIntentId: ClientIntentId,
+) {
+  return {
+    ...captured.scope,
+    projectGeneration: captured.commandProjectGeneration,
+    expectedProjectionRevision: page.projectionRevision,
+    clientIntentId,
+    sessionId,
+    runtimeEpoch,
+  };
+}
+
 export function createAcpSessionActions(
   dependencies: SessionActionDependencies,
 ) {
@@ -102,12 +120,13 @@ export function createAcpSessionActions(
       )
         return "rejected";
       const request: SteerAcpTurnRequest = {
-        ...captured.scope,
-        projectGeneration: captured.commandProjectGeneration,
-        expectedProjectionRevision: current.page.projectionRevision,
-        clientIntentId: queuedMessageId ?? dependencies.nextIntentId(),
-        sessionId: currentSessionValue.id,
-        runtimeEpoch: currentSessionValue.runtimeEpoch,
+        ...sessionRequest(
+          captured,
+          current.page,
+          currentSessionValue.id,
+          currentSessionValue.runtimeEpoch,
+          queuedMessageId ?? dependencies.nextIntentId(),
+        ),
         turnId: currentTurn.id,
         expectedTurnRevision: currentTurn.revision,
         prompt: normalizedPrompt,
@@ -158,12 +177,13 @@ export function createAcpSessionActions(
       updateState({ cancellingTurnId: turnId });
       try {
         const request: CancelAcpTurnRequest = {
-          ...captured.scope,
-          projectGeneration: captured.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: dependencies.nextIntentId(),
-          sessionId: session.id,
-          runtimeEpoch: session.runtimeEpoch,
+          ...sessionRequest(
+            captured,
+            context.page,
+            session.id,
+            session.runtimeEpoch,
+            dependencies.nextIntentId(),
+          ),
           turnId,
           expectedTurnState: turn.state,
           expectedTurnRevision: turn.revision,
@@ -206,14 +226,15 @@ export function createAcpSessionActions(
       try {
         const result = await (
           close ? dependencies.closeSession : dependencies.endSession
-        )({
-          ...captured.scope,
-          projectGeneration: captured.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: dependencies.nextIntentId(),
-          sessionId: current.id,
-          runtimeEpoch: current.runtimeEpoch,
-        });
+        )(
+          sessionRequest(
+            captured,
+            context.page,
+            current.id,
+            current.runtimeEpoch,
+            dependencies.nextIntentId(),
+          ),
+        );
         return dependencies.apply(captured, result)
           ? "applied"
           : "ignoredStale";
@@ -303,12 +324,13 @@ export function createAcpSessionActions(
       )
         return "ignoredStale";
       const request = {
-        ...captured.scope,
-        projectGeneration: captured.commandProjectGeneration,
-        expectedProjectionRevision: context.page.projectionRevision,
-        clientIntentId: dependencies.nextIntentId(),
-        sessionId: session.id,
-        runtimeEpoch: session.runtimeEpoch,
+        ...sessionRequest(
+          captured,
+          context.page,
+          session.id,
+          session.runtimeEpoch,
+          dependencies.nextIntentId(),
+        ),
         expectedConfigRevision: current.configRevision,
       };
       try {

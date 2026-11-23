@@ -20,7 +20,6 @@ function Composer({ offer, draft }: { offer: unknown; draft: string }) {
         onChange={(event) => setText(event.target.value)}
       />
       <ComposerChrome
-        place="below"
         chatAuth={{ page: { sessionSurface: offer } as never, errorKind: null }}
         dictationScope="chat-1"
         text={text}

@@ -16,7 +16,6 @@ const SectionPart = lazyParts<
 
 export { ListedHarnessModels } from "./ListedHarnessModels";
 export { ComposerNoticeSurface, HarnessAccountMenu } from "./ChatSignInNotices";
-export { ComposerChrome } from "./acp/ComposerChrome";
 
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,

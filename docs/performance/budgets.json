@@ -29,8 +29,8 @@
       },
       {
         "entry": "src/features/chatSearch/ChatSearchPalette.tsx",
-        "maxGzipBytes": 3000,
-        "reason": "Search palette layout, bounded actions and scope tabs load only when search opens; result rendering and search execution retain their own budgets."
+        "maxGzipBytes": 2719,
+        "reason": "Search palette with its results list (one entry since results always mount with it): layout, bounded actions, scope tabs and rendering. Measured 2469 B plus 250 B."
       },
       {
         "entry": "src/features/chat/ComposerLocationStrip.tsx",
@@ -59,9 +59,9 @@
         "reason": "Bounded archived public and private chat navigation; loaded only on Settings > Archived chats. Existing settings and startup caps stay unchanged."
       },
       {
-        "entry": "src/features/chatSearch/ChatSearchResults.tsx",
-        "maxGzipBytes": 1500,
-        "reason": "Bounded search result rendering; loaded only inside the search dialog. Existing search and startup caps stay unchanged."
+        "entry": "src/features/chat/acp/ComposerChrome.tsx",
+        "maxGzipBytes": 1434,
+        "reason": "Harness composer chrome (status lines, text widgets, composer offer, subtitle); fetched only while a live session reports some. Measured 1184 B plus 250 B."
       },
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",

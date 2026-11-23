@@ -38,10 +38,7 @@ import type * as SessionHeaderChunk from "./ChatSessionHeader";
 const SessionHeaderPart = lazyParts<typeof SessionHeaderChunk>(
   () => import("./ChatSessionHeader"),
 );
-import type * as SlashChunk from "./ComposerSlashController";
-const FirstSendPart = lazyParts<Pick<typeof SlashChunk, "FirstChatSend">>(
-  () => import("./ComposerSlashController"),
-);
+import { SlashPart } from "./composerLazyParts";
 
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
@@ -228,7 +225,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     >
       {/* A pending first send is always this chat's (see firstSendPending). */}
       {firstSendPending ? (
-        <FirstSendPart
+        <SlashPart
           part="FirstChatSend"
           chatId={chatId!}
           page={acpPage}

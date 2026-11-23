@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import "./session-surface.css";
-import { isRecord, safeText } from "../../../services/acpDesktopGuards";
 import { useSessionControl } from "./useSessionControl";
 
 const STATE_LABEL = {
@@ -24,17 +23,9 @@ export function SessionSurfacePanel({
   const activities = decoded?.activities ?? [];
   const keepsFiles = decoded?.undoKeepsFiles === true;
   const undoTurn = decoded?.undoTurn;
-  // The harness's own subtitle sits under the chat title; it never replaces it.
-  const chrome = isRecord(surface) ? surface.chrome : null;
-  const subtitle = isRecord(chrome) ? safeText(chrome.subtitle, 256) : null;
-  if (!activities.length && !undoTurn && !subtitle) return null;
+  if (!activities.length && !undoTurn) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
-      {subtitle ? (
-        <p className="acp-session-surface__notice" data-chat-subtitle="">
-          {subtitle}
-        </p>
-      ) : null}
       {activities.length ? (
         <ul className="acp-session-surface__activities">
           {activities.map((activity) => (

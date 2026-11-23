@@ -31,13 +31,14 @@ function Widget({ widget }: { widget: ChromeWidget }) {
 }
 
 /**
- * A harness's status lines, text widgets and composer offer, rendered by
- * kind for every extension. `above` holds the widgets placed above the
- * editor; `below` holds the rest. An offer fills only an empty composer and
- * otherwise waits for Replace or Ignore, so a draft is never overwritten.
+ * A harness's subtitle, status lines, text widgets and composer offer,
+ * rendered by kind for every extension from one slot in the composer's
+ * input column: the subtitle and widgets placed above the editor go before
+ * the field, everything else after it. An offer fills only an empty
+ * composer and otherwise waits for Replace or Ignore, so a draft is never
+ * overwritten.
  */
 export function ComposerChrome({
-  place,
   chatAuth,
   dictationScope: scope,
   text,
@@ -45,12 +46,11 @@ export function ComposerChrome({
 }: Pick<
   ChatComposerRegionProps,
   "chatAuth" | "dictationScope" | "text" | "onTextChange"
-> & { place: "above" | "below" }) {
+>) {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
   const chrome = decodeSessionChrome(chatAuth?.page?.sessionSurface);
-  const below = place === "below";
   const offer =
-    below && chrome?.editorText && handled.get(scope) !== chrome.editorText.key
+    chrome?.editorText && handled.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
   const empty = !text.trim();
@@ -67,41 +67,51 @@ export function ComposerChrome({
     if (replace) onTextChange(offer.text);
     refresh();
   };
-  const widgets = chrome.widgets.filter((widget) => widget.placement === place);
+  const widgets = (placement: ChromeWidget["placement"]) =>
+    chrome.widgets
+      .filter((widget) => widget.placement === placement)
+      .map((widget) => <Widget key={widget.key} widget={widget} />);
   return (
-    <div className="composer__notices">
-      {widgets.map((widget) => (
-        <Widget key={widget.key} widget={widget} />
-      ))}
-      {below
-        ? chrome.statuses.map((status) => (
-            <p
-              key={status.key}
-              className="notice"
-              data-chrome-status={status.key}
-            >
-              {status.text}
-            </p>
-          ))
-        : null}
-      {offer && !empty ? (
-        <div>
-          <Notice
-            identity={JSON.stringify([scope, "composer-offer", offer.key])}
-            severity="info"
-            message="The agent suggests text"
-            action={{ label: "Replace", onClick: () => settle(true) }}
-            details={<pre>{offer.text}</pre>}
-          />
-          <button
-            type="button"
-            className="notice__text-link"
-            onClick={() => settle(false)}
+    <>
+      {/* The input column is a flex column; order places these around the field. */}
+      <div className="composer__notices" style={{ order: -1 }}>
+        {chrome.subtitle ? (
+          <p className="notice" data-chat-subtitle="">
+            {chrome.subtitle}
+          </p>
+        ) : null}
+        {widgets("above")}
+      </div>
+      <div className="composer__notices" style={{ order: 1 }}>
+        {widgets("below")}
+        {chrome.statuses.map((status) => (
+          <p
+            key={status.key}
+            className="notice"
+            data-chrome-status={status.key}
           >
-            Ignore
-          </button>
-        </div>
-      ) : null}
-    </div>
+            {status.text}
+          </p>
+        ))}
+        {offer && !empty ? (
+          <div>
+            <Notice
+              identity={JSON.stringify([scope, "composer-offer", offer.key])}
+              severity="info"
+              message="The agent suggests text"
+              action={{ label: "Replace", onClick: () => settle(true) }}
+              details={<pre>{offer.text}</pre>}
+            />
+            <button
+              type="button"
+              className="notice__text-link"
+              onClick={() => settle(false)}
+            >
+              Ignore
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </>
   );
 }
