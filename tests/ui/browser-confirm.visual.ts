@@ -41,6 +41,7 @@ test("clear browsing data stays pending until explicitly confirmed", async ({
     await expect(address).toHaveValue("en.wikipedia.org");
     await expect(page.getByText("Browsing data cleared.")).toHaveCount(0);
     await expect(page.locator(".notice--warning")).toHaveCount(0);
+    await expect(page.locator("#workbench-error")).toBeEmpty();
   }
 
   await trigger.click();
@@ -48,8 +49,7 @@ test("clear browsing data stays pending until explicitly confirmed", async ({
   await confirm.click();
   await expect(dialog).toHaveCount(0);
   // This fixture runs without the desktop backend: only the explicit action
-  // should attempt the operation and expose its unavailable-runtime error.
-  await trigger.click();
-  await expect(page.locator(".notice--warning")).toHaveCount(1);
-  await expect(page.locator(".notice--warning")).toBeVisible();
+  // should attempt the operation and report its unavailable-runtime error as
+  // the workbench error.
+  await expect(page.locator("#workbench-error")).not.toBeEmpty();
 });

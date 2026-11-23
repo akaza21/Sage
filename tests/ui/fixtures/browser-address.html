@@ -12,6 +12,7 @@
     >
       <div id="toolbar" class="browser-surface__toolbar"></div>
       <div id="notice"></div>
+      <p id="workbench-error"></p>
     </div>
     <script type="module">
       import React from "react";
@@ -23,6 +24,7 @@
       import { useAgentArtifactPaneFocus } from "/src/workbench/useAgentArtifactPaneFocus.ts";
       import { BrowserClearData } from "/src/features/browser/BrowserClearData.tsx";
       import { Notice } from "/src/ui/Notice.tsx";
+      import { useWorkbenchStore } from "/src/app/store.ts";
       import "/src/styles/global.css";
       import "/src/styles/shared-dialogs.css";
       import "/src/features/browser/browser.css";
@@ -170,6 +172,11 @@
           : controls;
       }
       const noticeRoot = createRoot(document.getElementById("notice"));
+      // Stands in for the workbench error line the chat surface shows.
+      useWorkbenchStore.subscribe((state) => {
+        document.getElementById("workbench-error").textContent =
+          state.error ?? "";
+      });
       createRoot(document.getElementById("toolbar")).render(
         React.createElement(Fixture),
       );
