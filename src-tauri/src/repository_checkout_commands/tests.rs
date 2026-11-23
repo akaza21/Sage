@@ -222,11 +222,12 @@ async fn shared_repository_refuses_queued_and_running_turns_until_terminal() {
 
 impl Fixture {
     fn leased(&self, project_id: &str) -> bool {
-        crate::repository_mutation_guard::project_leased(
+        crate::repository_mutation_guard::project_pause(
             &self.state.database.connection(),
             project_id,
         )
         .unwrap()
+        .is_some()
     }
 
     fn harness_turn(&self) -> TurnMutationCommand {
@@ -285,7 +286,9 @@ async fn turn_starts_are_refused_during_the_checkout_lease_without_holding_the_w
             ] {
                 assert!(matches!(
                     store.commit(&[mutation]),
-                    Err(StoreError::RepositoryBusy)
+                    Err(StoreError::RepositoryBusy(
+                        crate::repository_mutation_guard::RepositoryPause::ChangingFiles
+                    ))
                 ));
             }
             assert_eq!(fixture.branch(), "main");
@@ -315,6 +318,64 @@ async fn turn_starts_are_refused_during_the_checkout_lease_without_holding_the_w
     assert!(matches!(refused, Err(AppError::InvalidRequest(message))
         if message == busy()));
     assert_eq!(fixture.branch(), "topic");
+}
+
+#[tokio::test]
+async fn a_failed_lease_delete_is_retried_and_the_next_turn_can_start() {
+    use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+    let fixture = Fixture::new();
+    checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+        // Inject an actual SQLite DELETE failure, once, while keeping the
+        // database usable for the guard's bounded cleanup retry.
+        let mut refused = false;
+        fixture
+            .state
+            .database
+            .connection()
+            .authorizer(Some(move |context: AuthContext<'_>| {
+                if !refused
+                    && matches!(
+                        context.action,
+                        AuthAction::Delete {
+                            table_name: "repository_leases"
+                        }
+                    )
+                {
+                    refused = true;
+                    Authorization::Deny
+                } else {
+                    Authorization::Allow
+                }
+            }))
+            .unwrap();
+    })
+    .await
+    .unwrap();
+    fixture
+        .state
+        .database
+        .connection()
+        .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+        .unwrap();
+    assert_eq!(fixture.branch(), "topic");
+    assert!(!fixture.leased(fixture.command.project_id.as_str()));
+    let committed = DatabaseAcpStore::new(fixture.state.database.clone())
+        .commit(&[StoreMutation::PrepareTurn(fixture.command.clone())])
+        .unwrap();
+    let [StoreMutationResult::Prepared(prepared)] = committed.results.as_slice() else {
+        panic!("the next prompt must prepare a turn")
+    };
+    let state: String = fixture
+        .state
+        .database
+        .connection()
+        .query_row(
+            "SELECT state FROM turns WHERE id=?1",
+            [prepared.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "queued");
 }
 
 #[tokio::test]
@@ -540,16 +601,49 @@ async fn kept_lease_after_potentially_running_git() {
         fixture.leased(&project),
         "the lease outlives a Git that may still run"
     );
-    assert!(matches!(
-        DatabaseAcpStore::new(fixture.state.database.clone())
-            .commit(&[StoreMutation::PrepareTurn(fixture.command.clone())]),
-        Err(StoreError::RepositoryBusy)
-    ));
+    for mutation in [
+        StoreMutation::PrepareTurn(fixture.command.clone()),
+        StoreMutation::OpenHarnessTurn(fixture.harness_turn()),
+    ] {
+        assert!(matches!(
+            DatabaseAcpStore::new(fixture.state.database.clone()).commit(&[mutation]),
+            Err(StoreError::RepositoryBusy(
+                crate::repository_mutation_guard::RepositoryPause::UntilRestart
+            ))
+        ));
+    }
+    let refused = crate::commands::acp::send_acp_turn_inner(
+        &fixture.state,
+        crate::acp::ipc::SendAcpTurnRequest::Session {
+            project_id: fixture.command.project_id.clone(),
+            project_generation: ProjectGeneration::ZERO,
+            chat_id: fixture.command.chat_id.clone(),
+            expected_projection_revision: fixture.command.expected_projection_revision,
+            client_intent_id: ClientIntentId::new(),
+            session_id: fixture.command.session_id.clone(),
+            runtime_epoch: fixture.command.runtime_epoch,
+            prompt: Prompt::new("prompt", "try again after Git timed out").unwrap(),
+            attached_context: Default::default(),
+            staged: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        serde_json::to_value(refused).unwrap(),
+        serde_json::json!({
+            "kind": "rejected", "message": "Can't start a turn while Sage is changing files in this repository. Agent turns in this repository stay paused until Sage restarts.",
+            "promptDispatch": "notStarted"
+        })
+    );
     let GitFileMutationCommandError::Containment { message, .. } = checkout_command_error(error)
     else {
         panic!("expected a containment error")
     };
-    assert!(message.ends_with(crate::repository_mutation_guard::LEASE_KEPT));
+    assert_eq!(
+        message,
+        "A prior Git process may still be changing files in this repository. Restart Sage before retrying. Agent turns in this repository stay paused until Sage restarts."
+    );
     reaper.release();
     reaper
         .wait_for_exit(sage_test_support::test_wait::BUDGET)
@@ -674,7 +768,9 @@ async fn a_harness_started_turn_during_the_lease_is_declined_and_the_session_sta
             assert!(
                 matches!(
                     failure.error,
-                    CoordinatorError::Journal(JournalError::Store(StoreError::RepositoryBusy))
+                    CoordinatorError::Journal(JournalError::Store(StoreError::RepositoryBusy(
+                        crate::repository_mutation_guard::RepositoryPause::ChangingFiles
+                    )))
                 ),
                 "unexpected refusal: {:?}",
                 failure.error

@@ -91,6 +91,9 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             limit: sage_core::limits::LIMITS.process.operational_live_trees,
             message: safe_message("The native live runtime capacity is occupied."),
         },
+        crate::acp::service::CodexSessionError::RepositoryBusy(pause) => AcpIpcError::Rejected {
+            message: safe_message(pause.message()),
+        },
         crate::acp::service::CodexSessionError::CapacityAnswering => AcpIpcError::Capacity {
             resource: AcpCapacityResource::LiveTree,
             limit: sage_core::limits::LIMITS.process.operational_live_trees,
@@ -266,8 +269,8 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
         StoreError::RewindUnavailable { reason } => AcpIpcError::Rejected {
             message: safe_message(reason),
         },
-        StoreError::RepositoryBusy => AcpIpcError::Rejected {
-            message: safe_message(crate::repository_mutation_guard::TURN_BLOCKED),
+        StoreError::RepositoryBusy(pause) => AcpIpcError::Rejected {
+            message: safe_message(pause.message()),
         },
         StoreError::Capacity { limit, .. } => AcpIpcError::Capacity {
             resource: AcpCapacityResource::History,
@@ -328,6 +331,31 @@ mod storage_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn late_repository_busy_refusals_keep_the_operation_and_restart_advice() {
+        use crate::repository_mutation_guard::RepositoryPause;
+        for (pause, message) in [
+            (
+                RepositoryPause::ChangingFiles,
+                "Can't start a turn while Sage is changing files in this repository.",
+            ),
+            (
+                RepositoryPause::UntilRestart,
+                "Can't start a turn while Sage is changing files in this repository. Agent turns in this repository stay paused until Sage restarts.",
+            ),
+        ] {
+            let error = session_error(crate::acp::service::CodexSessionError::RepositoryBusy(
+                pause,
+            ));
+            assert_eq!(
+                serde_json::to_value(error).unwrap(),
+                serde_json::json!({
+                    "kind": "rejected", "message": message
+                })
+            );
+        }
+    }
 
     #[test]
     fn discovery_transport_failures_preserve_the_safe_native_classification() {

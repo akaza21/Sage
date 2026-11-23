@@ -225,6 +225,9 @@ fn map_slot_error(error: super::runtime_slot::RuntimeSlotError) -> CodexSessionE
 fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
     match error {
         crate::acp::runtime::HostError::Capacity => CodexSessionError::Capacity,
+        crate::acp::runtime::HostError::RepositoryBusy(pause) => {
+            CodexSessionError::RepositoryBusy(pause)
+        }
         crate::acp::runtime::HostError::Intent => CodexSessionError::Intent,
         crate::acp::runtime::HostError::SteerOutcomeUnknown => {
             CodexSessionError::SteerOutcomeUnknown

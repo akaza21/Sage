@@ -39,8 +39,7 @@ fn checkout_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_git::public_error::containment().into()
                 }
                 GitContainmentState::PotentiallyRunning => format!(
-                    "{} {}",
-                    sage_git::public_error::containment(),
+                    "A prior Git process may still be changing files in this repository. Restart Sage before retrying. {}",
                     crate::repository_mutation_guard::LEASE_KEPT
                 ),
             },

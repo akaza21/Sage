@@ -233,7 +233,9 @@ impl RuntimeHost {
                 self.lifecycle.load(Ordering::Acquire),
             );
             match error {
-                HostError::Capacity | HostError::Intent => PromptSendError::not_started(error),
+                HostError::Capacity | HostError::Intent | HostError::RepositoryBusy(_) => {
+                    PromptSendError::not_started(error)
+                }
                 _ => PromptSendError::unknown(error),
             }
         })?;
