@@ -407,15 +407,25 @@ fn capabilities_cannot_change_without_a_resume_commit() {
             "created" | "closed" => ("cold", if state == "closed" { "1" } else { "NULL" }),
             _ => ("hot", "NULL"),
         };
+        // One session per chat: a chat holds at most one live session.
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+                     VALUES('chat-{state}','project-one',?1,'Chat',0,1,1)"
+                ),
+                [10 + ordinal as i64],
+            )
+            .unwrap();
         connection
             .execute(
                 &format!(
                     "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
                      external_session_id,capabilities_json,state,residency,created_at,updated_at,terminal_at)
-                     VALUES(?1,'project-one','chat-one',?2,'binding',?3,'thread-{state}',?4,'{state}',
+                     VALUES(?1,'project-one','chat-{state}',0,'binding',?2,'thread-{state}',?3,'{state}',
                      '{residency}',1,1,{terminal})"
                 ),
-                rusqlite::params![id, 10 + ordinal as i64, "a".repeat(64), OLD_CODEX],
+                rusqlite::params![id, "a".repeat(64), OLD_CODEX],
             )
             .unwrap();
         let before = row(&connection, &id);
