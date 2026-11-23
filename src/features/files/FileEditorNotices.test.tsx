@@ -85,10 +85,10 @@ describe("FileEditorNotices", () => {
     expect(useWorkbenchStore.getState().editorCompareKey).toContain(
       version.fingerprint,
     );
-    expect(screen.getByRole("button", { name: "Compare" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    // The lazily mounted notice can render before its store subscription catches up.
+    expect(
+      await screen.findByRole("button", { name: "Compare", pressed: true }),
+    ).toBeVisible();
   });
 
   it("keeps a conflict and lost recovery storage as two problems", async () => {
