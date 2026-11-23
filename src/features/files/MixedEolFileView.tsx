@@ -3,9 +3,11 @@ import {
   noticeMatchesWatch,
   type EditorWatchSubscription,
 } from "../../domain/editorWatch";
+import { resourceKey } from "../../domain/resourceIdentity";
 import { truncateUtf8, utf8ByteLength } from "../../domain/text";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { Notice } from "../../ui/Notice";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./editorContent";
 import "./mixed-eol-file-view.css";
@@ -16,6 +18,7 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
     clipped: boolean;
   } | null>(null);
   const [error, setError] = useState("");
+  const [deleted, setDeleted] = useState(false);
   const [watchError, setWatchError] = useState("");
   const refresh = useRef<() => void>(() => undefined);
   const cancellation = useRef<Promise<void>>(Promise.resolve());
@@ -32,6 +35,7 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
       version += 1;
       pending = true;
       setError("");
+      setDeleted(false);
       if (reading) return;
       reading = true;
       void (async () => {
@@ -69,7 +73,7 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
             version += 1;
             pending = false;
             setResult(null);
-            setError("This file was deleted outside Sage.");
+            setDeleted(true);
           } else requestRead();
         });
         setWatchError("");
@@ -102,11 +106,18 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
         Refresh file
       </button>
       {watchError ? <p role="status">{watchError}</p> : null}
-      {error ? (
-        <ResourceStateNotice
-          state="error"
-          title="Could not read file"
-          detail={error}
+      {deleted ? (
+        <Notice
+          identity={`file-deleted:${resourceKey(resource)}`}
+          severity="blocking"
+          message="This file was deleted outside Sage."
+        />
+      ) : error ? (
+        <Notice
+          identity={`file-load:${resourceKey(resource)}`}
+          severity="blocking"
+          message="Could not read file."
+          details={error}
         />
       ) : result ? (
         <>

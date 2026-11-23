@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { WATCH_LIMIT_MESSAGE } from "./editorExternalWatch";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { unsavedState } from "./fileSurfaceCommands";
 
@@ -25,6 +26,18 @@ describe("FileEditorHeader", () => {
         name: "Unsaved changes. Press Control plus S to save.",
       }),
     ).toHaveTextContent("Unsaved · Ctrl+S");
+  });
+
+  it("keeps the unwatched mark compact and gives assistive tech the reason", () => {
+    const reason = WATCH_LIMIT_MESSAGE;
+    const { container } = render(
+      <FileEditorHeader {...requiredProps} unwatched={reason} />,
+    );
+
+    const mark = container.querySelector(".file-header__unwatched");
+    expect(mark).toHaveTextContent("· Not watched: watch limit reached");
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".sr-only")).toHaveTextContent(reason);
   });
 
   it("names Command+S on macOS", () => {

@@ -406,7 +406,7 @@ describe("IDE-2 editor external watch seam", () => {
         createElement(FileSurface, { tab: fileTab }),
       ),
     );
-    await screen.findByText(WATCH_LIMIT_MESSAGE);
+    await screen.findByTitle(WATCH_LIMIT_MESSAGE);
     expect(watch).toHaveBeenCalledTimes(1);
     expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();
     const fileEditor = await screen.findByRole("textbox", {
@@ -434,18 +434,18 @@ describe("IDE-2 editor external watch seam", () => {
       phase: "ready",
       message: null,
     });
-    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByTitle(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
     await act(async () => {
       await useWorkbenchStore.getState().flushActiveEditor();
     });
     expect(snapshot).toHaveBeenCalled();
-    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByTitle(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
     slotFree = true;
     fireEvent.focusIn(screen.getByRole("button", { name: "Elsewhere" }));
     await act(async () => undefined);
     expect(watch).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByTitle(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
     fireEvent.focusIn(fileEditor, { relatedTarget: fileEditor });
     await act(async () => undefined);
@@ -455,7 +455,7 @@ describe("IDE-2 editor external watch seam", () => {
       relatedTarget: screen.getByRole("button", { name: "Elsewhere" }),
     });
     await waitFor(() => {
-      expect(screen.queryByText(WATCH_LIMIT_MESSAGE)).toBeNull();
+      expect(screen.queryByTitle(WATCH_LIMIT_MESSAGE)).toBeNull();
     });
     expect(watch).toHaveBeenCalledTimes(3);
     expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();

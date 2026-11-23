@@ -3,6 +3,10 @@ import {
   parseAgentDiffRef,
   type AgentDiffRef,
 } from "../domain/agentDiff";
+import {
+  CHAT_CHANGED_WHILE_LOADING,
+  SAVED_EDIT_UNAVAILABLE,
+} from "../domain/agentDiffIdentity";
 import { errorMessage } from "../domain/errors";
 import { sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
@@ -44,8 +48,7 @@ export async function runLoadAgentDiff(
         key,
         {
           phase: "error",
-          message:
-            "This saved edit is unavailable for the current chat session.",
+          message: SAVED_EDIT_UNAVAILABLE,
         },
         32,
       ),
@@ -90,9 +93,7 @@ export async function runLoadAgentDiff(
     });
     if (!canPublish()) return;
     if (snapshotProjectionRevision(get(), ref) !== revision)
-      throw new Error(
-        "The chat changed while loading this edit. Reopen the diff to retry.",
-      );
+      throw new Error(CHAT_CHANGED_WHILE_LOADING);
     // Bridge validates digest/bytes; retain only the bounded presentation, not raw sides.
     const diff = snapshotFileDiff(resource, snapshot.oldText, snapshot.newText);
     set((state) => ({

@@ -13,6 +13,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import type { RepositoryRef, RootRepositoryStatus } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { desktop } from "../services/desktop";
 import type { SearchablePicker } from "../ui/SearchablePicker";
 import type * as SearchablePickerModule from "../ui/SearchablePicker";
 import { SourceControlView } from "./SourceControlView";
@@ -81,6 +82,82 @@ const nestedStatus: RootRepositoryStatus = {
     },
   ],
 };
+
+it("does not reannounce a failed stage when switching repositories and back", async () => {
+  const resource = { rootId: "root-a", relativePath: "src/app.ts" };
+  const otherRepository = { rootId: "root-b", relativePath: "" };
+  const failedRoot: RootRepositoryStatus = {
+    ...rootStatus,
+    changes: [
+      {
+        resource,
+        indexStatus: "unchanged",
+        worktreeStatus: "modified",
+        additions: 1,
+        deletions: 0,
+      },
+    ],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: ["root-a", "root-b"].map((id, ordinal) => ({
+        id,
+        name: id,
+        ordinal,
+        availability: "available" as const,
+        message: null,
+      })),
+    },
+    repositories: {
+      roots: [failedRoot, { ...rootStatus, rootId: "root-b" }],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository, otherRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: failedRoot,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: async () => undefined,
+  });
+  vi.spyOn(desktop, "mutateGitFile").mockRejectedValue(
+    new Error("Git index is locked"),
+  );
+  const { container } = render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stage src/app.ts in root-a" }),
+  );
+  const failure = await screen.findByRole("alert");
+  expect(failure).toHaveTextContent(
+    "Source Control could not stage src/app.ts.",
+  );
+  expect(failure).toHaveAttribute("aria-live", "assertive");
+  fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
+  for (const repository of [otherRepository, rootRepository]) {
+    fireEvent.click(screen.getByRole("button", { name: "Select repository" }));
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: new RegExp(`^${repository.rootId}`),
+      }),
+    );
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().selectedRepository).toEqual(
+        repository,
+      ),
+    );
+    // The same live-region node and its expanded diagnostics survive selection;
+    // a newly inserted alert would announce this old failure again.
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toBe(failure);
+    expect(failure).toBeVisible();
+    expect(failure).toHaveTextContent("Git index is locked");
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(
+      1,
+    );
+  }
+});
 
 afterEach(() => {
   cleanup();
@@ -241,6 +318,10 @@ it("projects repository loading, empty, and error states through ResourceStateNo
     repositoryInventoryError: "Could not refresh repository inventory.",
   });
   rerender(<SourceControlView />);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Repository status is unavailable.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
   expect(screen.getByRole("alert")).toHaveTextContent(
     "Could not refresh repository inventory.",
   );
@@ -825,10 +906,121 @@ it("distinguishes repository errors from loading and informational states", () =
   render(<SourceControlView />);
 
   expect(screen.getAllByRole("alert")).toHaveLength(2);
-  expect(
-    screen.getByText("Repository inventory failed.").closest('[role="alert"]'),
-  ).toHaveClass("resource-state--error");
+  const inventory = screen
+    .getAllByRole("alert")
+    .find((notice) =>
+      notice.textContent?.includes("Repository status is unavailable"),
+    )!;
+  expect(inventory).toHaveClass("notice--blocking");
+  fireEvent.click(within(inventory).getByRole("button", { name: "Details" }));
+  expect(inventory).toHaveTextContent("Repository inventory failed.");
   expect(screen.getByText("Checkout failed.")).toHaveClass("sidebar__error");
+});
+
+it("explains a failed Git file action once, above its repository", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    repositoryMutationError: {
+      resource: { rootId: "root-a", relativePath: "src/file.txt" },
+      action: "stage",
+      kind: "effectUnknown",
+      message: "Git exited before reporting",
+    },
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  const { container } = render(<SourceControlView />);
+
+  const failure = screen.getByRole("alert");
+  expect(failure).toHaveTextContent(
+    "Source Control could not confirm stage for src/file.txt.",
+  );
+  expect(failure.closest(".source-root")).toBeNull();
+  expect(
+    failure.compareDocumentPosition(container.querySelector(".source-root")!) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    container.querySelectorAll(
+      "[data-notice-identity^='repository-mutation:']",
+    ),
+  ).toHaveLength(1);
+  fireEvent.click(within(failure).getByRole("button", { name: "Details" }));
+  expect(screen.getAllByText("Git exited before reporting")).toHaveLength(1);
+});
+
+it("explains a failed Git file action once even when its repository is filtered out", () => {
+  const otherRepository: RepositoryRef = { rootId: "root-b", relativePath: "" };
+  const otherStatus: RootRepositoryStatus = { ...rootStatus, rootId: "root-b" };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+        {
+          id: "root-b",
+          name: "Root B",
+          ordinal: 1,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [rootStatus, otherStatus],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository, otherRepository],
+    selectedRepository: otherRepository,
+    selectedRepositoryStatus: otherStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    repositoryMutationError: {
+      resource: { rootId: "root-a", relativePath: "src/file.txt" },
+      action: "unstage",
+      kind: "failed",
+      message: "Git exited 128",
+    },
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  const { container } = render(<SourceControlView />);
+
+  const notices = container.querySelectorAll(
+    "[data-notice-identity^='repository-mutation:']",
+  );
+  expect(notices).toHaveLength(1);
+  expect(notices[0]!.closest(".source-root")).toBeNull();
+  expect(container.querySelectorAll(".source-root")).toHaveLength(1);
+  expect(notices[0]).toHaveTextContent(
+    "Source Control could not unstage src/file.txt.",
+  );
 });
 
 it("lists conflicted files under a Conflicts heading with a Conflict chip", () => {
