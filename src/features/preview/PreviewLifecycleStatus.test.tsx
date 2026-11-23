@@ -5,6 +5,29 @@ import { PreviewLifecycleStatus } from "./PreviewLifecycleStatus";
 
 afterEach(cleanup);
 
+it("reads an exit while watching in the same polite status, without an alert", () => {
+  const scope = "project:chat:root:dev";
+  const { rerender } = render(
+    <PreviewLifecycleStatus
+      failure={null}
+      phase="healthChecking"
+      scope={scope}
+    />,
+  );
+  const status = screen.getByRole("status");
+  rerender(
+    <PreviewLifecycleStatus
+      failure="exitedEarly"
+      phase="exited"
+      scope={scope}
+    />,
+  );
+  expect(screen.getByRole("status")).toBe(status);
+  expect(status).toHaveAttribute("aria-live", "polite");
+  expect(status).toHaveClass("notice--warning");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 it("keeps an exited Preview a quiet warning when it remounts", () => {
   const props = {
     failure: "exitedEarly" as const,
@@ -14,9 +37,7 @@ it("keeps an exited Preview a quiet warning when it remounts", () => {
   const { unmount } = render(<PreviewLifecycleStatus {...props} />);
   unmount();
   render(<PreviewLifecycleStatus {...props} />);
-  const notice = document.querySelector(".notice");
-  expect(notice).toHaveClass("notice--warning");
-  expect(notice).toHaveAttribute("aria-live", "off");
+  expect(document.querySelector(".notice")).toHaveClass("notice--warning");
   expect(screen.queryByRole("alert")).toBeNull();
 });
 

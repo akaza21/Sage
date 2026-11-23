@@ -32,7 +32,8 @@ export function PreviewLifecycleStatus({
   scope: string;
   onRestart?: () => void;
 }) {
-  const failed = Boolean(failure) || phase === "healthFailed";
+  const health = phase === "healthFailed";
+  const failed = Boolean(failure) || health;
   const message =
     previewFailureMessage(failure) ??
     (compact && !failed ? previewPhaseLabel(phase) : previewPhaseDetail(phase));
@@ -45,13 +46,14 @@ export function PreviewLifecycleStatus({
       }
     >
       <Notice
-        identity={`preview:${scope}:${failed ? (failure ?? phase) : "lifecycle"}`}
+        // As before, only a failed health check interrupts. Every other phase,
+        // exits and conflicts included, updates one polite status in place, so a
+        // change is read while watching and a remount stays quiet.
+        identity={`preview:${scope}${health ? ":healthFailed" : ""}`}
         severity={failed ? "warning" : "info"}
         message={message}
-        // Only a failed health check interrupts, as before; an exited or
-        // conflicting Preview is a standing state that replays on remount.
-        announce={phase === "healthFailed"}
-        progress={!failed}
+        announce={health}
+        progress={!health}
         action={
           failed && onRestart && (!failure || RESTARTABLE.has(failure))
             ? { label: "Start again", onClick: onRestart }
