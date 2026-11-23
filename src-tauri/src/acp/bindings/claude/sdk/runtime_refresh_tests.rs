@@ -237,6 +237,27 @@ impl Tracked {
             .unwrap();
     }
 
+    fn raw(&self) -> String {
+        self.database
+            .connection()
+            .query_row(
+                "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                [&self.session],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    fn overwrite(&self, json: &str) {
+        self.database
+            .connection()
+            .execute(
+                "UPDATE agent_sessions SET capabilities_json=?2 WHERE id=?1",
+                [&self.session, json],
+            )
+            .unwrap();
+    }
+
     fn stored(&self) -> (CapabilitySnapshotV1, i64) {
         let (json, projection): (String, i64) = self
             .database
@@ -255,7 +276,17 @@ impl Tracked {
 fn a_goal_command_added_to_the_catalog_stores_and_announces_goal_support_once() {
     let mut session = tracked();
     let (_, before) = session.stored();
-    session.catalog(json!([{"name":"review"},{"name":"goal","builtin":true}]));
+    // A write the store refuses is dropped, not retried on later frames.
+    let negotiated = session.raw();
+    session.overwrite("{}");
+    let listed = json!([{"name":"review"},{"name":"goal","builtin":true}]);
+    session.catalog(listed.clone());
+    assert!(session.notices.take().is_none());
+    session.overwrite(&negotiated);
+    session.catalog(listed);
+    assert!(!session.stored().0.goal.set);
+    assert!(session.notices.take().is_none());
+    session.catalog(json!([{"name":"goal","builtin":true}]));
     let (capabilities, after) = session.stored();
     assert!(capabilities.goal.set && capabilities.goal.clear);
     let notice = session.notices.take().expect("one projection notice");
@@ -269,6 +300,21 @@ fn a_removed_goal_command_withdraws_goal_support_and_a_repeated_catalog_changes_
     let mut session = tracked();
     session.catalog(json!([{"name":"goal","builtin":true}]));
     session.notices.take();
+    // A failed catalog read leaves goal support and the goal state as they were.
+    session.runtime.available_commands().request_refresh();
+    let query = session.runtime.discover_commands().unwrap().unwrap();
+    let request = value(&query);
+    session
+        .runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    session.runtime.ingest(&frame(json!({"type":"control_response","response":{"subtype":"error","request_id":request["request_id"],"error":"catalog unavailable"}})), &Mapper).unwrap();
+    assert!(session.stored().0.goal.set);
+    assert!(session.notices.take().is_none());
+    assert!(!matches!(
+        session.runtime.goal_state(),
+        Some(crate::acp::goal::GoalState::Unsupported)
+    ));
     // A skill sharing the name is not Claude Code's own goal command.
     let unchanged = json!([{"name":"goal","source":"skill"}]);
     session.catalog(unchanged.clone());

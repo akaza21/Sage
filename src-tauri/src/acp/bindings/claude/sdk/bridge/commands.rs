@@ -59,7 +59,7 @@ impl super::SdkBridge {
     /// Sage's catalog update for commands as Sage lists them; goal support
     /// follows the same list.
     pub(super) fn catalog_update(&mut self, commands: Value) -> Value {
-        self.refresh_goal_capability(&commands);
+        let commands = self.goal_support(commands);
         self.update(
             json!({"sessionUpdate":"available_commands_update","availableCommands":commands}),
         )

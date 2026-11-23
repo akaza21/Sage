@@ -1,13 +1,16 @@
 //! Republishes the capabilities a live session derives from its command
 //! catalog, such as Claude Code's goal support through its built-in `/goal`.
-//! The negotiated snapshot is stored only when that set changes.
+//! The store is written only when that set changes.
 
 use std::sync::Arc;
 
 use sage_acp_protocol::{intent::CapabilitySnapshotV1, scheduler::RuntimeOwner};
 use sage_db::database::Database;
 
-use crate::acp::runtime::{ProjectionPublisher, intersect_capabilities};
+use crate::acp::{
+    runtime::ProjectionPublisher,
+    store::catalog_capabilities::{CapabilityBounds, CatalogRefresh, refresh_catalog_capabilities},
+};
 
 pub(crate) struct CatalogCapabilities {
     owner: RuntimeOwner,
@@ -17,11 +20,13 @@ pub(crate) struct CatalogCapabilities {
     publisher: Arc<dyn ProjectionPublisher>,
     /// The catalog revision last read.
     revision: Option<u64>,
-    /// What the harness last advertised; its first report is the one the
-    /// activation already negotiated and stored.
-    advertised: Option<CapabilitySnapshotV1>,
-    /// The one change not stored yet. A later change replaces it.
-    pending: Option<CapabilitySnapshotV1>,
+    /// What the store holds as far as this runtime knows; the harness's first
+    /// report is the set its activation negotiated and stored.
+    stored: Option<CapabilitySnapshotV1>,
+    /// A change met a session still starting: it is written again once the
+    /// session is ready, not on every frame.
+    awaiting_ready: bool,
+    retry: bool,
 }
 
 impl CatalogCapabilities {
@@ -38,61 +43,65 @@ impl CatalogCapabilities {
             database,
             publisher,
             revision: None,
-            advertised: None,
-            pending: None,
+            stored: None,
+            awaiting_ready: false,
+            retry: false,
         }
     }
 
-    /// Nothing to read while the catalog revision is unchanged and no change waits.
+    /// Nothing to read until the catalog revision moves or a change that
+    /// waited on activation may now be written.
     pub(crate) fn settled(&self, revision: Option<u64>) -> bool {
-        self.advertised.is_some() && self.pending.is_none() && self.revision == revision
+        self.stored.is_some() && self.revision == revision && !self.retry
+    }
+
+    /// The session's activation has committed: a change it held back goes
+    /// out with the next frame.
+    pub(crate) fn session_ready(&mut self) {
+        self.retry = self.awaiting_ready;
     }
 
     /// Takes what the harness advertises at catalog `revision`, storing it
-    /// when it differs from what it advertised before.
+    /// when it differs from what the store holds.
     pub(crate) fn observe(
         &mut self,
         revision: Option<u64>,
         advertised: Option<CapabilitySnapshotV1>,
     ) {
         self.revision = revision;
+        self.retry = false;
         let Some(advertised) = advertised else {
             return;
         };
-        match &self.advertised {
-            None => self.advertised = Some(advertised),
-            Some(last) if *last == advertised => {}
-            Some(_) => {
-                self.advertised = Some(advertised.clone());
-                self.pending = Some(advertised);
-            }
+        match &self.stored {
+            None => self.stored = Some(advertised),
+            Some(stored) if *stored == advertised => self.awaiting_ready = false,
+            Some(_) => self.store(advertised),
         }
-        self.store();
     }
 
-    /// A write that fails, or meets a session not ready yet, keeps the change
-    /// for the next frame; one outside the binding's ceiling drops it.
-    fn store(&mut self) {
-        let Some(advertised) = &self.pending else {
-            return;
-        };
-        let Ok(negotiated) = intersect_capabilities(&self.curated, advertised, &self.policy) else {
-            self.pending = None;
-            return;
-        };
+    /// Only a session still starting keeps the change; any other refusal or
+    /// failure drops it until the catalog moves again.
+    fn store(&mut self, advertised: CapabilitySnapshotV1) {
+        self.awaiting_ready = false;
         let Ok(mut connection) = self.database.write_connection() else {
             return;
         };
-        let stored = crate::acp::store::catalog_capabilities::refresh_catalog_capabilities(
+        let bounds = CapabilityBounds {
+            curated: &self.curated,
+            policy: &self.policy,
+        };
+        let result = refresh_catalog_capabilities(
             &mut connection,
             &self.owner,
-            &negotiated,
+            bounds,
+            &advertised,
             sage_core::time::now_millis(),
         );
         drop(connection);
-        match stored {
-            Ok(Some(projection_revision)) => {
-                self.pending = None;
+        match result {
+            Ok(CatalogRefresh::Applied(projection_revision)) => {
+                self.stored = Some(advertised);
                 let _ = self
                     .publisher
                     .publish_committed(crate::acp::ipc::ProjectionChangedV1 {
@@ -103,7 +112,8 @@ impl CatalogCapabilities {
                         child_projection_epoch: 0,
                     });
             }
-            Ok(None) => self.pending = None,
+            Ok(CatalogRefresh::Unchanged) => self.stored = Some(advertised),
+            Ok(CatalogRefresh::NotReady) => self.awaiting_ready = true,
             Err(_) => {}
         }
     }

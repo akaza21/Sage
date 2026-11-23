@@ -20,8 +20,9 @@ impl SdkBridge {
         }
     }
 
-    /// Follows each catalog Claude Code reports, as Sage lists it.
-    pub(super) fn refresh_goal_capability(&mut self, commands: &Value) {
+    /// Follows each catalog Claude Code reports, as Sage lists it, and hands
+    /// the list back. A failed read reports no catalog and changes nothing.
+    pub(super) fn goal_support(&mut self, commands: Value) -> Value {
         self.goals_enabled = commands.as_array().is_some_and(|commands| {
             commands.iter().any(|command| {
                 command["name"] == GOAL_COMMAND && command["_meta"]["source"] == "builtin"
@@ -33,6 +34,7 @@ impl SdkBridge {
             // A listed command does not prove that no goal is set.
             self.goal = GoalState::Unavailable;
         }
+        commands
     }
 
     pub(in crate::acp::bindings::claude::sdk) fn goal_command_name(&self) -> &'static str {

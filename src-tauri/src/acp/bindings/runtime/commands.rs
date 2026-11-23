@@ -4,32 +4,22 @@ use crate::acp::{bindings::adapter::AdapterEvent, command_placement::NativeContr
 /// The live command catalog: its WebView channel, the revision a picked command
 /// must match, and the events that ask the binding to re-read it.
 impl NativeRuntime {
-    pub(crate) fn attach_commands(
-        &mut self,
-        owner: sage_acp_protocol::scheduler::RuntimeOwner,
-        channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
-    ) {
-        self.3 = Some((owner, channel));
-    }
-
-    pub(crate) fn attach_catalog_capabilities(
-        &mut self,
-        capabilities: crate::acp::service::catalog_capabilities::CatalogCapabilities,
-    ) {
-        self.6 = Some(capabilities);
-        // A harness already initialized reports its negotiated set now.
-        self.follow_catalog_capabilities();
-    }
-
     /// Re-reads what the harness advertises once its catalog revision moves,
     /// so a stored capability never lags the catalog the menu shows.
-    pub(super) fn follow_catalog_capabilities(&mut self) {
+    /// A batch that readied the session lets a change held back by its
+    /// activation go out with the next frame, once the activation committed.
+    pub(super) fn follow_catalog_capabilities(&mut self, batch: Option<&AdapterBatch>) {
         let Some(capabilities) = self.6.as_mut() else {
             return;
         };
         let revision = self.0.available_commands().revision();
         if !capabilities.settled(revision) {
             capabilities.observe(revision, self.0.catalog_capabilities());
+        }
+        if batch.is_some_and(|batch| {
+            (batch.events().iter()).any(|event| matches!(event, AdapterEvent::SessionReady { .. }))
+        }) {
+            capabilities.session_ready();
         }
     }
 
