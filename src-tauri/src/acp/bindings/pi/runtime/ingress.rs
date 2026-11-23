@@ -30,10 +30,12 @@ impl PiRuntime {
         if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
             && kind == "extension_ui_request"
             && value.get("method").and_then(serde_json::Value::as_str) == Some("setStatus")
-            && value.get("statusKey").and_then(serde_json::Value::as_str)
-                == Some("sage.pi.ready.v1")
+            && let Some(key) = value
+                .get("statusKey")
+                .and_then(serde_json::Value::as_str)
+                .filter(|key| key.starts_with("sage.pi."))
         {
-            return self.bridge_ready(value);
+            return self.bridge_status(key, value);
         }
         if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
             && kind == "extension_ui_request"

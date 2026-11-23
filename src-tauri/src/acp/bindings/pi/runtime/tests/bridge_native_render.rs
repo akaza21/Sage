@@ -151,14 +151,25 @@ fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
                 1
             );
             assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::ExtensionMessage { label, text, details: Some(details) }, .. } if label.as_str() == "fixture-report" && text.as_str() == "<script>safe text</script>" && details.as_str().len() <= 16384)));
-            // An injected user turn is not shown until Pi marks it reliably.
-            assert!(!events.iter().any(|event| matches!(
-                event,
-                AdapterEvent::Item {
-                    payload: NormalizedPayload::UserPrompt { .. },
-                    ..
-                }
-            )));
+            // The extension's sendUserMessage shows once; Sage's own prompt
+            // echo does not.
+            let users = events
+                .iter()
+                .filter_map(|event| match event {
+                    AdapterEvent::Item {
+                        payload: NormalizedPayload::UserPrompt { text },
+                        ..
+                    } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(users, ["Injected request"]);
+            // The extension's setModel reached the model option within the
+            // turn, before any prompt-time configuration read.
+            assert_eq!(
+                j.runtime.current_model.as_deref(),
+                Some("sage-router:virtual")
+            );
         }
         if name != "unknown-role" {
             continue;
