@@ -77,6 +77,7 @@ export function ActiveEditorCanvas({
         <Notice
           identity={`repository-mutation-link:${resourceKey(contextualMutationError.resource)}`}
           severity="warning"
+          announce={false}
           message="Source Control has a problem with this file."
           action={{
             label: "Show in Source Control",

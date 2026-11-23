@@ -2,8 +2,6 @@ import { create } from "zustand";
 
 interface ClearProgress {
   busy: boolean;
-  error: string | null;
-  success: string | null;
 }
 
 /**
@@ -13,10 +11,8 @@ interface ClearProgress {
  */
 export const useClearProgress = create<ClearProgress>(() => ({
   busy: false,
-  error: null,
-  success: null,
 }));
 
 export function resetBrowserClearDataForTests() {
-  useClearProgress.setState({ busy: false, error: null, success: null });
+  useClearProgress.setState({ busy: false });
 }

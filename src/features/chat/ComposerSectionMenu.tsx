@@ -293,6 +293,7 @@ export function ComposerSectionRows({
         <Notice
           identity="composer-commands-unavailable"
           severity="warning"
+          announce={false}
           message={`Commands are unavailable. ${load.message}`}
         />
       ) : null}

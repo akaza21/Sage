@@ -33,6 +33,7 @@ export function AcpHistoryNotices({
         <Notice
           identity={`history-read:${scope}`}
           severity="warning"
+          announce={false}
           message="Earlier history could not be loaded."
           details={historyError}
         />

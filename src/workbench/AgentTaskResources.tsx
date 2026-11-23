@@ -33,11 +33,8 @@ export function AgentTaskRenameForm({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (await renameChat(chatId, value, projectId)) onCancel();
-    else
-      setError(
-        useWorkbenchStore.getState().error ?? "Chat rename could not be saved",
-      );
+    if (await renameChat(chatId, value, projectId, setError)) onCancel();
+    else setError((own) => own ?? "Chat rename could not be saved");
   }
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {

@@ -605,6 +605,7 @@ describe("compact Workbench project tools", () => {
         "chat:b",
         "Release notes",
         "project-a",
+        expect.any(Function),
       );
       expect(
         screen.queryByRole("textbox", { name: "New name for B" }),
@@ -671,6 +672,7 @@ describe("compact Workbench project tools", () => {
         "chat:b",
         "Release notes",
         "project-a",
+        expect.any(Function),
       );
       expect(
         screen.queryByRole("textbox", { name: "New name for B" }),
@@ -794,11 +796,15 @@ describe("compact Workbench project tools", () => {
 
   it("keeps invalid rename feedback visible and focused with a File active", async () => {
     let resolveRename!: (committed: boolean) => void;
-    const renameChat = vi.fn(() => {
-      return new Promise<boolean>((resolve) => {
-        resolveRename = resolve;
-      });
-    });
+    let reportRenameError: ((message: string) => void) | undefined;
+    const renameChat = vi.fn<typeof initialState.renameChat>(
+      (_id, _title, _project, report) => {
+        reportRenameError = report;
+        return new Promise<boolean>((resolve) => {
+          resolveRename = resolve;
+        });
+      },
+    );
     useWorkbenchStore.setState({
       renameChat,
       project: { id: "project-a", name: "A", roots: [] },
@@ -838,9 +844,7 @@ describe("compact Workbench project tools", () => {
     expect(input).toBeDisabled();
 
     await act(async () => {
-      useWorkbenchStore.setState({
-        error: "Chat title must not be empty after trimming",
-      });
+      reportRenameError?.("Chat title must not be empty after trimming");
       resolveRename(false);
     });
 

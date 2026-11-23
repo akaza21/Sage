@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 it("explains a Preview failure once with its one restart", () => {
   const restart = vi.fn();
-  render(
+  const { rerender } = render(
     <PreviewLifecycleStatus
       failure="healthTimeout"
       phase="healthFailed"
@@ -18,6 +18,17 @@ it("explains a Preview failure once with its one restart", () => {
   const notices = document.querySelectorAll(".notice");
   expect(notices).toHaveLength(1);
   expect(notices[0]).toHaveClass("notice--warning");
+  expect(notices[0]).toHaveAttribute("aria-live", "polite");
+  expect(screen.queryByRole("alert")).toBeNull();
+  rerender(
+    <PreviewLifecycleStatus
+      failure="healthTimeout"
+      phase="healthFailed"
+      scope="project:chat:root:dev"
+      onRestart={restart}
+    />,
+  );
+  expect(document.querySelector(".notice")).toBe(notices[0]);
   expect(
     screen.getAllByText("Preview did not become healthy before its deadline."),
   ).toHaveLength(1);

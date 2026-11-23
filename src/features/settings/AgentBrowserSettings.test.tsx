@@ -237,11 +237,8 @@ it("does not retain live-tab controls after the native browser data has been cle
   await screen.findByRole("button", { name: "Manage browsing history" });
   vi.mocked(browserLiveTabs).mockResolvedValueOnce([]);
   const { act } = await import("@testing-library/react");
-  act(() =>
-    useClearProgress.setState({
-      success: "Browsing data cleared.",
-    }),
-  );
+  act(() => useClearProgress.setState({ busy: true }));
+  act(() => useClearProgress.setState({ busy: false }));
   await waitFor(() =>
     expect(
       screen.getByRole("combobox", { name: "Browser tab" }),

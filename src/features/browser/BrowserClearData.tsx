@@ -11,10 +11,9 @@ import {
 } from "../../ports/nativeBrowserPort";
 
 const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
-// The clear control alone explains the outcome; nothing else repeats it.
-const setError = (error: string | null) => useClearProgress.setState({ error });
-const setSuccess = (success: string | null) =>
-  useClearProgress.setState({ success });
+// The status bar outlives the browser tabs closed by this operation.
+const setOutcome = (browserClearNotice: string | null) =>
+  useWorkbenchStore.setState({ browserClearNotice });
 
 export function BrowserClearData({
   menuItem = false,
@@ -25,15 +24,14 @@ export function BrowserClearData({
   buttonClassName?: string;
   describedBy?: string;
 }) {
-  const { busy, error, success } = useClearProgress();
+  const busy = useClearProgress((state) => state.busy);
   const [confirming, setConfirming] = useState(false);
 
   async function clear() {
     if (useClearProgress.getState().busy) return;
     setConfirming(false);
     setBusy(true);
-    setError(null);
-    setSuccess(null);
+    setOutcome(null);
     let unlisten: (() => void) | undefined;
     let pending = false;
     let completion: BrowserClearDataCompletion | null = null;
@@ -41,8 +39,12 @@ export function BrowserClearData({
       unlisten?.();
       unlisten = undefined;
       setBusy(false);
-      setError(outcome.error);
-      setSuccess(outcome.cleared ? "Browsing data cleared." : null);
+      setOutcome(
+        outcome.error ??
+          (outcome.cleared
+            ? "Browsing data cleared."
+            : "Browser data could not be cleared."),
+      );
     };
     try {
       const { listen } = await import("@tauri-apps/api/event");
@@ -61,24 +63,17 @@ export function BrowserClearData({
       );
       if (result.pending) {
         pending = true;
-        setError(result.error);
         if (completion) finish(completion);
         return;
       }
-      unlisten();
-      unlisten = undefined;
-      if (!result.cleared)
-        setError(result.error ?? "Browser data could not be cleared.");
-      else setSuccess("Browsing data cleared.");
+      finish(result);
     } catch (cause) {
       unlisten?.();
-      setError(String(cause).slice(0, 512));
-    } finally {
-      if (!pending) setBusy(false);
+      setBusy(false);
+      setOutcome(String(cause).slice(0, 512));
     }
   }
 
-  const message = error ?? success;
   return (
     <div
       className={
@@ -97,12 +92,12 @@ export function BrowserClearData({
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}
       </button>
-      {message ? (
+      {busy ? (
         <Notice
-          identity={`browser-clear-data:${busy ? "pending" : error ? "failed" : "cleared"}`}
-          severity={error && !busy ? "warning" : "info"}
-          message={message}
-          progress={busy || !error}
+          identity="browser-clear-data:pending"
+          severity="info"
+          message="Browser data is still clearing; new browser tabs are blocked until it finishes."
+          progress
         />
       ) : null}
       {confirming ? (

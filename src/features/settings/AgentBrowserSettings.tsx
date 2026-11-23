@@ -142,7 +142,7 @@ function LiveTabSitePermissions({
 export function AgentBrowserSettings() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   // A finished clear closes every browser tab, so the live list is re-read.
-  const cleared = useClearProgress((state) => state.success);
+  const clearing = useClearProgress((state) => state.busy);
   const showSitePermissions = useAgentSettingsState(
     (state) => state.showSitePermissions,
   );
@@ -154,7 +154,7 @@ export function AgentBrowserSettings() {
   const [error, setError] = useState<string | null>(null);
   const native = isTauriRuntime();
   useEffect(() => {
-    if (!native) return;
+    if (!native || clearing) return;
     let current = true;
     void browserLiveTabs()
       .then((ids) => {
@@ -173,7 +173,7 @@ export function AgentBrowserSettings() {
     return () => {
       current = false;
     };
-  }, [native, revision, cleared]);
+  }, [native, revision, clearing]);
   if (!native)
     return (
       <p role="status">
@@ -184,7 +184,7 @@ export function AgentBrowserSettings() {
   const tabId =
     [chosenId, requestedId].find((id) => id && liveIds.includes(id)) ??
     liveIds[0];
-  const live = !loading && tabId ? tabId : null;
+  const live = !loading && tabId;
   const tabTitle = (id: string) =>
     tabs.find((tab) => tab.id === id)?.title ?? id;
   return (

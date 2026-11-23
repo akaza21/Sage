@@ -50,6 +50,7 @@ export interface ChatSlice {
     chatId: string,
     title: string,
     projectId?: string,
+    reportError?: (message: string) => void,
   ) => Promise<boolean>;
 }
 
@@ -125,7 +126,26 @@ export const createChatSlice: StateCreator<
       });
     },
 
-    renameChat: async (chatId, title, projectId) => {
+    renameChat: async (chatId, title, projectId, reportError) => {
+      // A field owns recoverable rename errors. Projection failures still
+      // belong to the workbench because its entire state is then unavailable.
+      const renameSet: typeof set = reportError
+        ? (partial) => {
+            const update =
+              typeof partial === "function" ? partial(get()) : partial;
+            const { error, ...rest } = update;
+            if (update.phase === "error") set(update);
+            else {
+              if (error) reportError(error);
+              set(rest);
+            }
+          }
+        : set;
+      const {
+        applyProjection,
+        loadAuthoritativeProjection,
+        runChatTransition,
+      } = createChatTransitionContext(renameSet, get);
       const initial = currentProjectLayout(get());
       const sourceProjectId = projectId ?? initial?.projectId;
       const initialTarget = initial?.tabs.find(
@@ -146,14 +166,14 @@ export const createChatSlice: StateCreator<
         canonicalName = canonicalChatName(title);
         canonicalTitle = canonicalChatTitle(canonicalName);
       } catch (error) {
-        set({ error: errorMessage(error) });
+        renameSet({ error: errorMessage(error) });
         return false;
       }
-      set({ projectTransitioning: true, error: null });
+      renameSet({ projectTransitioning: true, error: null });
       try {
         await get().flushActiveEditor();
       } catch (error) {
-        set({
+        renameSet({
           projectTransitioning: false,
           error: `Chat rename blocked by editor snapshot failure: ${errorMessage(error)}`,
         });
@@ -164,7 +184,7 @@ export const createChatSlice: StateCreator<
         (tab) => tab.id === chatId && tab.kind === "chat",
       );
       if (!current || (!foreign && !target)) {
-        set({
+        renameSet({
           projectTransitioning: false,
           error: "Chat rename target disappeared before mutation",
         });
@@ -173,7 +193,7 @@ export const createChatSlice: StateCreator<
       if (foreign) {
         const expectedTransitionEpoch = get().nativeTransitionEpoch;
         return commitIdentityChatResult({
-          set,
+          set: renameSet,
           get,
           applyProjection,
           loadAuthoritativeProjection,
@@ -191,7 +211,7 @@ export const createChatSlice: StateCreator<
         });
       }
       if (!target) {
-        set({
+        renameSet({
           projectTransitioning: false,
           error: "Chat rename target disappeared before mutation",
         });

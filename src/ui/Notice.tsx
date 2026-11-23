@@ -32,14 +32,14 @@ function NoticeContent({
   const [expanded, setExpanded] = useState(false);
   const error = severity === "blocking";
   const warning = severity === "warning";
-  const blocking = error && announce;
+  const live = (error || warning) && announce;
   // Undefined is unannounced; false permanently quiets this identity.
   const [announcement, setAnnouncement] = useState<
     { message: ReactNode } | false
   >();
   // Settle announcement state before committing changed copy to the tree.
   // Identity changes remount this bounded state; StrictMode replays preserve it.
-  if (blocking && announcement === undefined) setAnnouncement({ message });
+  if (live && announcement === undefined) setAnnouncement({ message });
   else if (announcement && announcement.message !== message)
     setAnnouncement(false);
   const Icon = error ? CircleAlert : warning ? TriangleAlert : Info;
@@ -47,10 +47,16 @@ function NoticeContent({
     <div
       className={`notice notice--${severity}`}
       aria-live={
-        progress ? "polite" : blocking && announcement ? "assertive" : "off"
+        progress
+          ? "polite"
+          : live && announcement
+            ? error
+              ? "assertive"
+              : "polite"
+            : "off"
       }
       data-notice-identity={identity}
-      role={blocking ? "alert" : progress ? "status" : undefined}
+      role={error && announce ? "alert" : progress ? "status" : undefined}
     >
       <Icon size={14} />
       <div className="notice__body">
