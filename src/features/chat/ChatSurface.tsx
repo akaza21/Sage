@@ -186,11 +186,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       : undefined;
   };
   const retry = acpPage && latestRetryPrompt(acpPage);
+  // Offered only while idle and with a retry (see onRetry), and it closes over
+  // that same render's values.
   const retryLastTurn = () => {
-    if (!retry || actionBusy || activeAcpTurn) return;
-    if (retry.action) return void acpActions.runSessionAction(retry.action);
+    if (retry!.action) return void acpActions.runSessionAction(retry!.action);
     // Retry resends what that turn carried, never the next one's paste.
-    const { prompt, bindingId, modelId, turnId } = retry;
+    const { prompt, bindingId, modelId, turnId } = retry!;
     void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 

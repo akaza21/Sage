@@ -43,11 +43,8 @@ export function FirstChatSend({
       draftShownFor(state, chatId) ||
       state.activeTabId !== chatId ||
       state.project?.id !== pending.projectId ||
-      state.chatOwnershipEpoch !== pending.ownershipEpoch
-    )
-      return;
-    // The draft's text is never empty, so this also needs a composer entry.
-    if (
+      state.chatOwnershipEpoch !== pending.ownershipEpoch ||
+      // The draft's text is never empty, so this also needs a composer entry.
       entry?.composerText !== pending.text ||
       harness?.installState !== "available"
     )
@@ -55,16 +52,17 @@ export function FirstChatSend({
     if (harness.transport === "legacySimulator") {
       void state.sendPrompt();
     } else if (harness.bindingId) {
-      // Images a draft handed over are already in this composer.
-      const submit = () =>
-        actions.submit(
-          pending.text.trim(),
-          entry.attachedContext,
-          harness.bindingId as CuratedBindingId,
-          (entry.modelId ?? null) as CuratedModelId | null,
-        );
+      // A `/command` may wait for the session's catalog (sendFirstCommand).
       void import("./ComposerSlashController").then((slash) =>
-        slash.sendFirstCommand(chatId, harness.id, pending, submit),
+        slash.sendFirstCommand(chatId, harness.id, pending, () =>
+          // Images a draft handed over are already in this composer.
+          actions.submit(
+            pending.text.trim(),
+            entry.attachedContext,
+            harness.bindingId as CuratedBindingId,
+            (entry.modelId ?? null) as CuratedModelId | null,
+          ),
+        ),
       );
     }
   }, [actions, chatId, page, pending, transitioning]);
