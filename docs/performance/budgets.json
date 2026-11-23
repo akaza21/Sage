@@ -541,7 +541,7 @@
         "entry": "src/features/quickOpen/QuickOpen.tsx",
         "maxGzipBytes": 7800,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B, CSS 698 B; 360 B of the 8 KB JS cap moved to the command runtime (T6)."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B, CSS 698 B; 360 B of its 8 KB cap went to T6."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
