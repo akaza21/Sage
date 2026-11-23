@@ -70,11 +70,13 @@ export default function TerminalDockForWorkbench({
 }: WorkbenchDockProps & { container: HTMLElement | null }) {
   const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  // The dock takes its chat's scope when first shown, and again after a
-  // project or chat change released it.
-  const [[scope, uiProjectGeneration], setOwner] = useState<
-    readonly [UserTerminalScope | null, number]
-  >([null, 0]);
+  const [[scope, uiProjectGeneration], setOwner] = useState(
+    () =>
+      [
+        selectedScope(pinnedChatId),
+        useWorkbenchStore.getState().projectGeneration,
+      ] as const,
+  );
   if (visible && !scope) {
     const next = selectedScope(pinnedChatId);
     if (next) setOwner([next, useWorkbenchStore.getState().projectGeneration]);
