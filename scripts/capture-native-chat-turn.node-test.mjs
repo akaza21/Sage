@@ -473,7 +473,12 @@ test("model capture waits through sending, live turns and disabled composer cont
     {
       ...ready,
       state: "completed",
-      controls: { stop: false, composer: true, send: false, modelEnabled: true },
+      controls: {
+        stop: false,
+        composer: true,
+        send: false,
+        modelEnabled: true,
+      },
     },
     {
       ...ready,
