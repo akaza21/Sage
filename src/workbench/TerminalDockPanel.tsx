@@ -57,7 +57,6 @@ export function TerminalDockPanel({
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
-    disposed: false,
     lifecycle: 0,
     closing: false,
     dismissWhenCreateSettles: false,
@@ -65,12 +64,8 @@ export function TerminalDockPanel({
 
   const create = useCallback(async () => {
     const owner = ownerRef.current;
-    if (
-      owner.creating ||
-      owner.disposed ||
-      owner.entries.length >= TERMINAL_MAX_PER_CHAT
-    )
-      return;
+    // After unmount nothing calls this: the auto-create checks the lifecycle.
+    if (owner.creating || owner.entries.length >= TERMINAL_MAX_PER_CHAT) return;
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
@@ -107,10 +102,8 @@ export function TerminalDockPanel({
 
   useEffect(() => {
     const owner = ownerRef.current;
-    owner.disposed = false;
     owner.lifecycle += 1;
     return () => {
-      owner.disposed = true;
       owner.lifecycle += 1;
       owner.creating = false;
       for (const entry of owner.entries)
