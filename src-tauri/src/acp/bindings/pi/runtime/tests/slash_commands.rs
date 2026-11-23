@@ -214,7 +214,11 @@ fn a_refresh_refused_during_a_turn_is_sent_at_the_next_discovery_once() {
     ready(&mut pi);
     let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(pi);
     let catalog = |names: &[&str]| {
-        json!({"commands": names.iter().map(|name| json!({"name":name,"source":"extension"})).collect::<Vec<_>>()})
+        let commands: Vec<_> = names
+            .iter()
+            .map(|name| json!({"name": name, "source": "extension"}))
+            .collect();
+        json!({ "commands": commands })
     };
     let query = runtime.discover_commands().unwrap().unwrap();
     let query = deliver(&mut runtime, query);
