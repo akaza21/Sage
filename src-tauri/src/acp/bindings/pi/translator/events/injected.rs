@@ -33,7 +33,10 @@ impl PiTranslator {
         turn.injected_user_messages.push_back(digest);
     }
 
-    pub(super) fn user_echo(&mut self, message: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
+    pub(super) fn user_echo(
+        &mut self,
+        message: &Value,
+    ) -> Result<Vec<AdapterOutput>, AdapterError> {
         // `sendUserMessage` joins text parts with newlines; Pi echoes the
         // joined text as one part beside any images.
         let text = match &message["content"] {
@@ -56,8 +59,11 @@ impl PiTranslator {
             &redact_structured_text(&neutralized(&text, true)),
             INJECTED_TEXT_BYTES,
         );
-        Ok(vec![AdapterOutput::Message(NormalizedPayload::UserPrompt {
-            text: SafeText::new("injectedUserMessage", shown).map_err(|_| AdapterError::Malformed)?,
-        })])
+        Ok(vec![AdapterOutput::Message(
+            NormalizedPayload::UserPrompt {
+                text: SafeText::new("injectedUserMessage", shown)
+                    .map_err(|_| AdapterError::Malformed)?,
+            },
+        )])
     }
 }

@@ -117,8 +117,10 @@ fn extension_message_roles_are_visible_hidden_or_unsupported_without_losing_the_
 }
 
 fn status(key: &str, body: Value) -> Frame {
-    frame(json!({"type":"extension_ui_request","id":"status-1","method":"setStatus",
-        "statusKey":key,"statusText":body.to_string()}))
+    frame(
+        json!({"type":"extension_ui_request","id":"status-1","method":"setStatus",
+        "statusKey":key,"statusText":body.to_string()}),
+    )
 }
 
 #[test]
@@ -149,7 +151,10 @@ fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_rep
         .ingest(&model("anthropic", "claude"), &Mapper)
         .unwrap();
     let after = config(&runtime);
-    assert_eq!(after["configOptions"][0]["currentValue"], "anthropic:claude");
+    assert_eq!(
+        after["configOptions"][0]["currentValue"],
+        "anthropic:claude"
+    );
     // A model outside the catalogue is read with the next prompt.
     runtime
         .ingest(&model("router", "virtual"), &Mapper)
@@ -178,10 +183,12 @@ fn an_extension_sent_user_message_shows_once_per_marker_and_sages_echo_stays_abs
     let shown = |runtime: &mut PiRuntime, text: &str| {
         let batch = runtime.ingest(&user(text), &Mapper).unwrap();
         match batch.events() {
-            [AdapterEvent::Item {
-                payload: NormalizedPayload::UserPrompt { text: shown },
-                ..
-            }] => {
+            [
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::UserPrompt { text: shown },
+                    ..
+                },
+            ] => {
                 assert_eq!(shown.as_str(), text);
                 true
             }
