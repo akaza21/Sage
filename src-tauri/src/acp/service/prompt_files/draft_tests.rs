@@ -268,3 +268,22 @@ fn a_draft_is_held_to_the_chat_batch_caps() {
         assert!(within.is_ok());
     });
 }
+
+#[test]
+fn a_reloaded_webview_drops_the_old_handoff_so_a_switch_keeps_the_new_draft() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let staged = fixture.stage(LEFTOVER, "old.txt").await.unwrap().unwrap();
+        fixture
+            .hand_off(draft(LEFTOVER), fixture.chat(), &staged.revision)
+            .await
+            .unwrap();
+        // The reloaded WebView's new draft stages; the old draft is gone.
+        fixture.stage(DRAFT, "new.txt").await.unwrap();
+        let mut stages = fixture.state.acp.file_stages.lock().unwrap();
+        stages.clear_chats();
+        assert!(stages.handed.is_none());
+        assert_eq!(stages.list("", DRAFT).unwrap().files[0].name, "new.txt");
+        assert!(stages.list("", LEFTOVER).is_none());
+    });
+}

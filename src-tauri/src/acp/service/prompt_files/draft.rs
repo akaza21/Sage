@@ -51,6 +51,10 @@ impl FileStages {
     pub(super) fn release_other_drafts(&mut self, keep: &str) {
         self.batches
             .retain(|(project, token), _| !is_draft(project) || token == keep);
+        // An ended draft's handoff can no longer be undone into it.
+        if self.handed.as_ref().is_some_and(|h| h.token != keep) {
+            self.handed = None;
+        }
     }
 
     pub(crate) fn release_draft(&mut self, project: &str, token: &str) {

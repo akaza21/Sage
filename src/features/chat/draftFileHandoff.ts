@@ -70,7 +70,16 @@ async function handOffDraftFiles(chatId?: string) {
         })
         .then(
           () => "",
-          () => " The attached files stayed in the created chat, unsent.",
+          // A project switch may already have returned them to the draft.
+          async () => {
+            const held = await port
+              .listPromptFiles({ draftToken: token })
+              .catch(() => null);
+            noteDraftFiles(token, held?.revision ?? null);
+            return held
+              ? " The attached files are back on the draft."
+              : " The attached files stayed in the created chat, unsent.";
+          },
         );
     return "";
   }
