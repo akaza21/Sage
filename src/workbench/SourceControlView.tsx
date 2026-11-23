@@ -10,7 +10,9 @@ import {
   mutateSourceGroup,
   type SourceGroupAction,
 } from "../features/git/sourceControlActions";
+import { Notice } from "../ui/Notice";
 import { ResourceStateNotice } from "../ui/ResourceStateNotice";
+import { RepositoryMutationNotice } from "./RepositoryMutationNotice";
 
 function disambiguatedRootLabel(
   rootName: string,
@@ -176,10 +178,11 @@ export function SourceControlView() {
           </div>
         ) : null}
         {inventoryError || statusError ? (
-          <ResourceStateNotice
-            detail={inventoryError ?? statusError ?? undefined}
-            state="error"
-            title="Repository status is unavailable"
+          <Notice
+            identity={`repository-status:${selectedRepository ? repositoryKey(selectedRepository) : "all"}`}
+            severity="blocking"
+            message="Repository status is unavailable."
+            details={inventoryError ?? statusError}
           />
         ) : inventoryPhase === "loading" || statusPhase === "loading" ? (
           <ResourceStateNotice
@@ -196,6 +199,10 @@ export function SourceControlView() {
           <p className="sidebar__notice">
             Nested repository status is read-only in this beta.
           </p>
+        ) : null}
+        {mutationError ? (
+          // Selection must not remount an old failure's live region.
+          <RepositoryMutationNotice error={mutationError} />
         ) : null}
         {selectedRepositories.map((repository) => {
           const projectRoot = projectRoots.get(repository.rootId);
@@ -237,11 +244,6 @@ export function SourceControlView() {
               {remoteError?.rootId === repository.rootId ? (
                 <p className="sidebar__error" role="alert">
                   {remoteError.message}
-                </p>
-              ) : null}
-              {mutationError?.resource.rootId === repository.rootId ? (
-                <p className="sidebar__error" role="alert">
-                  {mutationError.message}
                 </p>
               ) : null}
               {repository.message ? (

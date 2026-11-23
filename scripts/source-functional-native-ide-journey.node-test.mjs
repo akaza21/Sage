@@ -941,7 +941,7 @@ test("native IDE save action uses the admitted File editor shortcut", () => {
     querySelectorAll: (selector) => {
       if (selector === ".file-header__save-state--dirty")
         return dirty ? [{}] : [];
-      if (selector === ".editor-notice--conflict")
+      if (selector === '[data-notice-identity^="file-conflict:"]')
         return conflictVisible ? [{}] : [];
       if (selector === ".cm-content")
         return [{ innerText: "saved journey content" }];
@@ -1086,7 +1086,7 @@ test("native IDE recovery probes present and clear one external-change conflict"
   const editorInput = {
     focus() {},
   };
-  const conflict = { innerText: "External change detected. Disk changed." };
+  const conflict = { innerText: "This file changed outside Sage." };
   const close = {
     clicks: 0,
     click() {
@@ -1130,7 +1130,7 @@ test("native IDE recovery probes present and clear one external-change conflict"
         return [editorInput];
       if (
         selector ===
-        'section[aria-label="File editor journey.ts"] .editor-notice--conflict[role="alert"]'
+        'section[aria-label="File editor journey.ts"] [role="group"][aria-label="External change"]'
       )
         return conflictVisible ? [conflict] : [];
       if (selector === ".tab") return [fileTab];

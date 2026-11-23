@@ -200,9 +200,11 @@ it.each([true, false])(
         await screen.findByRole("table", { name: "Unified file diff" }),
       ).toHaveTextContent("after");
     } else {
-      expect(
-        await screen.findByText("This file has no Git baseline."),
-      ).toBeVisible();
+      // Only Sage-written reasons are the sentence; the rejection is a detail.
+      const failure = await screen.findByRole("alert");
+      expect(failure).toHaveTextContent("Could not load this diff.");
+      fireEvent.click(screen.getByRole("button", { name: "Details" }));
+      expect(failure).toHaveTextContent("This file has no Git baseline.");
     }
   },
 );

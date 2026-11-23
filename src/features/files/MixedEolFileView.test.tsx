@@ -105,7 +105,10 @@ it("explains failed automatic watching and still permits a manual refresh", asyn
     .spyOn(getWorkbenchPorts().editor, "readTextFile")
     .mockRejectedValue(new Error("missing"));
   render(<MixedEolFileView resource={resource} />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("missing");
+  const failure = await screen.findByRole("alert");
+  expect(failure).toHaveTextContent("Could not read file.");
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(failure).toHaveTextContent("missing");
   expect(
     screen.getByText(/Automatic file watching is unavailable/),
   ).toBeVisible();
@@ -227,9 +230,9 @@ it("caps the text view and displays read failures truthfully", async () => {
   view.unmount();
   read.mockRejectedValue(new Error("File disappeared"));
   render(<MixedEolFileView resource={resource} />);
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "File disappeared",
-  );
+  const failure = await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(failure).toHaveTextContent("File disappeared");
 });
 
 it("reads mixed line endings without opening a writable buffer", async () => {

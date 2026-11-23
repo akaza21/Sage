@@ -150,6 +150,7 @@ describe("FileSurface document language", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       `Could not open ${path}`,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The file is unavailable.",
     );
@@ -191,9 +192,10 @@ describe("FileSurface durability cadence", () => {
       revision: 1,
     });
     expect(activeEditorText()).toBe("edited\n");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "External change detected. Disk content changed",
-    );
+    expect(
+      await screen.findByText("This file changed outside Sage."),
+    ).toBeVisible();
+    expect(screen.queryByText("Disk content changed")).toBeNull();
 
     fireEvent.keyDown(
       screen.getByRole("region", { name: `File editor ${path}` }),
