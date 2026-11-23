@@ -45,9 +45,8 @@ vi.mock("./TerminalDock", () => ({
     ) : null,
 }));
 
-import TerminalDockForWorkbench, {
-  TerminalDockShell,
-} from "./TerminalDockShell";
+import TerminalDockForWorkbench from "./TerminalDockShell";
+import { TerminalDockPanel } from "./TerminalDockPanel";
 import { useWorkbenchStore } from "../app/store";
 
 const scope = {
@@ -102,7 +101,7 @@ it("opens a usable replacement after the last terminal tab was explicitly ended"
     return (
       <>
         <button onClick={() => setVisible(true)}>Show dock</button>
-        <TerminalDockShell
+        <TerminalDockPanel
           open
           scope={scope}
           visible={visible}
@@ -128,18 +127,18 @@ it("opens a usable replacement after the last terminal tab was explicitly ended"
 it("hides and reopens the dock with its selected sessions intact", async () => {
   const onClose = () => undefined;
   const { rerender } = render(
-    <TerminalDockShell open scope={scope} onClose={onClose} visible />,
+    <TerminalDockPanel open scope={scope} onClose={onClose} visible />,
   );
   await screen.findByText(`Active session ${session(1).sessionId}`);
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   await screen.findByText(`Active session ${session(2).sessionId}`);
   rerender(
-    <TerminalDockShell open scope={scope} onClose={onClose} visible={false} />,
+    <TerminalDockPanel open scope={scope} onClose={onClose} visible={false} />,
   );
   expect(
     screen.queryByRole("region", { name: "Terminal" }),
   ).not.toBeInTheDocument();
-  rerender(<TerminalDockShell open scope={scope} onClose={onClose} visible />);
+  rerender(<TerminalDockPanel open scope={scope} onClose={onClose} visible />);
   expect(
     await screen.findByText(`Active session ${session(2).sessionId}`),
   ).toBeVisible();
@@ -152,7 +151,7 @@ it("hides and reopens the dock with its selected sessions intact", async () => {
 
 it("creates a second tab, switches sessions, and closes only the selected tab", async () => {
   const onClose = vi.fn();
-  render(<TerminalDockShell visible open scope={scope} onClose={onClose} />);
+  render(<TerminalDockPanel visible open scope={scope} onClose={onClose} />);
   expect(
     await screen.findByText(`Active session ${session(1).sessionId}`),
   ).toBeInTheDocument();
@@ -183,7 +182,7 @@ it("creates a second tab, switches sessions, and closes only the selected tab", 
 
 it("collapses without closing sessions and blocks a fifth tab locally", async () => {
   render(
-    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+    <TerminalDockPanel visible open scope={scope} onClose={() => undefined} />,
   );
   await screen.findByRole("tab");
   for (let index = 0; index < 3; index++) {
@@ -207,7 +206,7 @@ it("collapses without closing sessions and blocks a fifth tab locally", async ()
 
 it("does not infer native ended state from status display text", async () => {
   render(
-    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+    <TerminalDockPanel visible open scope={scope} onClose={() => undefined} />,
   );
   fireEvent.click(
     await screen.findByRole("button", { name: "Report status text only" }),
@@ -225,7 +224,7 @@ it("selects a remaining tab when the closing tab was selected during native clos
       }),
   );
   render(
-    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+    <TerminalDockPanel visible open scope={scope} onClose={() => undefined} />,
   );
   await screen.findByRole("tab");
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -251,7 +250,7 @@ it("dismisses after a pending replacement creation fails following last-tab clos
       }),
   );
   const onClose = vi.fn();
-  render(<TerminalDockShell visible open scope={scope} onClose={onClose} />);
+  render(<TerminalDockPanel visible open scope={scope} onClose={onClose} />);
   await screen.findByRole("tab");
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   await waitFor(() => expect(native.create).toHaveBeenCalledTimes(2));
@@ -269,7 +268,7 @@ it("does not retain a stale creation across a StrictMode remount", async () => {
   );
   render(
     <StrictMode>
-      <TerminalDockShell visible open scope={scope} onClose={() => undefined} />
+      <TerminalDockPanel visible open scope={scope} onClose={() => undefined} />
     </StrictMode>,
   );
   await waitFor(() => expect(native.create).toHaveBeenCalledTimes(1));
