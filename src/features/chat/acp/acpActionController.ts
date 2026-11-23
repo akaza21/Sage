@@ -9,7 +9,6 @@ import type {
   ProjectGeneration,
   SageTurnId,
   SendAcpTurnRequest,
-  StagedSelection,
 } from "../../../domain/acp";
 import type {
   AcpProjectionScope,
@@ -22,8 +21,7 @@ import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
-import type { SlashCommandPort } from "../slashCommandTurn";
-import type { FirstCommandHold } from "../ComposerSlashController";
+import type { SlashCommandPort, SubmitOptions } from "../slashCommandTurn";
 import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
@@ -226,10 +224,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
-    {
-      staged,
-      firstCommand,
-    }: { staged?: StagedSelection; firstCommand?: FirstCommandHold } = {},
+    { staged, firstCommand }: SubmitOptions = {},
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();

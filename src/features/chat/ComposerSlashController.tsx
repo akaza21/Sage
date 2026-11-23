@@ -1,6 +1,7 @@
 import { useEffect, type ComponentProps } from "react";
 import { lazyParts } from "./lazyParts";
 import type * as Runtime from "./ComposerCommandRuntime";
+import type { FirstCommandHold } from "./slashCommandTurn";
 import { draftShownFor } from "../../app/newChatDraftSlice";
 import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
 import type {
@@ -22,10 +23,6 @@ const RuntimePart =
  * session's command catalog before refusing to send. */
 export const FIRST_COMMAND_HOLD_MS = 5_000;
 
-/** A new chat's first send naming a curated built-in command, carried by that
- * one submit; `live` turns false once Stop or leaving the chat ends it. */
-export type FirstCommandHold = { name: string; live: () => boolean };
-
 const notSent = (reason: string) =>
   new AcpDesktopError({
     kind: "invalidRequest",
@@ -44,13 +41,13 @@ export async function slashCommandTurn(
   ]
 ) {
   const runtime = await loadRuntime();
-  const args = [request, nextIntentId, port] as const;
+  const turn = () => runtime.slashCommandTurn(request, nextIntentId, port);
   if (
     request.target !== "session" ||
     !hold ||
     hold.name !== runtime.parseSlashCommand(request.prompt)?.name
   )
-    return runtime.slashCommandTurn(...args);
+    return turn();
   const { name, live } = hold;
   // The typed command route carries no attachments or staged files.
   if (request.attachedContext?.length || request.staged)
@@ -101,7 +98,7 @@ export async function slashCommandTurn(
   // As a picked command, it is refused rather than sent as text.
   runtime.setPickedCommand(request.chatId, name);
   try {
-    const run = await within(runtime.slashCommandTurn(...args));
+    const run = await within(turn());
     held();
     if (run === undefined) throw timedOut();
     return (

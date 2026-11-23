@@ -2,6 +2,7 @@ import type {
   AcpMutationResult,
   AcpSessionMutationIntent,
   SendAcpTurnRequest,
+  StagedSelection,
 } from "../../domain/acp";
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
@@ -13,6 +14,16 @@ export type SlashCommandPort = Pick<
   typeof acpCommandsDesktop,
   "listCommands" | "runCommand"
 >;
+
+/** A new chat's first send naming a curated built-in command, carried by that
+ * one submit; `live` turns false once Stop or leaving the chat ends it. */
+export type FirstCommandHold = { name: string; live: () => boolean };
+
+/** What one submit carries besides its prompt, context and selection. */
+export type SubmitOptions = {
+  staged?: StagedSelection;
+  firstCommand?: FirstCommandHold;
+};
 
 export function parseSlashCommand(
   prompt: string,
