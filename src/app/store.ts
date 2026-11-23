@@ -286,10 +286,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     },
 
     closeTab: (tabId) => {
-      const settings = tabId === "settings:appearance";
-      closeWorkbenchTab(set, get, tabId, settings ? settingsReturnTabId : null);
-      if (settings && !get().tabs.some((tab) => tab.id === tabId))
+      const preferredNextTabId =
+        tabId === "settings:appearance" ? settingsReturnTabId : null;
+      closeWorkbenchTab(set, get, tabId, preferredNextTabId);
+      if (
+        tabId === "settings:appearance" &&
+        !get().tabs.some((tab) => tab.id === tabId)
+      ) {
         settingsReturnTabId = null;
+      }
     },
 
     openSettings: async (page) => {
