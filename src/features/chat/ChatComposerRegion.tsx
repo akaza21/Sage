@@ -36,16 +36,16 @@ const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden = false,
+    hidden,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId = null,
+    sessionId,
     project,
-    newChat = false,
+    newChat,
     usage,
     onCompact,
     descriptionId,
@@ -56,7 +56,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked = false,
+    sendBlocked,
     actionBusy,
     activeTurn,
     queueAvailable,
@@ -154,6 +154,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           part="ComposerLocationStrip"
           projectName={projectName ?? "Choose project"}
           disabled={actionDisabled || !!sessionId}
+          activeTurn={activeTurn}
         />
       ) : null}
       <div
