@@ -9,7 +9,6 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   chatReadThrough,
   markChatRead,
@@ -406,53 +405,10 @@ it("pins and moves a chat that belongs to another project folder", async () => {
   fireEvent.submit(
     screen.getByLabelText("New name for Alpha").closest("form")!,
   );
-  expect(renameChat).toHaveBeenCalledWith(
-    "chat:a",
-    "Research",
-    "project-a",
-    expect.any(Function),
-  );
+  expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
   await openChatActions("Extra");
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
-});
-
-it("keeps only its own rename failure beside the field while unrelated errors stay in the workbench", async () => {
-  seedChats();
-  useWorkbenchStore.setState({ error: "Existing workbench error" });
-  vi.spyOn(getWorkbenchPorts().chat, "renameChat").mockImplementation(
-    async () => {
-      expect(useWorkbenchStore.getState().error).toBe(
-        "Existing workbench error",
-      );
-      useWorkbenchStore.setState({ error: "Unrelated browser failure" });
-      return {
-        committed: false,
-        transitionEpoch: 0,
-        snapshot: null,
-        recoveryError: "Chat names hold up to 256 bytes",
-      };
-    },
-  );
-  render(
-    <ProjectChatNavigation
-      projectId="project-a"
-      chats={currentChats()}
-      selected
-    />,
-  );
-  await openChatActions("Alpha");
-  fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-  const field = await screen.findByLabelText("New name for Alpha");
-  fireEvent.change(field, { target: { value: "Research" } });
-  await act(async () => fireEvent.submit(field.closest("form")!));
-  expect(field).toHaveAttribute("aria-invalid", "true");
-  expect(field).toHaveAccessibleDescription(/Chat names hold up to 256 bytes/);
-  const form = field.closest("form")!;
-  expect(form.querySelectorAll(".notice--warning")).toHaveLength(1);
-  expect(document.querySelectorAll(".notice")).toHaveLength(1);
-  expect(form).not.toHaveTextContent("Unrelated browser failure");
-  expect(useWorkbenchStore.getState().error).toBe("Unrelated browser failure");
 });
 
 it("labels the archived count separately and preserves disclosure semantics", async () => {

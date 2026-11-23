@@ -142,18 +142,15 @@ export function ProjectChatNavigation({
     event.preventDefault();
     setRenameError(null);
     setRenameSaving(true);
-    const committed = await renameChat(
-      chatId,
-      renameDraft,
-      projectId,
-      setRenameError,
-    );
+    const committed = await renameChat(chatId, renameDraft, projectId);
     setRenameSaving(false);
     if (committed) {
       closeRename(chatId);
       return;
     }
-    setRenameError((own) => own ?? "Chat rename could not be saved");
+    setRenameError(
+      useWorkbenchStore.getState().error ?? "Chat rename could not be saved",
+    );
   };
 
   return (
