@@ -25,7 +25,7 @@ import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
-import { SlashPart, harnessChrome } from "./composerLazyParts";
+import { SlashPart } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -197,7 +197,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {harnessChrome("above", props)}
+            <SlashPart part="ComposerChrome" place="above" {...props} />
             {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
@@ -295,7 +295,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               ) : null}
             </div>
-            {harnessChrome("below", props)}
+            <SlashPart part="ComposerChrome" place="below" {...props} />
             {sessionFeatures ? (
               <ComposerPasteSlot
                 paste={paste}
