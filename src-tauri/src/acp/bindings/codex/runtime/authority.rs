@@ -5,7 +5,7 @@ use sage_core::error::{AppError, AppResult};
 use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
-    project_registry::ProjectRootAuthority,
+    project_registry::{ProjectRootAcquisitionError, ProjectRootAuthority},
     state::ActiveProjectContext,
 };
 use sage_acp_protocol::contract::{SageProjectId, SageRootId};
@@ -16,6 +16,23 @@ use sage_db::database::Database;
 pub(crate) struct CodexProjectRootAuthority(ProjectRootAuthority);
 
 impl CodexProjectRootAuthority {
+    pub(crate) fn acquire(
+        database: &Database,
+        context: &ActiveProjectContext<'_>,
+    ) -> Result<Self, ProjectRootAcquisitionError> {
+        let roots = database.root_records(context.project_id().as_str())?;
+        let [root] = roots.as_slice() else {
+            return Err(AppError::HarnessUnavailable(
+                "Codex beta requires a Project with exactly one root".into(),
+            )
+            .into());
+        };
+        let root_id = SageRootId::parse(root.id.clone()).map_err(|_| {
+            AppError::InvalidRequest("Codex project root identity is invalid".into())
+        })?;
+        database.project_root_authority(context, &root_id).map(Self)
+    }
+
     pub(crate) fn project_id(&self) -> &SageProjectId {
         self.0.scope().0
     }
@@ -88,17 +105,7 @@ impl CodexRootAuthorityStore for Database {
         &self,
         context: &ActiveProjectContext<'_>,
     ) -> AppResult<CodexProjectRootAuthority> {
-        let roots = self.root_records(context.project_id().as_str())?;
-        let [root] = roots.as_slice() else {
-            return Err(AppError::HarnessUnavailable(
-                "Codex beta requires a Project with exactly one root".into(),
-            ));
-        };
-        let root_id = SageRootId::parse(root.id.clone()).map_err(|_| {
-            AppError::InvalidRequest("Codex project root identity is invalid".into())
-        })?;
-        self.project_root_authority(context, &root_id)
-            .map(CodexProjectRootAuthority)
+        CodexProjectRootAuthority::acquire(self, context).map_err(Into::into)
     }
 }
 
