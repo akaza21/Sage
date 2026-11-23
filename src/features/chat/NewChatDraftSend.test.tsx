@@ -667,6 +667,42 @@ afterEach(() => {
   resetBrowserDesktopForTests();
 });
 
+it.each([
+  ["checking", null, "Checking models for Draft harness…"],
+  ["error", "Discovery is busy; retry it.", "Discovery is busy; retry it."],
+  ["error", "Account unavailable.", "Account unavailable."],
+  ["signInRequired", null, "Finish signing in through your browser."],
+] as const)(
+  "explains why the Home draft cannot send (%s, %s)",
+  async (phase, error, reason) => {
+    useWorkbenchStore.setState({
+      harnesses: [{ ...harness, characterisation: "newerThanTested" }],
+      models: [],
+      harnessDiscoveryPhase: phase,
+      harnessDiscoveryError: error,
+    });
+    mount();
+    await settleLazyModules();
+    fireEvent.change(composer(), { target: { value: "Keep my first prompt" } });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(screen.getByText(reason)).not.toHaveClass("sr-only");
+    expect(document.querySelectorAll(".notice")).toHaveLength(1);
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    expect(prompts).toEqual([]);
+    expect(composer()).toHaveValue("Keep my first prompt");
+    act(() =>
+      useWorkbenchStore.setState({
+        models,
+        harnessDiscoveryPhase: "ready",
+        harnessDiscoveryError: null,
+      }),
+    );
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  },
+);
+
 it("labels a session-less existing chat with its default and starts with the model picked before sending", async () => {
   const chatId = await existingSessionlessChat();
   useWorkbenchStore.setState({ models: [...models].reverse() });

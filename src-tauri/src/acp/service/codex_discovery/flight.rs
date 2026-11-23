@@ -5,15 +5,17 @@ use std::{
 
 use crate::acp::{bindings::codex::CodexDiscoveryRunError, ipc::CodexDiscoveryResponse};
 use sage_acp_protocol::{
-    contract::{ProjectGeneration, SageProjectId, SageRootId},
+    contract::{SageProjectId, SageRootId},
     intent::BindingId,
 };
 
+// Like CacheScope::same_catalog, a catalog flight survives a layout-only
+// generation change. Each waiter revalidates its own authority and receives
+// the catalog stamped with its requested generation.
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct DiscoveryFlightKey {
     pub(super) refresh: bool,
     pub(super) project_id: SageProjectId,
-    pub(super) project_generation: ProjectGeneration,
     pub(super) root_id: SageRootId,
     pub(super) root_identity: [u8; 24],
     pub(super) binding_id: BindingId,

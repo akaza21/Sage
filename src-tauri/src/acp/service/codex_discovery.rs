@@ -79,7 +79,6 @@ impl CodexDiscoveryManager {
         let key = DiscoveryFlightKey {
             refresh: request.refresh,
             project_id: request.project_id.clone(),
-            project_generation: request.project_generation,
             root_id: project_root.root_id().clone(),
             root_identity: project_root.identity_bytes(),
             binding_id: request.binding_id.clone(),
