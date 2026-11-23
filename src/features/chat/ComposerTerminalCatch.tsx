@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore } from "../../app/store";
 import {
-  useTerminalDockStore as dock,
+  useTerminalDockStore,
   type TerminalHandoff,
 } from "../../app/terminalDockStore";
 
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
+const notOpened = "The terminal did not open. Try again.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -38,7 +39,7 @@ export function ComposerTerminalCatch({
   const hasProject = useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
   );
-  const ready = dock((state) => state.ready);
+  const ready = useTerminalDockStore((state) => state.ready);
   const unavailable = !hasProject
     ? "Open this chat's project first."
     : !ready
@@ -77,6 +78,8 @@ export function ComposerTerminalCatch({
   // Hands the Copy text to the lazy dock as unrun input. A request the dock
   // has not taken in time fails; a taken one settles when its terminal does.
   const openInTerminal = () => {
+    const dock = useTerminalDockStore;
+    const pending = () => dock.getState().handoff === handoff;
     let settled = false;
     const handoff: TerminalHandoff = {
       chatId,
@@ -85,19 +88,18 @@ export function ComposerTerminalCatch({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (dock.getState().handoff === handoff) dock.setState({ handoff: null });
+        if (pending()) dock.setState({ handoff: null });
         setOpening(false);
         if (failure) setError(failure);
         else setCaught((current) => (current === caught ? null : current));
       },
     };
     const timer = setTimeout(() => {
-      if (dock.getState().handoff === handoff)
-        handoff.finish("The terminal did not open. Try again.");
+      if (pending()) handoff.finish(notOpened);
     }, 10_000);
     setOpening(true);
     setError("");
-    dock.getState().handoff?.finish("A newer terminal request replaced this one.");
+    dock.getState().handoff?.finish(notOpened);
     dock.setState({ handoff });
     dock.getState().setVisible(true);
   };
