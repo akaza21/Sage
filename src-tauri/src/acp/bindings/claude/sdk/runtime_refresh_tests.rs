@@ -177,6 +177,7 @@ fn a_new_session_sends_exactly_one_catalog_read() {
 
 /// A ready Claude Code session whose store holds what its activation
 /// negotiated, watched for catalog-derived capabilities.
+#[cfg(feature = "acp-fixture")]
 struct Tracked {
     runtime: NativeRuntime,
     database: sage_db::database::Database,
@@ -184,6 +185,7 @@ struct Tracked {
     session: String,
 }
 
+#[cfg(feature = "acp-fixture")]
 fn tracked() -> Tracked {
     let (database, intent) = crate::acp::store::title_fixture();
     let claude = ready();
@@ -227,6 +229,7 @@ fn tracked() -> Tracked {
     }
 }
 
+#[cfg(feature = "acp-fixture")]
 impl Tracked {
     fn catalog(&mut self, commands: Value) {
         self.runtime
@@ -272,6 +275,7 @@ impl Tracked {
     }
 }
 
+#[cfg(feature = "acp-fixture")]
 #[test]
 fn a_goal_command_added_to_the_catalog_stores_and_announces_goal_support_once() {
     let mut session = tracked();
@@ -295,6 +299,7 @@ fn a_goal_command_added_to_the_catalog_stores_and_announces_goal_support_once() 
     assert!(session.notices.take().is_none());
 }
 
+#[cfg(feature = "acp-fixture")]
 #[test]
 fn a_removed_goal_command_withdraws_goal_support_and_a_repeated_catalog_changes_nothing() {
     let mut session = tracked();

@@ -343,6 +343,7 @@ fn config_updates_are_exact_session_and_boolean_support_is_advertised() {
     );
 }
 
+#[cfg(feature = "acp-fixture")]
 #[test]
 fn a_harness_deriving_nothing_from_its_catalog_never_restores_capabilities() {
     use crate::acp::{bindings::runtime::NativeRuntime, runtime::ProjectionMailbox};
