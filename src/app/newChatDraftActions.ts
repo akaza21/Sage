@@ -3,6 +3,7 @@ import {
   boundedChatError,
   validateChatComposerText,
 } from "../domain/chatOwnership";
+import { chatAccessDraftPort } from "./chatAccessDraftPort";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import {
   liveDraftCreation,
@@ -44,10 +45,7 @@ export function createNewChatDraftActions(
       newChatDraft: submittingDraft,
       pendingFirstSend: submission,
     });
-    let released = {
-      submission: attempt.creation,
-      error: "",
-    };
+    let released = { submission: creation, error: "" };
     try {
       // Every module the send needs loads before anything is created, so a
       // failed chunk load cannot strand the draft mid-creation.
@@ -60,6 +58,7 @@ export function createNewChatDraftActions(
         get,
         submittingDraft,
         submission,
+        chatAccessDraftPort.uploadDraftImages,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));

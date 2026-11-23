@@ -25,6 +25,18 @@ pub struct HarnessDefinition {
     /// A newer published release of the installed CLI, from the last check.
     #[serde(default)]
     pub update: Option<HarnessUpdate>,
+    /// The newest published release from the last check; `None` until one
+    /// succeeds or while checking is off.
+    #[serde(default)]
+    pub latest_version: Option<String>,
+    /// The release Sage runs when it is not the installed one, such as the
+    /// CLI an adapter bundles; `None` when Sage runs the installed release.
+    #[serde(default)]
+    pub runs_version: Option<String>,
+    /// Set while Sage runs a fallback because the installed release is older
+    /// than this one, which Sage would run directly.
+    #[serde(default)]
+    pub direct_from_version: Option<String>,
 }
 
 /// A newer published release and the command that installs it.
@@ -33,7 +45,13 @@ pub struct HarnessDefinition {
 pub struct HarnessUpdate {
     pub latest_version: String,
     pub command: String,
+    /// Curated known features that need a release newer than the installed
+    /// one and no newer than the latest; at most `MAX_UPDATE_UNLOCKS`.
+    #[serde(default)]
+    pub unlocks: Vec<String>,
 }
+
+pub const MAX_UPDATE_UNLOCKS: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HarnessInstallState {

@@ -89,7 +89,7 @@ export function composerProblem(
 
 /** The nearest owner wins; equal copy on different resources stays separate. */
 function resolveComposerProblems(
-  problems: readonly (ComposerProblem | null)[],
+  problems: readonly (ComposerProblem | null | undefined)[],
 ) {
   const resolved = new Map<string, ComposerProblem>();
   for (const problem of problems) {

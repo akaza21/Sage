@@ -16,6 +16,22 @@ pub(crate) async fn send_acp_turn_inner(
             client_intent_id, ..
         } => (client_intent_id.clone(), None),
     };
+    // A clean refusal while Sage switches branches. The store re-checks the
+    // lease inside the PrepareTurn commit, which is the actual guarantee.
+    let leased = crate::repository_mutation_guard::project_leased(
+        &state.database.connection(),
+        project.as_str(),
+    )
+    .map_err(|error| {
+        session_operations::prompt_not_dispatched(errors::store_error(
+            crate::acp::store::StoreError::Database(error),
+        ))
+    })?;
+    if leased {
+        return Err(session_operations::prompt_not_dispatched(
+            errors::store_error(crate::acp::store::StoreError::RepositoryBusy),
+        ));
+    }
     session_operations::send_acp_turn(state, request)
         .await
         .map_err(|mut failure| {

@@ -7,6 +7,8 @@ import { snapshotPage } from "../../../src/app/agentDiff.fixture";
 import type { AcpSessionConfig } from "../../../src/domain/acpSessionConfig";
 import { ChatComposerRegion } from "../../../src/features/chat/ChatComposerRegion";
 import { ChatTranscript } from "../../../src/features/chat/ChatTranscript";
+import { composerProblem } from "../../../src/features/chat/ComposerStatusNotices";
+import { SESSION_PROMPT_REFUSAL } from "../../../src/features/chat/composerDisabledReason";
 import { textItem } from "../../../src/features/chat/acp/acpProjection.fixture";
 import { agentWorkbenchLayout } from "../../../src/workbench/agentWorkbenchLayout";
 // Same stylesheets, in the same order, as src/main.tsx so the fixture
@@ -40,13 +42,19 @@ export type ParityState =
   | "models"
   | "model-collisions"
   | "access"
-  | "menu-keyboard";
+  | "menu-keyboard"
+  | "refused"
+  | "refused-locally";
 const noop = async () => {};
 const project = {
   id: "project-a",
   name: "Sage parity project with a long but authoritative workspace name",
   roots: [],
 };
+const refusedLaunch =
+  "Native launch failed safely while preparing the harness; retry the session.";
+const steerTimeout =
+  "Steer acknowledgement timed out. The message may have been delivered.";
 const harnessNames = ["Codex", "Claude Code", "Pi", "OpenCode", "Oh My Pi"];
 const root = createRoot(document.getElementById("root")!);
 let config: AcpSessionConfig;
@@ -131,7 +139,13 @@ export function Host({ state }: { state: ParityState }) {
                 activeTurn={state === "running"}
                 projectTransitioning={false}
                 workbenchError={null}
-                chatError={null}
+                chatError={
+                  state === "refused"
+                    ? composerProblem("chat", "chat-a", refusedLaunch)
+                    : state === "refused-locally"
+                      ? composerProblem("chat", "chat-a", steerTimeout)
+                      : null
+                }
                 availableBinding
                 accessTarget={
                   state === "pre-turn"
@@ -146,7 +160,7 @@ export function Host({ state }: { state: ParityState }) {
                 selectedModelId={
                   state === "pre-turn" ? "claude-sonnet-4-5-20250929" : null
                 }
-                sessionPromptUnavailable={false}
+                sessionPromptUnavailable={state === "refused"}
                 sessionConfig={
                   state === "unknown" || state === "pre-turn" ? null : config
                 }
@@ -180,7 +194,13 @@ export function Host({ state }: { state: ParityState }) {
                 onSelectHarness={noop}
                 onSelectModel={() => {}}
                 missingBindingNotice={false}
-                disabledReason={null}
+                disabledReason={
+                  state === "refused"
+                    ? SESSION_PROMPT_REFUSAL
+                    : state === "refused-locally"
+                      ? "Queue is full (5 messages)."
+                      : null
+                }
                 newChat={home}
                 project={project}
                 usage={null}
@@ -284,6 +304,14 @@ Object.assign(window, {
               },
             ],
     };
+    if (state === "menu-keyboard")
+      config.configOptions.push({
+        id: "pi.autoCompaction",
+        category: "other",
+        name: "Auto-compact",
+        type: "boolean",
+        currentValue: true,
+      });
     if (state === "models" || state === "model-collisions")
       config.configOptions.push({
         id: "model",

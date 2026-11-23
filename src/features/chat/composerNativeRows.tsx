@@ -26,6 +26,7 @@ export function composerNativeRows(
     content: ReactNode,
     description?: string,
     control?: ComposerNativeRow["control"],
+    requires?: ComposerNativeRow["requires"],
   ) => {
     rows.push({
       kind: "native",
@@ -34,6 +35,7 @@ export function composerNativeRows(
       label,
       description,
       control,
+      requires,
       content,
     });
   };
@@ -126,6 +128,9 @@ export function composerNativeRows(
       >
         <span>Add images</span>
       </button>,
+      undefined,
+      undefined,
+      "none",
     );
   if (props.projectAction)
     add("project", "addToMessage", "Work in a project", props.projectAction);
@@ -168,51 +173,83 @@ export function composerNativeRows(
       "modelAndAccess",
       "Plan mode",
       <ComposerPlanAccess
-        target={props.planAccess}
+        // The draft's own access picker state, never a second copy.
+        target={{
+          ...props.planAccess,
+          value: props.draftPickers?.access,
+          onChange: props.draftPickers?.onAccessChange,
+        }}
         disabled={disabled}
         onClose={onClose}
       />,
+      undefined,
+      undefined,
+      "none",
     );
-  for (const mode of sessionModeActions(sessionConfig)) {
-    const plan = mode.name.toLocaleLowerCase() === "plan";
-    const label = plan ? "Plan mode" : mode.name || mode.id;
-    const selected = mode.id === sessionConfig?.modes?.currentModeId;
-    const description = plan
-      ? selected
-        ? "Plan mode is on"
-        : "Turn plan mode on"
-      : mode.description || undefined;
+  // Harness modes and options share the action rows' label, description
+  // and check columns.
+  const choiceRow = (
+    id: string,
+    section: ComposerNativeRow["section"],
+    label: string,
+    checked: boolean,
+    run: () => void,
+    text = label,
+    description?: string,
+    icon?: ReactNode,
+    role = "menuitemradio",
+  ) =>
     add(
-      `mode:${mode.id}`,
-      "modelAndAccess",
+      id,
+      section,
       label,
       <button
         type="button"
-        role="menuitemradio"
+        role={role}
         className="menu-item composer__add-action"
         aria-label={label}
         aria-description={
           [description, sessionConfig?.restored].filter(Boolean).join(" ") ||
           undefined
         }
-        aria-checked={selected}
+        aria-checked={checked}
         disabled={disabled || pending}
         tabIndex={-1}
         title={sessionConfig?.restored}
         data-restored={sessionConfig?.restored ? true : undefined}
         onClick={() => {
           onClose();
-          if (!selected) void props.onSetSessionMode(mode.id);
+          run();
         }}
       >
-        {plan ? <Lightbulb size={14} aria-hidden="true" /> : null}
-        <span>{label}</span>
+        {icon}
+        <span>{text}</span>
         {description ? (
           <span className="composer__action-description">{description}</span>
         ) : null}
-        {selected ? <Check size={14} aria-hidden="true" /> : null}
+        {checked ? <Check size={14} aria-hidden="true" /> : null}
       </button>,
       description,
+    );
+  for (const mode of sessionModeActions(sessionConfig)) {
+    const plan = mode.name.toLocaleLowerCase() === "plan";
+    const label = plan ? "Plan mode" : mode.name || mode.id;
+    const selected = mode.id === sessionConfig?.modes?.currentModeId;
+    choiceRow(
+      `mode:${mode.id}`,
+      "modelAndAccess",
+      label,
+      selected,
+      () => {
+        if (!selected) void props.onSetSessionMode(mode.id);
+      },
+      label,
+      plan
+        ? selected
+          ? "Plan mode is on"
+          : "Turn plan mode on"
+        : mode.description || undefined,
+      plan ? <Lightbulb size={14} aria-hidden="true" /> : null,
     );
   }
   // This action switches the toolbar's active popover itself.
@@ -236,67 +273,34 @@ export function composerNativeRows(
       "effortPicker",
     );
   for (const option of sessionConfigControls(sessionConfig, "other")) {
-    const label = `Session ${option.name.toLocaleLowerCase()}`;
     if (option.type === "boolean") {
-      add(
+      choiceRow(
         `config:${option.id}`,
         "session",
-        label,
-        <button
-          type="button"
-          role="menuitemcheckbox"
-          className="menu-item"
-          aria-label={label}
-          aria-description={sessionConfig?.restored}
-          title={sessionConfig?.restored}
-          data-restored={sessionConfig?.restored ? true : undefined}
-          aria-checked={option.currentValue}
-          disabled={disabled || pending}
-          tabIndex={-1}
-          onClick={() => {
-            onClose();
-            void props.onSetSessionConfigOption(option.id, {
-              type: "boolean",
-              value: !option.currentValue,
-            });
-          }}
-        >
-          {option.name}
-          {option.currentValue ? <Check size={14} aria-hidden="true" /> : null}
-        </button>,
+        `Session ${option.name.toLocaleLowerCase()}`,
+        option.currentValue,
+        () =>
+          void props.onSetSessionConfigOption(option.id, {
+            type: "boolean",
+            value: !option.currentValue,
+          }),
+        option.name,
+        undefined,
+        undefined,
+        "menuitemcheckbox",
       );
     } else if (option.type === "select") {
-      for (const choice of flattenChoices(option)) {
-        add(
+      for (const choice of flattenChoices(option))
+        choiceRow(
           `config:${option.id}:${choice.value}`,
           "session",
           `${option.name}: ${choice.name || choice.value}`,
-          <button
-            type="button"
-            role="menuitemradio"
-            className="menu-item"
-            aria-description={sessionConfig?.restored}
-            title={sessionConfig?.restored}
-            data-restored={sessionConfig?.restored ? true : undefined}
-            aria-checked={choice.value === option.currentValue}
-            disabled={disabled || pending}
-            tabIndex={-1}
-            onClick={() => {
-              onClose();
-              void props.onSetSessionConfigOption(option.id, {
-                value: choice.value,
-              });
-            }}
-          >
-            <span>
-              {option.name}: {choice.name || choice.value}
-            </span>
-            {choice.value === option.currentValue ? (
-              <Check size={14} aria-hidden="true" />
-            ) : null}
-          </button>,
+          choice.value === option.currentValue,
+          () =>
+            void props.onSetSessionConfigOption(option.id, {
+              value: choice.value,
+            }),
         );
-      }
     } else {
       add(
         `config:${option.id}`,

@@ -10,7 +10,6 @@ const healthy = {
   actionBusy: false,
   activeTurn: false,
   availableBinding: true,
-  canPrompt: true,
   chatLoadFailed: false,
   harnessAvailable: true,
   harnessDiscoveryPhase: "ready" as const,
@@ -27,24 +26,16 @@ describe("composerDisabledReason", () => {
   it("reports a failed chat load instead of blaming the harness", () => {
     const reason = composerDisabledReason({
       ...healthy,
-      canPrompt: false,
       chatLoadFailed: true,
     });
     expect(reason).toBe("This chat failed to load. Retry to send a prompt.");
     expect(reason).not.toContain("Harness");
   });
 
-  it("keeps blaming the harness only when the chat itself loaded", () => {
-    expect(composerDisabledReason({ ...healthy, canPrompt: false })).toBe(
-      "The selected harness cannot accept prompts in this session.",
-    );
-  });
-
   it("prefers a genuine harness fault over a failed chat load", () => {
     expect(
       composerDisabledReason({
         ...healthy,
-        canPrompt: false,
         chatLoadFailed: true,
         harnessAvailable: false,
       }),
@@ -68,7 +59,6 @@ describe("composerDisabledReason", () => {
       composerDisabledReason({
         ...healthy,
         activeTurn: true,
-        canPrompt: false,
         chatLoadFailed: true,
         harnessAvailable: false,
       }),

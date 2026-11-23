@@ -458,6 +458,7 @@ it("creates and switches branches from the status bar through the existing comma
   fireEvent.click(
     await screen.findByRole("option", { name: "Switch to feature" }),
   );
+  fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
   await waitFor(() =>
     expect(useWorkbenchStore.getState().repositories.roots[0].branch).toBe(
       "feature",
@@ -477,6 +478,7 @@ it("keeps a dirty branch selected and shows the checkout rejection at the status
   fireEvent.click(
     await screen.findByRole("option", { name: "Switch to topic" }),
   );
+  fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
   const dialog = await screen.findByRole("dialog", {
     name: "Cannot switch branch",
   });

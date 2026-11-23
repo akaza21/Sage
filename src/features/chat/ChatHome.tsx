@@ -2,7 +2,7 @@ import { SageMark } from "../../ui/leanIconCore";
 import { ProjectScopeChip } from "./LazyProjectScopeChip";
 import "./chat-home.css";
 
-export function ChatHome({ projectName }: { projectName: string | null }) {
+export function ChatHome({ projectName }: { projectName?: string | null }) {
   return (
     <section className="chat-home" aria-label="New chat">
       <SageMark />
