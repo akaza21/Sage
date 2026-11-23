@@ -1,6 +1,6 @@
 import { waitFor } from "@testing-library/react";
 
-/** Warnings are quiet Notices, not live alerts; tests find them by severity. */
+/** Tests find warnings by severity; only announcing ones are alerts. */
 export function queryWarning(root: ParentNode = document): HTMLElement | null {
   return root.querySelector<HTMLElement>(".notice--warning");
 }

@@ -5,6 +5,21 @@ import { PreviewLifecycleStatus } from "./PreviewLifecycleStatus";
 
 afterEach(cleanup);
 
+it("keeps an exited Preview a quiet warning when it remounts", () => {
+  const props = {
+    failure: "exitedEarly" as const,
+    phase: "exited" as const,
+    scope: "project:chat:root:dev",
+  };
+  const { unmount } = render(<PreviewLifecycleStatus {...props} />);
+  unmount();
+  render(<PreviewLifecycleStatus {...props} />);
+  const notice = document.querySelector(".notice");
+  expect(notice).toHaveClass("notice--warning");
+  expect(notice).toHaveAttribute("aria-live", "off");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 it("explains a Preview failure once with its one restart", () => {
   const restart = vi.fn();
   const { rerender } = render(
