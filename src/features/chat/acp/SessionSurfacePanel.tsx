@@ -37,7 +37,7 @@ export function SessionSurfacePanel({
   const held =
     confirming &&
     !keepsFiles &&
-    (found === undefined || (!!found && "failed" in found));
+    (found === undefined || typeof found === "string");
   if (!activities.length && !undoTurn) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">

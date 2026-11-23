@@ -16,21 +16,11 @@ export type Preview = {
   caveat: string | null;
 };
 /** The preview, `null` when files stay as they are, or why the check failed. */
-export type Found = Preview | null | { failed: string };
+export type Found = Preview | null | string;
 
-const listed = (
-  value: Record<string, unknown>,
-  paths: string,
-  count: string,
-) => {
-  const list = value[paths];
-  return (
-    Array.isArray(list) &&
-    list.length <= 200 &&
-    list.every((path) => typeof path === "string") &&
-    Number.isSafeInteger(value[count])
-  );
-};
+const within = (value: unknown, max: number): value is unknown[] =>
+  Array.isArray(value) && value.length <= max;
+const isText = (value: unknown) => typeof value === "string";
 
 /** A dry run only: no file changes until the user confirms. `null` means files stay. */
 async function preview(chatId: string, before: string) {
@@ -45,14 +35,15 @@ async function preview(chatId: string, before: string) {
   if (
     !isRecord(found) ||
     !Number.isSafeInteger(found.fileCount) ||
-    !(found.caveat === null || typeof found.caveat === "string") ||
-    !Array.isArray(found.sections) ||
-    found.sections.length > 2 ||
+    !(found.caveat === null || isText(found.caveat)) ||
+    !within(found.sections, 2) ||
     !found.sections.every(
       (section) =>
         isRecord(section) &&
-        typeof section.note === "string" &&
-        listed(section, "paths", "count"),
+        isText(section.note) &&
+        within(section.paths, 200) &&
+        section.paths.every(isText) &&
+        Number.isSafeInteger(section.count),
     )
   )
     throw new Error();
@@ -68,7 +59,7 @@ export function useFileRewindPreview(
   turnId: string | null | undefined,
   asked = 0,
 ): Found | undefined {
-  const key = turnId ? `${turnId}#${asked}` : null;
+  const key = turnId && turnId + asked;
   const [found, setFound] = useState<[string, Found]>();
   useEffect(() => {
     if (!key || !turnId) return;
@@ -79,7 +70,7 @@ export function useFileRewindPreview(
         live &&
         setFound([
           key,
-          { failed: error instanceof AcpDesktopError ? error.message : "" },
+          `Couldn't check the files. ${error instanceof AcpDesktopError ? error.message : ""}`,
         ]),
     );
     return () => {
@@ -103,12 +94,7 @@ function Paths({ paths, count }: Listed) {
 /** The files a rewind keeps with why, or restores with its caveat, or why the check failed. */
 export function FileRewindPreview({ found }: { found: Found | undefined }) {
   if (!found) return null;
-  if ("failed" in found)
-    return (
-      <p role="alert">
-        Sage couldn't check which files would change. {found.failed}
-      </p>
-    );
+  if (typeof found === "string") return <p role="alert">{found}</p>;
   return (
     <>
       {found.sections.map((section) => (

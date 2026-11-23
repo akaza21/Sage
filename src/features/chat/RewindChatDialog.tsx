@@ -25,7 +25,7 @@ export function RewindChatDialog({
   const [asked, setAsked] = useState(0);
   // The preview, `null` when files stay as they are, or why it failed.
   const found = useFileRewindPreview(chatId, turnId, asked);
-  const files = found && !("failed" in found) ? found : undefined;
+  const files = typeof found === "object" ? found : undefined;
   const rewind = async (withFiles: boolean) => {
     if (pending.current) return;
     pending.current = true;
