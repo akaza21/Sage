@@ -145,6 +145,9 @@ export function failureMessage(
   return known ? `${FAILED[action]}: ${known[1]}` : `${FAILED[action]}.`;
 }
 
+/** A retried action that fails again is a new failure, announced again. */
+let failures = 0;
+
 export function actionFailed(
   bridge: EditorStateBridge,
   error: unknown,
@@ -163,6 +166,7 @@ export function actionFailed(
       saving: false,
       message,
       details: boundedError(error, 1024, "utf16"),
+      failure: (failures += 1),
     });
   }
   return message;

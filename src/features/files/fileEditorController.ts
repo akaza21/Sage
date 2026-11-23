@@ -38,6 +38,8 @@ export type ActiveEditorState =
       message: string | null;
       /** Native diagnostics, capped at 1024 UTF-16 code units. */
       details?: string;
+      /** Numbers each failed operation, so every failure is a new notice. */
+      failure?: number;
       /** Why the recovery copy failed; cleared once a copy, save, reload or Keep mine succeeds. */
       unstored?: string;
       unwatched?: string;

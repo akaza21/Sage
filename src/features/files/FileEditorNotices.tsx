@@ -8,15 +8,17 @@ const loadConflictNotice = () => import("./FileConflictNotice");
 
 /**
  * One notice per problem with this File: its disk conflict, a recovery copy
- * that could not be stored, and a failed save or keep. Each owns its identity.
+ * that could not be stored, and a failed operation. Each owns its identity,
+ * and every failed operation is a new one: a later failure, even a retry of
+ * the same action, is announced afresh with its Details closed.
  */
 export function FileEditorNotices({
-  editor: { document, message, details, unstored },
+  editor: { document, message, details, unstored, failure },
   editable,
 }: {
   editor: Pick<
     ReadyEditorState,
-    "document" | "message" | "details" | "unstored"
+    "document" | "message" | "details" | "unstored" | "failure"
   >;
   editable: boolean;
 }) {
@@ -49,7 +51,7 @@ export function FileEditorNotices({
       ) : null}
       {message ? (
         <Notice
-          identity={`file-operation:${key}`}
+          identity={`file-operation:${key}:${failure ?? 0}`}
           severity="blocking"
           message={message}
           details={details}

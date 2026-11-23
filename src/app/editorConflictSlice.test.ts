@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,6 +56,7 @@ function ActiveFileNotices({
       message: ready?.message ?? null,
       details: ready?.details,
       unstored: ready?.unstored,
+      failure: ready?.failure,
     },
     editable,
   });
@@ -194,6 +196,61 @@ it.each(["reload", "discard"] as const)(
     expect(readyEditor().details).toBeUndefined();
   },
 );
+
+it("announces each failed operation afresh, with its own Details closed", async () => {
+  const resource = nextFile();
+  openTabs(resource);
+  await edit(resource, "// mine");
+  await store().flushActiveEditor();
+  await changeOnDisk(resource, "// theirs");
+  vi.spyOn(editor, "rebaseEditorBuffer").mockRejectedValue(
+    new Error("keep diagnostic (os error 32)"),
+  );
+  vi.spyOn(editor, "discardEditorBuffer")
+    .mockRejectedValueOnce(new Error("reload diagnostic (os error 32)"))
+    .mockRejectedValueOnce(new Error("retry diagnostic (os error 32)"));
+  render(
+    createElement(ActiveFileNotices, {
+      document: readyEditor().document,
+      editable: true,
+    }),
+  );
+  const banner = await screen.findByRole("group", { name: "External change" });
+  const failure = async (sentence: string) =>
+    (await screen.findByText(sentence)).closest<HTMLElement>(
+      "[data-notice-identity]",
+    )!;
+  // Announced, collapsed, and opening Details shows this failure's diagnostic.
+  const expectNew = (notice: HTMLElement, diagnostic: string) => {
+    expect(notice).toHaveAttribute("role", "alert");
+    expect(notice).toHaveAttribute("aria-live", "assertive");
+    const toggle = within(notice).getByRole("button", { name: "Details" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(notice.querySelector(".notice__details")).toBeNull();
+    fireEvent.click(toggle);
+    expect(notice.querySelector(".notice__details")?.textContent).toBe(
+      diagnostic,
+    );
+  };
+
+  fireEvent.click(within(banner).getByRole("button", { name: "Keep mine" }));
+  const kept = await failure("Couldn't keep your version.");
+  expectNew(kept, "keep diagnostic (os error 32)");
+
+  fireEvent.click(within(banner).getByRole("button", { name: "Reload" }));
+  const reloaded = await failure("Could not reload this file.");
+  expect(reloaded).not.toBe(kept);
+  expect(kept).not.toBeInTheDocument();
+  expectNew(reloaded, "reload diagnostic (os error 32)");
+
+  // A retry that fails again is a new failure as well.
+  fireEvent.click(within(banner).getByRole("button", { name: "Reload" }));
+  await waitFor(() => expect(reloaded).not.toBeInTheDocument());
+  const retried = await failure("Could not reload this file.");
+  expectNew(retried, "retry diagnostic (os error 32)");
+  expect(screen.getAllByRole("alert")).toEqual([retried]);
+  expect(readyEditor().content).toBe("// mine");
+});
 
 describe("a File that changed on disk under unsaved edits", () => {
   it("Reload replaces the buffer with the File on disk", async () => {

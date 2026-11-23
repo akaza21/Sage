@@ -115,11 +115,12 @@ describe("FileEditorNotices", () => {
         editor={{
           document: { ...document, conflict: null },
           message: "Couldn't save: the disk is full.",
+          failure: 3,
         }}
         editable
       />,
     );
-    expect(identities(container)).toEqual(["file-operation:4:rootreadme.md"]);
+    expect(identities(container)).toEqual(["file-operation:4:rootreadme.md:3"]);
     expect(
       container.querySelector('[aria-live="polite"]'),
     ).toBeEmptyDOMElement();
