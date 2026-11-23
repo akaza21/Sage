@@ -1896,15 +1896,21 @@ fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
 #[test]
 fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
     use crate::acp::prompt_send::PromptSendError;
-    let host =
-        RuntimeHost::start(FakeEngine::new([]).with_prepare_error(HostError::Capacity)).unwrap();
-    let runtime = owner("project-a");
-    host.activate(runtime.clone()).unwrap();
-    // The chat offers the draft back only on this proof.
-    assert_eq!(
-        host.send(prompt(&runtime)),
-        Err(PromptSendError::not_started(HostError::Capacity))
-    );
-    assert_eq!(host.state().unwrap(), HostState::Idle);
-    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    for error in [
+        HostError::Capacity,
+        HostError::RepositoryBusy(crate::repository_mutation_guard::RepositoryPause::ChangingFiles),
+        HostError::RepositoryBusy(crate::repository_mutation_guard::RepositoryPause::UntilRestart),
+    ] {
+        let host =
+            RuntimeHost::start(FakeEngine::new([]).with_prepare_error(error.clone())).unwrap();
+        let runtime = owner("project-a");
+        host.activate(runtime.clone()).unwrap();
+        // The chat offers the draft back only on this proof.
+        assert_eq!(
+            host.send(prompt(&runtime)),
+            Err(PromptSendError::not_started(error))
+        );
+        assert_eq!(host.state().unwrap(), HostState::Idle);
+        host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    }
 }

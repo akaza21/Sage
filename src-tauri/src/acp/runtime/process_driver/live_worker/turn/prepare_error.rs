@@ -51,8 +51,8 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
-    if repository_busy(&failure) {
-        responder.respond(Err(HostError::Capacity));
+    if let Some(pause) = repository_busy(&failure) {
+        responder.respond(Err(HostError::RepositoryBusy(pause)));
         return FirstTurnWorkerState::Reusable(Box::new(failure.parts));
     }
     responder.respond(Err(map_prepare_next(&failure.error)));
@@ -84,12 +84,16 @@ fn map_prepare_next(error: &PrepareDriverTurnError) -> HostError {
 /// repository lease over the Project. Nothing reached the harness and the
 /// Turn slot is released, so the worker stays reusable and the prompt is
 /// refused as busy, like any other prompt the worker cannot take now.
-fn repository_busy<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
-    failure.recovery.is_none()
-        && matches!(
-            failure.error,
-            PrepareDriverTurnError::Prepare(CoordinatorError::Journal(JournalError::Store(
-                StoreError::RepositoryBusy
-            )))
-        )
+fn repository_busy<P>(
+    failure: &PrepareDriverTurnFailure<P>,
+) -> Option<crate::repository_mutation_guard::RepositoryPause> {
+    if failure.recovery.is_some() {
+        return None;
+    }
+    match failure.error {
+        PrepareDriverTurnError::Prepare(CoordinatorError::Journal(JournalError::Store(
+            StoreError::RepositoryBusy(pause),
+        ))) => Some(pause),
+        _ => None,
+    }
 }

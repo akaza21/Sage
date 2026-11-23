@@ -54,8 +54,8 @@ pub(super) fn ensure_repository_unleased(
     transaction: &Transaction<'_>,
     project_id: &str,
 ) -> Result<(), StoreError> {
-    if crate::repository_mutation_guard::project_leased(transaction, project_id)? {
-        return Err(StoreError::RepositoryBusy);
+    if let Some(pause) = crate::repository_mutation_guard::project_pause(transaction, project_id)? {
+        return Err(StoreError::RepositoryBusy(pause));
     }
     Ok(())
 }

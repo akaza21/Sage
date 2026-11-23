@@ -1676,7 +1676,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
 }
 
 #[test]
-fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
+fn live_worker_refuses_repository_busy_then_reuses_the_same_session_and_closes() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let root = std::env::temp_dir().join(format!("sage-two-turns-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -1942,6 +1942,25 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         })
         .unwrap();
         assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
+
+        let workspace = sage_workspace::Workspace::open(project_id.as_str(), "root", &root).unwrap();
+        state = crate::repository_mutation_guard::with_idle_repository(
+            &database,
+            &workspace,
+            crate::repository_mutation_guard::RepositoryOperation::SWITCH_BRANCHES,
+            || async {
+                assert!(matches!(
+                    step!(prepare("intent-busy", cursor_one.projection_revision(), now + 4)),
+                    Err(HostError::RepositoryBusy(crate::repository_mutation_guard::RepositoryPause::ChangingFiles))
+                ));
+                assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
+                let turns: i64 = database.connection().query_row(
+                    "SELECT count(*) FROM turns", [], |row| row.get(0)
+                ).unwrap();
+                assert_eq!(turns, 1, "the refused prompt never opens a turn");
+                Ok(state)
+            },
+        ).await.unwrap();
 
         let WorkerReply::Prepared(turn_two) = step!(prepare(
             "intent-turn-two",
