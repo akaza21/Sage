@@ -473,3 +473,26 @@ fn a_full_pi_catalog_that_lists_compact_keeps_it_as_the_builtin() {
         )
     );
 }
+
+#[test]
+fn a_state_reply_projects_the_curated_resume_command_without_a_new_revision() {
+    let mut runtime = fixture_runtime(1);
+    initialize_with(
+        &mut runtime,
+        json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high",
+            "sessionFile":"/sessions/1_pi.jsonl"}),
+    );
+    let first = runtime.available_commands().snapshot();
+    let second = runtime.available_commands().snapshot();
+    let wire = serde_json::to_value(&second).unwrap();
+    assert_eq!(
+        wire["terminalHandoff"]["command"],
+        "pi --session \"/sessions/1_pi.jsonl\""
+    );
+    let names = wire["terminalHandoff"]["terminalOnly"].as_array().unwrap();
+    assert!(names.contains(&json!("settings")));
+    // Rows Sage gives a native control wait for that step, so none is caught.
+    assert!(!names.contains(&json!("model")));
+    assert_eq!(first.revision, second.revision);
+    assert_eq!(first, second);
+}

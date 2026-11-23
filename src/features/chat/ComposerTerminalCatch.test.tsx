@@ -57,7 +57,7 @@ const list: AcpCommandList = {
   terminalHandoff: {
     label: "Example",
     command: 'agent --resume "native-1"',
-    terminalOnly: ["hooks", "permissions"],
+    terminalOnly: ["hooks"],
   },
 };
 
@@ -108,6 +108,8 @@ function composer(initial: string) {
   return { sendTurn, runCommand };
 }
 
+const HELD =
+  "/hooks only runs in the terminal. Copy the command to resume this chat there, then type /hooks.";
 const submit = () => fireEvent.submit(screen.getByRole("form"));
 const prompts = (sendTurn: { mock: { calls: [{ prompt: string }][] } }) =>
   sendTurn.mock.calls.map(([request]) => request.prompt);
@@ -118,11 +120,11 @@ it("holds a terminal-only command for a choice, copies the terminal command and 
   const sent = composer("/hooks");
 
   submit();
-  await screen.findByText("/hooks only runs in the terminal.");
+  await screen.findByText(HELD);
   fireEvent.click(
     screen.getByRole("button", { name: "Copy terminal command" }),
   );
-  expect(writeText).toHaveBeenCalledWith('agent --resume "native-1" /hooks');
+  expect(writeText).toHaveBeenCalledWith('agent --resume "native-1"');
   expect(screen.getByRole<HTMLTextAreaElement>("textbox").value).toBe("/hooks");
   expect(sent.sendTurn).not.toHaveBeenCalled();
   expect(sent.runCommand).not.toHaveBeenCalled();
@@ -143,16 +145,8 @@ it("asks again after one consented send and releases the choice on edit", async 
     target: { value: "/hooks" },
   });
   submit();
-  await screen.findByText("/hooks only runs in the terminal.");
+  await screen.findByText(HELD);
   expect(sent.sendTurn).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "/hook" } });
   expect(screen.queryByText(/only runs in the terminal/u)).toBeNull();
-});
-
-it("keeps the choice for a curated control the composer has no seam to open", async () => {
-  const sent = composer("/permissions");
-  submit();
-  await screen.findByText("/permissions only runs in the terminal.");
-  expect(sent.sendTurn).not.toHaveBeenCalled();
-  expect(sent.runCommand).not.toHaveBeenCalled();
 });

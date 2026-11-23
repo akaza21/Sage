@@ -48,11 +48,14 @@ fn token(value: &str) -> bool {
 }
 
 /// The command is copied for the user, never run. Double quotes keep spaces in
-/// cmd, PowerShell and POSIX shells; anything a shell would expand fails
-/// closed to the bare harness command.
+/// cmd, PowerShell and POSIX shells; anything a shell would expand, a leading
+/// `-` the harness would parse as an option, or a trailing `\` that would
+/// escape the closing quote fails closed to the bare harness command.
 fn resumable(session: &str) -> bool {
     !session.is_empty()
         && session.len() <= MAX_SESSION_BYTES
+        && !session.starts_with('-')
+        && !session.ends_with('\\')
         && session
             .chars()
             .all(|c| c.is_alphanumeric() || "-_.:/\\ ".contains(c))
@@ -82,11 +85,13 @@ impl TerminalMetadata {
         {
             return Err("invalid terminal metadata bounds");
         }
-        // The table's own caps bound this list (128 rows, 8 aliases each).
+        // The table's own caps bound this list (128 rows, 8 aliases each). Rows
+        // with a Sage control wait for the native-control step, so they never
+        // get a terminal notice.
         let names = table
             .0
             .iter()
-            .filter(|row| row.terminal_only == Some(true))
+            .filter(|row| row.terminal_only == Some(true) && row.control.is_none())
             .flat_map(|row| std::iter::once(&row.name).chain(&row.aliases))
             .cloned()
             .collect();
@@ -151,7 +156,7 @@ mod tests {
             serde_json::to_value(&slot).unwrap(),
             serde_json::json!({
               "label":"Example","command":"agent --resume \"native session\"",
-              "terminalOnly":["hooks","permissions","allowed-tools"]
+              "terminalOnly":["hooks"]
             })
         );
         // Unchanged inputs keep the projection without allocating.
@@ -162,6 +167,9 @@ mod tests {
             Some("$(execute)"),
             Some("%EXPANSION%"),
             Some("a\"b"),
+            Some("--dangerously-skip-permissions"),
+            Some("-x"),
+            Some("C:\\Users\\me\\"),
             Some("x".repeat(MAX_SESSION_BYTES + 1).as_str()),
         ] {
             metadata.update(&mut slot, target);

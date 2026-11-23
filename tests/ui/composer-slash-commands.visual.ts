@@ -385,22 +385,22 @@ test("a typed terminal-only command is held at send with a copy or text choice",
   await page.setViewportSize({ width: 1280, height: 900 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  await installNativeCommands(page, commands);
-  const composer = page.locator("form.composer").first();
-  const field = composer.getByRole("combobox", { name: "Message agent" });
-  await field.focus();
-  await field.fill("/hooks");
-  // The field's command controller is loaded once its menu shows.
-  await expect(page.locator(".composer-slash-menu")).toBeVisible();
-  await page.keyboard.press("Escape");
-  // The real send route, with the native list a curated binding returns.
-  const taken = await page.evaluate(async () => {
-    const { slashCommandTurn } =
-      await import("/src/features/chat/slashCommandTurn.ts");
-    const chatId = document.querySelector<HTMLElement>(
-      ".acp-chat-projection[data-chat-id]",
-    )!.dataset.chatId!;
-    const list = {
+  // The live catalog of a curated binding, with its terminal handoff; sends
+  // are captured instead of reaching a harness.
+  await page.evaluate(async () => {
+    const [
+      { acpCommandsDesktop },
+      { acpDesktop },
+      { useSessionAccessModeStore },
+    ] = await Promise.all([
+      import("/src/services/acpCommandsDesktop.ts"),
+      import("/src/services/acpDesktop.ts"),
+      import("/src/app/sessionAccessModeStore.ts"),
+    ]);
+    useSessionAccessModeStore.setState({ ready: true });
+    const sent: string[] = [];
+    Object.assign(window, { terminalSent: sent });
+    acpCommandsDesktop.listCommands = async () => ({
       revision: 1,
       commands: [],
       terminalHandoff: {
@@ -408,31 +408,37 @@ test("a typed terminal-only command is held at send with a copy or text choice",
         command: 'claude --resume "4f1c2a"',
         terminalOnly: ["hooks"],
       },
+    });
+    acpDesktop.sendTurn = async (request) => {
+      if (sent.length < 4) sent.push(request.prompt);
+      throw new Error("captured");
     };
-    return slashCommandTurn(
-      { target: "session", prompt: "/hooks", chatId } as never,
-      () => "intent" as never,
-      {
-        listCommands: async () => list,
-        runCommand: async () => {
-          throw new Error("not run");
-        },
-      },
-    );
   });
-  expect(taken).toBe(false);
-  const notice = page.getByRole("group", { name: "Terminal-only command" });
-  await expect(notice).toContainText("/hooks only runs in the terminal.");
+  const composer = page.locator("form.composer").first();
+  const field = composer.getByRole("combobox", { name: "Message agent" });
+  await field.focus();
+  await field.fill("/hooks");
+  // The field's command controller is loaded once its menu shows.
+  await expect(page.locator(".composer-slash-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await field.press("Enter");
+  const choice = page.getByRole("status", { name: "Terminal-only command" });
+  await expect(choice).toContainText(
+    "/hooks only runs in the terminal. Copy the command to resume this chat there, then type /hooks.",
+  );
   await expect(
-    notice.getByRole("button", { name: "Copy terminal command" }),
-  ).toBeVisible();
-  await expect(
-    notice.getByRole("button", { name: "Send as text anyway" }),
+    choice.getByRole("button", { name: "Copy terminal command" }),
   ).toBeVisible();
   await expect(field).toHaveValue("/hooks");
+  const sent = () =>
+    page.evaluate(
+      () => (window as unknown as { terminalSent: string[] }).terminalSent,
+    );
+  expect(await sent()).toEqual([]);
   await expectNoViewportOverflow(page);
   await expect(composer).toHaveScreenshot("composer-terminal-command.png");
-  // Editing the command releases the choice.
-  await field.press("Backspace");
-  await expect(notice).toHaveCount(0);
+  await choice.getByRole("button", { name: "Send as text anyway" }).click();
+  await expect(choice).toHaveCount(0);
+  await expect(field).toBeFocused();
+  await expect.poll(sent).toEqual(["/hooks"]);
 });
