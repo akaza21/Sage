@@ -376,9 +376,14 @@ fn a_harness_deriving_nothing_from_its_catalog_never_restores_capabilities() {
         ),
     );
     for commands in [json!([{"name":"goal"}]), json!([])] {
-        runtime.ingest(&frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+        runtime
+            .ingest(
+                &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
             "sessionId":"external-a","update":{"sessionUpdate":"available_commands_update",
-            "availableCommands":commands}}})), &Mapper).unwrap();
+            "availableCommands":commands}}})),
+                &Mapper,
+            )
+            .unwrap();
     }
     assert_eq!(read(), before);
     assert!(notices.take().is_none());

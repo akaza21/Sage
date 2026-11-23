@@ -60,7 +60,9 @@ impl super::SdkBridge {
     /// follows the same list.
     pub(super) fn catalog_update(&mut self, commands: Value) -> Value {
         self.refresh_goal_capability(&commands);
-        self.update(json!({"sessionUpdate":"available_commands_update","availableCommands":commands}))
+        self.update(
+            json!({"sessionUpdate":"available_commands_update","availableCommands":commands}),
+        )
     }
     pub(in crate::acp::bindings::claude::sdk) fn refreshing_commands(&self) -> bool {
         self.pending

@@ -76,8 +76,7 @@ impl CatalogCapabilities {
         let Some(advertised) = &self.pending else {
             return;
         };
-        let Ok(negotiated) = intersect_capabilities(&self.curated, advertised, &self.policy)
-        else {
+        let Ok(negotiated) = intersect_capabilities(&self.curated, advertised, &self.policy) else {
             self.pending = None;
             return;
         };
