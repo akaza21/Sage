@@ -212,7 +212,7 @@ export function TerminalDockShell({
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
     if (!visible || (entries.length && !handoff)) return;
-    void Promise.resolve().then(() => {
+    queueMicrotask(() => {
       if (owner.lifecycle === lifecycle && (handoff || !owner.entries.length))
         void create();
     });
