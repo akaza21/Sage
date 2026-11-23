@@ -1,7 +1,4 @@
-import type {
-  AcpChatPage,
-  FileChangeProjection,
-} from "../domain/acp";
+import type { AcpChatPage, FileChangeProjection } from "../domain/acp";
 import type { TabKind } from "../domain/chat";
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
@@ -19,7 +16,6 @@ export type ArtifactChipStats = {
   additionsLabel: string | null;
   deletionsLabel: string | null;
 };
-
 
 function formatChipCount(sign: "+" | "-", value: number | null): string | null {
   if (value === null) return null;
