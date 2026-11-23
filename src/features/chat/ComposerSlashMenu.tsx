@@ -1,3 +1,4 @@
+import { ComposerCommandRefresh } from "./ComposerCommandRefresh";
 import type * as CommandRuntime from "./ComposerCommandRuntime";
 import { lazyParts } from "./lazyParts";
 import {
@@ -145,6 +146,7 @@ function menuState(
 
 function ComposerSlashList({
   load,
+  boundChatId,
   anchorRef,
   keyHandlerRef,
   listboxId,
@@ -249,14 +251,14 @@ function ComposerSlashList({
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
-        more > 0 || omitted > 0 ? (
-          <>
-            {more > 0 && <span>and {more} more, type to search</span>}
-            {more > 0 && omitted > 0 && <br />}
-            {omitted > 0 && (
-              <span>Catalog truncated: {omitted} commands not shown</span>
-            )}
-          </>
+        more > 0 || omitted > 0 || load?.kind === "ready" ? (
+          <ComposerCommandRefresh
+            more={more}
+            omitted={omitted}
+            boundChatId={boundChatId}
+            owner={load?.kind === "ready" ? load.owner : null}
+            onStatusChange={onStatusChange}
+          />
         ) : undefined
       }
       ariaLabel="Slash commands"

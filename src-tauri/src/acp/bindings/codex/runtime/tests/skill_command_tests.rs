@@ -497,3 +497,78 @@ fn a_read_that_never_left_keeps_the_one_retry_spent() {
     refuse_read(&mut runtime);
     assert!(runtime.discover_commands().unwrap().is_none());
 }
+
+#[test]
+fn explicit_refresh_skips_cache_coalesces_wire_requests_and_keeps_equal_authority() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let skills = json!([skill("review", true)]);
+    read_skills(&mut runtime, skills.clone());
+    let selected = runtime.available_commands().snapshot().revision;
+    let query = runtime.refresh_commands().unwrap().expect("skills/list");
+    let wire: Value = serde_json::from_slice(query.frame().payload()).unwrap();
+    assert_eq!(wire["method"], "skills/list");
+    assert_eq!(wire["params"]["forceReload"], true);
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    assert!(runtime.refresh_commands().unwrap().is_none());
+    runtime
+        .ingest(&skills_reply(wire["id"].as_u64().unwrap(), skills), &Mapper)
+        .unwrap();
+    runtime
+        .available_commands()
+        .validate(selected, "/review src")
+        .unwrap();
+    assert!(runtime.discover_commands().unwrap().is_none());
+    assert!(runtime.refresh_commands().unwrap().is_some());
+}
+
+#[test]
+fn a_new_codex_thread_reads_skills_without_force_reload() {
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(fixture_runtime());
+    let egress = runtime.command(AdapterCommand::Initialize).unwrap();
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
+                "platformFamily":"windows",
+                "platformOs":"windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    for egress in batch.egress() {
+        runtime
+            .resolve_egress(egress.token().clone(), EgressResolution::Queued)
+            .unwrap();
+    }
+    let egress = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    let id = request_id(&egress);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::SessionReady { loaded: false, .. }))
+    );
+    let query = runtime.discover_commands().unwrap().expect("skills/list");
+    let wire: Value = serde_json::from_slice(query.frame().payload()).unwrap();
+    assert_eq!(wire["method"], "skills/list");
+    assert!(wire["params"].get("forceReload").is_none());
+}

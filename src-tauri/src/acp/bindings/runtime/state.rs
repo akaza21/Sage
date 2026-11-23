@@ -2,6 +2,7 @@ use super::{AdapterRuntimeError, NativeRuntime};
 
 impl NativeRuntime {
     pub(super) fn publish_config(&self) -> Result<(), AdapterRuntimeError> {
+        self.publish_commands();
         if let Some((owner, channel)) = &self.1 {
             match self.0.session_config() {
                 Some(config) => channel.update(owner, config),

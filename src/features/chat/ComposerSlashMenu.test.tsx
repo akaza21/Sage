@@ -32,7 +32,9 @@ import { pickedCommandFor } from "./slashCommandPicks";
 const native = vi.hoisted(() => ({
   lists: [] as AcpCommandList[],
   requests: [] as unknown[],
+  refreshes: [] as unknown[],
   hold: null as Promise<AcpCommandList> | null,
+  refreshHold: null as Promise<void> | null,
   listeners: new Set<(event: AcpCommandsChangedV1) => void>(),
 }));
 vi.mock("../../services/acpCommandsDesktop", async (original) => ({
@@ -49,6 +51,14 @@ vi.mock("../../services/acpCommandsDesktop", async (original) => ({
         return () => native.listeners.delete(listener);
       },
     ),
+  },
+}));
+vi.mock("../../services/acpCommandCatalogDesktop", () => ({
+  acpCommandCatalogDesktop: {
+    refreshCommands: async (request: unknown) => {
+      native.refreshes.push(request);
+      await native.refreshHold;
+    },
   },
 }));
 const mcp = vi.hoisted(() => ({
@@ -184,7 +194,9 @@ const names = (listbox: HTMLElement) =>
 beforeEach(() => {
   native.lists = [{ revision: 1, commands }];
   native.requests = [];
+  native.refreshes = [];
   native.hold = null;
+  native.refreshHold = null;
   native.listeners.clear();
   acpProjectionStoreFor("chat-a").setState({ page: livePage() });
 });
@@ -213,6 +225,63 @@ const status = () =>
   document.querySelector(".composer__input-area > [role='status']");
 
 describe("composer slash commands", () => {
+  it("keeps the catalog usable after refresh is sent and adopts the later reply", async () => {
+    render(<Composer />);
+    const { field, listbox } = await openMenu();
+    let sent!: () => void;
+    native.refreshHold = new Promise((resolve) => {
+      sent = resolve;
+    });
+    const refresh = await screen.findByRole("button", {
+      name: "Refresh commands",
+    });
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh).toBeDisabled());
+    fireEvent.click(refresh);
+    await act(async () => sent());
+    await waitFor(() =>
+      expect(native.refreshes).toEqual([
+        expect.objectContaining({
+          projectId: "project-a",
+          chatId: "chat-a",
+          sessionId: "session-a",
+          runtimeEpoch: "3",
+        }),
+      ]),
+    );
+    expect(names(listbox)).toEqual(["/compact", "/review", "/mcp:docs:search"]);
+    expect(
+      screen.getByRole("button", { name: "Refresh commands" }),
+    ).toBeEnabled();
+    native.lists = [
+      { revision: 2, commands: [{ ...commands[0]!, name: "fresh" }] },
+    ];
+    announce("session-a", 2);
+    await waitFor(() => expect(names(listbox)).toEqual(["/fresh"]));
+    expect(field).toHaveValue("/");
+  });
+
+  it("publishes only the newest command read when an older one answers last", async () => {
+    render(<Composer />);
+    const { listbox } = await openMenu();
+    let answer!: (list: AcpCommandList) => void;
+    native.hold = new Promise((resolve) => {
+      answer = resolve;
+    });
+    announce("session-a", 2);
+    await waitFor(() => expect(native.requests).toHaveLength(2));
+    native.hold = null;
+    native.lists = [
+      { revision: 3, commands: [{ ...commands[0]!, name: "newest" }] },
+    ];
+    announce("session-a", 3);
+    await waitFor(() => expect(names(listbox)).toEqual(["/newest"]));
+    await act(async () =>
+      answer({ revision: 2, commands: [{ ...commands[0]!, name: "older" }] }),
+    );
+    expect(names(listbox)).toEqual(["/newest"]);
+  });
+
   it("lists the session's commands for its live runtime and filters by name", async () => {
     render(<Composer />);
     const field = screen.getByRole("combobox", { name: "Message agent" });
