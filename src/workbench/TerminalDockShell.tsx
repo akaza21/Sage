@@ -52,13 +52,6 @@ function selectedScope(
   };
 }
 
-// The scope a dock takes, with the UI project generation it belongs to.
-const scopeOwner = (pinnedChatId: string | null) =>
-  [
-    selectedScope(pinnedChatId),
-    useWorkbenchStore.getState().projectGeneration,
-  ] as const;
-
 type WorkbenchDockProps = {
   inert?: boolean;
   setOpen: (open: boolean) => void;
@@ -77,12 +70,16 @@ export default function TerminalDockForWorkbench({
 }: WorkbenchDockProps & { container: HTMLElement | null }) {
   const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  const [[scope, uiProjectGeneration], setOwner] = useState(() =>
-    scopeOwner(pinnedChatId),
+  const [[scope, uiProjectGeneration], setOwner] = useState(
+    () =>
+      [
+        selectedScope(pinnedChatId),
+        useWorkbenchStore.getState().projectGeneration,
+      ] as const,
   );
   if (visible && !scope) {
-    const next = scopeOwner(pinnedChatId);
-    if (next[0]) setOwner(next);
+    const next = selectedScope(pinnedChatId);
+    if (next) setOwner([next, useWorkbenchStore.getState().projectGeneration]);
   }
   useEffect(() => {
     if (!scope) return;
