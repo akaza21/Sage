@@ -7,7 +7,6 @@ export function ComposerTurnControl({
   activeTurn,
   hasContent,
   onCancelTurn,
-  cancelDisabled,
   sendDisabled,
   disabledReason,
   disabledReasonId,
@@ -15,8 +14,8 @@ export function ComposerTurnControl({
   dictation: ReturnType<typeof useComposerDictation>;
   activeTurn: boolean;
   hasContent: boolean;
+  /** Absent while Cancel is unavailable. */
   onCancelTurn?: (() => void) | null;
-  cancelDisabled: boolean;
   sendDisabled: boolean;
   disabledReason?: string | null;
   disabledReasonId?: string;
@@ -32,14 +31,14 @@ export function ComposerTurnControl({
     "cancel" | "dictate" | "send",
     typeof Square,
     ButtonHTMLAttributes<HTMLButtonElement>,
-  ] = activeTurn && ((!cancelDisabled && onCancelTurn) || !hasContent)
+  ] = activeTurn && (onCancelTurn || !hasContent)
     ? [
         "cancel",
         Square,
         {
           className: "send-button send-button--cancel",
           "aria-label": "Cancel turn",
-          disabled: cancelDisabled || !onCancelTurn,
+          disabled: !onCancelTurn,
           onClick: onCancelTurn ?? undefined,
         },
       ]

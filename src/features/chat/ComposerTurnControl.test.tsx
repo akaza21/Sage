@@ -103,7 +103,6 @@ it("keeps dictation on one control until stopped and disables it during the turn
           activeTurn={activeTurn}
           hasContent={Boolean(text.trim())}
           onCancelTurn={() => setActiveTurn(false)}
-          cancelDisabled={false}
           sendDisabled={!text.trim()}
         />
       </form>
@@ -161,7 +160,6 @@ it("keeps a native partial speech draft when stopped and sends it only on Send",
           activeTurn={false}
           hasContent={Boolean(text.trim())}
           onCancelTurn={null}
-          cancelDisabled={false}
           sendDisabled={!text.trim()}
         />
       </form>
@@ -209,7 +207,6 @@ it("never restarts dictation from a Stop press that outlived the recording", asy
         dictation={dictation}
         activeTurn={false}
         hasContent={Boolean(text.trim())}
-        cancelDisabled={false}
         sendDisabled={!text.trim()}
       />
     );
@@ -252,7 +249,6 @@ it("keeps Send for typed text while an uncancellable turn runs and queues it", (
           activeTurn
           hasContent={Boolean(text.trim())}
           onCancelTurn={null}
-          cancelDisabled={false}
           sendDisabled={!text.trim()}
         />
       </form>
