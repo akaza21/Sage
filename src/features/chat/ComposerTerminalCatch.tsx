@@ -82,7 +82,6 @@ export function ComposerTerminalCatch({
     const pending = () => store.getState().terminalHandoff === handoff;
     let settled = false;
     const handoff: TerminalHandoff = {
-      chatId,
       text: command,
       finish: (failure) => {
         if (settled) return;

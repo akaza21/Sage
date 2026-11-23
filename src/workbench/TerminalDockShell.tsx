@@ -12,7 +12,6 @@ import {
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
-import { useTerminalHandoff } from "./terminalDockHandoff";
 import { firstChatTabId } from "./workbenchWindowMode";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./terminal-dock.css";
@@ -152,7 +151,7 @@ export function TerminalDockShell({
   });
 
   const create = useCallback(
-    async (handoff?: TerminalHandoff) => {
+    async (handoff?: TerminalHandoff | null) => {
       const owner = ownerRef.current;
       if (
         owner.creating ||
@@ -196,9 +195,9 @@ export function TerminalDockShell({
         setCollapsed(false);
         handoff?.finish();
       } catch (error) {
-        if (owner.lifecycle === lifecycle)
-          setMessage(terminalErrorLabel(error));
-        handoff?.finish(terminalErrorLabel(error));
+        const label = terminalErrorLabel(error);
+        if (owner.lifecycle === lifecycle) setMessage(label);
+        handoff?.finish(label);
       } finally {
         if (owner.lifecycle === lifecycle) {
           owner.creating = false;
@@ -225,14 +224,19 @@ export function TerminalDockShell({
     };
   }, [scope]);
 
-  useTerminalHandoff(
-    scope,
-    visible,
-    creating,
-    entries.length,
-    ownerRef,
-    create,
-  );
+  const handoff = useWorkbenchStore((state) => state.terminalHandoff);
+  useEffect(() => {
+    const owner = ownerRef.current;
+    const lifecycle = owner.lifecycle;
+    if (!visible || (entries.length && !handoff)) return;
+    void Promise.resolve().then(() => {
+      const pending = useWorkbenchStore.getState().terminalHandoff;
+      if (owner.lifecycle !== lifecycle || owner.creating) return;
+      // A pending handoff takes a new tab; otherwise a shown dock opens one.
+      if (pending) useWorkbenchStore.setState({ terminalHandoff: null });
+      if (pending || !owner.entries.length) void create(pending);
+    });
+  }, [create, visible, entries.length, handoff]);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;

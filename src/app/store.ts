@@ -83,11 +83,11 @@ export type ResourceState<T> =
   | { phase: "error"; message: string };
 
 /**
- * One pending request to open a terminal holding unrun input. The composer
- * stores it; the lazy terminal dock opens, takes it and settles it.
+ * One pending request to open a terminal in the project holding unrun input.
+ * The composer stores it; the lazy dock opens, takes and settles it. Left
+ * unset at startup, so the slot adds no startup code.
  */
 export type TerminalHandoff = {
-  chatId: string;
   text: string;
   finish: (error?: string) => void;
 };
@@ -118,7 +118,7 @@ export interface WorkbenchState
   phase: "booting" | "ready" | "error";
   error: string | null;
   browserClearNotice: string | null;
-  terminalHandoff: TerminalHandoff | null;
+  terminalHandoff?: TerminalHandoff | null;
   projects: ProjectListItem[];
   unscopedChats: ProjectListItem[];
   project: ProjectSummary | null;
@@ -164,7 +164,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     phase: "booting",
     error: null,
     browserClearNotice: null,
-    terminalHandoff: null,
     projects: [],
     unscopedChats: [],
     project: null,

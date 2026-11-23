@@ -160,7 +160,6 @@ async function handOff(input: string) {
     settled = new Promise<void>((resolve, reject) => {
       useWorkbenchStore.setState({
         terminalHandoff: {
-          chatId: "chat-1",
           text: input,
           finish: (error) => (error ? reject(new Error(error)) : resolve()),
         },
