@@ -22,9 +22,12 @@ export function ComposerTurnControl({
 }) {
   const hadFocus = useRef(false);
   // A press that began on Stop only ever stops, even if recording ended
-  // on its own before the click landed.
+  // on its own before the click landed. Key repeats keep the first press;
+  // a press that ends without a click forgets it.
   const pressedStop = useRef(false);
-  const notePress = () => (pressedStop.current = dictation.listening);
+  const notePress = (event: { repeat?: boolean }) =>
+    event.repeat || (pressedStop.current = dictation.listening);
+  const forgetPress = () => (pressedStop.current = false);
   const reason = (sendDisabled && disabledReason) || undefined;
   // Without a usable Cancel, typed text keeps Send so a click queues it.
   const cancel = activeTurn && (onCancelTurn || !hasContent);
@@ -61,11 +64,14 @@ export function ComposerTurnControl({
             "aria-pressed": dictation.listening,
             onPointerDown: notePress,
             onKeyDown: notePress,
+            onMouseLeave: forgetPress,
+            onPointerCancel: forgetPress,
+            onBlur: forgetPress,
             onMouseDown: (event) => event.preventDefault(),
             onClick: () => {
               if (pressedStop.current || dictation.listening) dictation.stop();
               else void dictation.start();
-              pressedStop.current = false;
+              forgetPress();
             },
           },
         ]

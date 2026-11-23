@@ -221,6 +221,18 @@ it("never restarts dictation from a Stop press that outlived the recording", asy
   await act(async () => {});
   expect(stop).toHaveAccessibleName("Start dictation");
   expect(Speech.starts).toBe(1);
+  // Held Space: recording ends mid-hold and the repeat must not forget Stop.
+  fireEvent.click(stop);
+  await screen.findByRole("button", { name: "Stop dictation" });
+  fireEvent.keyDown(stop, { key: " " });
+  act(() => Speech.latest.onend?.());
+  fireEvent.keyDown(stop, { key: " ", repeat: true });
+  fireEvent.click(stop);
+  await act(async () => {});
+  expect([stop.getAttribute("aria-label"), Speech.starts]).toEqual([
+    "Start dictation",
+    2,
+  ]);
 });
 
 it("keeps Send for typed text while an uncancellable turn runs and queues it", () => {
