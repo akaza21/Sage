@@ -138,11 +138,11 @@ const REASONS: [RegExp, string][] = [
 
 export function failureMessage(
   error: unknown,
-  action: keyof typeof FAILED = "save",
+  action: keyof typeof FAILED,
 ): string {
   const raw = errorMessage(error);
   const known = REASONS.find(([pattern]) => pattern.test(raw));
-  return known ? `${FAILED[action]}: ${known[1]}` : `${FAILED[action]}.`;
+  return `${FAILED[action]}${known ? `: ${known[1]}` : "."}`;
 }
 
 /** A retried action that fails again is a new failure, announced again. */
@@ -151,24 +151,23 @@ let failures = 0;
 export function actionFailed(
   bridge: EditorStateBridge,
   error: unknown,
-  action: keyof typeof FAILED = "save",
+  action: keyof typeof FAILED,
 ): string {
   const message = failureMessage(error, action);
   const active = currentReady(bridge);
-  if (active) {
-    // A refused recovery copy after disk moved is explained by the conflict.
-    if (active.document.conflict && DISK_MISMATCH.test(errorMessage(error))) {
-      bridge.setActiveEditor({ ...active, saving: false });
-      return message;
-    }
-    bridge.setActiveEditor({
-      ...active,
-      saving: false,
-      message,
-      details: boundedError(error, 1024, "utf16"),
-      failure: (failures += 1),
-    });
-  }
+  if (active)
+    bridge.setActiveEditor(
+      // A refused recovery copy after disk moved is explained by the conflict.
+      active.document.conflict && DISK_MISMATCH.test(errorMessage(error))
+        ? { ...active, saving: false }
+        : {
+            ...active,
+            saving: false,
+            message,
+            details: boundedError(error, 1024, "utf16"),
+            failure: ++failures,
+          },
+    );
   return message;
 }
 

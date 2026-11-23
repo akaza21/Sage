@@ -8,7 +8,7 @@ describe("failureMessage", () => {
     "filesystem operation failed: Permission denied (os error 13)",
     "filesystem operation failed: Read-only file system (os error 30)",
   ])("names a refused write plainly: %s", (raw) => {
-    expect(failureMessage(new Error(raw))).toBe(
+    expect(failureMessage(new Error(raw), "save")).toBe(
       "Couldn't save: the file is read-only or you don't have permission.",
     );
   });
@@ -19,6 +19,7 @@ describe("failureMessage", () => {
         new Error(
           "filesystem operation failed: There is not enough space on the disk. (os error 112)",
         ),
+        "save",
       ),
     ).toBe("Couldn't save: the disk is full.");
   });
@@ -29,6 +30,7 @@ describe("failureMessage", () => {
         new Error(
           "filesystem operation failed: The network path was not found. (os error 53)",
         ),
+        "save",
       ),
     ).toBe("Couldn't save.");
   });
