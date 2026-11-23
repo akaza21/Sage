@@ -58,9 +58,8 @@ export async function openAgentArtifact(
     // Summary-only edits use the ordinary Git Diff resource. Never downgrade
     // an invalid or stale saved snapshot reference to a working-tree diff.
     if (intent.diffRef) return false;
-    const { resolveAgentWorkingDiffRepository } =
-      await import("./agentWorkingDiffRepository");
-    const resolved = await resolveAgentWorkingDiffRepository(
+    const working = await import("./agentWorkingDiffRepository");
+    const resolved = await working.resolveAgentWorkingDiffRepository(
       intent,
       projectGeneration,
     );
