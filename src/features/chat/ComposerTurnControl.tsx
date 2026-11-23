@@ -27,25 +27,23 @@ export function ComposerTurnControl({
   const pressedStop = useRef(false);
   const notePress = () => (pressedStop.current = dictation.listening);
   const reason = (sendDisabled && disabledReason) || undefined;
-  const canCancel = !cancelDisabled && !!onCancelTurn;
   // Without a usable Cancel, typed text keeps Send so a click queues it.
-  const cancel = activeTurn && (canCancel || !hasContent);
   const [name, Icon, action]: [
     "cancel" | "dictate" | "send",
     typeof Square,
     ButtonHTMLAttributes<HTMLButtonElement>,
-  ] = cancel
+  ] = activeTurn && ((!cancelDisabled && onCancelTurn) || !hasContent)
     ? [
         "cancel",
         Square,
         {
           className: "send-button send-button--cancel",
           "aria-label": "Cancel turn",
-          disabled: !canCancel,
+          disabled: cancelDisabled || !onCancelTurn,
           onClick: onCancelTurn ?? undefined,
         },
       ]
-    : !activeTurn && (dictation.listening || !hasContent)
+    : dictation.listening || !hasContent
       ? [
           "dictate",
           Mic,
@@ -65,10 +63,11 @@ export function ComposerTurnControl({
             onKeyDown: notePress,
             onMouseDown: (event) => event.preventDefault(),
             onClick: () => {
-              const stop = pressedStop.current || dictation.listening;
+              const stop = pressedStop.current;
               pressedStop.current = false;
-              if (stop) dictation.stop();
-              else void dictation.start();
+              return stop || dictation.listening
+                ? dictation.stop()
+                : void dictation.start();
             },
           },
         ]

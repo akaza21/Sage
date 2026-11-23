@@ -4113,7 +4113,7 @@ describe("ChatSurface ACP resource integration", () => {
     setTurnState("cancelling");
     rerender(<ChatSurface />);
     expect(composer).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(composer).not.toHaveFocus();
   });
 
