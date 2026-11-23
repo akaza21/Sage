@@ -8,6 +8,7 @@ pub(crate) enum SessionControlError {
     Unavailable,
     #[error("the harness did not answer in time and may still finish")]
     Late,
+    /// The outcome is unknown; a message, when set, says what is known.
     #[error("the session control outcome is unknown")]
-    RecoveryRequired,
+    RecoveryRequired(Option<SafeText<512>>),
 }

@@ -147,32 +147,34 @@ struct Lease {
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        if self.kept {
-            if let Err(error) = self.database.connection().execute(
-                "UPDATE temp.repository_leases SET kept=1 WHERE lease_id=?1",
-                [&self.id],
-            ) {
-                tracing::error!(
-                    ?error,
-                    "repository lease restart hint could not be recorded"
-                );
-            }
-            tracing::warn!("repository lease kept until restart: Git may still be running");
-            return;
-        }
         let connection = self.database.connection();
-        // Retry once so one transient DELETE failure does not keep a
-        // completed operation's Project paused until restart.
-        for attempt in 0..2 {
-            match connection.execute(
-                "DELETE FROM temp.repository_leases WHERE lease_id=?1",
-                [&self.id],
-            ) {
-                Ok(_) => break,
-                Err(error) => {
-                    tracing::error!(?error, attempt, "repository lease could not be cleared")
+        if self.kept {
+            tracing::warn!("repository lease kept until restart: Git may still be running");
+        } else {
+            // Retry once so one transient DELETE failure does not keep a
+            // completed operation's Project paused until restart.
+            for attempt in 0..2 {
+                match connection.execute(
+                    "DELETE FROM temp.repository_leases WHERE lease_id=?1",
+                    [&self.id],
+                ) {
+                    Ok(_) => return,
+                    Err(error) => {
+                        tracing::error!(?error, attempt, "repository lease could not be cleared")
+                    }
                 }
             }
+        }
+        // The row stays until restart, so turns get the restart advice. If
+        // that fails too, the row still pauses turns: it fails closed.
+        if let Err(error) = connection.execute(
+            "UPDATE temp.repository_leases SET kept=1 WHERE lease_id=?1",
+            [&self.id],
+        ) {
+            tracing::error!(
+                ?error,
+                "repository lease restart hint could not be recorded"
+            );
         }
     }
 }

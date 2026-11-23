@@ -101,7 +101,7 @@ impl AcpService {
             owner.project_id.as_str(),
             owner.chat_id.as_str(),
         )
-        .map_err(|_| SessionControlError::RecoveryRequired)?;
+        .map_err(|_| SessionControlError::RecoveryRequired(None))?;
 
         let undo = if let Rewind::Conversation { files } = mode {
             let json: String = self
@@ -112,7 +112,7 @@ impl AcpService {
                     [owner.session_id.as_str()],
                     |r| r.get(0),
                 )
-                .map_err(|_| SessionControlError::RecoveryRequired)?;
+                .map_err(|_| SessionControlError::RecoveryRequired(None))?;
             let capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
                 serde_json::from_str(&json).map_err(|_| SessionControlError::Unavailable)?;
             if capabilities.rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
@@ -122,7 +122,7 @@ impl AcpService {
                     mode = Rewind::Undo { keep_files: false };
                 }
                 self.undoable_turn(owner, &turn_id)
-                    .map_err(|_| SessionControlError::RecoveryRequired)?
+                    .map_err(|_| SessionControlError::RecoveryRequired(None))?
                     .ok_or(SessionControlError::Unavailable)?
             } else {
                 TurnUndo::from_capability(capabilities.rewind)
@@ -130,7 +130,7 @@ impl AcpService {
             }
         } else {
             self.undoable_turn(owner, &turn_id)
-                .map_err(|_| SessionControlError::RecoveryRequired)?
+                .map_err(|_| SessionControlError::RecoveryRequired(None))?
                 .ok_or(SessionControlError::Unavailable)?
         };
         let (binding, external): (String, String) = self
@@ -141,9 +141,9 @@ impl AcpService {
                 [owner.session_id.as_str()],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .map_err(|_| SessionControlError::RecoveryRequired)?;
+            .map_err(|_| SessionControlError::RecoveryRequired(None))?;
         let binding = sage_acp_protocol::intent::BindingId::new("bindingId", binding)
-            .map_err(|_| SessionControlError::RecoveryRequired)?;
+            .map_err(|_| SessionControlError::RecoveryRequired(None))?;
         let resolve_cut = || {
             self.resolve_session_binding(&binding)
                 .map_err(|_| "The conversation transcript is unavailable.".to_owned())?
@@ -171,7 +171,7 @@ impl AcpService {
             self.recover_undo_runtime(owner);
             return Err(file_rewind::staged_error(
                 restored,
-                SessionControlError::RecoveryRequired,
+                SessionControlError::RecoveryRequired(None),
             ));
         };
         if let Some(projection_revision) = recorded.published {
@@ -266,7 +266,7 @@ impl AcpService {
             return error;
         }
         self.recover_undo_runtime(owner);
-        SessionControlError::RecoveryRequired
+        SessionControlError::RecoveryRequired(None)
     }
 
     fn recover_undo_runtime(&self, owner: &RuntimeOwner) {
@@ -378,3 +378,7 @@ impl TurnUndo {
 #[cfg(test)]
 #[path = "turn_undo_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "turn_undo_files_tests.rs"]
+mod files_tests;

@@ -321,61 +321,74 @@ async fn turn_starts_are_refused_during_the_checkout_lease_without_holding_the_w
 }
 
 #[tokio::test]
-async fn a_failed_lease_delete_is_retried_and_the_next_turn_can_start() {
+async fn a_failed_lease_delete_is_retried_and_a_stuck_one_keeps_the_restart_advice() {
+    use crate::repository_mutation_guard::RepositoryPause;
     use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
-    let fixture = Fixture::new();
-    checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
-        // Inject an actual SQLite DELETE failure, once, while keeping the
-        // database usable for the guard's bounded cleanup retry.
-        let mut refused = false;
+    for denials in [1, 2] {
+        let fixture = Fixture::new();
+        checkout_git_local_branch_with(&fixture.state, fixture.request.clone(), 0, async {
+            // Inject actual SQLite DELETE failures while keeping the database
+            // usable for the guard's bounded cleanup retry.
+            let mut refused = 0;
+            fixture
+                .state
+                .database
+                .connection()
+                .authorizer(Some(move |context: AuthContext<'_>| {
+                    if refused < denials
+                        && matches!(
+                            context.action,
+                            AuthAction::Delete {
+                                table_name: "repository_leases"
+                            }
+                        )
+                    {
+                        refused += 1;
+                        Authorization::Deny
+                    } else {
+                        Authorization::Allow
+                    }
+                }))
+                .unwrap();
+        })
+        .await
+        .unwrap();
         fixture
             .state
             .database
             .connection()
-            .authorizer(Some(move |context: AuthContext<'_>| {
-                if !refused
-                    && matches!(
-                        context.action,
-                        AuthAction::Delete {
-                            table_name: "repository_leases"
-                        }
-                    )
-                {
-                    refused = true;
-                    Authorization::Deny
-                } else {
-                    Authorization::Allow
-                }
-            }))
+            .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
             .unwrap();
-    })
-    .await
-    .unwrap();
-    fixture
-        .state
-        .database
-        .connection()
-        .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
-        .unwrap();
-    assert_eq!(fixture.branch(), "topic");
-    assert!(!fixture.leased(fixture.command.project_id.as_str()));
-    let committed = DatabaseAcpStore::new(fixture.state.database.clone())
-        .commit(&[StoreMutation::PrepareTurn(fixture.command.clone())])
-        .unwrap();
-    let [StoreMutationResult::Prepared(prepared)] = committed.results.as_slice() else {
-        panic!("the next prompt must prepare a turn")
-    };
-    let state: String = fixture
-        .state
-        .database
-        .connection()
-        .query_row(
-            "SELECT state FROM turns WHERE id=?1",
-            [prepared.turn_id.as_str()],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(state, "queued");
+        assert_eq!(fixture.branch(), "topic");
+        if denials == 2 {
+            // Both attempts failed: the stuck row says turns wait for a restart.
+            let pause = crate::repository_mutation_guard::project_pause(
+                &fixture.state.database.connection(),
+                fixture.command.project_id.as_str(),
+            )
+            .unwrap();
+            assert_eq!(pause, Some(RepositoryPause::UntilRestart));
+            continue;
+        }
+        assert!(!fixture.leased(fixture.command.project_id.as_str()));
+        let committed = DatabaseAcpStore::new(fixture.state.database.clone())
+            .commit(&[StoreMutation::PrepareTurn(fixture.command.clone())])
+            .unwrap();
+        let [StoreMutationResult::Prepared(prepared)] = committed.results.as_slice() else {
+            panic!("the next prompt must prepare a turn")
+        };
+        let state: String = fixture
+            .state
+            .database
+            .connection()
+            .query_row(
+                "SELECT state FROM turns WHERE id=?1",
+                [prepared.turn_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "queued");
+    }
 }
 
 #[tokio::test]

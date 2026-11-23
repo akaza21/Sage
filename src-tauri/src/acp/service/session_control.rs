@@ -17,7 +17,7 @@ impl AcpService {
     ) -> Result<Option<SafeText<512>>, SessionControlError> {
         match self.session_control_reply(owner, control)? {
             NativeRpcReply::Controlled(summary) => Ok(summary),
-            _ => Err(SessionControlError::RecoveryRequired),
+            _ => Err(SessionControlError::RecoveryRequired(None)),
         }
     }
 
@@ -52,7 +52,7 @@ impl AcpService {
             Ok(reply) => Ok(reply),
             Err(HostError::Intent | HostError::State) => Err(SessionControlError::Unavailable),
             Err(HostError::Deadline) if abandons => Err(SessionControlError::Late),
-            Err(_) => Err(SessionControlError::RecoveryRequired),
+            Err(_) => Err(SessionControlError::RecoveryRequired(None)),
         }
     }
 }

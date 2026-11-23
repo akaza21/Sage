@@ -123,7 +123,9 @@ pub(crate) fn staged_error(restored: bool, error: SessionControlError) -> Sessio
         (true, SessionControlError::Refused(_) | SessionControlError::Unavailable) => {
             refusal(RESTORED_NOT_CUT)
         }
-        (true, _) => refusal(RESTORED_RECOVERING),
+        (true, _) => SessionControlError::RecoveryRequired(
+            SafeText::new("controlSummary", RESTORED_RECOVERING).ok(),
+        ),
     }
 }
 
@@ -138,7 +140,7 @@ pub(crate) fn plan(
     })? {
         NativeRpcReply::FileRewindPlan(files) => Ok(files),
         NativeRpcReply::TooLarge => Err(refusal("Too many files changed to check them all.")),
-        _ => Err(SessionControlError::RecoveryRequired),
+        _ => Err(SessionControlError::RecoveryRequired(None)),
     }
 }
 
@@ -168,7 +170,7 @@ pub(crate) fn restore_then_cut<S>(
                 return Err(FileRewindFailure::Staged {
                     staged,
                     restored: false,
-                    error: SessionControlError::RecoveryRequired,
+                    error: SessionControlError::RecoveryRequired(None),
                 });
             }
             Err(error) => {
@@ -187,7 +189,7 @@ pub(crate) fn restore_then_cut<S>(
         Ok(_) => Err(FileRewindFailure::Staged {
             staged,
             restored,
-            error: SessionControlError::RecoveryRequired,
+            error: SessionControlError::RecoveryRequired(None),
         }),
         Err(error) => Err(FileRewindFailure::Staged {
             staged,
@@ -327,7 +329,7 @@ impl AcpService {
             .map_err(|_| SessionControlError::Unavailable)?;
         let writes =
             agent_writes::last_writes(&self.database.connection(), owner.session_id.as_str())
-                .map_err(|_| SessionControlError::RecoveryRequired)?;
+                .map_err(|_| SessionControlError::RecoveryRequired(None))?;
         Ok(compare(probed, &writes))
     }
 
@@ -399,7 +401,7 @@ impl AcpService {
                 [owner.session_id.as_str()],
                 |row| row.get(0),
             )
-            .map_err(|_| SessionControlError::RecoveryRequired)?;
+            .map_err(|_| SessionControlError::RecoveryRequired(None))?;
         serde_json::from_str::<sage_acp_protocol::intent::CapabilitySnapshotV1>(&json)
             .map(|capabilities| capabilities.rewind)
             .map_err(|_| SessionControlError::Unavailable)
@@ -423,3 +425,7 @@ impl AcpService {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "file_rewind_tests.rs"]
+mod tests;

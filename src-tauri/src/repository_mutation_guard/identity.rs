@@ -14,6 +14,10 @@ const MAX_REPOSITORY_PATH_BYTES: usize = 32 * 1024;
 // seconds while the caller holds the Project transition lock. Past this, a
 // folder counts as unverified, which the lease already handles safely.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+// The least a root probe gets, enough for a linked worktree's `git rev-parse`
+// to start on Windows; roots left when the total deadline runs out stay
+// unverified.
+const PROBE_FLOOR: std::time::Duration = std::time::Duration::from_millis(250);
 // Shared by the target and every registered root, under project_transitions.
 pub(super) const TOTAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -141,19 +145,34 @@ where
 {
     let mut seen = BTreeMap::<&str, Option<bool>>::new();
     let mut projects = BTreeMap::<&str, (Option<bool>, Vec<String>)>::new();
+    let mut unprobed = roots
+        .iter()
+        .map(|(_, folder)| folder.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len() as u32;
     for (project, folder) in roots {
         let shares = match seen.get(folder.as_str()) {
             Some(known) => *known,
             None => {
-                let known = if tokio::time::Instant::now() >= deadline {
+                let now = tokio::time::Instant::now();
+                // Each folder gets its share of the time left, but at least
+                // PROBE_FLOOR, so one stalled probe can't leave the folders
+                // after it unprobed and many roots can't starve a slow one.
+                let known = if now >= deadline {
                     None
                 } else {
-                    tokio::time::timeout_at(deadline, probe(folder))
+                    let left = deadline - now;
+                    let budget = (left / unprobed)
+                        .max(PROBE_FLOOR)
+                        .min(left)
+                        .min(PROBE_TIMEOUT);
+                    tokio::time::timeout_at(now + budget, probe(folder))
                         .await
                         .ok()
                         .flatten()
                         .map(|identity| identity.overlaps(target))
                 };
+                unprobed -= 1;
                 seen.insert(folder, known);
                 known
             }
@@ -186,7 +205,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn total_deadline_keeps_verified_roots_and_leaves_the_rest_unverified() {
+    async fn each_root_probe_gets_its_share_of_the_deadline_and_at_least_the_floor() {
         let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-probe-deadline-{}", uuid::Uuid::new_v4()));
         let target_root = root.join("target");
@@ -200,9 +219,9 @@ mod tests {
             ("stalled".into(), "stalled-folder".into()),
             ("unprobed".into(), target_root.to_str().unwrap().to_owned()),
         ];
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(5),
             classify_with(&target, &roots, deadline, |folder| {
                 let root = PathBuf::from(folder);
                 async move {
@@ -218,9 +237,30 @@ mod tests {
         .expect("the whole pass is bounded even when a probe never returns");
         assert_eq!(
             result.unrelated,
-            BTreeMap::from([("verified".into(), vec![unrelated])])
+            BTreeMap::from([("verified".into(), vec![unrelated.clone()])])
         );
-        assert_eq!(result.unverified, ["stalled", "unprobed"]);
+        // The stalled folder used only its share: the target's own folder,
+        // probed after it, is still verified as shared and leased.
+        assert_eq!(result.unverified, ["stalled"]);
+
+        // With many roots, the first still gets the floor, not a sliver.
+        let mut roots = vec![("slow".to_owned(), unrelated.clone())];
+        roots.extend((0..511).map(|index| (format!("fast-{index:03}"), format!("fast-{index}"))));
+        let unrelated_identity = identify(&unrelated_root).await.unwrap();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        let result = classify_with(&target, &roots, deadline, |folder| {
+            let slow = folder == unrelated;
+            let identity = unrelated_identity.clone();
+            async move {
+                if slow {
+                    tokio::time::sleep(PROBE_FLOOR / 2).await;
+                }
+                Some(identity)
+            }
+        })
+        .await;
+        assert!(result.unverified.is_empty());
+        assert_eq!(result.unrelated.len(), roots.len());
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 }

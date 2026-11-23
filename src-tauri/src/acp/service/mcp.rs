@@ -21,7 +21,7 @@ impl AcpService {
                 )
                 .ok(),
             )),
-            _ => Err(SessionControlError::RecoveryRequired),
+            _ => Err(SessionControlError::RecoveryRequired(None)),
         }
     }
 
@@ -65,7 +65,7 @@ impl AcpService {
                     other => other,
                 })
             }
-            _ => Err(SessionControlError::RecoveryRequired),
+            _ => Err(SessionControlError::RecoveryRequired(None)),
         }
     }
 
@@ -78,7 +78,7 @@ impl AcpService {
     ) -> Result<McpAuthUrl, SessionControlError> {
         match self.session_control_reply(owner, SessionControl::SignInMcpServer { name })? {
             NativeRpcReply::McpSignIn(url) => Ok(url),
-            _ => Err(SessionControlError::RecoveryRequired),
+            _ => Err(SessionControlError::RecoveryRequired(None)),
         }
     }
 }

@@ -81,6 +81,23 @@ impl Pi {
         }
         self.send(deliver(runtime, reply));
     }
+    /// Send a batch's egress as the pump's `commit_and_egress` does: a batch
+    /// that opens a new permission holds its mandatory egress.
+    fn send_batch(
+        &mut self,
+        runtime: &mut PiRuntime,
+        (events, egress): (Vec<AdapterEvent>, Vec<AdapterEgress>),
+    ) -> Vec<AdapterEvent> {
+        let holds = events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::PermissionRequest { .. }));
+        for reply in egress {
+            if !(holds && reply.token().is_mandatory()) {
+                self.send_reply(runtime, reply);
+            }
+        }
+        events
+    }
     fn next(&self) -> Value {
         self.next_with_timeout(Duration::from_secs(30))
     }
@@ -234,9 +251,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                                     &Mapper,
                                 )
                                 .unwrap();
-                            for reply in batch.into_parts().1 {
-                                pi.send_reply(&mut j.runtime, reply);
-                            }
+                            pi.send_batch(&mut j.runtime, batch.into_parts());
                         }
                         if value["type"] == "tool_execution_end" {
                             results.push((
@@ -253,11 +268,7 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
                             .runtime
                             .ingest(&frame(value), &FileMapper(j.root.clone()))
                             .unwrap();
-                        let (events, egress) = batch.into_parts();
-                        for reply in egress {
-                            pi.send_reply(&mut j.runtime, reply);
-                        }
-                        for event in events {
+                        for event in pi.send_batch(&mut j.runtime, batch.into_parts()) {
                             if let AdapterEvent::PermissionRequest {
                                 external_request_id,
                                 payload,
