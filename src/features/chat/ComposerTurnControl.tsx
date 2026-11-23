@@ -63,11 +63,9 @@ export function ComposerTurnControl({
             onKeyDown: notePress,
             onMouseDown: (event) => event.preventDefault(),
             onClick: () => {
-              const stop = pressedStop.current;
+              if (pressedStop.current || dictation.listening) dictation.stop();
+              else void dictation.start();
               pressedStop.current = false;
-              return stop || dictation.listening
-                ? dictation.stop()
-                : void dictation.start();
             },
           },
         ]
