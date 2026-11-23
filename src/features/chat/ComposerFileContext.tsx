@@ -63,7 +63,7 @@ export function ComposerFileParts({
       ) : null}
       {/* Only the attach menu: the staged batch and its chips belong to
           the paste part, so this loads with the first press. */}
-      {chatId && files.attachPresses > 0 ? (
+      {files.attachPresses > 0 ? (
         <AttachPart
           part="ComposerAttach"
           chatId={chatId}

@@ -107,6 +107,9 @@ export function composerNativeRows(
         ) : null}
       </button>,
       refusal ?? undefined,
+      undefined,
+      // The new-chat draft stages files in its own native slot.
+      "none",
     );
   }
   const imageAction = props.imageAction;

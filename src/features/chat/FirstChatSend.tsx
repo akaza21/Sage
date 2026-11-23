@@ -60,6 +60,8 @@ export function FirstChatSend({
         entry.attachedContext,
         harness.bindingId as CuratedBindingId,
         (entry.modelId ?? null) as CuratedModelId | null,
+        // Files the draft handed over go with this first turn only.
+        pending.staged,
       );
     }
   }, [actions, chatId, page, pending, transitioning]);
