@@ -337,12 +337,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         repositoryRefreshSuperseded: get().repositoryRefreshing,
         repositoryRequestGeneration: requestGeneration,
       });
+      const current = () =>
+        matchesProjectIntent(get(), generation, projectId) &&
+        get().repositoryRequestGeneration === requestGeneration;
       try {
         const repositories = await desktop.getRepositoryStatus();
-        if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().repositoryRequestGeneration === requestGeneration
-        ) {
+        if (current()) {
           set((state) => ({
             repositories: shareRepositoryStatus(
               state.repositories,
@@ -357,10 +357,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           }));
         }
       } catch (error) {
-        if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().repositoryRequestGeneration === requestGeneration
-        ) {
+        if (current()) {
           set({
             repositoryRefreshing: false,
             repositoryRefreshSuperseded: false,
