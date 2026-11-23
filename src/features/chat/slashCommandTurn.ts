@@ -6,6 +6,8 @@ import type {
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
 import { pickedCommandFor } from "./slashCommandPicks";
+import { terminalOnlyCommand } from "../../services/terminalHandoff";
+import { catchTerminalCommand } from "./ComposerTerminalCatch";
 
 export type SlashCommandPort = Pick<
   typeof acpCommandsDesktop,
@@ -20,7 +22,7 @@ export function parseSlashCommand(
 }
 
 // The typed command route marks the turn as a command; Pi's extension commands
-// depend on that. `false` means the composer took the command and sends nothing.
+// depend on that. `false` means the composer took the command; nothing is sent.
 export async function slashCommandTurn(
   request: SendAcpTurnRequest,
   nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],
@@ -29,7 +31,8 @@ export async function slashCommandTurn(
   if (request.target !== "session") return null;
   const { prompt, attachedContext } = request;
   const command = parseSlashCommand(prompt);
-  if (!command) return null;
+  // The typed route carries no attached context; such a prompt stays text.
+  if (!command || attachedContext?.length) return null;
   const intent: AcpSessionMutationIntent = {
     projectId: request.projectId,
     projectGeneration: request.projectGeneration,
@@ -41,11 +44,7 @@ export async function slashCommandTurn(
   };
   const commands = port ?? acpCommandsDesktop;
   const list = await commands.listCommands(intent).catch(() => null);
-  const reported = list?.commands.some(
-    (candidate) => candidate.name === command.name,
-  );
-  // The typed route carries no attached context; such a prompt stays text.
-  if (list && reported && !attachedContext?.length) {
+  if (list?.commands.some((candidate) => candidate.name === command.name)) {
     return () =>
       commands.runCommand({
         ...intent,
@@ -55,12 +54,17 @@ export async function slashCommandTurn(
         ...(command.input ? { input: command.input } : {}),
       });
   }
-  // A curated terminal-only command waits for the user's choice.
-  if (list?.terminalHandoff && !reported) {
-    const route = await import("./ComposerTerminalCommand");
-    if (route.routeTerminalCommand(request.chatId, prompt, command.name, list))
-      return false;
-  }
+  const terminal = list && terminalOnlyCommand(list, command.name);
+  // A caught terminal-only command waits for the user's choice.
+  if (
+    terminal &&
+    catchTerminalCommand(request.chatId, {
+      input: prompt,
+      name: command.name,
+      command: terminal,
+    })
+  )
+    return false;
   if (pickedCommandFor(request.chatId) === command.name) {
     throw new AcpDesktopError({
       kind: "invalidRequest",

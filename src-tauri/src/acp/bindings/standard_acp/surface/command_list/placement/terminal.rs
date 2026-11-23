@@ -1,7 +1,7 @@
-//! A binding's curated terminal handoff: which known commands only its
-//! terminal runs, which of them a native control replaces, and the command
-//! that reopens the session there. Harness specifics live in metadata only.
-use super::{KnownCommandTable, NativeControl, ReleaseVersion};
+//! A binding's curated terminal handoff: the commands only its own terminal
+//! runs, and the command that reopens the session there. Harness specifics
+//! live in metadata only; native owns the classification.
+use super::KnownCommandTable;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -20,37 +20,23 @@ struct Curated {
     resume_args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TerminalOnlyCommand {
-    name: String,
-    aliases: Vec<String>,
-    /// The curated control; it applies only while `controls` lists it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    control: Option<NativeControl>,
-}
-
 /// Loaded once per curated binding, together with its command table.
 pub(crate) struct TerminalMetadata {
     curated: Curated,
-    rows: Vec<TerminalOnlyCommand>,
-    /// Version gates per curated control, in row order.
-    gates: Vec<(NativeControl, Option<ReleaseVersion>)>,
+    /// Every terminal-only name and alias, flattened once.
+    names: Vec<String>,
 }
 
-/// The projected handoff. Static rows are shared; only the resume command and
-/// the supported controls are per session.
+/// The projected handoff. The names are shared; only the resume command is
+/// per session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TerminalHandoff {
     label: &'static str,
     command: String,
-    terminal_only: &'static [TerminalOnlyCommand],
-    controls: Vec<NativeControl>,
+    terminal_only: &'static [String],
     #[serde(skip)]
     session: Option<Box<str>>,
-    #[serde(skip)]
-    mask: u16,
 }
 
 fn token(value: &str) -> bool {
@@ -61,8 +47,8 @@ fn token(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
 }
 
-/// The command is prefilled for the user, never run. Double quotes keep spaces
-/// in cmd, PowerShell and POSIX shells; anything a shell would expand fails
+/// The command is copied for the user, never run. Double quotes keep spaces in
+/// cmd, PowerShell and POSIX shells; anything a shell would expand fails
 /// closed to the bare harness command.
 fn resumable(session: &str) -> bool {
     !session.is_empty()
@@ -96,40 +82,15 @@ impl TerminalMetadata {
         {
             return Err("invalid terminal metadata bounds");
         }
-        let terminal = || table.0.iter().filter(|row| row.terminal_only == Some(true));
-        Ok(Self {
-            curated,
-            rows: terminal()
-                .map(|row| TerminalOnlyCommand {
-                    name: row.name.clone(),
-                    aliases: row.aliases.clone(),
-                    control: row.control,
-                })
-                .collect(),
-            gates: terminal()
-                .filter_map(|row| {
-                    let since = row.since.as_deref().and_then(ReleaseVersion::parse);
-                    row.control.map(|control| (control, since))
-                })
-                .collect(),
-        })
-    }
-
-    fn supported(
-        &self,
-        running: Option<&ReleaseVersion>,
-        supports: &dyn Fn(NativeControl) -> bool,
-    ) -> u16 {
-        self.gates.iter().fold(0, |mask, (control, since)| {
-            let version = since
-                .as_ref()
-                .is_none_or(|minimum| running.is_some_and(|running| running >= minimum));
-            if version && supports(*control) {
-                mask | 1 << *control as u16
-            } else {
-                mask
-            }
-        })
+        // The table's own caps bound this list (128 rows, 8 aliases each).
+        let names = table
+            .0
+            .iter()
+            .filter(|row| row.terminal_only == Some(true))
+            .flat_map(|row| std::iter::once(&row.name).chain(&row.aliases))
+            .cloned()
+            .collect();
+        Ok(Self { curated, names })
     }
 
     /// Called on every command-list read, so an unchanged projection allocates
@@ -137,15 +98,12 @@ impl TerminalMetadata {
     pub(crate) fn update(
         &'static self,
         slot: &mut Option<TerminalHandoff>,
-        running: Option<&ReleaseVersion>,
-        supports: &dyn Fn(NativeControl) -> bool,
         session: Option<&str>,
     ) -> bool {
         let session = session.filter(|session| resumable(session));
-        let mask = self.supported(running, supports);
         if slot
             .as_ref()
-            .is_some_and(|handoff| handoff.mask == mask && handoff.session.as_deref() == session)
+            .is_some_and(|handoff| handoff.session.as_deref() == session)
         {
             return false;
         }
@@ -154,22 +112,14 @@ impl TerminalMetadata {
             command,
             resume_args,
         } = &self.curated;
-        let mut controls = Vec::new();
-        for (control, _) in &self.gates {
-            if mask & 1 << *control as u16 != 0 && !controls.contains(control) {
-                controls.push(*control);
-            }
-        }
         *slot = Some(TerminalHandoff {
             label,
             command: session.map_or_else(
                 || command.clone(),
                 |session| format!("{command} {} \"{session}\"", resume_args.join(" ")),
             ),
-            terminal_only: &self.rows,
-            controls,
+            terminal_only: &self.names,
             session: session.map(Box::from),
-            mask,
         });
         true
     }
@@ -180,13 +130,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn curated_handoff_projects_terminal_commands_supported_controls_and_a_safe_resume() {
+    fn curated_handoff_projects_flattened_terminal_names_and_a_safe_resume() {
         static METADATA: OnceLock<TerminalMetadata> = OnceLock::new();
         let table = KnownCommandTable::parse(
             br#"[
           {"name":"hooks","section":"addOns","terminalOnly":true},
-          {"name":"permissions","section":"modelAndAccess","terminalOnly":true,"control":"accessMenu"},
-          {"name":"model","section":"modelAndAccess","terminalOnly":true,"control":"modelPicker","since":"3.0.0"},
+          {"name":"permissions","aliases":["allowed-tools"],"section":"modelAndAccess","terminalOnly":true,"control":"accessMenu"},
           {"name":"reported","section":"session","control":"compact"}
         ]"#,
         )
@@ -197,30 +146,16 @@ mod tests {
             &table,
         );
         let mut slot = None;
-        let running = ReleaseVersion::parse("2.1.322");
-        let all = |_| true;
-        assert!(metadata.update(&mut slot, running.as_ref(), &all, Some("native session")));
+        assert!(metadata.update(&mut slot, Some("native session")));
         assert_eq!(
             serde_json::to_value(&slot).unwrap(),
             serde_json::json!({
               "label":"Example","command":"agent --resume \"native session\"",
-              "terminalOnly":[
-                {"name":"hooks","aliases":[]},
-                {"name":"permissions","aliases":[],"control":"accessMenu"},
-                {"name":"model","aliases":[],"control":"modelPicker"}
-              ],
-              "controls":["accessMenu"]
+              "terminalOnly":["hooks","permissions","allowed-tools"]
             })
         );
-        // Unchanged inputs keep the projection, so the list keeps its revision.
-        assert!(!metadata.update(&mut slot, running.as_ref(), &all, Some("native session")));
-        assert!(metadata.update(
-            &mut slot,
-            running.as_ref(),
-            &|_| false,
-            Some("native session")
-        ));
-        assert_eq!(slot.as_ref().unwrap().controls, []);
+        // Unchanged inputs keep the projection without allocating.
+        assert!(!metadata.update(&mut slot, Some("native session")));
         for target in [
             None,
             Some("bad\ninput"),
@@ -229,7 +164,7 @@ mod tests {
             Some("a\"b"),
             Some("x".repeat(MAX_SESSION_BYTES + 1).as_str()),
         ] {
-            metadata.update(&mut slot, None, &all, target);
+            metadata.update(&mut slot, target);
             assert_eq!(slot.as_ref().unwrap().command, "agent");
         }
         for invalid in [

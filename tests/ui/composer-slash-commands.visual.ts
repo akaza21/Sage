@@ -379,49 +379,61 @@ test("picking Codex's /review shows its input hint", async ({ page }) => {
   );
 });
 
-test("a caught terminal-only command offers the terminal or plain text under the field", async ({
+test("a typed terminal-only command is held at send with a copy or text choice", async ({
   page,
 }) => {
-  const field = await openComposer(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await installNativeCommands(page, commands);
+  const composer = page.locator("form.composer").first();
+  const field = composer.getByRole("combobox", { name: "Message agent" });
+  await field.focus();
   await field.fill("/hooks");
   // The field's command controller is loaded once its menu shows.
   await expect(page.locator(".composer-slash-menu")).toBeVisible();
   await page.keyboard.press("Escape");
-  // The send route with the native list a curated binding returns.
+  // The real send route, with the native list a curated binding returns.
   const taken = await page.evaluate(async () => {
-    const { routeTerminalCommand } =
-      await import("/src/features/chat/ComposerTerminalCommand.tsx");
+    const { slashCommandTurn } =
+      await import("/src/features/chat/slashCommandTurn.ts");
     const chatId = document.querySelector<HTMLElement>(
       ".acp-chat-projection[data-chat-id]",
     )!.dataset.chatId!;
-    return routeTerminalCommand(chatId, "/hooks", "hooks", {
+    const list = {
       revision: 1,
       commands: [],
       terminalHandoff: {
         label: "Claude Code",
         command: 'claude --resume "4f1c2a"',
-        terminalOnly: [{ name: "hooks", aliases: [] }],
-        controls: [],
+        terminalOnly: ["hooks"],
       },
-    });
+    };
+    return slashCommandTurn(
+      { target: "session", prompt: "/hooks", chatId } as never,
+      () => "intent" as never,
+      {
+        listCommands: async () => list,
+        runCommand: async () => {
+          throw new Error("not run");
+        },
+      },
+    );
   });
-  expect(taken).toBe(true);
+  expect(taken).toBe(false);
   const notice = page.locator(
     "[data-notice-identity='terminal-command:hooks']",
   );
-  await expect(notice).toContainText("/hooks needs Claude Code's terminal.");
-  // The browser stand-in has no terminal dock, so only the text choice shows.
+  await expect(notice).toContainText("/hooks only runs in the terminal.");
   await expect(
-    notice.getByRole("button", { name: "Open in terminal" }),
-  ).toHaveCount(0);
+    notice.getByRole("button", { name: "Copy terminal command" }),
+  ).toBeVisible();
   await expect(
     notice.getByRole("button", { name: "Send as text anyway" }),
   ).toBeVisible();
   await expect(field).toHaveValue("/hooks");
   await expectNoViewportOverflow(page);
-  await expect(page.locator("form.composer").first()).toHaveScreenshot(
-    "composer-terminal-command.png",
-  );
+  await expect(composer).toHaveScreenshot("composer-terminal-command.png");
   // Editing the command releases the choice.
   await field.press("Backspace");
   await expect(notice).toHaveCount(0);

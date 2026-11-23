@@ -40,8 +40,6 @@ impl ClaudeRuntime {
         if let Some(active) = &self.active {
             active.commands.update_terminal_handoff(
                 super::super::manifest::terminal_metadata(),
-                self.command_version.as_ref(),
-                &|control| self.supports_command_control(control),
                 Some(active.external_id.as_str()),
             );
         }

@@ -132,8 +132,6 @@ impl CommandState {
     pub(crate) fn update_terminal_handoff(
         &self,
         metadata: &'static placement::TerminalMetadata,
-        running: Option<&crate::acp::bindings::release_version::ReleaseVersion>,
-        supports: &dyn Fn(placement::NativeControl) -> bool,
         session: Option<&str>,
     ) {
         let mut list = self
@@ -141,7 +139,7 @@ impl CommandState {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(list) = list.as_mut() {
-            metadata.update(&mut list.terminal_handoff, running, supports, session);
+            metadata.update(&mut list.terminal_handoff, session);
         }
     }
     pub(crate) fn unsupported() -> Arc<Self> {

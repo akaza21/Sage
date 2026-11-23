@@ -21,12 +21,7 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { useOwnedFieldAttributes } from "../../ui/ownedFieldAttributes";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerCommandHint } from "./ComposerCommandHint";
-import type * as TerminalChunk from "./ComposerTerminalCommand";
-import {
-  TERMINAL_COMMAND_EVENT,
-  type TerminalCommandEvent,
-  type TerminalCommandRequest,
-} from "./terminalCommandEvents";
+import { ComposerTerminalCatch } from "./ComposerTerminalCatch";
 import type * as MenuChunk from "./ComposerSlashMenu";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import { lazyParts } from "./lazyParts";
@@ -57,9 +52,6 @@ const MenuPart = lazyParts<typeof MenuChunk>(
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
-const TerminalPart = lazyParts<
-  Pick<typeof TerminalChunk, "ComposerTerminalCommand">
->(() => import("./ComposerTerminalCommand"));
 
 const plainEnter = (event: SuggestionKeyEvent) =>
   event.key === "Enter" &&
@@ -107,20 +99,12 @@ export function ComposerSlashController({
   const [status, setStatus] = useState("");
   const [mounted, setMounted] = useState(false);
   const [failed, setFailed] = useState(false);
-  // One pending terminal-only choice; editing the text or the chat releases it.
-  const [terminal, setTerminal] = useState<TerminalCommandRequest | null>(null);
-  const releaseTerminal = useCallback(() => setTerminal(null), []);
-  const clearCommand = useCallback(() => {
-    if (fieldRef.current) insertSlashCommand(fieldRef.current, null);
-  }, [fieldRef]);
   if (scope !== boundChatId) {
     setScope(boundChatId);
     setDismissed(false);
     setPicked(null);
     setPanel(null);
-    setTerminal(null);
   }
-  if (terminal && text.trim() !== terminal.input) setTerminal(null);
   const query = slashCommandQuery(text, caret);
   if (query === null && dismissed) setDismissed(false);
   if (query === null && failed) setFailed(false);
@@ -199,17 +183,6 @@ export function ComposerSlashController({
   }, [fieldRef, readyRef]);
   useEffect(() => {
     const field = fieldRef.current;
-    if (!field) return;
-    // The send path dispatches a caught command here; cancelling owns it.
-    const take = (event: Event) => {
-      event.preventDefault();
-      setTerminal((event as TerminalCommandEvent).detail);
-    };
-    field.addEventListener(TERMINAL_COMMAND_EVENT, take);
-    return () => field.removeEventListener(TERMINAL_COMMAND_EVENT, take);
-  }, [fieldRef]);
-  useEffect(() => {
-    const field = fieldRef.current;
     if (!field || disabled) return;
     const adoptPick = () => {
       const command = takeComposerSlashPick(field);
@@ -267,15 +240,11 @@ export function ComposerSlashController({
           onClose={() => setPanel(null)}
         />
       ) : null}
-      {terminal ? (
-        <TerminalPart
-          part="ComposerTerminalCommand"
-          boundChatId={boundChatId}
+      {boundChatId ? (
+        <ComposerTerminalCatch
+          chatId={boundChatId}
           fieldRef={fieldRef}
-          onClear={clearCommand}
-          onDone={releaseTerminal}
-          onPanel={setPanel}
-          request={terminal}
+          text={text}
         />
       ) : null}
       {/* Mounted with the usable field, ahead of the menu, so its first

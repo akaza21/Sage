@@ -220,7 +220,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     });
   };
 
-  const submit = (
+  const submit = async (
     prompt: string,
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
@@ -229,35 +229,47 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
-    const refuse = (message: string) => {
-      if (captured)
-        emitState(captured, "chat", {
-          busy: false,
-          cancellingTurnId: null,
-          error: localFailure(message),
-        });
-      return Promise.resolve<AcpActionOutcome>("rejected");
-    };
     let boundedContext: readonly AttachedContext[];
     try {
       boundedContext = validateAttachedContexts(attachedContext);
     } catch (error) {
-      return refuse(
-        error instanceof Error ? error.message : "Attached context is invalid.",
-      );
+      if (captured) {
+        emitState(captured, "chat", {
+          busy: false,
+          cancellingTurnId: null,
+          error: localFailure(
+            error instanceof Error
+              ? error.message
+              : "Attached context is invalid.",
+          ),
+        });
+      }
+      return "rejected";
     }
     if (!captured) {
       dependencies.onUnscopedRefusal?.(
         "This chat is not ready to send. Reload it and try again.",
       );
-      return Promise.resolve("rejected");
+      return "rejected";
     }
-    if (!normalizedPrompt && !boundedContext.length && !staged)
-      return refuse("Enter a message before sending.");
-    if (currentNonterminalTurn(captured.page))
-      return refuse(
-        "Wait for the current turn to finish before sending a follow-up.",
-      );
+    if (!normalizedPrompt && !boundedContext.length && !staged) {
+      emitState(captured, "chat", {
+        busy: false,
+        cancellingTurnId: null,
+        error: localFailure("Enter a message before sending."),
+      });
+      return "rejected";
+    }
+    if (currentNonterminalTurn(captured.page)) {
+      emitState(captured, "chat", {
+        busy: false,
+        cancellingTurnId: null,
+        error: localFailure(
+          "Wait for the current turn to finish before sending a follow-up.",
+        ),
+      });
+      return "rejected";
+    }
     return enqueue(captured, "chat", async (updateState) => {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;
@@ -323,8 +335,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           );
         }
 
-        session = requireSelectedSession(session, bindingId, modelId);
-
+        // Every path above already checked the session against the selection.
         if (!session.runtimeEpoch || !session.capabilities.prompt) {
           throw new AcpDesktopError({
             kind: "unavailable",
@@ -355,6 +366,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
               dependencies.slashCommands,
             )
           : null;
+        // The composer took a terminal-only command; nothing is sent.
         if (runCommand === false) return "applied";
         dependencies.clearComposer?.(
           captured,
