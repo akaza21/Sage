@@ -29,8 +29,8 @@ export interface ChatHarnessControlsProps {
   modelLabelScope: string;
   /** The Chat whose parent-inherited model and effort may label the composer. */
   inheritScope?: string;
-  sessionHarnessId: string | null;
-  sessionModelId: string | null;
+  sessionHarnessId?: string | null;
+  sessionModelId?: string | null;
   selectedHarnessId: string | null;
   selectedModelId: string | null;
   projectName: string | null;
@@ -38,7 +38,7 @@ export interface ChatHarnessControlsProps {
   turnBusy: boolean;
   sessionConfig: AcpSessionConfig | null;
   modePending: boolean;
-  modeError: string | null;
+  modeError?: string | null;
   focused: boolean;
   onSetSessionMode: (modeId: string) => Promise<unknown>;
   onSetSessionConfigOption: (

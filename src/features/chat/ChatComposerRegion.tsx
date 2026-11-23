@@ -19,6 +19,7 @@ const LocationPart = lazyParts<typeof LocationChunk>(
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
+import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
@@ -197,14 +198,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {goal.kind === "goal" ||
+            {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
-                (goal.kind === "noGoal" && goalCapabilities.set))) ? (
+                (goal?.kind === "noGoal" && goalCapabilities.set))) ? (
               <GoalPart
                 part="BoundChatGoalControl"
                 key={dictationScope}
-                state={goal}
+                // Every chat passes its goal; only the new-chat draft has none.
+                state={goal!}
                 chatId={dictationScope}
                 details={goalDetails}
                 capabilities={goalCapabilities}
@@ -308,11 +310,13 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               scope={dictationScope}
               onRetry={onRetryLoad}
               compact={
+                // A visible error explains the session's own refusal; a local
+                // reason (size, queue, access) stays visible.
+                (!!chatError && sessionPromptUnavailable) ||
                 missingBindingNotice ||
                 (!availableBinding && !canPrompt) ||
-                ["checking", "consent", "waiting", "signInRequired"].includes(
-                  discoveryPhase,
-                )
+                discoveryPhase === "checking" ||
+                SIGN_IN_PHASES.includes(discoveryPhase)
               }
             />
             {otherContext.length > 0 ? (

@@ -103,17 +103,32 @@ impl AppState {
         };
         let sources = crate::harness_discovery::update_sources(&installed);
         let ids: Vec<_> = sources.iter().map(|source| source.harness_id).collect();
-        if harnesses.begin_update_check(&ids) {
+        if let Some(epoch) = Self::npm_check_enabled(app)
+            .then(|| harnesses.begin_update_check(&ids))
+            .flatten()
+        {
             let app = app.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 use tauri::Emitter;
-                let found = crate::harness_discovery::published_releases(&sources);
+                // The switch is read again before each npm lookup, and a check
+                // begun before it turned off is dropped by its epoch.
+                let found = crate::harness_discovery::published_releases(&sources, &|| {
+                    Self::npm_check_enabled(&app)
+                });
                 let harnesses = &app.state::<AppState>().harnesses;
-                harnesses.finish_update_check(found);
+                harnesses.finish_update_check(epoch, found);
                 let _ = app.emit("harness-discovery-changed-v1", harnesses.definitions());
             });
         }
         harnesses.definitions()
+    }
+
+    /// An unreadable setting counts as off: no npm process on doubt.
+    pub(crate) fn npm_check_enabled(app: &tauri::AppHandle) -> bool {
+        app.state::<AppState>()
+            .settings
+            .harness_update_check()
+            .unwrap_or(false)
     }
 
     fn discover_harnesses(

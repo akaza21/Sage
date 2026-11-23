@@ -21,7 +21,6 @@ use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerStat
 
 #[path = "turn/prepare_error.rs"]
 mod prepare_error;
-use prepare_error::{map_prepare, map_prepare_next};
 
 pub(super) async fn handle_reusable<A, R, T, C, Auth>(
     parts: Box<
@@ -77,12 +76,7 @@ where
                         intent.access_mode,
                     )))
                 }
-                Err(failure) => {
-                    responder.respond(Err(map_prepare_next(&failure.error)));
-                    FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::PrepareNext(
-                        failure,
-                    )))
-                }
+                Err(failure) => prepare_error::settle_next(failure, responder),
             }
         }
         WorkerCommand::AcceptLatestCompleted => {
@@ -152,12 +146,7 @@ where
                         access_mode: intent.access_mode,
                     }
                 }
-                Err(failure) => {
-                    responder.respond(Err(map_prepare(&failure.error)));
-                    FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::Prepare(
-                        failure,
-                    )))
-                }
+                Err(failure) => prepare_error::settle_first(failure, responder),
             }
         }
         WorkerCommand::BeginClose(command) => {

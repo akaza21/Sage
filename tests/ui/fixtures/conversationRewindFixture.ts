@@ -10,7 +10,11 @@ import { acpDesktop } from "../../../src/services/acpDesktop";
 import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures";
 
 /** The native command boundary returns a rejection once, then commits the suffix. */
-export function installConversationRewindFixture(inPlace = true) {
+export function installConversationRewindFixture(
+  inPlace = true,
+  residency: "hot" | "cold" = "hot",
+  availability: "all" | "latestTurn" = "all",
+) {
   installTranscriptSelectionFixture(false, true);
   const chat = useWorkbenchStore.getState().activeTabId!;
   const projection = acpProjectionStoreFor(chat);
@@ -45,14 +49,20 @@ export function installConversationRewindFixture(inPlace = true) {
   page = {
     ...page,
     turns: [first, second],
+    // Both turns stay conversation targets; a latest-turn offer acts only at
+    // its undo turn, so the earlier prompt must show no trigger.
+    sessionSurface:
+      availability === "latestTurn"
+        ? { activities: [], undoTurn: second.id }
+        : page.sessionSurface,
     sessions: page.sessions.map((session) => ({
       ...session,
-      residency: "hot",
+      residency,
       capabilities: {
         ...session.capabilities,
         rewind: {
           effects: { conversation: inPlace, files: false },
-          targets: "anyTurn",
+          targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,
         },
