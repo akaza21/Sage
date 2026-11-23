@@ -304,7 +304,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         enabled={composerEnabled && !firstSendPending}
         sendBlocked={sendBlocked}
         actionBusy={actionBusy || firstSendPending}
-        activeTurn={Boolean(activeAcpTurn)}
+        activeTurn={Boolean(activeAcpTurn) || firstSendPending}
+        stopFirstSend={
+          firstSendPending
+            ? () => useWorkbenchStore.setState({ pendingFirstSend: null })
+            : undefined
+        }
         queueAvailable={queueAvailable}
         queuedPrompts={queuedPrompts}
         steerAvailable={steerAvailable}

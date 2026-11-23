@@ -26,6 +26,13 @@ pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefin
         .map_err(|error| error.to_string())
 }
 
+/// The curated built-in commands the new-chat draft offers for a harness.
+/// Metadata only: no harness process starts.
+#[tauri::command]
+pub fn list_builtin_commands(state: State<'_, AppState>, harness_id: String) -> Vec<String> {
+    state.harnesses.draft_builtin_commands(&harness_id)
+}
+
 #[tauri::command]
 pub async fn list_harness_models(
     state: State<'_, AppState>,

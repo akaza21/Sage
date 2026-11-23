@@ -25,7 +25,8 @@ export function FirstChatSend({
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (pending?.chatId !== chatId || transitioning) return;
+    // A held first send (see sendFirstCommand) is already on its way.
+    if (pending?.chatId !== chatId || transitioning || pending.held) return;
     const state = useWorkbenchStore.getState();
     if (state.pendingFirstSend !== pending) return;
     const entry = state.chatUiById[chatId];
@@ -55,11 +56,15 @@ export function FirstChatSend({
       void state.sendPrompt();
     } else if (harness.bindingId) {
       // Images a draft handed over are already in this composer.
-      void actions.submit(
-        pending.text.trim(),
-        entry.attachedContext,
-        harness.bindingId as CuratedBindingId,
-        (entry.modelId ?? null) as CuratedModelId | null,
+      const submit = () =>
+        actions.submit(
+          pending.text.trim(),
+          entry.attachedContext,
+          harness.bindingId as CuratedBindingId,
+          (entry.modelId ?? null) as CuratedModelId | null,
+        );
+      void import("./ComposerSlashController").then((slash) =>
+        slash.sendFirstCommand(chatId, harness.id, pending, submit),
       );
     }
   }, [actions, chatId, page, pending, transitioning]);

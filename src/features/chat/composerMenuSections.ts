@@ -56,18 +56,19 @@ export interface ComposerMenuSection {
 
 /** Inputs are bounded by the command/config decoders. Only 50 matching rows
  * per section reach React; searching still considers the complete catalog.
- * Before a session exists (the new-chat draft) only rows declaring that they
- * need none stay, and no catalog command does. */
+ * Before a session exists (the new-chat draft, given its harness's curated
+ * built-ins) only rows declaring that they need none stay, and in place of
+ * any catalog only those built-ins. */
 export function composerMenuSections(
   allNative: readonly ComposerNativeRow[],
   allCatalog: readonly AvailableAcpCommand[],
   query: string,
-  sessionless = false,
+  draftBuiltins?: readonly AvailableAcpCommand[],
 ): ComposerMenuSection[] {
-  const native = sessionless
+  const native = draftBuiltins
     ? allNative.filter((row) => row.requires === "none")
     : allNative;
-  const catalog = sessionless ? [] : allCatalog;
+  const catalog = draftBuiltins ?? allCatalog;
   const needle = query.trim().toLocaleLowerCase();
   const controls = new Set(native.map((row) => row.control).filter(Boolean));
   const matches = (...text: (string | undefined | null)[]) =>

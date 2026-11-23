@@ -25,6 +25,8 @@ import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 import { lazyParts } from "./lazyParts";
+import { useWorkbenchStore } from "../../app/store";
+import { useDraftBuiltinCommands } from "./draftBuiltinCommands";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
 // A new-chat draft's image intake and handoff upload ride in this chunk:
@@ -47,10 +49,11 @@ function ComposerOptionsBrowser({
   onModeRemoved,
   accessModes,
   ...given
-}: ComposerOptionsProps & {
-  load: SessionCommandsLoad | null;
-  insertCommand?: typeof pickComposerSlashCommand;
-}) {
+}: ComposerOptionsProps &
+  DraftBuiltinsProp & {
+    load: SessionCommandsLoad | null;
+    insertCommand?: typeof pickComposerSlashCommand;
+  }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = given.boundChatId ?? pinnedOwner;
   const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
@@ -145,10 +148,17 @@ function ComposerOptionsBrowser({
   );
 }
 
+interface DraftBuiltinsProp {
+  /** The new-chat draft's curated built-in commands, insert-only. */
+  draftBuiltins?: readonly AvailableAcpCommand[];
+}
+
 export function ComposerSectionRows({
   load = null,
+  draftBuiltins,
   ...props
-}: ComposerAddActionsProps & { load?: SessionCommandsLoad | null }) {
+}: ComposerAddActionsProps &
+  DraftBuiltinsProp & { load?: SessionCommandsLoad | null }) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner;
   const page = useStore(acpProjectionStoreFor(owner), (state) => state.page);
@@ -175,7 +185,7 @@ export function ComposerSectionRows({
     rows,
     load?.kind === "ready" ? load.list.commands : [],
     query,
-    !!props.draftPickers,
+    props.draftPickers ? (draftBuiltins ?? []) : undefined,
   );
   return (
     <div
@@ -261,6 +271,27 @@ export function ComposerSectionRows({
   );
 }
 
+/** The draft lists its harness's curated built-ins; a pick only inserts
+ * `/name ` into the draft's text. */
+function DraftOptionsBrowser(props: ComposerOptionsProps) {
+  const builtins = useDraftBuiltinCommands(
+    useWorkbenchStore((state) => state.newChatDraft?.harnessId ?? undefined),
+  );
+  return (
+    <ComposerOptionsBrowser
+      {...props}
+      load={null}
+      draftBuiltins={builtins}
+      insertCommand={(field, { name }) => {
+        useWorkbenchStore.getState().updateNewChatDraft({
+          text: `/${name} ${field.value.replace(/^\/\S*\s?/u, "")}`,
+        });
+        field.focus();
+      }}
+    />
+  );
+}
+
 const CatalogPart = lazyParts<
   Pick<typeof CommandRuntime, "ComposerCommandCatalog">
 >(() => import("./ComposerCommandRuntime"));
@@ -282,8 +313,7 @@ export function ComposerOptionsMenu(props: ComposerOptionsProps) {
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner ?? undefined;
   // No session has a catalog yet, and another chat's must not show.
-  if (props.draftPickers)
-    return <ComposerOptionsBrowser {...props} load={null} />;
+  if (props.draftPickers) return <DraftOptionsBrowser {...props} />;
   return (
     <CatalogPart
       part="ComposerCommandCatalog"
