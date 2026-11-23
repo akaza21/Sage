@@ -228,22 +228,23 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
+    // Refused before anything is sent; a scoped chat shows why.
+    const refuse = (message: string): AcpActionOutcome => {
+      if (captured)
+        emitState(captured, "chat", {
+          busy: false,
+          cancellingTurnId: null,
+          error: localFailure(message),
+        });
+      return "rejected";
+    };
     let boundedContext: readonly AttachedContext[];
     try {
       boundedContext = validateAttachedContexts(attachedContext);
     } catch (error) {
-      if (captured) {
-        emitState(captured, "chat", {
-          busy: false,
-          cancellingTurnId: null,
-          error: localFailure(
-            error instanceof Error
-              ? error.message
-              : "Attached context is invalid.",
-          ),
-        });
-      }
-      return "rejected";
+      return refuse(
+        error instanceof Error ? error.message : "Attached context is invalid.",
+      );
     }
     if (!captured) {
       dependencies.onUnscopedRefusal?.(
@@ -251,24 +252,12 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       );
       return "rejected";
     }
-    if (!normalizedPrompt && !boundedContext.length && !staged) {
-      emitState(captured, "chat", {
-        busy: false,
-        cancellingTurnId: null,
-        error: localFailure("Enter a message before sending."),
-      });
-      return "rejected";
-    }
-    if (currentNonterminalTurn(captured.page)) {
-      emitState(captured, "chat", {
-        busy: false,
-        cancellingTurnId: null,
-        error: localFailure(
-          "Wait for the current turn to finish before sending a follow-up.",
-        ),
-      });
-      return "rejected";
-    }
+    if (!normalizedPrompt && !boundedContext.length && !staged)
+      return refuse("Enter a message before sending.");
+    if (currentNonterminalTurn(captured.page))
+      return refuse(
+        "Wait for the current turn to finish before sending a follow-up.",
+      );
     return enqueue(captured, "chat", async (updateState) => {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;
