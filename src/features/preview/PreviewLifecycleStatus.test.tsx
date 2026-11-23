@@ -19,7 +19,8 @@ it("explains a Preview failure once with its one restart", () => {
   expect(notices).toHaveLength(1);
   expect(notices[0]).toHaveClass("notice--warning");
   expect(notices[0]).toHaveAttribute("aria-live", "polite");
-  expect(screen.queryByRole("alert")).toBeNull();
+  // An inserted alert is what screen readers read; it stays polite.
+  expect(screen.getByRole("alert")).toBe(notices[0]);
   rerender(
     <PreviewLifecycleStatus
       failure="healthTimeout"
