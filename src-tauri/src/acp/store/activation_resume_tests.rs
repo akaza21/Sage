@@ -391,7 +391,13 @@ fn capabilities_cannot_change_without_a_resume_commit() {
     // Migration 035 admits a capabilities-only refresh from ready and
     // active alone; every other state still needs a resume commit.
     for (ordinal, state) in [
-        "created", "starting", "ready", "active", "recovering", "closing", "closed",
+        "created",
+        "starting",
+        "ready",
+        "active",
+        "recovering",
+        "closing",
+        "closed",
     ]
     .into_iter()
     .enumerate()
@@ -419,7 +425,11 @@ fn capabilities_cannot_change_without_a_resume_commit() {
         );
         if matches!(state, "ready" | "active") {
             assert_eq!(refreshed.unwrap(), 1, "{state}");
-            assert_eq!(row(&connection, &id), before, "{state}: only capabilities move");
+            assert_eq!(
+                row(&connection, &id),
+                before,
+                "{state}: only capabilities move"
+            );
             let stored: String = connection
                 .query_row(
                     "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
@@ -433,7 +443,10 @@ fn capabilities_cannot_change_without_a_resume_commit() {
             }
         } else {
             let error = refreshed.unwrap_err().to_string();
-            assert!(error.contains("agent session identity is immutable"), "{state}: {error}");
+            assert!(
+                error.contains("agent session identity is immutable"),
+                "{state}: {error}"
+            );
             assert_eq!(row(&connection, &id), before, "{state}");
         }
     }
