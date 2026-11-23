@@ -107,7 +107,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onAddImages,
   });
   const paste = useComposerPaste(
-    sessionFeatures && availableBinding,
+    availableBinding,
     activeTurn,
     disabledReasonId,
     onTextChange,
@@ -119,7 +119,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     (activeTurn && !queueAvailable) ||
     imageUploading ||
     imageInput.sendBlocked ||
-    (sessionFeatures && paste.blocksSend);
+    paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const hasContent = Boolean(
     text.trim() || attachedContext.length || paste.revision,
@@ -136,7 +136,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onPickFiles: paste.pickFiles,
     hidden: hidden || !sessionFeatures,
     disabled: composerDisabled,
-    attachable: sessionFeatures && availableBinding,
+    attachable: availableBinding,
   });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -297,15 +297,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               ) : null}
             </div>
-            {sessionFeatures ? (
-              <ComposerPasteSlot
-                paste={paste}
-                chatId={dictationScope}
-                session={pasteSession}
-                text={text}
-                disabled={actionDisabled}
-              />
-            ) : null}
+            <ComposerPasteSlot
+              paste={paste}
+              chatId={dictationScope}
+              // The new-chat draft stages files in its own slot, a chat by id.
+              draft={!sessionFeatures}
+              session={pasteSession}
+              text={text}
+              disabled={actionDisabled}
+            />
             <ComposerAvailabilityNotice
               reason={disabledReason}
               id={disabledReasonId}
@@ -332,7 +332,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               </div>
             ) : null}
-            {sessionFeatures ? files.parts : null}
+            {files.parts}
             {!hidden ? (
               <ComposerStatusNotices
                 workbenchError={workbenchError}

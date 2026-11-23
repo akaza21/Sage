@@ -51,9 +51,9 @@ export async function slashCommandTurn(
   )
     return runtime.slashCommandTurn(...args);
   const { name, live } = hold;
-  // The typed command route carries no attachments.
-  if (request.attachedContext?.length)
-    throw notSent("Commands can't include images.");
+  // The typed command route carries no attachments or staged files.
+  if (request.attachedContext?.length || request.staged)
+    throw notSent("Commands can't include images or files.");
   const intent = {
     projectId: request.projectId,
     projectGeneration: request.projectGeneration,
@@ -216,6 +216,8 @@ export function FirstChatSend({
           entry.attachedContext,
           harness.bindingId as CuratedBindingId,
           (entry.modelId ?? null) as CuratedModelId | null,
+          // Files the draft handed over go with this first turn only.
+          pending.staged,
         ),
       );
     }

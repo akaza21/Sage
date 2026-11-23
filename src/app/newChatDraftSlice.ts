@@ -24,6 +24,10 @@ export interface NewChatDraft {
   /** Images for the first turn, at most MAX_PROMPT_IMAGES. They stay in the
    * WebView until the handoff uploads them into the created chat's composer. */
   images?: readonly DraftImage[];
+  /** Names the draft's native file slot, released when the draft ends. */
+  fileToken?: string;
+  /** The slot's staged revision while it holds files, as the composer shows. */
+  fileRevision?: string | null;
   harnessId: string | null;
   modelId: string | null;
   access: SessionAccessMode | null;
@@ -69,6 +73,8 @@ export interface NewChatDraftSlice {
         text: string;
         /** Sent, and waiting for the session's catalog to run a command. */
         held?: true;
+        /** The staged batch the draft's files moved to, sent with it. */
+        staged?: { revision: string };
       }
     | null;
   openNewChatDraft: (

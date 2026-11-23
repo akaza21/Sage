@@ -221,7 +221,9 @@ test("a built-in command with images sends nothing", async ({ page }) => {
   });
   await sendFirst(opened, "/fast");
   await expect(
-    opened.chat.getByText("Commands can't include images. Nothing was sent."),
+    opened.chat.getByText(
+      "Commands can't include images or files. Nothing was sent.",
+    ),
   ).toBeVisible();
   await expect(
     opened.chat.getByRole("combobox", { name: "Message agent" }),

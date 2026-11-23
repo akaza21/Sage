@@ -163,14 +163,17 @@ export function NewChatDraftSurface({
           onAddImages={
             harness?.bindingId
               ? (files) => {
+                  // Each drop joins after the one before it, in drop order.
                   const next: Promise<unknown> = Promise.all([
                     intake,
-                    import("./ComposerSectionMenu").then((images) =>
+                    import("./ComposerSectionMenu"),
+                  ])
+                    .then(([, images]) =>
                       images.addDraftImages(draft.id, files),
-                    ),
-                  ]).finally(() => {
-                    if (intake === next) intake = undefined;
-                  });
+                    )
+                    .finally(() => {
+                      if (intake === next) intake = undefined;
+                    });
                   intake = next;
                 }
               : undefined

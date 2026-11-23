@@ -964,6 +964,11 @@ describe("desktop-native chunk topology", () => {
           "src/features/chat/ComposerSectionMenu.tsx",
         ),
       );
+    // Its file handoff rides with the composer's staging part, which stages
+    // the draft's files; the send path carries neither.
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/draftFileHandoff.ts"),
+    ).toBe(groupedGraph.moduleFiles.get("src/features/chat/ComposerPaste.tsx"));
     // Chat search's dialog and native adapter share a lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",
