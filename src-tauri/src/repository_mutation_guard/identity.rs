@@ -237,7 +237,7 @@ mod tests {
         .expect("the whole pass is bounded even when a probe never returns");
         assert_eq!(
             result.unrelated,
-            BTreeMap::from([("verified".into(), vec![unrelated])])
+            BTreeMap::from([("verified".into(), vec![unrelated.clone()])])
         );
         // The stalled folder used only its share: the target's own folder,
         // probed after it, is still verified as shared and leased.
