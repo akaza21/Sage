@@ -227,21 +227,18 @@ mod files {
     fn written(on_disk: &str, claude: &str, legacy: bool) -> Written {
         // The service starts first: its startup recovery would settle a
         // runtime it does not run, as in `running`.
-        let fixture = crate::acp::store::turn_undo::fixture::Fixture::new();
-        let service = AcpService::new(fixture.database.clone()).unwrap();
-        fixture.run();
+        use crate::acp::store::turn_undo::fixture::{CAPABILITIES, Fixture};
         let rewind = crate::acp::bindings::claude::sdk::rewind_capability(claude);
         let mut capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1 =
-            serde_json::from_str(crate::acp::store::turn_undo::fixture::CAPABILITIES).unwrap();
+            serde_json::from_str(CAPABILITIES).unwrap();
         capabilities.rewind = rewind;
-        fixture
-            .database
-            .connection()
-            .execute(
-                "UPDATE agent_sessions SET capabilities_json=?1 WHERE id='session-a'",
-                [serde_json::to_string(&capabilities).unwrap()],
-            )
-            .unwrap();
+        let fixture = Fixture::with_thread(
+            crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID,
+            "thread-a",
+            &serde_json::to_string(&capabilities).unwrap(),
+        );
+        let service = AcpService::new(fixture.database.clone()).unwrap();
+        fixture.run();
         let mut history = history::History {
             fixture,
             turns: Vec::new(),
