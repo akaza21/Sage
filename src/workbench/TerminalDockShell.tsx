@@ -211,7 +211,7 @@ export function TerminalDockShell({
   useEffect(() => {
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
-    if (!visible || (entries.length && !handoff)) return;
+    if (!visible) return;
     queueMicrotask(() => {
       if (owner.lifecycle === lifecycle && (handoff || !owner.entries.length))
         void create();

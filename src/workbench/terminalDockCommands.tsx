@@ -9,6 +9,7 @@ import {
   matchesPlatformChord,
 } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
+import { hasNavigationModifier } from "../ui/listNavigation";
 
 export function connectTerminalDock(
   blocked: () => boolean,
@@ -54,10 +55,7 @@ export function connectTerminalDock(
     );
     const escape =
       event.key === "Escape" &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !event.shiftKey &&
+      !hasNavigationModifier(event) &&
       event.target instanceof Element &&
       event.target.closest(".terminal-dock__header");
     if ((!chord && !escape) || event.repeat) return;
