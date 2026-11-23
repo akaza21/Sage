@@ -23,6 +23,7 @@ import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
+import { harnessChrome } from "./ComposerChromeSlot";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -198,6 +199,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
+            {harnessChrome("above", props)}
             {goal.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
@@ -294,6 +296,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 />
               ) : null}
             </div>
+            {harnessChrome("below", props)}
             {sessionFeatures ? (
               <ComposerPasteSlot
                 paste={paste}

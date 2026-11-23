@@ -2,11 +2,8 @@ use crate::acp::bindings::adapter::{
     AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
 };
 use sage_acp_protocol::{
-    contract::{RequiredText, SafeText},
-    intent::{
-        ExternalId, NormalizedPayload,
-        session_event::{SessionNotice, SessionScopedEvent},
-    },
+    contract::SafeText,
+    intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, TurnState},
 };
 use sage_core::limits::LIMITS;
@@ -18,6 +15,7 @@ mod authority;
 mod bridge;
 mod bridge_ready;
 mod capabilities;
+mod chrome;
 mod commands;
 mod compaction;
 mod config;
@@ -89,6 +87,11 @@ impl PiRuntime {
                     .push_egress(egress)
                     .map_err(|error| self.batch_failure(error, mandatory, staged_id))?;
             }
+        }
+        if let Some(chrome) = self.chrome_snapshot() {
+            builder
+                .push_event(chrome)
+                .map_err(|error| self.batch_failure(error, false, staged_id))?;
         }
         if let Some(staged) = staged {
             builder
@@ -319,26 +322,13 @@ impl PiRuntime {
                 command_id,
                 accepted,
             } => (Some(self.steer_resolved(&command_id, accepted)), None),
+            AdapterOutput::Chrome(update) => (Some(self.chrome_update(update)?), None),
             AdapterOutput::Notice {
                 level,
                 source,
                 text,
-            } => (
-                Some(
-                    self.session_event(SessionScopedEvent::Notice(SessionNotice {
-                        identity: None,
-                        diagnostic: false,
-                        level,
-                        text: RequiredText::new("noticeText", text)
-                            .map_err(|_| AdapterRuntimeError::Frame)?,
-                        source: Some(
-                            RequiredText::new("noticeSource", source)
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                        ),
-                    })),
-                ),
-                None,
-            ),
+                identity,
+            } => (Some(self.notice(level, source, &text, identity)?), None),
             AdapterOutput::Title(title) => (
                 Some(
                     crate::acp::bindings::session_title::harness_title_event(&title)

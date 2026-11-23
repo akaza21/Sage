@@ -28,7 +28,6 @@ enum Row {
     Lifecycle,
     Content,
     ContentFree,
-    FireAndForget,
     Unknown,
 }
 #[derive(Clone, Copy)]
@@ -77,7 +76,6 @@ fn row_frames(row: Row) -> Vec<Value> {
             json!({"type":"compaction_end","result":{}}),
         ],
         Row::ContentFree => content_free::updates(),
-        Row::FireAndForget => content_free::notifications(),
         Row::Unknown => [
             "future_event",
             "future_event",
@@ -136,7 +134,7 @@ async fn exercise(row: Row, state: State) {
                     .all(|event| matches!(event, AdapterEvent::IgnoredLate))
             );
         }
-        (Row::Lifecycle | Row::ContentFree | Row::FireAndForget, State::Live) => {
+        (Row::Lifecycle | Row::ContentFree, State::Live) => {
             assert_eq!(events.len(), row_frames(row).len());
             assert!(
                 events
@@ -247,7 +245,6 @@ async fn pi_pump_authority_denied_drops_all_contract_rows() {
         Row::Lifecycle,
         Row::Content,
         Row::ContentFree,
-        Row::FireAndForget,
         Row::Unknown,
     ] {
         for value in row_frames(row) {

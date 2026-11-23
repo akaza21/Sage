@@ -415,3 +415,5 @@ fn installed_pi_discovers_commands_and_gates_extension_execution_in_both_modes()
 mod load_failure;
 #[path = "questions_native.rs"]
 mod questions;
+#[path = "chrome_native.rs"]
+mod chrome;

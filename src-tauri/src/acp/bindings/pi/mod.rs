@@ -2,6 +2,7 @@
 //! current permission decision and a contained target.
 
 pub(crate) mod bridge;
+mod chrome;
 mod decode;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 pub(crate) mod fixture_admission;

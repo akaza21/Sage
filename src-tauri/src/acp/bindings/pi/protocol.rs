@@ -321,8 +321,12 @@ pub enum AdapterOutput {
         level: sage_acp_protocol::intent::session_event::SessionNoticeLevel,
         source: &'static str,
         text: String,
+        /// Notices of one identity replace each other.
+        identity: Option<&'static str>,
     },
     Title(String),
+    /// A fire-and-forget extension UI request.
+    Chrome(super::chrome::ChromeUpdate),
     DialogCancelled {
         external_id: String,
     },

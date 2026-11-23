@@ -120,6 +120,8 @@ pub(crate) struct PiRuntime {
     pub(super) native_pending: Option<String>,
     pub(super) native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     pub(super) usage: std::sync::Arc<sage_acp_protocol::usage::UsageCell>,
+    /// Fire-and-forget extension UI, reported as one snapshot per change.
+    pub(super) chrome: super::chrome::PiChrome,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
     /// Unsettled forks and refused copies whose cleanup has not succeeded.
@@ -306,6 +308,7 @@ impl HarnessAdapter for PiRuntime {
                         .map_err(|_| AdapterRuntimeError::Operation)?;
                 let egress = self.begin_prompt(&prompt, external_id.as_str())?;
                 self.commands_discovered = false;
+                self.chrome.clear_offer();
                 self.active_turn = Some(TurnIntent::new(external_id, client_message_id));
                 // Bridge authority is scoped to the turn that was actually reserved.
                 self.begin_bridge_turn(access_mode);
