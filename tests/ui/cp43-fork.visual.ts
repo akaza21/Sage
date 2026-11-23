@@ -337,10 +337,12 @@ test("T11d: Undo confirms over Rewind's file preview, and a failed one offers th
   ]);
   await expect(surface.getByRole("alert")).toHaveCount(0);
   await confirm.click();
-  await expect.poll(async () => (await undos()).at(-1)).toEqual({
-    kind: "undoTurn",
-    turnId,
-  });
+  await expect
+    .poll(async () => (await undos()).at(-1))
+    .toEqual({
+      kind: "undoTurn",
+      turnId,
+    });
 });
 
 test("T22: a cold session's completed turns carry no ellipsis actions row", async ({

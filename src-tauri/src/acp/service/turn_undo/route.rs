@@ -11,8 +11,7 @@ use sage_acp_protocol::{
 };
 
 pub(crate) const FILES_STAY: &str = "Last turn removed; files stay as they are.";
-pub(crate) const FILES_NOT_RESTORED: &str =
-    "This turn can't be undone without restoring its files, which Sage can't check. Files were not restored.";
+pub(crate) const FILES_NOT_RESTORED: &str = "This turn can't be undone without restoring its files, which Sage can't check. Files were not restored.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Rewind {
@@ -67,7 +66,9 @@ impl AcpService {
             self.prepare_rewind(owner, turn_id.clone(), undo, conversation_only, resolve_cut)?;
         match control(native) {
             Ok(NativeRpcReply::Controlled(summary)) => Ok((command, summary, false)),
-            Ok(_) => Err(self.abandon_staged(owner, &command, SessionControlError::RecoveryRequired)),
+            Ok(_) => {
+                Err(self.abandon_staged(owner, &command, SessionControlError::RecoveryRequired))
+            }
             Err(error) => Err(self.abandon_staged(owner, &command, error)),
         }
     }
@@ -107,6 +108,10 @@ impl AcpService {
             return Err(file_rewind::refusal(FILES_NOT_RESTORED));
         }
         let (command, _) = self.prepare_rewind(owner, turn_id.clone(), undo, false, resolve_cut)?;
-        Ok((command, SafeText::new("controlSummary", FILES_STAY).ok(), false))
+        Ok((
+            command,
+            SafeText::new("controlSummary", FILES_STAY).ok(),
+            false,
+        ))
     }
 }
