@@ -16,7 +16,10 @@ import type * as LocationChunk from "./ComposerLocationStrip";
 const LocationPart = lazyParts<typeof LocationChunk>(
   () => import("./ComposerLocationStrip"),
 );
-import { ComposerStatusNotices, composerProblem } from "./ComposerStatusNotices";
+import {
+  ComposerStatusNotices,
+  composerProblem,
+} from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
