@@ -119,15 +119,17 @@ export function TerminalDockPanel({
     };
   }, [scope]);
 
+  // A shown dock wants a tab when it has none or a handoff waits. A tab in
+  // flight holds `create`; one that lands changes `entries` first.
+  const wantsTab = visible && (!entries.length || !!handoff);
   useEffect(() => {
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
-    if (!visible || (entries.length && !handoff)) return;
-    // A tab in flight holds `create`; one that lands changes `entries` first.
+    if (!wantsTab) return;
     queueMicrotask(() => {
       if (owner.lifecycle === lifecycle) void create();
     });
-  }, [create, visible, entries.length, handoff]);
+  }, [create, wantsTab]);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
