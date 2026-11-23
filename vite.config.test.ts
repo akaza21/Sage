@@ -957,6 +957,12 @@ describe("desktop-native chunk topology", () => {
         );
       }
     }
+    // A new-chat draft's image intake rides in the + menu's section chunk.
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/draftImages.ts"),
+    ).toBe(
+      groupedGraph.moduleFiles.get("src/features/chat/ComposerSectionMenu.tsx"),
+    );
     // Chat search's dialog and native adapter share a lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",

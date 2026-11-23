@@ -61,6 +61,7 @@ impl ClaudeRuntime {
             return false;
         };
         match control {
+            NativeControl::ReloadAddOns => self.opens_panels,
             NativeControl::Compact => {
                 self.opens_panels && self.capabilities.as_ref().is_some_and(|c| c.prompt)
             }

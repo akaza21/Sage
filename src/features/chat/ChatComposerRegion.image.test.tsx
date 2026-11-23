@@ -92,6 +92,64 @@ async function openAttachMenu() {
   await settleLazyModules();
 }
 
+it("locks the branch chip for this composer's turn and submission, before and after opening its menu", async () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "Alpha",
+      roots: [
+        {
+          id: "root-a",
+          name: "Alpha",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          branches: ["main", "topic"],
+          changes: [],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    },
+  });
+  const { rerenderComposer } = renderComposer({ newChat: true });
+  const chip = () =>
+    screen.getByRole("button", { name: "Switch branch in Alpha" });
+  await screen.findByRole("button", { name: "Switch branch in Alpha" });
+  for (const menuLoaded of [false, true]) {
+    expect(chip()).toBeEnabled();
+    if (menuLoaded) {
+      fireEvent.click(chip());
+      await screen.findByRole("listbox", { name: "Switch branch in Alpha" });
+    }
+    rerenderComposer({ activeTurn: true });
+    expect(chip()).toBeDisabled();
+    expect(chip()).toHaveAttribute(
+      "title",
+      "Can't switch branches while the agent is working",
+    );
+    expect(screen.queryByRole("listbox")).toBeNull();
+    rerenderComposer({ actionBusy: true });
+    expect(chip()).toBeDisabled();
+    fireEvent.click(chip());
+    expect(screen.queryByRole("listbox")).toBeNull();
+    rerenderComposer({ activeTurn: false, actionBusy: false });
+    expect(chip()).toBeEnabled();
+  }
+});
+
 describe("composer image input", () => {
   it("resolves one image problem reported by workspace, send and attachment channels at the attachment", () => {
     renderComposer({

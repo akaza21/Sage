@@ -14,4 +14,6 @@ export const chatAccessDraftPort: {
   ) => { effort?: string };
   /** Lets go of the chat's thinking level draft once a session started with it. */
   spendEffort?: (chatId: string) => void;
+  /** The new-chat draft's image handoff; registered with its first image. */
+  uploadDraftImages?: (chatId?: string) => Promise<void>;
 } = {};

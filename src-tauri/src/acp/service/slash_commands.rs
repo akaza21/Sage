@@ -1,5 +1,22 @@
 use super::*;
 impl AcpService {
+    pub(crate) fn refresh_commands(
+        &self,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        let lane = self
+            .lane_for(&owner)
+            .ok_or(crate::acp::runtime::HostError::Unavailable)?;
+        let host = lane
+            .runtime
+            .for_owner(&owner)
+            .map_err(|_| crate::acp::runtime::HostError::Unavailable)?;
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner,
+            request: crate::acp::goal::NativeRpcRequest::RefreshCommands,
+        })?;
+        Ok(())
+    }
     pub(crate) fn set_commands_notice_sink(
         &self,
         sink: crate::acp::slash_commands::CommandNoticeSink,

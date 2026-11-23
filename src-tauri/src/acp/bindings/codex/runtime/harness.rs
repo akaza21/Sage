@@ -66,6 +66,13 @@ impl HarnessAdapter for CodexRuntime {
             .then(|| self.request(CodexAdapter::skills_list))
             .transpose()
     }
+    fn refresh_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.inner.skills_read_pending() {
+            return Ok(None);
+        }
+        self.inner.skills_changed();
+        self.discover_commands()
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(self.request_model_config())
     }

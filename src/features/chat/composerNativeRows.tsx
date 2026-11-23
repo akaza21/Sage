@@ -26,6 +26,7 @@ export function composerNativeRows(
     content: ReactNode,
     description?: string,
     control?: ComposerNativeRow["control"],
+    requires?: ComposerNativeRow["requires"],
   ) => {
     rows.push({
       kind: "native",
@@ -34,6 +35,7 @@ export function composerNativeRows(
       label,
       description,
       control,
+      requires,
       content,
     });
   };
@@ -126,6 +128,9 @@ export function composerNativeRows(
       >
         <span>Add images</span>
       </button>,
+      undefined,
+      undefined,
+      "none",
     );
   if (props.projectAction)
     add("project", "addToMessage", "Work in a project", props.projectAction);
@@ -168,10 +173,18 @@ export function composerNativeRows(
       "modelAndAccess",
       "Plan mode",
       <ComposerPlanAccess
-        target={props.planAccess}
+        // The draft's own access picker state, never a second copy.
+        target={{
+          ...props.planAccess,
+          value: props.draftPickers?.access,
+          onChange: props.draftPickers?.onAccessChange,
+        }}
         disabled={disabled}
         onClose={onClose}
       />,
+      undefined,
+      undefined,
+      "none",
     );
   // Harness modes and options share the action rows' label, description
   // and check columns.

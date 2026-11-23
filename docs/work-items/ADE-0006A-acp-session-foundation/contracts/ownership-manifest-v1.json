@@ -310,6 +310,7 @@
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/bindings/runtime/state.rs",
+        "src-tauri/src/acp/bindings/runtime/commands.rs",
         "src-tauri/src/acp/bindings/session_title.rs",
         "src-tauri/src/acp/elicitation_form.rs",
         "src-tauri/src/acp/elicitation_form/tests.rs",
