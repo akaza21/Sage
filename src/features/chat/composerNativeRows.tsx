@@ -107,6 +107,9 @@ export function composerNativeRows(
         ) : null}
       </button>,
       refusal ?? undefined,
+      undefined,
+      // The new-chat draft stages files in its own native slot.
+      "none",
     );
   }
   const imageAction = props.imageAction;
@@ -165,6 +168,16 @@ export function composerNativeRows(
     undefined,
     undefined,
     "mcpPanel",
+    false,
+  );
+  action(
+    "extensions",
+    "addOns",
+    "Extensions",
+    props.onOpenExtensions,
+    undefined,
+    undefined,
+    undefined,
     false,
   );
   if (props.planAccess)

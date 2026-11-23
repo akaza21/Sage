@@ -96,6 +96,8 @@ export interface ChatComposerRegionProps {
   imageInputDisabledReason?: string | null;
   onAddImages?: (files: File[]) => void;
   onCancelTurn?: (() => void) | null;
+  /** Stop for a pending first send, enabled even while its action is busy. */
+  onStop?: () => void;
   onDeleteQueuedPrompt?: (id: string) => void;
   onRetryQueuedPrompt?: (id: string) => void;
   onSteerQueuedPrompt?: (id: string) => void;

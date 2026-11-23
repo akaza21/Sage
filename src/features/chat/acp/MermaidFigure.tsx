@@ -341,3 +341,5 @@ function LaneSvg({
     </DiagramSvg>
   );
 }
+
+export default MermaidFigure;

@@ -25,6 +25,13 @@ export interface AvailableAcpCommand {
   inputHint: string | null;
   source: AcpCommandSource;
   sourceLabel?: string;
+  sourceInfo?: {
+    path?: string | null;
+    source?: string | null;
+    scope?: string | null;
+    origin?: string | null;
+    baseDir?: string | null;
+  };
   /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
   aliases?: string[];
@@ -75,6 +82,15 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
   };
   const commandName = (s: unknown): s is string =>
     text(s, 128) && s !== "" && !/[\s/]/u.test(s);
+  // Provenance fields may be null or omitted; any other key rejects the list.
+  const sourceInfo = (info: unknown) =>
+    isRecord(info) &&
+    Object.entries(info).every(
+      ([key, value]) =>
+        ["path", "source", "scope", "origin", "baseDir"].includes(key) &&
+        (value === null ||
+          text(value, key === "path" || key === "baseDir" ? 1024 : 128)),
+    );
   for (const c of value.commands) {
     const aliases: unknown =
       isRecord(c) && c.aliases !== undefined ? c.aliases : [];
@@ -84,6 +100,7 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       Object.keys(c).length !==
         4 +
           +(c.sourceLabel !== undefined) +
+          +(c.sourceInfo !== undefined) +
           +(c.panel !== undefined) +
           +(c.aliases !== undefined) +
           +(c.placement !== undefined) ||
@@ -96,6 +113,7 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       (c.inputHint !== null && !text(c.inputHint, 256)) ||
       !isCommandSource(c.source) ||
       (c.sourceLabel !== undefined && !text(c.sourceLabel, 128)) ||
+      (c.sourceInfo !== undefined && !sourceInfo(c.sourceInfo)) ||
       (c.panel !== undefined && !isCommandPanel(c.panel)) ||
       (c.placement !== undefined && !isCommandPlacement(c.placement))
     )

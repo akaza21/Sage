@@ -8,4 +8,8 @@ export const nativePromptAttachments: PromptAttachmentsPort = {
   listPromptFiles: (owner) => invokeNative("list_prompt_files", { owner }),
   removePromptFile: (request) =>
     invokeNative("remove_prompt_file", { request }),
+  handOffPromptFiles: (request) =>
+    invokeNative("hand_off_prompt_files", { request }),
+  releaseDraftPromptFiles: (draft) =>
+    invokeNative("release_draft_prompt_files", { draft }),
 };

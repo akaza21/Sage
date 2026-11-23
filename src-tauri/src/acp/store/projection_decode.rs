@@ -147,6 +147,15 @@ fn content(
             text,
         },
         NormalizedPayload::UserPrompt { text } => ItemContent::UserPrompt { text },
+        NormalizedPayload::ExtensionMessage {
+            label,
+            text,
+            details,
+        } => ItemContent::ExtensionMessage {
+            label,
+            text,
+            details,
+        },
         NormalizedPayload::ThoughtSummary { summary } => ItemContent::ThoughtSummary { summary },
         NormalizedPayload::Plan { summary } => ItemContent::Plan {
             entries: BoundedVec::new(

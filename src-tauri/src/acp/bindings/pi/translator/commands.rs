@@ -62,7 +62,9 @@ impl PiTranslator {
                     active.lifecycle.resolve_abort(false);
                 }
             }
-            PendingKind::State
+            PendingKind::Configuration
+            | PendingKind::ConfigurationModels
+            | PendingKind::State
             | PendingKind::Models
             | PendingKind::SetModel
             | PendingKind::Commands
@@ -138,6 +140,7 @@ impl PiTranslator {
         }
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
+            extension_messages: 0,
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),

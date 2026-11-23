@@ -41,7 +41,15 @@ import { setPickedCommand } from "./slashCommandPicks";
 
 // Menus and typed sends share one lazy catalog entry and transport.
 // eslint-disable-next-line react-refresh/only-export-components -- the chunk's command action, shared by its parts
-export { slashCommandTurn } from "./slashCommandTurn";
+export { slashCommandTurn, parseSlashCommand } from "./slashCommandTurn";
+// For the facade's first-send hold.
+// eslint-disable-next-line react-refresh/only-export-components -- the chunk's command port and picks
+export { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
+// eslint-disable-next-line react-refresh/only-export-components -- see above
+export { setPickedCommand };
+// The new-chat draft's built-in rows insert through it, for Undo.
+// eslint-disable-next-line react-refresh/only-export-components -- see above
+export { insertSlashCommand };
 
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./ComposerSlashMenu"),

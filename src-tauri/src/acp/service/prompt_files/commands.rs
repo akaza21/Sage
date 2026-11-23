@@ -1,4 +1,6 @@
-use super::{Resources, StagedFiles, attachment, read::read_paths, release_detached};
+use super::{
+    Resources, StagedFiles, attachment, draft::DraftOwner, read::read_paths, release_detached,
+};
 use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 use serde::Deserialize;
@@ -12,6 +14,26 @@ pub(crate) struct FileOwner {
     chat_id: String,
     project_generation: u64,
 }
+/// Where a batch is staged: a chat tab, or the new-chat draft before its
+/// chat exists. Both use the same batch, caps and commands.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(crate) enum StageOwner {
+    Chat(FileOwner),
+    Draft(DraftOwner),
+}
+type StageKey = (String, String, i64);
+impl StageOwner {
+    /// The batch key and its attachment identity, checked under the
+    /// transition guard.
+    fn key(&self, state: &AppState, generation: u64) -> Result<StageKey, String> {
+        match self {
+            Self::Chat(owner) => validate(state, owner, generation)
+                .map(|at| (owner.project_id.clone(), owner.chat_id.clone(), at)),
+            Self::Draft(draft) => draft.key(),
+        }
+    }
+}
 /// What the native picker offers. The WebView never names a path: every
 /// staged file comes from a picker this command opens itself, so injected
 /// content cannot stage an arbitrary file through this IPC.
@@ -24,7 +46,7 @@ pub(crate) enum PickKind {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StageFilesRequest {
-    owner: FileOwner,
+    owner: StageOwner,
     pick: PickKind,
     expected_revision: Option<String>,
 }
@@ -33,14 +55,14 @@ pub(crate) struct StageFilesRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StageTextRequest {
-    owner: FileOwner,
+    owner: StageOwner,
     expected_revision: Option<String>,
     text: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RemoveFileRequest {
-    owner: FileOwner,
+    owner: StageOwner,
     revision: String,
     id: String,
 }
@@ -123,11 +145,9 @@ where
     let admission = std::sync::Arc::clone(&state.acp.file_stage_reader)
         .try_lock_owned()
         .map_err(|_| "Another attachment selection is being read.")?;
-    let attached = validate(
-        state,
-        &request.owner,
-        *state.project_transitions.lock().await,
-    )?;
+    let attached = request
+        .owner
+        .key(state, *state.project_transitions.lock().await)?;
     // One native picker and reader at a time. No queued file buffers and no
     // filesystem I/O on the async runtime thread.
     let resources = tauri::async_runtime::spawn_blocking(move || {
@@ -140,9 +160,10 @@ where
         return Ok(None);
     };
     let transition = state.project_transitions.lock().await;
-    if validate(state, &request.owner, *transition)? != attached {
+    if request.owner.key(state, *transition)? != attached {
         return Err("Attachment chat tab changed during selection.".into());
     }
+    let (project, chat, attached) = attached;
     release_detached(&state.acp.file_stages, &state.database);
     state
         .acp
@@ -150,8 +171,8 @@ where
         .lock()
         .map_err(|_| "Attachment state is unavailable.")?
         .stage(
-            &request.owner.project_id,
-            &request.owner.chat_id,
+            &project,
+            &chat,
             attached,
             request.expected_revision.as_deref(),
             resources,
@@ -171,7 +192,7 @@ pub(super) async fn stage_text(
     request: StageTextRequest,
 ) -> Result<StagedFiles, String> {
     let transition = state.project_transitions.lock().await;
-    let attached = validate(state, &request.owner, *transition)?;
+    let (project, chat, attached) = request.owner.key(state, *transition)?;
     release_detached(&state.acp.file_stages, &state.database);
     state
         .acp
@@ -179,8 +200,8 @@ pub(super) async fn stage_text(
         .lock()
         .map_err(|_| "Attachment state is unavailable.")?
         .append_text(
-            &request.owner.project_id,
-            &request.owner.chat_id,
+            &project,
+            &chat,
             attached,
             request.expected_revision.as_deref(),
             request.text,
@@ -190,17 +211,17 @@ pub(super) async fn stage_text(
 #[tauri::command]
 pub(crate) async fn list_prompt_files(
     state: State<'_, AppState>,
-    owner: FileOwner,
+    owner: StageOwner,
 ) -> Result<Option<StagedFiles>, String> {
     let transition = state.project_transitions.lock().await;
-    validate(&state, &owner, *transition)?;
+    let (project, chat, _) = owner.key(&state, *transition)?;
     release_detached(&state.acp.file_stages, &state.database);
     Ok(state
         .acp
         .file_stages
         .lock()
         .map_err(|_| "Attachment state is unavailable.")?
-        .list(&owner.project_id, &owner.chat_id))
+        .list(&project, &chat))
 }
 #[tauri::command]
 pub(crate) async fn remove_prompt_file(
@@ -208,22 +229,68 @@ pub(crate) async fn remove_prompt_file(
     request: RemoveFileRequest,
 ) -> Result<Option<StagedFiles>, String> {
     let transition = state.project_transitions.lock().await;
-    validate(&state, &request.owner, *transition)?;
+    let (project, chat, _) = request.owner.key(&state, *transition)?;
     release_detached(&state.acp.file_stages, &state.database);
     state
         .acp
         .file_stages
         .lock()
         .map_err(|_| "Attachment state is unavailable.")?
-        .remove(
-            &request.owner.project_id,
-            &request.owner.chat_id,
-            &request.revision,
-            &request.id,
-        )
+        .remove(&project, &chat, &request.revision, &request.id)
         .map_err(str::to_owned)
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct HandOffFilesRequest {
+    from: StageOwner,
+    to: StageOwner,
+    /// The revision the person last saw at `from`.
+    revision: String,
+}
+/// Moves a draft's batch whole to the chat its first send created, or back
+/// when that handoff fails, so the files go with exactly one first turn.
+#[tauri::command]
+pub(crate) async fn hand_off_prompt_files(
+    state: State<'_, AppState>,
+    request: HandOffFilesRequest,
+) -> Result<StagedFiles, String> {
+    hand_off(&state, request).await
+}
+pub(super) async fn hand_off(
+    state: &AppState,
+    request: HandOffFilesRequest,
+) -> Result<StagedFiles, String> {
+    let transition = state.project_transitions.lock().await;
+    let from = request.from.key(state, *transition)?;
+    let to = request.to.key(state, *transition)?;
+    release_detached(&state.acp.file_stages, &state.database);
+    state
+        .acp
+        .file_stages
+        .lock()
+        .map_err(|_| "Attachment state is unavailable.")?
+        .hand_off((&from.0, &from.1), (&to.0, &to.1, to.2), &request.revision)
+        .map_err(str::to_owned)
+}
+/// A discarded or retargeted draft lets go of its files.
+#[tauri::command]
+pub(crate) fn release_draft_prompt_files(
+    state: State<'_, AppState>,
+    draft: DraftOwner,
+) -> Result<(), String> {
+    let (project, token, _) = draft.key()?;
+    state
+        .acp
+        .file_stages
+        .lock()
+        .map_err(|_| "Attachment state is unavailable.")?
+        .release_draft(&project, &token);
+    Ok(())
+}
 
+#[cfg(test)]
+#[path = "draft_tests.rs"]
+mod draft_tests;
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;
