@@ -58,10 +58,7 @@ export function useComposerDictation(
   }, []);
   useEffect(() => () => cancel(), [cancel, scope]);
   useEffect(() => {
-    if (suspended) {
-      queueMicrotask(cancel);
-      return;
-    }
+    if (suspended) return queueMicrotask(cancel);
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
   }, [cancel, suspended]);

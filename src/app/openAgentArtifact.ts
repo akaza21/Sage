@@ -67,18 +67,17 @@ export async function openAgentArtifact(
     repository = resolved.repository;
     await useWorkbenchStore.getState().openDiff(intent.resource, repository);
   } else {
-    const { selectedSnapshotIsCurrent, snapshotProjectionRevision } =
-      await import("./agentDiffAdmission");
+    const admission = await import("./agentDiffAdmission");
     const ref = intent.diffRef;
     if (
       !ref ||
       !sameAgentArtifactOwner(intent.owner, ref) ||
       !sameResource(intent.resource, ref) ||
       !agentArtifactOwnerIsCurrent(intent.owner, projectGeneration) ||
-      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+      !admission.selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
-    const revision = snapshotProjectionRevision(
+    const revision = admission.snapshotProjectionRevision(
       useWorkbenchStore.getState(),
       ref,
     );
@@ -86,9 +85,9 @@ export async function openAgentArtifact(
       .getState()
       .openDiff(intent.resource, undefined, ref);
     if (
-      snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
+      admission.snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
         revision ||
-      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+      !admission.selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
   }
