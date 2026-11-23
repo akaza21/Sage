@@ -8,10 +8,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
-import {
-  resetBrowserClearDataForTests,
-  useClearProgress,
-} from "../browser/browserClearProgress";
 import { useAgentSettingsState } from "./agentSettingsState";
 import { AgentBrowserSettings } from "./AgentBrowserSettings";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
@@ -95,7 +91,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  resetBrowserClearDataForTests();
   useWorkbenchStore.setState(initial, true);
   useAgentSettingsState.getState().close();
 });
@@ -237,8 +232,11 @@ it("does not retain live-tab controls after the native browser data has been cle
   await screen.findByRole("button", { name: "Manage browsing history" });
   vi.mocked(browserLiveTabs).mockResolvedValueOnce([]);
   const { act } = await import("@testing-library/react");
-  act(() => useClearProgress.setState({ busy: true }));
-  act(() => useClearProgress.setState({ busy: false }));
+  act(() =>
+    useWorkbenchStore.setState({
+      browserClearNotice: "Browsing data cleared.",
+    }),
+  );
   await waitFor(() =>
     expect(
       screen.getByRole("combobox", { name: "Browser tab" }),

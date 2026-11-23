@@ -2,7 +2,6 @@ import { useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { Notice } from "../../ui/Notice";
 import { useClearProgress } from "./browserClearProgress";
 import { reconcileNativeClosedBrowserTabs } from "../../app/tabClosing";
 import {
@@ -11,13 +10,9 @@ import {
 } from "../../ports/nativeBrowserPort";
 
 const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
-// Both outlive the browser tabs closed by this operation: success is a quiet
-// status-bar line, a failure is the workbench error, as for other failures.
-const setOutcome = (cleared: boolean, failure: string | null) =>
-  useWorkbenchStore.setState({
-    browserClearNotice: cleared ? "Browsing data cleared." : null,
-    ...(failure ? { error: failure } : {}),
-  });
+const setError = (error: string | null) => useClearProgress.setState({ error });
+const setSuccess = (success: string | null) =>
+  useClearProgress.setState({ success });
 
 export function BrowserClearData({
   menuItem = false,
@@ -28,13 +23,15 @@ export function BrowserClearData({
   buttonClassName?: string;
   describedBy?: string;
 }) {
-  const busy = useClearProgress((state) => state.busy);
+  const { busy, error, success } = useClearProgress();
   const [confirming, setConfirming] = useState(false);
 
   async function clear() {
     if (useClearProgress.getState().busy) return;
     setConfirming(false);
     setBusy(true);
+    setError(null);
+    setSuccess(null);
     useWorkbenchStore.setState({ browserClearNotice: null });
     let unlisten: (() => void) | undefined;
     let pending = false;
@@ -43,11 +40,13 @@ export function BrowserClearData({
       unlisten?.();
       unlisten = undefined;
       setBusy(false);
-      setOutcome(
-        outcome.cleared,
-        outcome.error ??
-          (outcome.cleared ? null : "Browser data could not be cleared."),
-      );
+      setError(outcome.error);
+      const notice = outcome.cleared ? "Browsing data cleared." : null;
+      setSuccess(notice);
+      useWorkbenchStore.setState({
+        error: outcome.error,
+        browserClearNotice: notice,
+      });
     };
     try {
       const { listen } = await import("@tauri-apps/api/event");
@@ -66,14 +65,29 @@ export function BrowserClearData({
       );
       if (result.pending) {
         pending = true;
+        setError(result.error);
+        useWorkbenchStore.setState({ error: result.error });
         if (completion) finish(completion);
         return;
       }
-      finish(result);
+      unlisten();
+      unlisten = undefined;
+      if (!result.cleared) {
+        const message = result.error ?? "Browser data could not be cleared.";
+        setError(message);
+        useWorkbenchStore.setState({ error: message });
+      } else {
+        const notice = "Browsing data cleared.";
+        setSuccess(notice);
+        useWorkbenchStore.setState({ browserClearNotice: notice });
+      }
     } catch (cause) {
       unlisten?.();
-      setBusy(false);
-      setOutcome(false, String(cause).slice(0, 512));
+      const message = String(cause).slice(0, 512);
+      setError(message);
+      useWorkbenchStore.setState({ error: message });
+    } finally {
+      if (!pending) setBusy(false);
     }
   }
 
@@ -95,14 +109,8 @@ export function BrowserClearData({
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}
       </button>
-      {busy ? (
-        <Notice
-          identity="browser-clear-data:pending"
-          severity="info"
-          message="Browser data is still clearing; new browser tabs are blocked until it finishes."
-          progress
-        />
-      ) : null}
+      {error ? <span role="alert">{error}</span> : null}
+      {success ? <span role="status">{success}</span> : null}
       {confirming ? (
         <ConfirmDialog
           title="Clear browsing data?"

@@ -5,7 +5,6 @@ import { browserHistory } from "../../ports/nativeBrowserHistoryPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { errorMessage } from "../../domain/errors";
 import { BrowserClearData } from "../browser/BrowserClearData";
-import { useClearProgress } from "../browser/browserClearProgress";
 import { useBrowserDownloads } from "../browser/useBrowserDownloads";
 import { Notice } from "../../ui/Notice";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
@@ -141,8 +140,7 @@ function LiveTabSitePermissions({
 
 export function AgentBrowserSettings() {
   const tabs = useWorkbenchStore((state) => state.tabs);
-  // A finished clear closes every browser tab, so the live list is re-read.
-  const clearing = useClearProgress((state) => state.busy);
+  const clearNotice = useWorkbenchStore((state) => state.browserClearNotice);
   const showSitePermissions = useAgentSettingsState(
     (state) => state.showSitePermissions,
   );
@@ -154,7 +152,7 @@ export function AgentBrowserSettings() {
   const [error, setError] = useState<string | null>(null);
   const native = isTauriRuntime();
   useEffect(() => {
-    if (!native || clearing) return;
+    if (!native) return;
     let current = true;
     void browserLiveTabs()
       .then((ids) => {
@@ -173,7 +171,7 @@ export function AgentBrowserSettings() {
     return () => {
       current = false;
     };
-  }, [native, revision, clearing]);
+  }, [native, revision, clearNotice]);
   if (!native)
     return (
       <p role="status">
@@ -184,7 +182,7 @@ export function AgentBrowserSettings() {
   const tabId =
     [chosenId, requestedId].find((id) => id && liveIds.includes(id)) ??
     liveIds[0];
-  const live = !loading && tabId;
+  const live = !loading && tabId ? tabId : null;
   const tabTitle = (id: string) =>
     tabs.find((tab) => tab.id === id)?.title ?? id;
   return (
