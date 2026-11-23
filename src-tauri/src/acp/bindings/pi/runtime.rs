@@ -115,9 +115,6 @@ pub(crate) struct PiRuntime {
     /// A configuration read asked for the model registry; its reply continues
     /// to the thinking levels.
     configuration_models_pending: bool,
-    /// Pi answered with another model than Sage shows; the next prompt reads
-    /// the state, and the models only if the selection changed.
-    model_check_due: bool,
     pub(super) thinking_request_session: Option<ExternalId>,
     pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
     pub(super) thinking_request_command: Option<String>,

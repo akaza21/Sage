@@ -107,17 +107,13 @@ fn extension_message_roles_are_visible_hidden_or_unsupported_without_losing_the_
             .events(),
         [AdapterEvent::Unsupported(_)]
     ));
-    // The prompt's echo, then an extension's injected user message.
-    assert!(matches!(
-        runtime
-            .ingest(&user("Inspect read-only"), &Mapper)
-            .unwrap()
-            .events(),
-        [AdapterEvent::Absorbed]
-    ));
-    assert!(
-        matches!(runtime.ingest(&user("Extension request"), &Mapper).unwrap().events(), [AdapterEvent::Item { payload: NormalizedPayload::InjectedUserPrompt { text }, .. }] if text.as_str() == "Extension request")
-    );
+    // Pi's user messages, its prompt echo or an injected turn, stay as on main.
+    for text in ["Inspect read-only", "Extension request"] {
+        assert!(matches!(
+            runtime.ingest(&user(text), &Mapper).unwrap().events(),
+            [AdapterEvent::Absorbed]
+        ));
+    }
 }
 
 #[test]
@@ -135,107 +131,15 @@ fn extension_messages_past_the_turn_cap_add_one_notice_and_then_nothing() {
     }
     assert!(matches!(
         runtime.ingest(&message(), &Mapper).unwrap().events(),
-        [AdapterEvent::Unsupported(_)]
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ExtensionMessage { text, .. },
+            ..
+        }] if text.as_str() == "Further extension messages in this turn are hidden."
     ));
     assert!(matches!(
         runtime.ingest(&message(), &Mapper).unwrap().events(),
         [AdapterEvent::Absorbed]
     ));
-}
-
-#[test]
-fn a_steer_through_a_prompt_template_is_matched_by_its_expanded_echo() {
-    let mut runtime = fixture_runtime(1);
-    ready(&mut runtime);
-    running(&mut runtime);
-    runtime.ingest(&user("Inspect read-only"), &Mapper).unwrap();
-    let steer = runtime
-        .command(AdapterCommand::Steer {
-            prompt: Prompt::new("prompt", "/fix the parser").unwrap(),
-            client_message_id: RequiredText::new("client", "steer").unwrap(),
-        })
-        .unwrap();
-    let steer = deliver(&mut runtime, steer);
-    runtime
-        .ingest(
-            &frame(json!({"type":"response","id":steer["id"],"command":"steer","success":true})),
-            &Mapper,
-        )
-        .unwrap();
-    // Pi expands the template before queuing it, then delivers it.
-    for queue in [json!(["Fix the parser in src."]), json!([])] {
-        runtime
-            .ingest(
-                &frame(json!({"type":"queue_update","steering":queue,"followUp":[]})),
-                &Mapper,
-            )
-            .unwrap();
-    }
-    assert!(matches!(
-        runtime
-            .ingest(&user("Fix the parser in src."), &Mapper)
-            .unwrap()
-            .events(),
-        [AdapterEvent::Absorbed]
-    ));
-    // Once matched, the same text from an extension is shown.
-    assert!(matches!(
-        runtime
-            .ingest(&user("Fix the parser in src."), &Mapper)
-            .unwrap()
-            .events(),
-        [AdapterEvent::Item {
-            payload: NormalizedPayload::InjectedUserPrompt { .. },
-            ..
-        }]
-    ));
-}
-
-#[test]
-fn a_stale_pick_of_an_extension_command_runs_as_a_command_turn() {
-    let mut runtime = fixture_runtime(1);
-    ready(&mut runtime);
-    let query = runtime.discover_commands().unwrap().unwrap();
-    let query = deliver(&mut runtime, query);
-    runtime
-        .ingest(
-            &response(
-                &query,
-                json!({"commands":[{"name":"report","description":"Report","source":"extension"}]}),
-            ),
-            &Mapper,
-        )
-        .unwrap();
-    let mut prompt = Prompt::new("prompt", "/report").unwrap();
-    prompt.command_revision = Some(runtime.available_commands().snapshot().revision + 7);
-    let send = runtime
-        .command(AdapterCommand::Prompt {
-            prompt,
-            client_message_id: RequiredText::new("client", "stale").unwrap(),
-            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
-        })
-        .unwrap();
-    let send = deliver(&mut runtime, send);
-    // As Pi orders a command turn: the run starts before the reply.
-    runtime
-        .ingest(&frame(json!({"type":"agent_start"})), &Mapper)
-        .unwrap();
-    runtime
-        .ingest(&response(&send, Value::Null), &Mapper)
-        .unwrap();
-    // The command's injected message is not taken for a prompt echo.
-    let batch = runtime.ingest(&user("From the command"), &Mapper).unwrap();
-    assert!(
-        matches!(
-            batch.events(),
-            [AdapterEvent::Item {
-                payload: NormalizedPayload::InjectedUserPrompt { .. },
-                ..
-            }]
-        ),
-        "{:?}",
-        batch.events()
-    );
 }
 
 #[test]
@@ -265,32 +169,6 @@ fn extension_thinking_change_is_read_with_the_next_prompt() {
     );
     assert_eq!(config["configOptions"][1]["currentValue"], "low");
     assert!(!runtime.configuration_dirty);
-}
-
-#[test]
-fn a_model_set_without_a_level_change_is_read_with_the_next_prompt() {
-    let mut runtime = fixture_runtime(1);
-    ready(&mut runtime);
-    running(&mut runtime);
-    // An extension called setModel only: no event, the same level. Pi's
-    // reply names the model that answered.
-    let reply = json!({"role":"assistant","content":[{"type":"text","text":"Done"}],
-        "provider":"extension","model":"other","stopReason":"stop"});
-    for event in [
-        json!({"type":"message_start","message":reply}),
-        json!({"type":"message_end","message":reply}),
-    ] {
-        runtime.ingest(&frame(event), &Mapper).unwrap();
-    }
-    settle(&mut runtime);
-    let state = prompt_state_read(&mut runtime, "client-pi-2");
-    let model = json!({"provider":"extension","id":"other","name":"Other"});
-    answer_configuration(&mut runtime, &state, model, "high");
-    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
-    assert_eq!(
-        config["configOptions"][0]["currentValue"],
-        "extension:other"
-    );
 }
 
 #[test]

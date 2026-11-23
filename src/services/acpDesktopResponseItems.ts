@@ -85,11 +85,6 @@ export function safeItem(value: unknown): AcpItem | null {
   if (!identity) return null;
   const { payload } = value;
   switch (value.kind) {
-    // Its payload is decoded by the lazy ExtensionMessage view.
-    case "extensionMessage":
-      return value.toolState === null
-        ? { ...identity, kind: "extensionMessage", toolState: null, payload }
-        : null;
     case "text":
     case "userPrompt": {
       const text = safeText(payload.text, 262_144);
@@ -124,14 +119,18 @@ export function safeItem(value: unknown): AcpItem | null {
           }
         : null;
     }
+    // A compaction notice has no payload; an extension message's payload
+    // is decoded by its lazy view.
     case "compactionNotice":
-      return value.toolState === null && Object.keys(payload).length === 0
-        ? {
+    case "extensionMessage":
+      return value.toolState === null &&
+        (value.kind === "extensionMessage" || Object.keys(payload).length === 0)
+        ? ({
             ...identity,
-            kind: "compactionNotice",
+            kind: value.kind as AcpItem["kind"],
             toolState: null,
-            payload: {},
-          }
+            payload,
+          } as AcpItem)
         : null;
     case "plan": {
       if (

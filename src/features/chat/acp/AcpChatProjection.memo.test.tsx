@@ -40,10 +40,7 @@ describe("AcpChatProjection", () => {
     const turnEditSummary = vi.fn(() => null);
     const turnHeader = vi.fn(() => null);
     vi.resetModules();
-    vi.doMock("./ChatMarkdown", () => ({
-      ChatMarkdown: chatMarkdown,
-      default: chatMarkdown,
-    }));
+    vi.doMock("./ChatMarkdown", () => ({ ChatMarkdown: chatMarkdown }));
     vi.doMock("./TurnHeader", () => ({ TurnHeader: turnHeader }));
     vi.doMock("./TurnEditSummary", () => ({
       TurnEditSummary: turnEditSummary,

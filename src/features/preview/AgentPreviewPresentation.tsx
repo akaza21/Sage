@@ -163,3 +163,5 @@ export function AgentPreviewPresentation({
     </div>
   );
 }
+
+export default AgentPreviewPresentation;

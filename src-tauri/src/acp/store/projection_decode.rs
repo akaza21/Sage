@@ -146,9 +146,7 @@ fn content(
             role: legacy_role.unwrap_or(TextRole::Assistant),
             text,
         },
-        NormalizedPayload::UserPrompt { text } | NormalizedPayload::InjectedUserPrompt { text } => {
-            ItemContent::UserPrompt { text }
-        }
+        NormalizedPayload::UserPrompt { text } => ItemContent::UserPrompt { text },
         NormalizedPayload::ExtensionMessage {
             label,
             text,

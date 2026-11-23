@@ -16,7 +16,6 @@ impl PiRuntime {
         state: StateSnapshot,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let model = state.model.as_ref().map(identity::model_key).transpose()?;
-        self.model_check_due = false;
         if model == self.current_model && !self.configuration_dirty {
             // Unchanged: the prompt's ordinary state read.
             return self.state_reply(state);
@@ -62,17 +61,5 @@ impl PiRuntime {
             None
         };
         Ok((Some(event), levels))
-    }
-
-    /// An extension may switch the model without any event; the model that
-    /// answered the Turn tells.
-    pub(super) fn note_reply_model(&mut self) {
-        if self
-            .translator
-            .reply_model()
-            .is_some_and(|model| Some(model) != self.current_model.as_deref())
-        {
-            self.model_check_due = true;
-        }
     }
 }

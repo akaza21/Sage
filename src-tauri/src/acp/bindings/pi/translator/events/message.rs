@@ -2,15 +2,10 @@ use crate::acp::bindings::pi::decode::redact_structured_text;
 use crate::acp::redaction::text::{clip_display, neutralized};
 use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
-/// Extension messages and injected user messages shown in one turn; the next
-/// one adds a single suppression notice and the rest are dropped.
+/// Displayed extension messages shown in one turn; the next adds one notice
+/// that further ones are hidden, and the rest are dropped.
 const EXTENSION_MESSAGES_PER_TURN: u8 = 64;
-
-pub(in crate::acp::bindings::pi::translator) fn user_digest(text: &str) -> [u8; 32] {
-    Sha256::digest(text.as_bytes()).into()
-}
 
 use super::super::PiTranslator;
 use super::{assistant_message, message_id, turn::failure_detail};
@@ -30,14 +25,6 @@ impl PiTranslator {
         }
         let message = value.get("message");
         let kept = |key| message.and_then(|message| message.get(key)).cloned();
-        // The model that answered; an extension may have switched it.
-        let reply_model = message
-            .and_then(|message| Some((message["provider"].as_str()?, message["model"].as_str()?)))
-            .map(|(provider, model)| format!("{provider}:{model}"))
-            .filter(|key| key.len() <= 512);
-        if reply_model.is_some() {
-            self.live_turn()?.reply_model = reply_model;
-        }
         self.live_turn()?.reply_open = false;
         self.live_turn()?.last_reply = Some(Box::new(serde_json::json!({
             "role": "assistant",
@@ -84,9 +71,36 @@ impl PiTranslator {
         ) {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
-        if !matches!(role, "user" | "custom") {
+        // Pi echoes prompts and steers as user messages; Sage already shows
+        // those. An extension's injected user turn has no reliable marker yet.
+        if role == "user" {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        if role != "custom" {
             return self.unknown_event("message_role");
         }
+        let turn = self.live_turn_any_phase()?;
+        if turn.extension_messages > EXTENSION_MESSAGES_PER_TURN {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        turn.extension_messages += 1;
+        if turn.extension_messages > EXTENSION_MESSAGES_PER_TURN {
+            return Ok(vec![AdapterOutput::Message(
+                NormalizedPayload::ExtensionMessage {
+                    label: SafeText::new("extensionLabel", "Extension messages".to_owned())
+                        .map_err(|_| AdapterError::Malformed)?,
+                    text: SafeText::new(
+                        "extensionText",
+                        "Further extension messages in this turn are hidden.".to_owned(),
+                    )
+                    .map_err(|_| AdapterError::Malformed)?,
+                    details: None,
+                },
+            )]);
+        }
+        let Some(label) = message["customType"].as_str() else {
+            return self.unknown_event("custom_message_without_type");
+        };
         let mut unsupported = false;
         let text = match &message["content"] {
             Value::String(text) => text.clone(),
@@ -108,84 +122,26 @@ impl PiTranslator {
                 String::new()
             }
         };
-        let turn = self.live_turn_any_phase()?;
-        if role == "user" {
-            // Pi's first user message in a prompt turn is the prompt itself,
-            // possibly expanded from a template, so it is matched by place.
-            if std::mem::take(&mut turn.prompt_echo) {
-                return Ok(vec![AdapterOutput::Absorbed]);
-            }
-            // A Sage steer arrives as Pi expanded it, which its queue reported.
-            let digest = user_digest(&text);
-            if !turn.steers.is_empty()
-                && let Some(queue) = [&mut turn.steer_echoes, &mut turn.steer_queue]
-                    .into_iter()
-                    .find(|queue| queue.contains(&digest))
-            {
-                let index = queue.iter().position(|value| *value == digest);
-                index.map(|index| queue.remove(index));
-                turn.steers.pop_first();
-                return Ok(vec![AdapterOutput::Absorbed]);
-            }
-        }
-        if turn.extension_messages >= EXTENSION_MESSAGES_PER_TURN {
-            return self.unknown_event("extension_messages_suppressed");
-        }
-        turn.extension_messages += 1;
         let clean =
             |text: &str, cap| clip_display(&redact_structured_text(&neutralized(text, true)), cap);
-        let payload = if role == "user" {
-            NormalizedPayload::InjectedUserPrompt {
-                text: SafeText::new("userText", clean(&text, 262144))
-                    .map_err(|_| AdapterError::Malformed)?,
-            }
-        } else {
-            let Some(label) = message["customType"].as_str() else {
-                return self.unknown_event("custom_message_without_type");
-            };
-            NormalizedPayload::ExtensionMessage {
-                label: SafeText::new("extensionLabel", clean(label, 128))
-                    .map_err(|_| AdapterError::Malformed)?,
-                text: SafeText::new("extensionText", clean(&text, 16384))
-                    .map_err(|_| AdapterError::Malformed)?,
-                details: message
-                    .get("details")
-                    .map(|details| {
-                        SafeText::new("extensionDetails", clean(&details.to_string(), 16384))
-                    })
-                    .transpose()
-                    .map_err(|_| AdapterError::Malformed)?,
-            }
+        let payload = NormalizedPayload::ExtensionMessage {
+            label: SafeText::new("extensionLabel", clean(label, 128))
+                .map_err(|_| AdapterError::Malformed)?,
+            text: SafeText::new("extensionText", clean(&text, 16384))
+                .map_err(|_| AdapterError::Malformed)?,
+            details: message
+                .get("details")
+                .map(|details| {
+                    SafeText::new("extensionDetails", clean(&details.to_string(), 16384))
+                })
+                .transpose()
+                .map_err(|_| AdapterError::Malformed)?,
         };
         let mut output = vec![AdapterOutput::Message(payload)];
         if unsupported {
             output.extend(self.unknown_event("message_content")?);
         }
         Ok(output)
-    }
-
-    /// Pi reports its whole steering queue, already expanded. An entry that
-    /// leaves the queue is delivered next, so its digest waits for the echo.
-    pub(super) fn steering_queue(&mut self, value: &Value) {
-        let Some(turn) = self.active.as_mut() else {
-            return;
-        };
-        let queue: Vec<[u8; 32]> = value["steering"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .take(128)
-            .map(user_digest)
-            .collect();
-        for digest in std::mem::replace(&mut turn.steer_queue, queue) {
-            if !turn.steer_queue.contains(&digest) {
-                if turn.steer_echoes.len() == 128 {
-                    turn.steer_echoes.remove(0);
-                }
-                turn.steer_echoes.push(digest);
-            }
-        }
     }
 
     pub(super) fn message_update(

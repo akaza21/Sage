@@ -1,11 +1,6 @@
 use super::*;
 
 impl PiTranslator {
-    /// The `provider:model` that last answered in the current Turn.
-    pub(in crate::acp::bindings::pi) fn reply_model(&self) -> Option<&str> {
-        self.active.as_ref()?.reply_model.as_deref()
-    }
-
     /// A configuration read or change is in flight; a refresh waits for it.
     pub(in crate::acp::bindings::pi) fn configuration_refresh_pending(&self) -> bool {
         self.pending.values().any(|request| {
@@ -31,12 +26,6 @@ impl PiTranslator {
             return self.classify_repeated_response(&response, fingerprint);
         };
         let kind = request.kind;
-        if kind == PendingKind::Steer
-            && !response.success
-            && let Some(active) = self.active.as_mut()
-        {
-            active.steers.remove(&response.id);
-        }
         let closed = self.closed_config_requests.remove(&response.id)
             || (kind.is_config()
                 && self

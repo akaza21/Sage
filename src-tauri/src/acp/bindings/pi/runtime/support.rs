@@ -130,24 +130,23 @@ impl PiRuntime {
                 )
             }
             AdapterOutput::CommandAccepted { command } => {
-                let refresh =
-                    if command == "prompt" && (self.configuration_dirty || self.model_check_due) {
-                        // State, then models and levels if they may have changed,
-                        // inside the live turn; skipped when capacity is full.
-                        self.refresh_configuration()
-                    } else if command == "prompt"
-                        && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
-                        && self.thinking_request_command.is_none()
-                    {
-                        self.refresh_thinking_after_model = true;
-                        self.begin_one(
-                            crate::acp::bindings::pi::Operation::GetState,
-                            super::RequestKind::RefreshState,
-                        )
-                        .ok()
-                    } else {
-                        None
-                    };
+                let refresh = if command == "prompt" && self.configuration_dirty {
+                    // State, then models and levels if they may have changed,
+                    // inside the live turn; skipped when capacity is full.
+                    self.refresh_configuration()
+                } else if command == "prompt"
+                    && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
+                    && self.thinking_request_command.is_none()
+                {
+                    self.refresh_thinking_after_model = true;
+                    self.begin_one(
+                        crate::acp::bindings::pi::Operation::GetState,
+                        super::RequestKind::RefreshState,
+                    )
+                    .ok()
+                } else {
+                    None
+                };
                 (Some(AdapterEvent::Acknowledged), refresh)
             }
             AdapterOutput::Commands(value) => (Some(self.list_commands(value)?), None),
@@ -206,7 +205,6 @@ impl PiRuntime {
                     bridge.used.clear();
                 }
                 self.finish_questions();
-                self.note_reply_model();
                 self.active_turn = None;
                 self.clear_thinking_request();
                 self.deny = None;

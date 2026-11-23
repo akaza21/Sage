@@ -24,7 +24,10 @@ import { isWorkingTool, workingToolStatus } from "./workingTool";
 
 const loadExtensionMessage = () => import("./ExtensionMessage");
 
-const loadMarkdown = () => import("./ChatMarkdown");
+const loadMarkdown = () =>
+  import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
+    default: ChatMarkdown,
+  }));
 
 const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
   builtin: "Built-in",
@@ -177,9 +180,7 @@ export const ItemView = memo(
   (left, right) =>
     left.item.id === right.item.id &&
     left.item.revision === right.item.revision &&
-    (left.item.kind !== "plan"
-      ? true
-      : left.workingItems === right.workingItems) &&
+    (left.item.kind !== "plan" || left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
     left.turnState === right.turnState &&
     left.command === right.command &&

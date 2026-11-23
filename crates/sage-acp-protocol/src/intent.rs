@@ -238,11 +238,6 @@ pub enum NormalizedPayload {
     UserPrompt {
         text: SafeText<262144>,
     },
-    /// A user message the harness added to the Turn itself, such as an
-    /// extension's injected message. Shown like a prompt; it is not a steer.
-    InjectedUserPrompt {
-        text: SafeText<262144>,
-    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
@@ -400,10 +395,9 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. }
-            | Self::UserPrompt { .. }
-            | Self::InjectedUserPrompt { .. }
-            | Self::ExtensionMessage { .. } => ItemKind::Text,
+            Self::Text { .. } | Self::UserPrompt { .. } | Self::ExtensionMessage { .. } => {
+                ItemKind::Text
+            }
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,

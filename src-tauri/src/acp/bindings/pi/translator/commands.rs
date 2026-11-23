@@ -14,8 +14,6 @@ use crate::acp::bindings::pi::{
 impl PiTranslator {
     pub(crate) fn mark_command_turn(&mut self) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        // Pi runs an extension command without a user message of its own.
-        active.prompt_echo = false;
         active.lifecycle.mark_command()
     }
 
@@ -50,9 +48,6 @@ impl PiTranslator {
             return Ok(());
         }
         self.pending.remove(command_id);
-        if let Some(active) = self.active.as_mut() {
-            active.steers.remove(command_id);
-        }
         self.closed_config_requests.remove(command_id);
         self.clear_pending_setting(kind);
         match kind {
@@ -143,15 +138,9 @@ impl PiTranslator {
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
-        let prompt_echo = fields.contains_key("message");
         let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
-            prompt_echo,
-            steers: Default::default(),
-            steer_queue: Vec::new(),
-            steer_echoes: Vec::new(),
             extension_messages: 0,
-            reply_model: None,
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
             lifecycle: TurnLifecycle::new(self.next_command),
@@ -190,17 +179,7 @@ impl PiTranslator {
         }
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
-        let active = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
-        if active.steers.len() >= 128 {
-            return Err(AdapterError::Limit("steers"));
-        }
-        let outbound = self.issue(PendingKind::Steer, fields)?;
-        self.active
-            .as_mut()
-            .ok_or(AdapterError::StaleIntent)?
-            .steers
-            .insert(outbound.command_id.clone());
-        Ok(vec![outbound])
+        self.one(PendingKind::Steer, fields)
     }
 
     pub(super) fn one(

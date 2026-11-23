@@ -58,10 +58,7 @@ function conflictCompareKey(editor: {
   return `${resourceKey(editor.resource)}\0${editor.document.disk.fingerprint}`;
 }
 
-const loadConflictCompare = () =>
-  import("./FileConflictCompare").then(({ FileConflictCompare }) => ({
-    default: FileConflictCompare,
-  }));
+const loadConflictCompare = () => import("./FileConflictCompare");
 
 /** Reads the store itself rather than add to the File surface's bundle. */
 export default function FileConflictNotice({

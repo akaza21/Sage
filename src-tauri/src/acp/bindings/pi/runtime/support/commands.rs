@@ -136,17 +136,11 @@ impl PiRuntime {
         turn_key: &str,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let listed = self.commands.snapshot();
-        let text = prompt.as_str();
-        let found = |revision: u64| {
+        let command = prompt.command_revision.and_then(|revision| {
+            let text = prompt.as_str();
             let listed = listed.find(revision, text)?;
             let rest = text[1..].trim_start().strip_prefix(&listed.name)?.trim();
             Some((listed.dispatch.clone(), listed.name.as_str(), rest))
-        };
-        // Pi runs a listed extension command by name whatever revision the
-        // prompt saw, so a stale pick still runs as a command turn.
-        let command = prompt.command_revision.and_then(&found).or_else(|| {
-            found(listed.revision)
-                .filter(|(dispatch, ..)| matches!(dispatch, CommandDispatch::CommandTurn))
         });
         let command_turn =
             prompt.action.is_none() && matches!(command, Some((CommandDispatch::CommandTurn, ..)));

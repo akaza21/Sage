@@ -100,18 +100,8 @@ impl PendingKind {
 
 #[derive(Debug)]
 struct ActiveTurn {
-    /// The prompt's own user message is still to come.
-    prompt_echo: bool,
-    /// Steers Sage sent that Pi has not yet echoed, by command id (at most 128).
-    steers: BTreeSet<String>,
-    /// Digests of Pi's last steering queue (`queue_update`), as Pi expanded
-    /// it, and of entries it has since delivered: an echo matches either.
-    steer_queue: Vec<[u8; 32]>,
-    steer_echoes: Vec<[u8; 32]>,
-    /// Extension messages shown this turn; later ones are suppressed.
+    /// Extension messages shown this turn; later ones are hidden.
     extension_messages: u8,
-    /// The `provider:model` Pi last answered with (at most 512 bytes).
-    reply_model: Option<String>,
     turn_key: String,
     prompt_command_id: String,
     lifecycle: TurnLifecycle,

@@ -117,11 +117,10 @@ fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
     // model registry and thinking levels when the model may have changed.
     let settled = |runtime: &PiRuntime| {
         !runtime.configuration_dirty
-            && !runtime.model_check_due
             && !runtime.translator.configuration_refresh_pending()
             && runtime.thinking_request_command.is_none()
     };
-    let prompts = ["render", "unknown-role", "model-only", "unknown-role"];
+    let prompts = ["render", "unknown-role"];
     for (index, name) in prompts.into_iter().enumerate() {
         let mut prompt = Prompt::new("prompt", name).unwrap();
         prompt.command_revision = None;
@@ -152,7 +151,14 @@ fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
                 1
             );
             assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::ExtensionMessage { label, text, details: Some(details) }, .. } if label.as_str() == "fixture-report" && text.as_str() == "<script>safe text</script>" && details.as_str().len() <= 16384)));
-            assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item { payload: NormalizedPayload::InjectedUserPrompt { text }, .. } if text.as_str() == "Injected request")));
+            // An injected user turn is not shown until Pi marks it reliably.
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::UserPrompt { .. },
+                    ..
+                }
+            )));
         }
         if name != "unknown-role" {
             continue;
@@ -166,19 +172,11 @@ fn check(launch: &crate::harness_discovery::DiscoveredPiLaunch) {
         if !settled(&j.runtime) {
             receive(&mut j.runtime, &mut pi, |runtime, _| settled(runtime));
         }
-        if index == 1 {
-            // The render turn's setModel and setThinkingLevel.
-            assert_eq!(
-                j.runtime.current_model.as_deref(),
-                Some("sage-router:virtual")
-            );
-            assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
-        } else {
-            // setModel alone: no event, read from the model that answered.
-            assert_eq!(
-                j.runtime.current_model.as_deref(),
-                Some("sage-render:physical")
-            );
-        }
+        // The render turn's setModel and setThinkingLevel.
+        assert_eq!(
+            j.runtime.current_model.as_deref(),
+            Some("sage-router:virtual")
+        );
+        assert_eq!(j.runtime.current_thinking.as_deref(), Some("low"));
     }
 }
