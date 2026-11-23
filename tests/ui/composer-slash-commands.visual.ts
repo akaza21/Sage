@@ -421,9 +421,7 @@ test("a typed terminal-only command is held at send with a copy or text choice",
     );
   });
   expect(taken).toBe(false);
-  const notice = page.locator(
-    "[data-notice-identity='terminal-command:hooks']",
-  );
+  const notice = page.getByRole("group", { name: "Terminal-only command" });
   await expect(notice).toContainText("/hooks only runs in the terminal.");
   await expect(
     notice.getByRole("button", { name: "Copy terminal command" }),

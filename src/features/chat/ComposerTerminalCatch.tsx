@@ -44,33 +44,40 @@ export function ComposerTerminalCatch({
   if (!caught) return null;
   const { input, name, command } = caught;
   return (
-    <div className="composer__notices">
+    // The shared Notice explains; its resolutions sit beside it, as for a
+    // file conflict.
+    <div
+      className="composer__terminal-command"
+      role="group"
+      aria-label="Terminal-only command"
+    >
       <Notice
         identity={`terminal-command:${name}`}
         severity="info"
-        message={
-          <>
-            {`/${name} only runs in the terminal.`}{" "}
-            <button
-              type="button"
-              className="notice__action"
-              onClick={() =>
-                void navigator.clipboard.writeText(`${command} /${name}`)
-              }
-            >
-              Copy terminal command
-            </button>
-          </>
-        }
-        action={{
-          label: "Send as text anyway",
-          onClick: () => {
+        message={`/${name} only runs in the terminal.`}
+      />
+      <span>
+        <button
+          type="button"
+          className="button button--compact"
+          onClick={() =>
+            void navigator.clipboard.writeText(`${command} /${name}`)
+          }
+        >
+          Copy terminal command
+        </button>
+        <button
+          type="button"
+          className="button button--compact"
+          onClick={() => {
             consent.current = input;
             setCaught(null);
             fieldRef.current?.form?.requestSubmit();
-          },
-        }}
-      />
+          }}
+        >
+          Send as text anyway
+        </button>
+      </span>
     </div>
   );
 }
