@@ -331,7 +331,9 @@ test("T11d: Undo confirms over Rewind's file preview, and a failed preview holds
   await expect(surface.getByRole("alert")).toHaveCount(0);
   await confirm.click();
   await expect.poll(kinds).toContain("undoTurn");
-  expect(new Set(await kinds())).toEqual(new Set(["previewRewind", "undoTurn"]));
+  expect(new Set(await kinds())).toEqual(
+    new Set(["previewRewind", "undoTurn"]),
+  );
 });
 
 test("T22: a cold session's completed turns carry no ellipsis actions row", async ({

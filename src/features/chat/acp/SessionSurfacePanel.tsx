@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
-import {
-  FileRewindPreview,
-  useFileRewindPreview,
-} from "../FileRewindPreview";
+import { FileRewindPreview, useFileRewindPreview } from "../FileRewindPreview";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
 
