@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
 use super::*;
+#[path = "runtime_refresh_tests.rs"]
+mod refresh;
 use crate::acp::{transcript_quote::Prompt, transport::FrameReader};
 use sage_acp_protocol::{
     contract::RequiredText,

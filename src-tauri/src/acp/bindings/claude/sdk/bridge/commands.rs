@@ -56,6 +56,21 @@ struct CatalogResponse {
 }
 
 impl super::SdkBridge {
+    pub(in crate::acp::bindings::claude::sdk) fn refreshing_commands(&self) -> bool {
+        self.pending
+            .values()
+            .any(|pending| matches!(pending, super::Pending::Commands))
+    }
+    /// Claude Code 2.1.322's SDK reinitialize() sends initialize again.
+    /// supportedCommands() itself only reads the cached initialize response.
+    pub(in crate::acp::bindings::claude::sdk) fn refresh_commands(
+        &mut self,
+    ) -> Result<Value, super::BridgeError> {
+        self.control(
+            json!({"subtype":"initialize","perTaskStopAffordance":true,"forwardSubagentText":true}),
+            super::Pending::Commands,
+        )
+    }
     pub(in crate::acp::bindings::claude::sdk) fn command_catalog_path(
         &self,
         bytes: &[u8],
@@ -73,7 +88,7 @@ impl super::SdkBridge {
                     response.subtype == "success"
                         && matches!(
                             self.pending.get(&response.request_id),
-                            Some(super::Pending::Initialize(_))
+                            Some(super::Pending::Initialize(_) | super::Pending::Commands)
                         )
                 }) =>
             {

@@ -68,6 +68,29 @@ pub(crate) async fn list_acp_commands(
 }
 
 #[tauri::command]
+pub(crate) async fn refresh_acp_commands(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: ActivateAcpSessionRequest,
+) -> Result<(), AcpIpcError> {
+    list(&state, &request).await?;
+    let owner = RuntimeOwner {
+        project_id: request.project_id,
+        chat_id: request.chat_id,
+        session_id: request.session_id,
+        runtime_epoch: request.runtime_epoch,
+    };
+    // The native RPC waits on the session worker; keep it off the async runtime.
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        app.state::<AppState>().acp.refresh_commands(owner)
+    })
+    .await
+    .map_err(|_| internal_error())?
+    .map_err(|_| unavailable())
+}
+
+#[tauri::command]
 pub(crate) async fn run_acp_command(
     state: State<'_, AppState>,
     request: RunCommandRequest,

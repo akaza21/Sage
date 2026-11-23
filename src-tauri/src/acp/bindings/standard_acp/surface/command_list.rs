@@ -13,6 +13,7 @@ pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 
 mod entry;
 pub(crate) mod placement;
+mod refresh;
 pub(crate) use entry::*;
 
 /// Curated commands survive admission ahead of other built-ins and external commands.
@@ -59,6 +60,10 @@ fn admit(mut commands: Vec<AvailableCommand>) -> (Vec<AvailableCommand>, u32) {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct CommandList {
     pub(crate) revision: u64,
+    #[serde(skip)]
+    refresh_requested: bool,
+    #[serde(skip)]
+    refresh_after_turn: bool,
     pub(crate) commands: Vec<AvailableCommand>,
     pub(crate) omitted: u32,
 }
@@ -70,11 +75,23 @@ impl CommandList {
         &mut self,
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
     ) -> Result<(), AdapterRuntimeError> {
-        self.commands = Vec::new();
-        self.omitted = 0;
-        self.next_revision()?;
-        (self.commands, self.omitted) = admit(parsed?);
-        Ok(())
+        match parsed {
+            Ok(commands) => {
+                let (commands, omitted) = admit(commands);
+                if self.revision == 0 || self.commands != commands || self.omitted != omitted {
+                    self.next_revision()?;
+                    self.commands = commands;
+                    self.omitted = omitted;
+                }
+                Ok(())
+            }
+            Err(error) => {
+                self.commands = Vec::new();
+                self.omitted = 0;
+                self.next_revision()?;
+                Err(error)
+            }
+        }
     }
 
     fn next_revision(&mut self) -> Result<(), AdapterRuntimeError> {
@@ -128,19 +145,7 @@ impl CommandState {
         &self,
         commands: Vec<AvailableCommand>,
     ) -> Result<(), AdapterRuntimeError> {
-        let mut list = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
-        let (commands, omitted) = admit(commands);
-        if list.commands == commands && list.omitted == omitted {
-            return Ok(());
-        }
-        list.next_revision()?;
-        list.commands = commands;
-        list.omitted = omitted;
-        Ok(())
+        self.replace(Ok(commands))
     }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
@@ -203,8 +208,7 @@ impl CommandState {
     }
 }
 
-/// Tells the WebView that one live owner's command list has a new revision,
-/// so it re-reads the bounded list. It carries no command data.
+/// Tells the WebView that one live owner has a new catalog revision; no command data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CommandsChangedV1 {

@@ -72,6 +72,9 @@ impl SdkBridge {
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
             match &pending {
+                Pending::Commands => inbound.acp.push(self.update(
+                    json!({"sessionUpdate":"available_commands_update","availableCommands":[]}),
+                )),
                 Pending::Control | Pending::Restore => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
@@ -86,6 +89,10 @@ impl SdkBridge {
         }
         let reply = response.get("response").unwrap_or(&Value::Null);
         match pending {
+            Pending::Commands => {
+                let commands = super::commands::commands(reply);
+                inbound.acp.push(self.update(json!({"sessionUpdate":"available_commands_update","availableCommands":commands})));
+            }
             Pending::Initialize(id) => {
                 self.settings =
                     SessionSettings::from_initialize(reply, self.launch_model.as_deref());
@@ -378,6 +385,7 @@ impl Pending {
             | Self::Mode { id, .. }
             | Self::Option { id, .. } => Some(id),
             Self::Interrupt
+            | Self::Commands
             | Self::Withdraw(_)
             | Self::Control
             | Self::Restore

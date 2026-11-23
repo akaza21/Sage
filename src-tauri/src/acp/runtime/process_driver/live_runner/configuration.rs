@@ -139,6 +139,27 @@ where
     C: crate::acp::runtime::ProcessTreeControl,
     C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
+    if matches!(&envelope.command, WorkerCommand::NativeRpc { intent, .. } if matches!(intent.request, crate::acp::goal::NativeRpcRequest::RefreshCommands))
+    {
+        let (command, responder) = envelope.into_parts();
+        if let WorkerCommand::NativeRpc { intent, completion } = command {
+            let result = if intent.owner == context.owner {
+                state
+                    .request_command_refresh()
+                    .map(|()| crate::acp::goal::NativeRpcReply::Controlled(None))
+            } else {
+                Err(HostError::Intent)
+            };
+            responder.respond(
+                result
+                    .as_ref()
+                    .map(|_| super::super::WorkerReply::Unit)
+                    .map_err(Clone::clone),
+            );
+            completion.complete(result);
+        }
+        return (RunnerAction::Continue(state), None);
+    }
     let preempts_title = match &envelope.command {
         WorkerCommand::AcceptTerminal { .. }
         | WorkerCommand::AcceptLatestCompleted
