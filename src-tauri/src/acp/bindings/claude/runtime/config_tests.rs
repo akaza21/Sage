@@ -375,7 +375,7 @@ fn a_harness_deriving_nothing_from_its_catalog_never_restores_capabilities() {
             notices.clone(),
         ),
     );
-    for commands in [json!([{"name":"goal"}]), json!([])] {
+    for commands in [json!([{"name":"goal","description":"Set a goal"}]), json!([])] {
         runtime
             .ingest(
                 &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
