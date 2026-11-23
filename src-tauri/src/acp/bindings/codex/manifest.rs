@@ -379,3 +379,13 @@ fn valid_hex(value: &str, bytes: usize) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
+
+pub(crate) fn terminal_metadata() -> &'static crate::acp::command_placement::TerminalMetadata {
+    static METADATA: std::sync::OnceLock<crate::acp::command_placement::TerminalMetadata> =
+        std::sync::OnceLock::new();
+    crate::acp::command_placement::TerminalMetadata::load(
+        &METADATA,
+        include_bytes!("terminal.json"),
+        known_commands(),
+    )
+}

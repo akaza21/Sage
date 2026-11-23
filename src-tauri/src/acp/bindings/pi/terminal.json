@@ -1,0 +1,1 @@
+{ "label": "Pi", "command": "pi", "resumeArgs": ["--session"] }

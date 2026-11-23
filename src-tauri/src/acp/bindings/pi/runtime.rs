@@ -91,6 +91,8 @@ pub(crate) struct PiRuntime {
     pub(super) session_id: SageAgentSessionId,
     pub(super) external_session: Option<ExternalId>,
     session_dir: Option<std::path::PathBuf>,
+    /// Pi's own session file, which `pi --session` reopens in a terminal.
+    session_file: Option<RequiredText<3072>>,
     pub(super) active_turn: Option<TurnIntent>,
     steering: support::Steering,
     pub(super) deny: Option<DenyIntent>,
@@ -187,6 +189,7 @@ impl HarnessAdapter for PiRuntime {
         self.translator.note_dropped_frame();
     }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.project_terminal_handoff();
         std::sync::Arc::clone(&self.commands)
     }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {

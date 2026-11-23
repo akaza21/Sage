@@ -1,0 +1,1 @@
+{ "label": "Claude Code", "command": "claude", "resumeArgs": ["--resume"] }
