@@ -293,9 +293,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 3700,
+        "maxGzipBytes": 2445,
         "maxCssGzipBytes": 737,
-        "reason": "Session notices, activities, Undo, the prompt actions trigger and harness composer chrome (status, widgets, text offer). Measured JS PENDING."
+        "reason": "Session notices, activities, Undo and the prompt actions trigger with its rewind/fork eligibility check. Measured JS 2310 B, CSS 449 B; cap moved from ConversationActions."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",

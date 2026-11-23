@@ -16,24 +16,18 @@ import type * as LocationChunk from "./ComposerLocationStrip";
 const LocationPart = lazyParts<typeof LocationChunk>(
   () => import("./ComposerLocationStrip"),
 );
-import { ComposerStatusNotices } from "./ComposerStatusNotices";
+import { ComposerStatusNotices, composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
-import { composerProblem } from "./ComposerStatusNotices";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
-import { harnessChrome } from "./ComposerChromeSlot";
+import { SlashPart, harnessChrome } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
-import type * as SlashChunk from "./ComposerSlashController";
-
-const SlashPart = lazyParts<Pick<typeof SlashChunk, "ComposerSlashController">>(
-  () => import("./ComposerSlashController"),
-);
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {

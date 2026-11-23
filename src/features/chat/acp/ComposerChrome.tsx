@@ -1,7 +1,6 @@
 import { useEffect, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
-import "./session-surface.css";
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Offers already used or ignored, newest last; one per composer scope. */
@@ -78,7 +77,7 @@ export function ComposerChrome({
         ? chrome.statuses.map((status) => (
             <p
               key={status.key}
-              className="acp-session-surface__notice"
+              className="notice"
               data-chrome-status={status.key}
             >
               {status.text}
@@ -86,7 +85,7 @@ export function ComposerChrome({
           ))
         : null}
       {offer && !empty ? (
-        <div className="acp-session-notice">
+        <div>
           <Notice
             identity={JSON.stringify([scope, "composer-offer", offer.key])}
             severity="info"

@@ -13,6 +13,8 @@ export async function slashCommandTurn(
   return (await loadRuntime()).slashCommandTurn(...args);
 }
 
+export { ComposerChrome } from "./acp/ComposerChrome";
+
 export function ComposerSlashController(
   props: ComponentProps<typeof Runtime.ComposerSlashController>,
 ) {
