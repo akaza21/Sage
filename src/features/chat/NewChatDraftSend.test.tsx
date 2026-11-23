@@ -668,18 +668,15 @@ afterEach(() => {
 });
 
 it.each([
-  [
-    "Codex discovery is already running; retry it.",
-    "Codex discovery is already running; retry it.",
-  ],
-  [null, "Sage could not check Draft harness. Retry it from the harness menu."],
-] as const)(
+  "Codex discovery is already running; retry it.",
+  "Account unavailable.",
+])(
   "says in one visible line why a failed discovery blocks the Home draft (%s)",
-  async (error, reason) => {
+  async (reason) => {
     useWorkbenchStore.setState({
       models: [],
       harnessDiscoveryPhase: "error",
-      harnessDiscoveryError: error,
+      harnessDiscoveryError: reason,
     });
     mount();
     await settleLazyModules();

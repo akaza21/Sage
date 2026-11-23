@@ -212,9 +212,8 @@ export function NewChatDraftSurface({
             !available
               ? "Choose an available harness before sending."
               : // A failed discovery leaves no model to send with; say why.
-                !choice && discoveryPhase === "error"
-                ? (discoveryError ??
-                  `Sage could not check ${harness.name}. Retry it from the harness menu.`)
+                discoveryPhase === "error"
+                ? discoveryError
                 : null
           }
           project={shownProject}
