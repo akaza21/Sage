@@ -166,10 +166,7 @@ async function handOff(input: string) {
       useWorkbenchStore.setState({
         terminalHandoff: (type) => {
           useWorkbenchStore.setState({ terminalHandoff: null });
-          return type(input).then(resolve, (error: unknown) => {
-            reject(error);
-            throw error;
-          });
+          return type(input).then(resolve, reject);
         },
       });
       useTerminalDockStore.getState().setVisible(true);
@@ -185,12 +182,6 @@ it("writes each handoff to a new tab, keeps a tab whose write failed, and holds 
   await handOff(text);
   backend.failWrite = true;
   await expect(handOff(text)).rejects.toMatchObject({ code: "busy" });
-  // The dock reports it; the tab stays open for the user to type into.
-  await waitFor(() =>
-    expect(screen.getByRole("region", { name: "Terminal" })).toHaveTextContent(
-      "not reading",
-    ),
-  );
   backend.failWrite = false;
   await expect(handOff("x".repeat(4097))).rejects.toThrow("4096");
   await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(4));

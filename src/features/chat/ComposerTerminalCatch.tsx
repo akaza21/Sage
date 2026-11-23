@@ -101,16 +101,12 @@ export function ComposerTerminalCatch({
       if (failure) setError(failure);
       else setCaught((current) => (current === caught ? null : current));
     };
-    // The dock calls this once with its new tab's keystroke writer, and reports
-    // a failed write in its own status line too.
+    // The dock calls this once with its new tab's keystroke writer.
     const handoff: TerminalHandoff = (type) => {
       leave();
       return type(command).then(
         () => settle(),
-        (error: unknown) => {
-          settle(notTyped);
-          throw error;
-        },
+        () => settle(notTyped),
       );
     };
     const timer = setTimeout(() => settle(notOpened), 10_000);
