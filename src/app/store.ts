@@ -82,6 +82,19 @@ export type ResourceState<T> =
   | { phase: "ready"; value: T }
   | { phase: "error"; message: string };
 
+/**
+ * One pending request to open a chat's project terminal holding unrun input.
+ * The composer stores it; only the dock showing that chat and project takes
+ * it, opens a new tab and runs it with that tab's keystroke writer, or with
+ * null when no tab can open. Left unset at startup: no startup code.
+ */
+export type TerminalHandoff = {
+  projectId: string;
+  projectGeneration: string;
+  chatId: string;
+  run: (type: ((text: string) => Promise<void>) | null) => void;
+};
+
 export interface WorkbenchState
   extends
     ChatSlice,
@@ -108,6 +121,7 @@ export interface WorkbenchState
   phase: "booting" | "ready" | "error";
   error: string | null;
   browserClearNotice: string | null;
+  terminalHandoff?: TerminalHandoff | null;
   projects: ProjectListItem[];
   unscopedChats: ProjectListItem[];
   project: ProjectSummary | null;
@@ -196,24 +210,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createHarnessSlice(set, get, store),
     ...createBrowserSlice(set, get, store),
 
-    selectRoot: (selectedRootId) => {
-      if (
-        get().projectTransitioning ||
-        get().fileRenameInFlight ||
-        get().resourceTrashInFlight
-      )
-        return;
-      set({
-        selectedRootId,
-        selectedResource: childResource(selectedRootId),
-        fileCreateError: null,
-        fileCreateNotice: null,
-        folderCreateError: null,
-        folderCreateNotice: null,
-        fileRenameError: null,
-        fileRenameNotice: null,
-      });
-      void get().loadDirectory(childResource(selectedRootId));
+    // A root is its top directory: select it as one, then list it once the
+    // selection took (it refuses during a transition, rename or trash).
+    selectRoot: (rootId) => {
+      const resource = childResource(rootId);
+      get().selectDirectory(resource);
+      if (get().selectedResource === resource)
+        void get().loadDirectory(resource);
     },
 
     activateTab: async (tabId, submission) => {
