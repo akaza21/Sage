@@ -154,7 +154,7 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   // A command that would press Enter is never handed to the terminal.
   catchCommand(text + "\n");
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("could not be typed");
+  expect(screen.getByRole("alert")).toHaveTextContent("did not take");
   expect(useTerminalDockStore.getState().visible).toBe(false);
   catchCommand(text);
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));

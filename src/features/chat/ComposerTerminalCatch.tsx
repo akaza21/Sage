@@ -5,8 +5,8 @@ import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
-const notOpened = "The terminal did not open.";
-const notTyped = "The command could not be typed.";
+// A refused, timed-out or failed prefill: the user can still Copy.
+const failed = "The terminal did not take the command.";
 // The dock opens at most 4 tabs per chat.
 const tabsFull = "4 terminals are already open.";
 // One mounted composer field per chat owns its caught command.
@@ -82,7 +82,7 @@ export function ComposerTerminalCatch({
   // settled in time fails here, whether or not the dock took it.
   const openInTerminal = () => {
     if (/\p{Cc}/u.test(command)) {
-      setError(notTyped);
+      setError(failed);
       return;
     }
     const store = useWorkbenchStore;
@@ -113,11 +113,11 @@ export function ComposerTerminalCatch({
         if (!type) return settle(tabsFull);
         void type(command).then(
           () => settle(),
-          () => settle(notTyped),
+          () => settle(failed),
         );
       },
     };
-    const timer = setTimeout(() => settle(notOpened), 10_000);
+    const timer = setTimeout(() => settle(failed), 10_000);
     // Settling after unmount only clears the slot and timer.
     cancel.current = settle;
     setOpening(true);
