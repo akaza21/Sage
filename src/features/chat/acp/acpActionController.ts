@@ -294,10 +294,11 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
           page = applied;
-          session = currentSession(page);
-          if (!session)
-            throw localFailure("Session start returned no session.");
-          session = requireSelectedSession(session, bindingId, modelId);
+          session = requireSelectedSession(
+            headSession(page),
+            bindingId,
+            modelId,
+          );
           // Access chosen before the session existed is given to it first.
           await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
