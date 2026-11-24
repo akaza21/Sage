@@ -1,10 +1,4 @@
-import {
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useContext, useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore, type TerminalHandoff } from "../../app/store";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
