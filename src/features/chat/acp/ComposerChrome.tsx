@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
@@ -33,26 +33,93 @@ function Widget({ widget }: { widget: ChromeWidget }) {
  * A harness's subtitle, status lines, text widgets and composer offer,
  * rendered by kind for every extension from one slot before the field, so
  * they are read in the order they show. Only widgets an extension placed
- * below the editor are moved after the field, by flex order. An offer never
- * changes the composer by itself: it waits as a notice until the user uses
- * or ignores it, or the harness withdraws it (a sent prompt does).
+ * below the editor are moved after the field, by flex order. Offers fill an
+ * idle, empty composer in their own session; otherwise they wait for Use or
+ * Ignore. Untouched automatic text yields to a failed prompt's restore.
  */
 export function ComposerChrome({
   chatAuth,
-  dictationScope: scope,
+  suggestionRef,
+  dictationScope,
+  sessionId,
+  composerRef,
+  actionBusy,
+  queuedPrompts,
+  hidden,
+  projectTransitioning,
   text,
   onTextChange,
 }: Pick<
   ChatComposerRegionProps,
-  "chatAuth" | "dictationScope" | "text" | "onTextChange"
+  | "chatAuth"
+  | "suggestionRef"
+  | "dictationScope"
+  | "sessionId"
+  | "composerRef"
+  | "actionBusy"
+  | "queuedPrompts"
+  | "hidden"
+  | "projectTransitioning"
+  | "text"
+  | "onTextChange"
 >) {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
-  const chrome = decodeSessionChrome(chatAuth?.page?.sessionSurface);
-  if (!chrome) return null;
+  const [filled, setFilled] = useState(false);
+  const page = chatAuth?.page;
+  const scope = JSON.stringify([page?.projectId, dictationScope, sessionId]);
+  const chrome = decodeSessionChrome(page?.sessionSurface);
   const offer =
-    chrome.editorText && answered.get(scope) !== chrome.editorText.key
+    chrome?.editorText && answered.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
+  const key = offer?.key;
+  const proposed = offer?.text;
+  const busy =
+    actionBusy ||
+    queuedPrompts?.some((item) => ["saving", "sending"].includes(item.status));
+  useEffect(() => {
+    if (!suggestionRef) return;
+    if (
+      suggestionRef.current?.scope !== scope ||
+      suggestionRef.current.text !== text
+    ) {
+      suggestionRef.current = null;
+      setFilled(false);
+    }
+    if (
+      !key ||
+      proposed === undefined ||
+      text ||
+      composerRef.current?.value ||
+      busy ||
+      hidden ||
+      projectTransitioning ||
+      page?.chatId !== dictationScope ||
+      !sessionId ||
+      page.currentSessionId !== sessionId ||
+      answered.get(scope) === key
+    )
+      return;
+    answer(scope, key);
+    onTextChange(proposed);
+    suggestionRef.current = { scope, text: proposed };
+    setFilled(true);
+  }, [
+    suggestionRef,
+    scope,
+    text,
+    composerRef,
+    busy,
+    hidden,
+    projectTransitioning,
+    page,
+    dictationScope,
+    sessionId,
+    key,
+    proposed,
+    onTextChange,
+  ]);
+  if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;
     answer(scope, offer.key);
@@ -104,9 +171,29 @@ export function ComposerChrome({
             details={<pre>{offer.text}</pre>}
           />
         ) : null}
-        {/* Announced once per new offer: the keyed line is inserted afresh. */}
-        <p className="sr-only" role="status">
-          {offer ? <span key={offer.key}>The agent suggests text.</span> : null}
+        <p className={filled ? "notice" : "sr-only"} role="status">
+          {filled ? (
+            <>
+              Suggested text added to the message.{" "}
+              <button
+                type="button"
+                className="notice__text-link"
+                onClick={() => {
+                  if (
+                    suggestionRef?.current?.scope === scope &&
+                    suggestionRef.current.text === text
+                  )
+                    onTextChange("");
+                  if (suggestionRef) suggestionRef.current = null;
+                  setFilled(false);
+                }}
+              >
+                Clear suggested text
+              </button>
+            </>
+          ) : offer ? (
+            <span key={offer.key}>The agent suggests text.</span>
+          ) : null}
         </p>
       </div>
       {/* The input column is a flex column: these show after the field. */}
