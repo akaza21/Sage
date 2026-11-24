@@ -11,7 +11,6 @@ import {
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
-import { chatPlacement } from "./chatPlacement";
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import type { CreateChatResult } from "./runCreateChat";
@@ -79,8 +78,16 @@ export const createChatSlice: StateCreator<
         if (!pending || get().projectTransitioning) return;
         set({ pendingChatOpen: null });
         const { projectId, chatId } = pending;
-        const { attached, archived } = chatPlacement(get(), projectId, chatId);
-        if (archived || (!attached && get().project?.id === projectId)) return;
+        const state = get();
+        // Skip a chat the settled projection no longer lists as open.
+        if (
+          state.project?.id === projectId
+            ? !state.tabs.some((tab) => tab.id === chatId)
+            : [...state.projects, ...state.unscopedChats]
+                .find((item) => item.id === projectId)
+                ?.railArchived?.some((item) => item.id === chatId)
+        )
+          return;
         void get().openRailChat(projectId, chatId);
       });
   });
