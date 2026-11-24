@@ -59,23 +59,23 @@ impl PiRuntime {
     }
 
     /// Sage's own `set_model` reply. An extension may switch model while it
-    /// is in flight, and Pi reports each switch; when the last report names
-    /// another model the reply may be stale, so Pi's model is read again
-    /// (one read at most; a busy read leaves it due with the next prompt).
+    /// is in flight, and Pi reports each switch; when any report named
+    /// another model than Sage asked for, the reply may be stale, so Pi's
+    /// model is read again (one read at most; a busy read leaves it due with
+    /// the next prompt).
     pub(super) fn model_reply(
         &mut self,
         model: ModelSummary,
     ) -> Result<ConfigReply, AdapterRuntimeError> {
-        match self.model_hint.take() {
-            Some((provider, id)) if provider != model.provider || id != model.id => {
-                self.configuration_dirty = true;
-                Ok((
-                    Some(AdapterEvent::IgnoredLate),
-                    self.refresh_configuration(),
-                ))
-            }
-            _ => self.model_selected(model),
+        self.model_request = None;
+        if std::mem::take(&mut self.model_disagreed) {
+            self.configuration_dirty = true;
+            return Ok((
+                Some(AdapterEvent::IgnoredLate),
+                self.refresh_configuration(),
+            ));
         }
+        self.model_selected(model)
     }
 
     pub(super) fn model_selected(

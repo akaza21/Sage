@@ -61,6 +61,7 @@ vi.mock("./TerminalDock", () => ({
 const original = useWorkbenchStore.getState();
 const text = 'agent --resume "native-1"';
 let closeOther: () => void = () => undefined;
+let mountDock: () => void = () => undefined;
 let disconnect: (() => void) | undefined;
 afterEach(() => {
   cleanup();
@@ -72,7 +73,7 @@ afterEach(() => {
   backend.failWrite = false;
 });
 
-async function mount() {
+async function mount(docked = true) {
   useWorkbenchStore.setState({
     project: { id: "project-1", name: "Project", roots: [] },
     projectTransitioning: false,
@@ -103,6 +104,9 @@ async function mount() {
     const [status, setStatus] = useState("");
     const [other, setOther] = useState(true);
     closeOther = () => setOther(false);
+    // The real dock is lazy: it may mount only after a request opened it.
+    const [dock, setDock] = useState(docked);
+    mountDock = () => setDock(true);
     const visible = useTerminalDockStore((state) => state.visible);
     // As in a single Agent pane, chat-1's field shows only while it is active.
     const away = useWorkbenchStore((state) => state.activeTabId === "chat-2");
@@ -129,13 +133,15 @@ async function mount() {
           ) : null}
         </AgentToolsProvider>
         <span role="status">{status}</span>
-        <TerminalDockForWorkbench
-          container={document.body}
-          pinnedChatId="chat-1"
-          visible={visible}
-          open={visible}
-          setOpen={(open) => useTerminalDockStore.getState().setVisible(open)}
-        />
+        {dock ? (
+          <TerminalDockForWorkbench
+            container={document.body}
+            pinnedChatId="chat-1"
+            visible={visible}
+            open={visible}
+            setOpen={(open) => useTerminalDockStore.getState().setVisible(open)}
+          />
+        ) : null}
       </>
     );
   }
@@ -152,6 +158,36 @@ const catchCommand = (command: string, chatId = "chat-1") =>
   act(() => {
     catchTerminalCommand(chatId, { input: "/hooks", name: "hooks", command });
   });
+
+it("never opens a dock that had not mounted for the chat the user went to, and a released choice stays gone", async () => {
+  await mount(false);
+  catchCommand(text);
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  await waitFor(() =>
+    expect(useTerminalDockStore.getState().visible).toBe(true),
+  );
+  // Side by side, chat-1's field stays mounted while chat-3 becomes active.
+  act(() =>
+    useWorkbenchStore.setState(({ tabs }) => ({
+      tabs: [...tabs, { ...tabs[1]!, id: "chat-3", position: 2 }],
+      activeTabId: "chat-3",
+    })),
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("left this chat");
+  expect(useTerminalDockStore.getState().visible).toBe(false);
+  act(() => mountDock());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(screen.queryByRole("region", { name: "Terminal" })).toBeNull();
+  expect(backend.sessions.size).toBe(0);
+  // Sending as text releases the cancelled choice: the field mounting again
+  // shows nothing.
+  fireEvent.click(screen.getByRole("button", { name: "Send as text anyway" }));
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-2" }));
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
+  expect(
+    screen.queryByRole("group", { name: "Terminal-only command" }),
+  ).toBeNull();
+});
 
 it("opens a caught command as unrun input in its chat's project terminal and clears the choice", async () => {
   await mount();

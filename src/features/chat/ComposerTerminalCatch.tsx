@@ -43,7 +43,9 @@ export function ComposerTerminalCatch({
   const [error, setError] = useState(() =>
     cancelled.has(chatId) ? switched : "",
   );
-  useEffect(() => void cancelled.delete(chatId), [chatId]);
+  // Nor does it after any change of choice: a released one (edited text,
+  // "Send as text anyway") or a new catch.
+  useEffect(() => void cancelled.delete(chatId), [caught, chatId]);
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
@@ -124,6 +126,8 @@ export function ComposerTerminalCatch({
       chatId,
       run: (type) => {
         if (settled) return;
+        // The dock took it: leaving the chat now never closes the dock.
+        close = undefined;
         unwatch();
         leave();
         if (!type) return settle(tabsFull);
@@ -134,6 +138,8 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(failed), 10_000);
+    // Closes the dock this request opened, once it has opened it.
+    let close: (() => void) | undefined;
     // Another chat taking the dock closes it, and it never reopens on its
     // own: until the dock takes it, leaving the chat (its field unmounting
     // or another chat becoming active) ends the request, and the choice
@@ -143,6 +149,9 @@ export function ComposerTerminalCatch({
       if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
       cancelled.set(chatId, caught);
       settle(switched);
+      // The dock this request opened ends with it: a lazy dock that has not
+      // mounted yet would otherwise open for the chat the user went to.
+      close?.();
     };
     const unwatch = store.subscribe(({ activeTabId, tabs }) => {
       if (
@@ -156,8 +165,17 @@ export function ComposerTerminalCatch({
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });
-    // The Agent tools seam opens the dock; the dock takes the request.
-    tools.launch("terminal", chatId);
+    // The Agent tools seam opens the dock; the dock takes the request. The
+    // dock's commands, loaded with the workbench, say whether it was shown.
+    void import("../../workbench/terminalDockCommands").then(
+      ({ useTerminalDockStore: dock }) => {
+        if (settled) return;
+        const { visible, setVisible } = dock.getState();
+        if (!visible) close = () => setVisible(false);
+        tools.launch("terminal", chatId);
+      },
+      () => settle(failed),
+    );
   };
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a

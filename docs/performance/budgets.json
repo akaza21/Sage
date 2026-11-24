@@ -60,8 +60,8 @@
       },
       {
         "entry": "src/features/chat/acp/ComposerChrome.tsx",
-        "maxGzipBytes": 1434,
-        "reason": "Harness composer chrome (status lines, text widgets, composer offer, subtitle); fetched only while a live session reports some. Measured 1184 B plus 250 B."
+        "maxGzipBytes": 1520,
+        "reason": "Harness composer chrome (status lines, text widgets, composer offer, subtitle); fetched only while a live session reports some. 1184 B plus 250 B; 86 B from Quick Open (T10d-b)."
       },
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 6806,
+        "maxGzipBytes": 6720,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B to T6, 300 B to T11d, 200 B to T6b, 450 B to T6c."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. JS 3205 B, CSS 698 B; 404 B to T6, 300 B to T11d, 200 B to T6b, 450 B to T6c, 86 B to T10d-b."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",

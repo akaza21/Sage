@@ -155,33 +155,45 @@ fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_rep
         after["configOptions"][0]["currentValue"],
         "anthropic:claude"
     );
-    // An extension switches back while Sage's own switch is in flight: Pi's
-    // late reply does not overwrite it, and Pi's model is read again.
-    let set = runtime
-        .configure(&super::config_delivery::config_intent(
-            "pi.model",
-            "openai:gpt",
-        ))
-        .unwrap()
-        .unwrap();
-    let set = deliver(&mut runtime, set);
-    runtime.ingest(&model("openai", "gpt"), &Mapper).unwrap();
-    runtime
-        .ingest(&model("anthropic", "claude"), &Mapper)
-        .unwrap();
-    let reply = json!({"provider":"openai","id":"gpt","name":"GPT"});
-    let batch = runtime.ingest(&response(&set, reply), &Mapper).unwrap();
-    assert_eq!(config(&runtime), after);
-    let [read] = batch.egress() else {
-        panic!("{} egress", batch.egress().len())
-    };
-    assert_eq!(request(read)["type"], "get_state");
     // A model outside the catalogue is read with the next prompt.
+    assert!(!runtime.configuration_dirty);
     runtime
         .ingest(&model("router", "virtual"), &Mapper)
         .unwrap();
     assert_eq!(config(&runtime), after);
     assert!(runtime.configuration_dirty);
+    // An extension switches back while Sage's own switch is in flight, and
+    // Pi's reports come in either order: Pi's late reply does not overwrite
+    // the switch, and Pi's model is read again.
+    for (first, then) in [
+        (("openai", "gpt"), ("anthropic", "claude")),
+        (("anthropic", "claude"), ("openai", "gpt")),
+    ] {
+        let set = runtime
+            .configure(&super::config_delivery::config_intent(
+                "pi.model",
+                "openai:gpt",
+            ))
+            .unwrap()
+            .unwrap();
+        let set = deliver(&mut runtime, set);
+        runtime.ingest(&model(first.0, first.1), &Mapper).unwrap();
+        runtime.ingest(&model(then.0, then.1), &Mapper).unwrap();
+        let shown = config(&runtime);
+        let reply = json!({"provider":"openai","id":"gpt","name":"GPT"});
+        let batch = runtime.ingest(&response(&set, reply), &Mapper).unwrap();
+        assert_eq!(config(&runtime), shown);
+        let [read] = batch.egress() else {
+            panic!("{} egress", batch.egress().len())
+        };
+        let read = request(read);
+        assert_eq!(read["type"], "get_state");
+        let failed = frame(
+            json!({"type":"response","id":read["id"],"command":"get_state",
+            "success":false,"error":"busy"}),
+        );
+        runtime.ingest(&failed, &Mapper).unwrap();
+    }
 }
 
 #[test]

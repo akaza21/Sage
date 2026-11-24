@@ -1,16 +1,8 @@
-import { useEffect, useEffectEvent, useReducer } from "react";
+import { useEffectEvent, useLayoutEffect, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
+import { record } from "../composerAutoFill";
 import { autoFilled } from "./useAcpChatActions";
-
-/** Records a chat's auto-filled text, or forgets it when `text` is absent. */
-function setAutoFilled(chatId: string, text?: string) {
-  autoFilled.delete(chatId);
-  if (text === undefined) return;
-  autoFilled.set(chatId, text);
-  if (autoFilled.size > 4)
-    autoFilled.delete(autoFilled.keys().next().value as string);
-}
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -47,7 +39,7 @@ function Widget({ widget }: { widget: ChromeWidget }) {
  * the field by itself only when the field is empty, no send is in flight or
  * about to restore its prompt, and the page is this chat's; otherwise it
  * waits as a notice for Use or Ignore. Auto-filled text the user has not
- * touched yields to a failed send's restore (see `useAcpChatActions`).
+ * touched yields to a failed send's restore (see `composerAutoFill`).
  */
 export function ComposerChrome({
   chatAuth,
@@ -56,6 +48,7 @@ export function ComposerChrome({
   hidden,
   projectTransitioning,
   text,
+  attachedContext,
   onTextChange,
 }: Pick<
   ChatComposerRegionProps,
@@ -65,6 +58,7 @@ export function ComposerChrome({
   | "hidden"
   | "projectTransitioning"
   | "text"
+  | "attachedContext"
   | "onTextChange"
 >) {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
@@ -75,29 +69,28 @@ export function ComposerChrome({
       ? chrome.editorText
       : undefined;
   const key = offer?.key;
-  // Trimmed, so the failed send's restore can match it as the store does.
-  const proposed = offer?.text.trim();
-  const untouched = autoFilled.get(scope) === text;
-  // The chat's `sending` covers a send in flight and its failure restore.
+  const proposed = offer?.text;
+  const untouched = autoFilled.get(scope) === text.trim();
+  // Empty means no text and no attachments. The chat's `sending` covers a
+  // send in flight and its failure restore.
   const idle =
     !text &&
+    !attachedContext.length &&
     !actionBusy &&
     !hidden &&
     !projectTransitioning &&
     page?.chatId === scope;
+  // A refused write (lost ownership) records nothing and keeps the notice.
   const fill = useEffectEvent((key: string, proposed: string) => {
-    answer(scope, key);
-    setAutoFilled(scope, proposed);
     onTextChange(proposed);
+    if (record(scope, proposed)) answer(scope, key);
   });
   // Any other text in this chat's field means the suggestion is the user's.
-  useEffect(() => {
-    if (!untouched) setAutoFilled(scope);
-  }, [untouched, scope]);
-  useEffect(() => () => setAutoFilled(scope), [scope]);
-  useEffect(() => {
-    if (idle && key && proposed) fill(key, proposed);
-  }, [idle, key, proposed]);
+  // This runs before paint, so the notice never flashes.
+  useLayoutEffect(() => {
+    if (!untouched) autoFilled.delete(scope);
+    if (idle && key && proposed?.trim()) fill(key, proposed);
+  }, [untouched, idle, key, proposed, scope]);
   if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;

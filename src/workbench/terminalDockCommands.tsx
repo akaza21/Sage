@@ -10,6 +10,10 @@ import {
 } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 
+// The composer reads and ends a dock it opened through this lazy chunk, so
+// the store stays in it rather than in a shared chunk.
+export { useTerminalDockStore };
+
 export function connectTerminalDock(
   blocked: () => boolean,
   onChange: (snapshot: TerminalDockProjection) => void,
@@ -90,6 +94,7 @@ export function connectTerminalDock(
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- the store re-export above shares this lazy chunk
 function TerminalControls({ onToggle }: { onToggle: () => void }) {
   const { visible, ready, error } = useTerminalDockStore();
   return (

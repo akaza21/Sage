@@ -140,6 +140,7 @@ function Composer({ chatId }: { chatId?: string }) {
         actionBusy={actions.busy}
         projectTransitioning={false}
         text={composer.composerText}
+        attachedContext={composer.attachedContext}
         onTextChange={composer.setComposerText}
       />
       <button type="submit">Send</button>
@@ -218,7 +219,8 @@ it("keeps the offer as a banner while a send is in flight, and the failed send's
   expect(banner()).toBeTruthy();
 });
 
-it("lets a failed restore replace untouched auto-filled text per chat, never edited text", async () => {
+/** Gives the side-by-side chat B its own projection, as a bound pane has. */
+function projectChatB() {
   const scopeB = {
     projectId: page.projectId,
     chatId: "chat-b" as typeof page.chatId,
@@ -230,6 +232,10 @@ it("lets a failed restore replace untouched auto-filled text per chat, never edi
     ...page,
     chatId: "chat-b",
   } as AcpChatPage);
+}
+
+it("lets a failed restore replace untouched auto-filled text per chat, never edited text", async () => {
+  projectChatB();
   render(
     <>
       <Composer />
@@ -255,4 +261,38 @@ it("lets a failed restore replace untouched auto-filled text per chat, never edi
   fireEvent.change(field(), { target: { value: "Suggested" } });
   await sendAndFail();
   expect(field().value).toBe("Suggested");
+});
+
+it("keeps the offer as a banner over an attachment, and a refused fill never marks later typing as the fill", async () => {
+  useWorkbenchStore.setState({
+    chatUiById: {
+      [page.chatId]: {
+        composerText: "",
+        attachedContext: [{ kind: "diffLineComment", note: "Look here" }],
+      },
+    } as never,
+  });
+  projectChatB();
+  render(
+    <>
+      <Composer />
+      <Composer chatId="chat-b" />
+    </>,
+  );
+  click("Offer");
+  expect(field().value).toBe("");
+  expect(chat().getByRole("button", { name: "Use suggestion" })).toBeTruthy();
+  // Chat B has lost ownership while the offer arrives, so its write is refused.
+  const { tabs } = useWorkbenchStore.getState();
+  act(() =>
+    useWorkbenchStore.setState({
+      tabs: tabs.filter((tab) => tab.id !== "chat-b"),
+    }),
+  );
+  click("Offer", "chat-b");
+  expect(field("chat-b").value).toBe("");
+  act(() => useWorkbenchStore.setState({ tabs }));
+  fireEvent.change(field("chat-b"), { target: { value: "Suggested" } });
+  await sendAndFail("chat-b");
+  expect(field("chat-b").value).toBe("Suggested");
 });

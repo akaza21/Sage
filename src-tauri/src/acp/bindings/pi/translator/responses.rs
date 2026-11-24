@@ -209,6 +209,10 @@ impl PiTranslator {
                 }
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
+            // A steer Pi answered keeps the extension-message marker it took,
+            // even when `accepted` is false: Pi may already have queued and
+            // echoed the text, so giving the marker back could show that echo
+            // twice. Only a steer that never reached Pi gives it back.
             PendingKind::Steer => Ok(vec![AdapterOutput::SteerResolved {
                 accepted: response.success
                     && self
