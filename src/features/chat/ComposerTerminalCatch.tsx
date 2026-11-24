@@ -37,17 +37,13 @@ export function ComposerTerminalCatch({
   onAnnounce: (message: string) => void;
   text: string;
 }) {
-  // A choice a chat switch cancelled comes back with its reason; once shown,
-  // it is no longer kept.
+  // A choice a chat switch cancelled comes back with its reason, once.
   const [caught, setCaught] = useState(() => cancelled.get(chatId) ?? null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState(() =>
     cancelled.has(chatId) ? switched : "",
   );
-  useEffect(
-    () => void (error === switched && cancelled.delete(chatId)),
-    [chatId, error],
-  );
+  useEffect(() => void cancelled.delete(chatId), [chatId]);
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
