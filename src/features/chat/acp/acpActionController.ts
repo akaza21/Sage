@@ -134,7 +134,7 @@ function requireSelectedSession(
 ): AgentSessionProjection {
   if (session.bindingId !== bindingId || session.modelId !== modelId) {
     throw localFailure(
-      "The authoritative session does not match the selected harness and model.",
+      "The session does not match the selected harness and model.",
     );
   }
   return session;
@@ -306,7 +306,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         if (session.residency === "cold") {
           if (!session.nextRuntimeEpoch) {
             throw localFailure(
-              "The session has no authoritative activation epoch.",
+              "The session cannot be activated.",
             );
           }
           const activated = await commands.activateSession({
