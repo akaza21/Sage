@@ -75,7 +75,8 @@ export function ComposerChrome({
       ? chrome.editorText
       : undefined;
   const key = offer?.key;
-  const proposed = offer?.text;
+  // Trimmed, so the failed send's restore can match it as the store does.
+  const proposed = offer?.text.trim();
   const untouched = autoFilled.get(scope) === text;
   // The chat's `sending` covers a send in flight and its failure restore.
   const idle =

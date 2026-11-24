@@ -172,8 +172,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
           const filled = autoFilled.get(intent.chatId);
           // The restore wins over auto-filled text the user never touched;
           // the clear only applies while the field still holds that text.
-          if (prompt && filled)
-            workbench.clearChatComposer(intent, filled.trim(), []);
+          if (filled) workbench.clearChatComposer(intent, filled, []);
           workbench.restoreChatComposer(intent, prompt, attachedContext);
         },
       }),
