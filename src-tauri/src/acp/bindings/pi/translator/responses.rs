@@ -17,6 +17,13 @@ impl PiTranslator {
         })
     }
 
+    /// Sage's own model change is in flight.
+    pub(in crate::acp::bindings::pi) fn set_model_pending(&self) -> bool {
+        self.pending
+            .values()
+            .any(|request| request.kind == PendingKind::SetModel)
+    }
+
     pub(super) fn ingest_response(
         &mut self,
         response: Response,

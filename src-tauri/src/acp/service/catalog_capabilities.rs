@@ -118,3 +118,52 @@ impl CatalogCapabilities {
         }
     }
 }
+
+#[cfg(all(test, feature = "acp-fixture"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_change_refused_while_starting_is_kept_until_a_ready_store_takes_it() {
+        let (database, owner, negotiated, complete) = crate::acp::store::activating_fixture();
+        let session = owner.session_id.as_str().to_owned();
+        let stored = || -> String {
+            database
+                .connection()
+                .query_row(
+                    "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                    [session.as_str()],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        let mut advertised = negotiated.clone();
+        advertised.goal.set = !negotiated.goal.set;
+        let notices = Arc::new(crate::acp::runtime::ProjectionMailbox::default());
+        let mut capabilities = CatalogCapabilities::new(
+            owner,
+            (advertised.clone(), advertised.clone()),
+            database.clone(),
+            notices.clone(),
+        );
+        capabilities.observe(Some(1), Some(negotiated));
+        let before = stored();
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        // Held back, it is not retried on every frame.
+        assert!(capabilities.settled(Some(2)));
+        // Readied before the activation commits: refused again, still kept.
+        capabilities.session_ready();
+        assert!(!capabilities.settled(Some(2)));
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        assert!(capabilities.settled(Some(2)));
+        assert_eq!(stored(), before);
+        assert!(notices.take().is_none());
+        complete(&mut database.write_connection().unwrap());
+        capabilities.session_ready();
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        let after: CapabilitySnapshotV1 = serde_json::from_str(&stored()).unwrap();
+        assert_eq!(after.goal, advertised.goal);
+        assert!(notices.take().is_some());
+        assert!(capabilities.settled(Some(2)));
+    }
+}

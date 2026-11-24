@@ -157,7 +157,7 @@ impl PiRuntime {
 
             AdapterOutput::State(state) => self.state_reply(state)?,
             AdapterOutput::Models(models) => self.models_reply(models)?,
-            AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
+            AdapterOutput::ModelSelected(model) => self.model_reply(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
             AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,
             AdapterOutput::AutoCompactionSelected(enabled) => {

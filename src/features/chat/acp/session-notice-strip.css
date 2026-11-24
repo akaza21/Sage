@@ -70,7 +70,7 @@
 
 .acp-turn__items > :hover > .acp-prompt-actions,
 .acp-turn__items > :focus-within > .acp-prompt-actions,
-.acp-prompt-actions:has([aria-expanded="true"]) {
+.chat-transcript-actions.acp-prompt-actions:has([aria-expanded="true"]) {
   opacity: 1;
 }
 
