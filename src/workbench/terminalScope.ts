@@ -1,10 +1,12 @@
 import type { UserTerminalScope } from "../services/userTerminalDesktop";
 
-/** Whether a request or a later selection is for exactly this native scope. */
-export const sameScope = (
-  a: UserTerminalScope | null | undefined,
+/** `a` when it is for exactly the native scope `b`, otherwise null. */
+export const forScope = <T extends UserTerminalScope>(
+  a: T | null | undefined,
   b: UserTerminalScope,
 ) =>
   a?.projectId === b.projectId &&
   a.projectGeneration === b.projectGeneration &&
-  a.chatId === b.chatId;
+  a.chatId === b.chatId
+    ? a
+    : null;
