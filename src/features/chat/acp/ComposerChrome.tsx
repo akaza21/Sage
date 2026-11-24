@@ -1,7 +1,8 @@
 import { useEffectEvent, useLayoutEffect, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
-import { forget, record, untouched as isAutoFilled } from "../composerAutoFill";
+import { record } from "../composerAutoFill";
+import { autoFilled } from "./useAcpChatActions";
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -69,7 +70,7 @@ export function ComposerChrome({
       : undefined;
   const key = offer?.key;
   const proposed = offer?.text;
-  const untouched = isAutoFilled(scope, text);
+  const untouched = autoFilled.get(scope) === text.trim();
   // Empty means no text and no attachments. The chat's `sending` covers a
   // send in flight and its failure restore.
   const idle =
@@ -82,17 +83,14 @@ export function ComposerChrome({
   // A refused write (lost ownership) records nothing and keeps the notice.
   const fill = useEffectEvent((key: string, proposed: string) => {
     onTextChange(proposed);
-    record(scope, proposed);
-    if (isAutoFilled(scope, proposed)) answer(scope, key);
+    if (record(scope, proposed)) answer(scope, key);
   });
   // Any other text in this chat's field means the suggestion is the user's.
-  // Both run before paint, in this order, so the notice never flashes.
+  // This runs before paint, so the notice never flashes.
   useLayoutEffect(() => {
-    if (!untouched) forget(scope);
-  }, [untouched, scope]);
-  useLayoutEffect(() => {
+    if (!untouched) autoFilled.delete(scope);
     if (idle && key && proposed?.trim()) fill(key, proposed);
-  }, [idle, key, proposed]);
+  }, [untouched, idle, key, proposed, scope]);
   if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;
