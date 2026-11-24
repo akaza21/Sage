@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 4604,
+        "maxGzipBytes": 4804,
         "maxCssGzipBytes": 550,
-        "reason": "Shared live command catalog ownership and composer command editing; loads only with the + menu or the focused slash controller. Existing startup budgets stay unchanged."
+        "reason": "Shared live command catalog ownership and composer command editing with the terminal-only catch and its Open in terminal handoff (T6b: +200 B from Quick Open); loads with + menu or slash controller."
       },
       {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 7456,
+        "maxGzipBytes": 7256,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B went to T6, 300 B moved to ConversationActions (T11d)."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B to T6, 300 B to T11d, 200 B to T6b."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",

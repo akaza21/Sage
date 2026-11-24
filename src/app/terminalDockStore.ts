@@ -10,7 +10,6 @@ interface TerminalDockStore {
   ready: boolean;
   error: string | null;
   restore: () => Promise<void>;
-  flush: () => Promise<void>;
   setVisible: (visible: boolean) => void;
 }
 
@@ -30,7 +29,6 @@ export const useTerminalDockStore = create<TerminalDockStore>((set, get) => ({
       set({ ready: false, error: "Terminal visibility could not be loaded." });
     }
   },
-  flush: () => writes.idle(),
   setVisible: (visible) => {
     if (!get().ready) return;
     set({ visible, error: null });
