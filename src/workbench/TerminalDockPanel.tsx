@@ -60,18 +60,18 @@ export function TerminalDockPanel({
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
-    lifecycle: 0,
+    epoch: 0,
     closing: false,
     closeAfterCreate: false,
   });
 
   const create = useCallback(async () => {
     const owner = ownerRef.current;
-    // After unmount nothing calls this: the auto-create checks the lifecycle.
+    // After unmount nothing calls this: the auto-create checks the mount epoch.
     if (owner.creating) return;
     if (owner.entries.length >= TERMINAL_MAX_PER_CHAT)
       return handoff?.run(null);
-    const lifecycle = owner.lifecycle;
+    const epoch = owner.epoch;
     owner.creating = true;
     setCreating(true);
     setMessage(null);
@@ -82,7 +82,7 @@ export function TerminalDockPanel({
         INITIAL_ROWS,
       );
       // A tab the dock no longer owns closes best effort, without waiting.
-      if (owner.lifecycle !== lifecycle)
+      if (owner.epoch !== epoch)
         return void closeUserTerminal(scope, session).catch(() => undefined);
       const next = [...owner.entries, { session, ended: false, message: null }];
       owner.entries = next;
@@ -94,9 +94,9 @@ export function TerminalDockPanel({
       // The sender types nothing once it timed out, and reports a failed write.
       handoff?.run((text) => writeUserTerminal(scope, session, text));
     } catch (error) {
-      if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
+      if (owner.epoch === epoch) setMessage(terminalErrorLabel(error));
     } finally {
-      if (owner.lifecycle === lifecycle) {
+      if (owner.epoch === epoch) {
         owner.creating = false;
         setCreating(false);
         if (owner.closeAfterCreate && !owner.entries.length) onClose();
@@ -106,9 +106,9 @@ export function TerminalDockPanel({
 
   useEffect(() => {
     const owner = ownerRef.current;
-    owner.lifecycle += 1;
+    owner.epoch += 1;
     return () => {
-      owner.lifecycle += 1;
+      owner.epoch += 1;
       owner.creating = false;
       for (const entry of owner.entries)
         void closeUserTerminal(scope, entry.session).catch(() => undefined);
@@ -118,11 +118,11 @@ export function TerminalDockPanel({
 
   useEffect(() => {
     const owner = ownerRef.current;
-    const lifecycle = owner.lifecycle;
+    const epoch = owner.epoch;
     if (!visible || (entries.length && !handoff)) return;
     // A tab in flight holds `create`; one that lands changes `entries` first.
     queueMicrotask(() => {
-      if (owner.lifecycle === lifecycle) void create();
+      if (owner.epoch === epoch) void create();
     });
   }, [create, visible, entries.length, handoff]);
 
