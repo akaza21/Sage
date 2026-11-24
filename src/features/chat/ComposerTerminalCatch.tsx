@@ -9,8 +9,7 @@ type Catcher = (caught: Caught) => boolean;
 const failed = "The terminal did not take the command.";
 // The dock opens at most 4 tabs per chat.
 const tabsFull = "4 terminals are already open.";
-const switched =
-  "Open in terminal was cancelled because you switched chats.";
+const switched = "Open in terminal was cancelled because you switched chats.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -88,8 +87,11 @@ export function ComposerTerminalCatch({
       return;
     }
     const store = useWorkbenchStore;
-    const { project, nativeTransitionEpoch, activeTabId: from } =
-      store.getState();
+    const {
+      project,
+      nativeTransitionEpoch,
+      activeTabId: from,
+    } = store.getState();
     const leave = () => {
       if (store.getState().terminalHandoff === handoff)
         store.setState({ terminalHandoff: null });
