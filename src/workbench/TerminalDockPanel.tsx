@@ -81,10 +81,9 @@ export function TerminalDockPanel({
         INITIAL_COLUMNS,
         INITIAL_ROWS,
       );
-      if (owner.lifecycle !== lifecycle) {
-        await closeUserTerminal(scope, session).catch(() => undefined);
-        return;
-      }
+      // A tab the dock no longer owns closes best effort, without waiting.
+      if (owner.lifecycle !== lifecycle)
+        return void closeUserTerminal(scope, session).catch(() => undefined);
       const next = [...owner.entries, { session, ended: false, message: null }];
       owner.entries = next;
       owner.dismissWhenCreateSettles = false;
@@ -163,7 +162,7 @@ export function TerminalDockPanel({
     const owner = ownerRef.current;
     const next = owner.entries.map((entry) =>
       entry.session.sessionId === sessionId
-        ? { ...entry, ended: entry.ended || ended === true, message: status }
+        ? { ...entry, ended: entry.ended || !!ended, message: status }
         : entry,
     );
     owner.entries = next;
