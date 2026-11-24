@@ -188,6 +188,10 @@ export function ComposerSectionRows({
   const pinnedOwner = usePinnedAgentChatOwner();
   const owner = props.boundChatId ?? pinnedOwner;
   const page = useStore(acpProjectionStoreFor(owner), (state) => state.page);
+  // No session yet: the draft's harness metadata says whether it takes files.
+  const draftHarness = useWorkbenchStore(({ harnesses, newChatDraft }) =>
+    harnesses.find((item) => item.id === newChatDraft?.harnessId),
+  );
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const { launch, chatAvailable } = useContext(AgentToolsContext);
@@ -199,6 +203,10 @@ export function ComposerSectionRows({
   const rows = composerNativeRows({
     ...props,
     importable: chatAvailable && importable,
+    onAttachFiles:
+      props.draftPickers && !draftHarness?.promptResources
+        ? undefined
+        : props.onAttachFiles,
     onImport: () => launch("sessionImport", owner ?? undefined),
     onOpenUsage: page?.usage ? props.onOpenUsage : undefined,
     onOpenMcp:

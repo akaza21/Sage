@@ -11,6 +11,11 @@ pub struct HarnessDefinition {
     pub transport: HarnessTransport,
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
+    /// Curated: the binding delivers files attached to a prompt, so a new
+    /// chat may stage them before its first session. A live session's
+    /// negotiated capability always decides; `false` without a binding.
+    #[serde(default)]
+    pub prompt_resources: bool,
     #[serde(default)]
     pub access_modes: Vec<sage_acp_protocol::access_mode::AccessModeCapability>,
     pub version: Option<String>,

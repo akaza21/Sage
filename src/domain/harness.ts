@@ -66,6 +66,8 @@ interface HarnessDefinitionBase {
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
   accountModelDiscovery: boolean;
+  /** Curated: the binding delivers attached files; a live session decides. */
+  promptResources?: boolean;
   accessModes?: readonly SessionAccessModeCapability[];
   version?: string | null;
   versionChecking?: boolean;

@@ -431,6 +431,42 @@ it("keeps a native refusal visible when the frontend catalog is still available"
   ]);
 });
 
+it("offers draft files only for a harness whose metadata accepts them", async () => {
+  useWorkbenchStore.setState({
+    agentCenter: "chat",
+    newChatDraft: null,
+    harnesses: [{ ...harness, promptResources: true }, otherHarness],
+    selectedHarnessId: harness.id,
+  });
+  await useWorkbenchStore.getState().openNewChatDraft();
+  mount();
+  await settleLazyModules();
+  const filesRow = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    const menu = await screen.findByRole("menu", {
+      name: "Composer options menu",
+    });
+    const row = within(menu).queryByRole("menuitem", {
+      name: "Files and folders",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menu", { name: "Composer options menu" }),
+      ).toBeNull(),
+    );
+    return row;
+  };
+  expect(await filesRow()).not.toBeNull();
+  await act(() =>
+    useWorkbenchStore.getState().selectDraftHarness(otherHarness.id),
+  );
+  expect(useWorkbenchStore.getState().newChatDraft?.harnessId).toBe(
+    otherHarness.id,
+  );
+  expect(await filesRow()).toBeNull();
+});
+
 it("explains an unavailable draft in the picker and opens harness settings", async () => {
   useWorkbenchStore.setState({
     agentCenter: "chat",

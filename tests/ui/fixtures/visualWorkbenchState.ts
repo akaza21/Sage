@@ -272,6 +272,7 @@ export function applyVisualWorkbenchState(
         installState: "available",
         source: "development",
         accountModelDiscovery: false,
+        promptResources: true,
         transport: "acp",
         bindingId: BINDING_ID,
         accessModes: [

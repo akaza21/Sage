@@ -293,6 +293,32 @@ mod tests {
     }
 
     #[test]
+    fn only_harnesses_whose_binding_delivers_files_carry_prompt_resources() {
+        let definitions = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        )
+        .settled_for_test()
+        .definitions_for(true);
+        for (id, accepts) in [
+            ("codex", true),
+            ("pi", true),
+            ("claude-code", true),
+            ("opencode", true),
+            ("gemini-cli", false),
+            ("cursor-agent", false),
+            ("oh-my-pi", false),
+            (SIMULATOR_ID, false),
+        ] {
+            let wire = serde_json::to_value(by_id(&definitions, id)).unwrap();
+            assert_eq!(wire["promptResources"], accepts, "{id}");
+            let decoded: sage_domain::harness::HarnessDefinition =
+                serde_json::from_value(wire).unwrap();
+            assert_eq!(decoded.prompt_resources, accepts, "{id}");
+        }
+    }
+
+    #[test]
     fn harness_bootstrap_projection_drops_native_paths_and_untrusted_version_prose() {
         let catalog = HarnessCatalog::with_codex_registration_and_presence(
             CodexBindingRegistration::unavailable_for_test(),
@@ -371,6 +397,7 @@ mod tests {
                     "transport",
                     "bindingId",
                     "accountModelDiscovery",
+                    "promptResources",
                     "accessModes",
                     "version",
                     "versionChecking",

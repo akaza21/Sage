@@ -165,6 +165,22 @@ impl BindingRecord {
         )
     }
 
+    /// Curated, before any session: whether the binding delivers attached
+    /// files at all. Codex and Pi inline them into the prompt text; the ACP
+    /// and Agent SDK bindings send embedded resources, which the session's
+    /// negotiated `embeddedContext` then admits or refuses at send.
+    pub(crate) fn delivers_prompt_files(&self) -> bool {
+        match self.admission {
+            Admission::Codex(_) | Admission::PiNative(_) => true,
+            Admission::Claude(_)
+            | Admission::ClaudeSdk(_)
+            | Admission::OpenCode(_)
+            | Admission::CustomAcp(_) => true,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(_) => true,
+        }
+    }
+
     pub(crate) fn session_operations_enabled(&self) -> bool {
         self.session_operations_enabled
     }

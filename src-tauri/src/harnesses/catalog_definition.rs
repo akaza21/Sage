@@ -4,6 +4,7 @@ pub(super) fn annotate_binding(
     definition: &mut HarnessDefinition,
     record: &crate::acp::bindings::registry::BindingRecord,
 ) {
+    definition.prompt_resources = record.delivers_prompt_files();
     match record.bound_build() {
         Some(bound) => {
             definition.bound_version = safe_display_version(&bound.reported_version);
@@ -68,6 +69,7 @@ pub(super) fn definition(
         transport: protocol.transport,
         binding_id: protocol.binding_id.map(str::to_owned),
         account_model_discovery: protocol.account_model_discovery,
+        prompt_resources: false,
         access_modes: Vec::new(),
         version: None,
         version_checking: false,

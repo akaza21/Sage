@@ -42,6 +42,7 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "installState",
     "latestVersion",
     "name",
+    "promptResources",
     "runsVersion",
     "signIn",
     "source",

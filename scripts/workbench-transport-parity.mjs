@@ -42,6 +42,7 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "installState",
     "latestVersion",
     "name",
+    "promptResources",
     "runsVersion",
     "signIn",
     "source",
