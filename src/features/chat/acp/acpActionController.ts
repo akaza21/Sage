@@ -134,7 +134,7 @@ function requireSelectedSession(
 ): AgentSessionProjection {
   if (session.bindingId !== bindingId || session.modelId !== modelId) {
     throw localFailure(
-      "The authoritative session does not match the selected harness and model.",
+      "The session does not match the selected harness and model.",
     );
   }
   return session;
@@ -294,19 +294,18 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
           page = applied;
-          session = currentSession(page);
-          if (!session)
-            throw localFailure("Session start returned no session.");
-          session = requireSelectedSession(session, bindingId, modelId);
+          session = requireSelectedSession(
+            headSession(page),
+            bindingId,
+            modelId,
+          );
           // Access chosen before the session existed is given to it first.
           await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
 
         if (session.residency === "cold") {
           if (!session.nextRuntimeEpoch) {
-            throw localFailure(
-              "The session has no authoritative activation epoch.",
-            );
+            throw localFailure("The session cannot be activated.");
           }
           const activated = await commands.activateSession({
             ...captured.scope,
