@@ -9,8 +9,6 @@ interface TerminalDockStore {
   visible: boolean;
   ready: boolean;
   error: string | null;
-  /** The chat whose terminals the mounted dock shows; null until it takes one. */
-  owner: string | null;
   restore: () => Promise<void>;
   setVisible: (visible: boolean) => void;
 }
@@ -21,7 +19,6 @@ export const useTerminalDockStore = create<TerminalDockStore>((set, get) => ({
   visible: false,
   ready: false,
   error: null,
-  owner: null,
   restore: async () => {
     await writes.idle();
     try {

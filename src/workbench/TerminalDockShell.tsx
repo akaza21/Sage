@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { usePortalHost } from "../ui/usePortalHost";
 
 import { useWorkbenchStore } from "../app/store";
-import { useTerminalDockStore } from "../app/terminalDockStore";
 import type { UserTerminalScope } from "../services/userTerminalDesktop";
 import { TerminalDockPanel } from "./TerminalDockPanel";
 import { forScope } from "./terminalScope";
@@ -57,8 +56,7 @@ export default function TerminalDockForWorkbench({
   }
   useEffect(() => {
     if (!scope) return;
-    useTerminalDockStore.setState({ owner: scope.chatId });
-    const unsubscribe = useWorkbenchStore.subscribe(() => {
+    return useWorkbenchStore.subscribe(() => {
       const current = selectedScope(pinnedChatId, scope.chatId);
       if (
         !forScope(current, scope) ||
@@ -68,10 +66,6 @@ export default function TerminalDockForWorkbench({
         onClose();
       }
     });
-    return () => {
-      unsubscribe();
-      useTerminalDockStore.setState({ owner: null });
-    };
   }, [scope, onClose, pinnedChatId, uiProjectGeneration]);
   return portal(
     scope ? (

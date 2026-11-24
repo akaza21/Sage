@@ -139,6 +139,7 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(failed), 10_000);
+    const opened = !useTerminalDockStore.getState().visible;
     // Another chat taking the dock closes it, and it never reopens on its
     // own: until the dock takes it, leaving the chat (its field unmounting
     // or another chat becoming active) ends the request, and the choice
@@ -148,10 +149,9 @@ export function ComposerTerminalCatch({
       if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
       cancelled.set(chatId, caught);
       settle(switched);
-      // A dock still loading has taken no chat yet, so it would open for
-      // the one the user went to: the pending open ends here too.
-      const dock = useTerminalDockStore.getState();
-      if (dock.visible && !dock.owner) dock.setVisible(false);
+      // The dock this request opened ends with it: a lazy dock that has not
+      // mounted yet would otherwise open for the chat the user went to.
+      if (opened) useTerminalDockStore.getState().setVisible(false);
     };
     const unwatch = store.subscribe(({ activeTabId, tabs }) => {
       if (
