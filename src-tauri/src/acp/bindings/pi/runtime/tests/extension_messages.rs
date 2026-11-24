@@ -173,7 +173,7 @@ fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_rep
     let batch = runtime.ingest(&response(&set, reply), &Mapper).unwrap();
     assert_eq!(config(&runtime), after);
     let [read] = batch.egress() else {
-        panic!("{:?}", batch.egress())
+        panic!("{} egress", batch.egress().len())
     };
     assert_eq!(request(read)["type"], "get_state");
     // A model outside the catalogue is read with the next prompt.

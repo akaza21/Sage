@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 4804,
+        "maxGzipBytes": 5154,
         "maxCssGzipBytes": 550,
-        "reason": "Shared live command catalog ownership and composer command editing with the terminal-only catch and its Open in terminal handoff (T6b: +200 B from Quick Open); loads with + menu or slash controller."
+        "reason": "Shared live command catalog ownership and composer command editing with the terminal-only catch and its Open in terminal handoff and its chat-switch cancel (T6b: +200 B, T6c: +350 B from Quick Open); loads with + menu or slash controller."
       },
       {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 7256,
+        "maxGzipBytes": 6906,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B to T6, 300 B to T11d, 200 B to T6b."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads while idle or on first open. Measured JS 3205 B, CSS 698 B; 404 B to T6, 300 B to T11d, 200 B to T6b, 350 B to T6c."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
