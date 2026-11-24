@@ -133,21 +133,24 @@ export function ComposerTerminalCatch({
     };
     const timer = setTimeout(() => settle(failed), 10_000);
     // Another chat taking the dock closes it, and it never reopens on its
-    // own: until the dock takes it, the request ends with the switch.
+    // own: until the dock takes it, leaving the chat (its field unmounting
+    // or another chat becoming active) ends the request, and the choice
+    // waits for this chat's field to say why.
+    const leaveChat = () => {
+      if (settled) return;
+      if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
+      cancelled.set(chatId, caught);
+      settle(switched);
+    };
     const unwatch = store.subscribe(({ activeTabId, tabs }) => {
       if (
         activeTabId !== from &&
         activeTabId !== chatId &&
         tabs.some((tab) => tab.kind === "chat" && tab.id === activeTabId)
-      ) {
-        if (cancelled.size >= 8)
-          cancelled.delete(cancelled.keys().next().value!);
-        cancelled.set(chatId, caught);
-        settle(switched);
-      }
+      )
+        leaveChat();
     });
-    // Settling after unmount only clears the slot and timer.
-    cancel.current = settle;
+    cancel.current = leaveChat;
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });
