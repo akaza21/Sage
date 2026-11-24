@@ -120,18 +120,20 @@ function scopeKey(context: AcpActionContext): string {
   ]);
 }
 
-/** The page's head session, which activation may have replaced. */
-function headSession(page: AcpChatPage): AgentSessionProjection {
-  const session = currentSession(page);
-  if (!session) throw localFailure("Could not start the session. Try again.");
-  return session;
-}
-
+/**
+ * The page's head session, which activation may have replaced, checked
+ * against the selected harness and model.
+ */
 function requireSelectedSession(
-  session: AgentSessionProjection,
+  page: AcpChatPage,
   bindingId: CuratedBindingId,
   modelId: CuratedModelId | null,
 ): AgentSessionProjection {
+  const session = currentSession(page);
+  if (!session)
+    throw localFailure(
+      "This chat is not ready to send. Reload it and try again.",
+    );
   if (session.bindingId !== bindingId || session.modelId !== modelId) {
     throw localFailure(
       "The session does not match the selected harness and model.",
@@ -294,11 +296,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
           page = applied;
-          session = requireSelectedSession(
-            headSession(page),
-            bindingId,
-            modelId,
-          );
+          session = requireSelectedSession(page, bindingId, modelId);
           // Access chosen before the session existed is given to it first.
           await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
@@ -318,11 +316,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           const applied = apply(captured, activated);
           if (!applied) return "ignoredStale";
           page = applied;
-          session = requireSelectedSession(
-            headSession(page),
-            bindingId,
-            modelId,
-          );
+          session = requireSelectedSession(page, bindingId, modelId);
         }
 
         // Every path above already checked the session against the selection.

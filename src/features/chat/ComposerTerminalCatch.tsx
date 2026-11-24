@@ -43,11 +43,9 @@ export function ComposerTerminalCatch({
   const [error, setError] = useState(() =>
     cancelled.has(chatId) ? switched : "",
   );
-  useEffect(() => void cancelled.delete(chatId), [chatId]);
-  // A released choice (edited text, "Send as text anyway") never comes back.
-  useEffect(() => {
-    if (!caught) cancelled.delete(chatId);
-  }, [caught, chatId]);
+  // Nor does it after any change of choice: a released one (edited text,
+  // "Send as text anyway") or a new catch.
+  useEffect(() => void cancelled.delete(chatId), [caught, chatId]);
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
@@ -170,8 +168,8 @@ export function ComposerTerminalCatch({
     void import("../../workbench/terminalDockCommands").then(
       ({ useTerminalDockStore: dock }) => {
         if (settled) return;
-        if (!dock.getState().visible)
-          close = () => dock.getState().setVisible(false);
+        const { visible, setVisible } = dock.getState();
+        if (!visible) close = () => setVisible(false);
         tools.launch("terminal", chatId);
       },
     );
