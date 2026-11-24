@@ -1,7 +1,16 @@
 import { useEffect, useEffectEvent, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
-import { autoFilledText, setAutoFilled } from "./useAcpChatActions";
+import { autoFilled } from "./useAcpChatActions";
+
+/** Records a chat's auto-filled text, or forgets it when `text` is absent. */
+function setAutoFilled(chatId: string, text?: string) {
+  autoFilled.delete(chatId);
+  if (text === undefined) return;
+  autoFilled.set(chatId, text);
+  if (autoFilled.size > 4)
+    autoFilled.delete(autoFilled.keys().next().value as string);
+}
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -67,7 +76,7 @@ export function ComposerChrome({
       : undefined;
   const key = offer?.key;
   const proposed = offer?.text;
-  const untouched = autoFilledText(scope) === text;
+  const untouched = autoFilled.get(scope) === text;
   // The chat's `sending` covers a send in flight and its failure restore.
   const idle =
     !text &&
