@@ -180,8 +180,18 @@ const sendAndFail = async (name?: string) => {
   await failSend();
 };
 
-it("fills an empty idle field by itself, and Clear empties it for good", () => {
+it("never overwrites a draft, fills an empty idle field by itself, and Clear empties it for good", () => {
   render(<Composer />);
+  fireEvent.change(field(), { target: { value: "My draft" } });
+  click("Offer");
+  expect(field().value).toBe("My draft");
+  expect(
+    screen.getByRole("button", { name: "Replace draft with suggestion" }),
+  ).toBeTruthy();
+  click("Ignore suggestion");
+  expect(banner()).toBeNull();
+  fireEvent.change(field(), { target: { value: "" } });
+  offerKey++;
   click("Offer");
   expect(field().value).toBe("Suggested");
   expect(banner()).toBeNull();
