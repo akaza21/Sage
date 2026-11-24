@@ -46,7 +46,11 @@ impl CodexAdapter {
         Ok(())
     }
 
-    fn revert_before(&mut self, id: u64, native_turn: &str) -> Result<OutgoingRequest, AdapterError> {
+    fn revert_before(
+        &mut self,
+        id: u64,
+        native_turn: &str,
+    ) -> Result<OutgoingRequest, AdapterError> {
         let thread = self
             .external_thread_id
             .clone()

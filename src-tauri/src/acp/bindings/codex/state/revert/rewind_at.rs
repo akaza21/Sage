@@ -20,7 +20,10 @@ impl CodexAdapter {
             return Err(AdapterError::ForeignRequest);
         }
         let request = self.revert_before(id, native_turn)?;
-        self.revert_target = self.previous_turn.as_ref().map(|turn| turn.id.as_str().to_owned());
+        self.revert_target = self
+            .previous_turn
+            .as_ref()
+            .map(|turn| turn.id.as_str().to_owned());
         Ok(request)
     }
 }

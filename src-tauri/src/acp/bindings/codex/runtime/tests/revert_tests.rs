@@ -164,7 +164,10 @@ fn rewinding_at_a_middle_turn_reverts_before_its_native_id_and_retires_the_last_
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
         .unwrap();
-    assert!(runtime.session_control(&undo(THIRD)).is_err(), "one at a time");
+    assert!(
+        runtime.session_control(&undo(THIRD)).is_err(),
+        "one at a time"
+    );
     runtime
         .ingest(
             &frame(json!({"id":id,"result":{"thread":{"id":"thread-1","turns":[]}}})),

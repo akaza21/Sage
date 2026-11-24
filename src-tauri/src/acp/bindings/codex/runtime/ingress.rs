@@ -273,8 +273,7 @@ impl CodexRuntime {
             }
             SessionControl::RewindConversation { before } if before.native_turn_id.is_none() => {
                 NativeRpcReply::ControlRefused(
-                    SafeText::new("controlSummary", crate::acp::store::rewind::OLDER_MESSAGES)
-                        .ok(),
+                    SafeText::new("controlSummary", crate::acp::store::rewind::OLDER_MESSAGES).ok(),
                 )
             }
             _ => return false,
