@@ -92,14 +92,11 @@ export function ComposerTerminalCatch({
         store.setState({ terminalHandoff: null });
     };
     let settled = false;
-    const end = () => {
+    const settle = (failure?: string) => {
+      if (settled) return;
       settled = true;
       clearTimeout(timer);
       leave();
-    };
-    const settle = (failure?: string) => {
-      if (settled) return;
-      end();
       setOpening(false);
       if (failure) setError(failure);
       else setCaught((current) => (current === caught ? null : current));
@@ -121,7 +118,8 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(notOpened), 10_000);
-    cancel.current = end;
+    // Settling after unmount only clears the slot and timer.
+    cancel.current = settle;
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });
