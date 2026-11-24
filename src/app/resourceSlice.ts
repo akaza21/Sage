@@ -24,12 +24,6 @@ import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import type { ResourceState, WorkbenchState } from "./store";
 
-// Explorer selection and expansion wait out project, rename and trash work.
-const resourceWorkBlocked = (state: WorkbenchState) =>
-  state.projectTransitioning ||
-  state.fileRenameInFlight ||
-  state.resourceTrashInFlight;
-
 function forgetRemovedResourceAdmissions(
   before: readonly { id: string; kind: string }[],
   after: readonly { id: string; kind: string }[],
@@ -204,7 +198,12 @@ export const createResourceSlice: StateCreator<
     runLoadDirectory(get, set, resource, refresh),
 
   toggleDirectory: (resource) => {
-    if (resourceWorkBlocked(get())) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     const key = resourceKey(resource);
     const expanded = !get().expandedDirectories[key];
     set((state) => {
@@ -227,7 +226,12 @@ export const createResourceSlice: StateCreator<
   },
 
   selectDirectory: (resource) => {
-    if (resourceWorkBlocked(get())) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     set({
       selectedRootId: resource.rootId,
       selectedResource: resource,
@@ -241,7 +245,12 @@ export const createResourceSlice: StateCreator<
   },
 
   revealFile: async (resource) => {
-    if (resourceWorkBlocked(get())) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     const parts = resource.relativePath.split("/").filter(Boolean);
     const parents = parts
       .slice(0, -1)
