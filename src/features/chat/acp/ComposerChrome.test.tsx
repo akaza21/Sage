@@ -17,7 +17,7 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useBoundChatComposer } from "../useBoundChatComposer";
-import { autoFilled, useAcpChatActions } from "./useAcpChatActions";
+import { autoFilledRef, useAcpChatActions } from "./useAcpChatActions";
 import { ComposerChrome } from "./ComposerChrome";
 
 const initial = useWorkbenchStore.getState();
@@ -90,7 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  autoFilled.current = null;
+  autoFilledRef.current = null;
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);
 });
@@ -154,7 +154,7 @@ function Composer() {
 const field = () => screen.getByLabelText<HTMLTextAreaElement>("Message agent");
 const click = (name: string) =>
   fireEvent.click(screen.getByRole("button", { name }));
-const banner = () => screen.queryByRole("button", { name: /suggestion/ });
+const banner = () => screen.queryByRole("button", { name: /Use suggestion|Replace draft/ });
 const sendAndFail = async (name: string) => {
   await act(async () => click(name));
   await act(async () => {

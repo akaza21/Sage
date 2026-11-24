@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
-import { autoFilled } from "./useAcpChatActions";
+import { autoFilledRef } from "./useAcpChatActions";
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -65,11 +65,11 @@ export function ComposerChrome({
     chrome?.editorText && answered.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
-  const filled = autoFilled.current;
+  const filled = autoFilledRef.current;
   const untouched = filled?.chatId === scope && filled.text === text;
   useEffect(() => {
     // Any other text in this chat's field means the suggestion is the user's.
-    if (filled?.chatId === scope && !untouched) autoFilled.current = null;
+    if (filled?.chatId === scope && !untouched) autoFilledRef.current = null;
     // The chat's `sending` covers a send in flight and its failure restore.
     if (
       !offer?.text ||
@@ -81,7 +81,7 @@ export function ComposerChrome({
     )
       return;
     answer(scope, offer.key);
-    autoFilled.current = { chatId: scope, text: offer.text };
+    autoFilledRef.current = { chatId: scope, text: offer.text };
     onTextChange(offer.text);
   });
   if (!chrome) return null;

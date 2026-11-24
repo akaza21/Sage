@@ -62,7 +62,7 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
  * The one offer text auto-filled into an empty field and not yet edited, so
  * a failed send's restore (from the composer or the queue) replaces it.
  */
-export const autoFilled: { current: { chatId: string; text: string } | null } =
+export const autoFilledRef: { current: { chatId: string; text: string } | null } =
   { current: null };
 
 export function useAcpChatActions(boundChatId?: string | null) {
@@ -168,11 +168,11 @@ export function useAcpChatActions(boundChatId?: string | null) {
         restoreComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
           const intent = ownershipIntent(context);
-          const filled = autoFilled.current;
+          const filled = autoFilledRef.current;
           // The restore wins over auto-filled text the user never touched;
           // the clear only applies while the field still holds that text.
           if (prompt && filled?.chatId === intent.chatId) {
-            autoFilled.current = null;
+            autoFilledRef.current = null;
             workbench.clearChatComposer(intent, filled.text.trim(), []);
           }
           workbench.restoreChatComposer(intent, prompt, attachedContext);
