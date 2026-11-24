@@ -37,13 +37,9 @@ export function ComposerTerminalCatch({
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
   const tools = useContext(AgentToolsContext);
-  const projectId = useWorkbenchStore((state) =>
-    state.projectTransitioning ? undefined : state.project?.id,
-  );
-  const projectGeneration = String(
-    useWorkbenchStore((state) => state.nativeTransitionEpoch),
-  );
-  const unavailable = !projectId
+  const unavailable = !useWorkbenchStore(
+    (state) => !!state.project && !state.projectTransitioning,
+  )
     ? "Open this chat's project first."
     : !tools.terminalAvailable
       ? "No terminal here."
@@ -90,6 +86,7 @@ export function ComposerTerminalCatch({
       return;
     }
     const store = useWorkbenchStore;
+    const { project, nativeTransitionEpoch } = store.getState();
     const leave = () => {
       if (store.getState().terminalHandoff === handoff)
         store.setState({ terminalHandoff: null });
@@ -110,8 +107,8 @@ export function ComposerTerminalCatch({
     // Only this chat's dock takes it. A request that already timed out or
     // ended types nothing, however late its tab opens.
     const handoff: TerminalHandoff = {
-      projectId: projectId!,
-      projectGeneration,
+      projectId: project!.id,
+      projectGeneration: String(nativeTransitionEpoch),
       chatId,
       run: (type) => {
         if (settled) return;
