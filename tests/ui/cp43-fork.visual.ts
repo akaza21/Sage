@@ -549,11 +549,15 @@ test("T11c: a latest-only fork offer rewinds an earlier prompt and forks from th
     .click();
   const menu = page.getByRole("menu", { name: "Prompt actions" });
   await expect(menu.getByRole("menuitem")).toHaveText(["Rewind here"]);
-  await menu.getByRole("menuitem", { name: "Rewind here", exact: true }).click();
+  await menu
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", {
     name: "Rewind conversation from here",
   });
-  await dialog.getByRole("button", { name: "Confirm rewind", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Confirm rewind", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(turns).toHaveCount(0);
   expect(

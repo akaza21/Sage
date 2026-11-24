@@ -50,8 +50,7 @@ export async function forkChat({
   const offer = parentPage?.sessions.find(
     (session) => session.id === sourceTurn?.sessionId,
   )?.capabilities?.rewind;
-  const before =
-    !!offer && offer.targets !== "latestTurn" && !offer.forkLatest;
+  const before = !!offer && offer.targets !== "latestTurn" && !offer.forkLatest;
   const prompt = before
     ? sourceTurn?.items.find(
         (item) => item.kind === "text" && item.payload.role === "user",
