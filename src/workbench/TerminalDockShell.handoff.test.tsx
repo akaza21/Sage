@@ -60,6 +60,7 @@ vi.mock("./TerminalDock", () => ({
 
 const original = useWorkbenchStore.getState();
 const text = 'agent --resume "native-1"';
+let closeOther: () => void = () => undefined;
 let disconnect: (() => void) | undefined;
 afterEach(() => {
   cleanup();
@@ -85,16 +86,28 @@ async function mount() {
         position: 0,
         pinned: false,
       },
+      {
+        id: "chat-2",
+        kind: "chat",
+        title: "Other chat",
+        dirty: false,
+        position: 1,
+        pinned: false,
+      },
     ],
     activeTabId: "chat-1",
   });
   function Host() {
     const fieldRef = useRef<HTMLTextAreaElement>(null);
+    const otherRef = useRef<HTMLTextAreaElement>(null);
     const [status, setStatus] = useState("");
+    const [other, setOther] = useState(true);
+    closeOther = () => setOther(false);
     const visible = useTerminalDockStore((state) => state.visible);
     return (
       <>
-        <textarea ref={fieldRef} defaultValue="/hooks" />
+        <textarea ref={fieldRef} aria-label="Chat" defaultValue="/hooks" />
+        <textarea ref={otherRef} aria-label="Other" defaultValue="/hooks" />
         <AgentToolsProvider onOpenTerminal={() => terminal.open()}>
           <ComposerTerminalCatch
             chatId="chat-1"
@@ -102,6 +115,14 @@ async function mount() {
             onAnnounce={setStatus}
             text="/hooks"
           />
+          {other ? (
+            <ComposerTerminalCatch
+              chatId="chat-2"
+              fieldRef={otherRef}
+              onAnnounce={() => undefined}
+              text="/hooks"
+            />
+          ) : null}
         </AgentToolsProvider>
         <span role="status">{status}</span>
         <TerminalDockForWorkbench
@@ -123,9 +144,9 @@ async function mount() {
   await waitFor(() => expect(useTerminalDockStore.getState().ready).toBe(true));
 }
 
-const catchCommand = (command: string) =>
+const catchCommand = (command: string, chatId = "chat-1") =>
   act(() => {
-    catchTerminalCommand("chat-1", { input: "/hooks", name: "hooks", command });
+    catchTerminalCommand(chatId, { input: "/hooks", name: "hooks", command });
   });
 
 it("opens a caught command as unrun input in its chat's project terminal and clears the choice", async () => {
@@ -153,7 +174,16 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
       input: text,
     },
   ]);
-  expect(screen.getByRole("textbox")).toHaveValue("/hooks");
+  expect(screen.getByRole("textbox", { name: "Chat" })).toHaveValue("/hooks");
+  expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
+  // The dock shows chat-1, so another chat's request is left untyped, and its
+  // field takes it with it when it unmounts.
+  catchCommand("other --resume", "chat-2");
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(useWorkbenchStore.getState().terminalHandoff?.chatId).toBe("chat-2");
+  expect(backend.sessions.size).toBe(1);
+  act(() => closeOther());
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
 });
 
@@ -164,9 +194,14 @@ async function handOff(input: string) {
   act(() => {
     settled = new Promise<void>((resolve, reject) => {
       useWorkbenchStore.setState({
-        terminalHandoff: (type) => {
-          useWorkbenchStore.setState({ terminalHandoff: null });
-          return type(input).then(resolve, reject);
+        terminalHandoff: {
+          projectId: "project-1",
+          chatId: "chat-1",
+          run: (type) => {
+            useWorkbenchStore.setState({ terminalHandoff: null });
+            if (type) void type(input).then(resolve, reject);
+            else reject(new Error("no tab"));
+          },
         },
       });
       useTerminalDockStore.getState().setVisible(true);
@@ -176,7 +211,7 @@ async function handOff(input: string) {
   return settled;
 }
 
-it("writes each handoff to a new tab, keeps a tab whose write failed, and holds a handoff at capacity", async () => {
+it("writes each handoff to a new tab, keeps a tab whose write failed, and refuses one at capacity at once", async () => {
   await mount();
   await handOff(text);
   await handOff(text);
@@ -188,9 +223,7 @@ it("writes each handoff to a new tab, keeps a tab whose write failed, and holds 
   expect(
     [...backend.sessions.values()].map((session) => session.input),
   ).toEqual([text, text, "", ""]);
-  // At the tab limit the request stays pending for its sender to time out.
-  void handOff(text);
-  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-  expect(useWorkbenchStore.getState().terminalHandoff).toBeTypeOf("function");
+  // At the tab limit the dock answers at once, without opening a session.
+  await expect(handOff(text)).rejects.toThrow("no tab");
   expect(backend.sessions.size).toBe(4);
 });

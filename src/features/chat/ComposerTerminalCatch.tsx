@@ -7,6 +7,9 @@ type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
 const notOpened = "The terminal did not open. Try again.";
 const notTyped = "This command could not be typed into the terminal.";
+// The dock opens at most 4 tabs per chat.
+const tabsFull =
+  "4 terminals are already open for this chat. Close one, then try again.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -35,9 +38,10 @@ export function ComposerTerminalCatch({
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
   const tools = useContext(AgentToolsContext);
-  const unavailable = !useWorkbenchStore(
-    (state) => !!state.project && !state.projectTransitioning,
-  )
+  const projectId = useWorkbenchStore((state) =>
+    state.projectTransitioning ? undefined : state.project?.id,
+  );
+  const unavailable = !projectId
     ? "Open this chat's project first."
     : !tools.terminalAvailable
       ? "The terminal is not available here."
@@ -47,6 +51,9 @@ export function ComposerTerminalCatch({
     `/${caught.name} only runs in the terminal. Copy the command to resume this chat there, then type /${caught.name}.`;
   useEffect(() => onAnnounce(message || ""), [message, onAnnounce]);
   useEffect(() => () => onAnnounce(""), [onAnnounce]);
+  // An open request ends with its field: the slot and timer go with it.
+  const cancel = useRef<() => void>(undefined);
+  useEffect(() => () => cancel.current?.(), []);
   // "Send as text anyway" consents to the next send of exactly this input.
   const consent = useRef("");
   if (caught && text.trim() !== caught.input) setCaught(null);
@@ -86,24 +93,35 @@ export function ComposerTerminalCatch({
         store.setState({ terminalHandoff: null });
     };
     let settled = false;
-    const settle = (failure?: string) => {
-      if (settled) return;
+    const end = () => {
       settled = true;
       clearTimeout(timer);
       leave();
+    };
+    const settle = (failure?: string) => {
+      if (settled) return;
+      end();
       setOpening(false);
       if (failure) setError(failure);
       else setCaught((current) => (current === caught ? null : current));
     };
-    // The dock calls this once with its new tab's keystroke writer.
-    const handoff: TerminalHandoff = (type) => {
-      leave();
-      return type(command).then(
-        () => settle(),
-        () => settle(notTyped),
-      );
+    // Only this chat's dock takes it. A request that already timed out or
+    // ended types nothing, however late its tab opens.
+    const handoff: TerminalHandoff = {
+      projectId: projectId!,
+      chatId,
+      run: (type) => {
+        if (settled) return;
+        leave();
+        if (!type) return settle(tabsFull);
+        void type(command).then(
+          () => settle(),
+          () => settle(notTyped),
+        );
+      },
     };
     const timer = setTimeout(() => settle(notOpened), 10_000);
+    cancel.current = end;
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });

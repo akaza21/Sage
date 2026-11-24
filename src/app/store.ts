@@ -83,14 +83,16 @@ export type ResourceState<T> =
   | { phase: "error"; message: string };
 
 /**
- * One pending request to open a project terminal holding unrun input. The
- * composer stores it; the lazy dock takes it, opens a new tab and calls it
- * with that tab's keystroke writer. Left unset at startup, so the slot adds
- * no startup code.
+ * One pending request to open a chat's project terminal holding unrun input.
+ * The composer stores it; only the dock showing that chat and project takes
+ * it, opens a new tab and runs it with that tab's keystroke writer, or with
+ * null when no tab can open. Left unset at startup: no startup code.
  */
-export type TerminalHandoff = (
-  type: (text: string) => Promise<void>,
-) => Promise<void>;
+export type TerminalHandoff = {
+  projectId: string;
+  chatId: string;
+  run: (type: ((text: string) => Promise<void>) | null) => void;
+};
 
 export interface WorkbenchState
   extends

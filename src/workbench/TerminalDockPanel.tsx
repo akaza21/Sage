@@ -51,9 +51,13 @@ export function TerminalDockPanel({
   const [collapsed, setCollapsed] = useState(false);
   if (!open && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
-  // A pending handoff takes the next new tab and leaves the slot when called;
-  // it stays pending while another tab opens.
-  const handoff = useWorkbenchStore((state) => state.terminalHandoff);
+  // A pending handoff for this dock's chat and project takes the next new tab;
+  // one for another chat or project stays pending until its sender expires it.
+  const pending = useWorkbenchStore((state) => state.terminalHandoff);
+  const handoff =
+    pending?.chatId === scope.chatId && pending.projectId === scope.projectId
+      ? pending
+      : null;
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
@@ -65,7 +69,9 @@ export function TerminalDockPanel({
   const create = useCallback(async () => {
     const owner = ownerRef.current;
     // After unmount nothing calls this: the auto-create checks the lifecycle.
-    if (owner.creating || owner.entries.length >= TERMINAL_MAX_PER_CHAT) return;
+    if (owner.creating) return;
+    if (owner.entries.length >= TERMINAL_MAX_PER_CHAT)
+      return handoff?.run(null);
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
@@ -86,9 +92,9 @@ export function TerminalDockPanel({
       setEntries(next);
       setActiveId(session.sessionId);
       setCollapsed(false);
-      // Typed through the keystroke write path, unterminated, so it stays unrun;
-      // the sender reports a failed write.
-      void handoff?.((text) => writeUserTerminal(scope, session, text));
+      // Typed through the keystroke write path, unterminated, so it stays unrun.
+      // The sender types nothing once it timed out, and reports a failed write.
+      handoff?.run((text) => writeUserTerminal(scope, session, text));
     } catch (error) {
       if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
     } finally {
