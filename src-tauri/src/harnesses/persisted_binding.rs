@@ -1,5 +1,8 @@
-use super::{CuratedProtocol, HarnessCatalog, HarnessDefinition, definition};
-use sage_domain::harness::HarnessInstallState;
+use super::{
+    HarnessCatalog,
+    catalog_definition::{CuratedProtocol, definition},
+};
+use sage_domain::harness::{HarnessDefinition, HarnessInstallState};
 
 impl HarnessCatalog {
     /// Restore display identity without granting launch authority or changing

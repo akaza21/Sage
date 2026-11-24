@@ -47,7 +47,7 @@ test("Pi grouped reads use three distinct files while tool-finished stays a sing
 
 test("Pi curated catalogue derives transport from the same registry that admits its fixture", () => {
   const source = readFileSync(
-    new URL("../src-tauri/src/harnesses.rs", import.meta.url),
+    new URL("../src-tauri/src/harnesses/curated_entries.rs", import.meta.url),
     "utf8",
   );
   const metadata = source.slice(
