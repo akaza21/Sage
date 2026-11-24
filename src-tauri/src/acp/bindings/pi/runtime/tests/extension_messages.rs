@@ -125,7 +125,7 @@ fn status(key: &str, body: Value) -> Frame {
 
 #[test]
 fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_repeat() {
-    let mut runtime = fixture_runtime(1);
+    let mut runtime = fixture_runtime(92);
     ready(&mut runtime);
     let page = runtime
         .command(AdapterCommand::ModelPage { cursor: None })
@@ -155,6 +155,27 @@ fn an_extension_model_switch_updates_the_model_option_and_sages_own_does_not_rep
         after["configOptions"][0]["currentValue"],
         "anthropic:claude"
     );
+    // An extension switches back while Sage's own switch is in flight: Pi's
+    // late reply does not overwrite it, and Pi's model is read again.
+    let set = runtime
+        .configure(&super::config_delivery::config_intent(
+            "pi.model",
+            "openai:gpt",
+        ))
+        .unwrap()
+        .unwrap();
+    let set = deliver(&mut runtime, set);
+    runtime.ingest(&model("openai", "gpt"), &Mapper).unwrap();
+    runtime
+        .ingest(&model("anthropic", "claude"), &Mapper)
+        .unwrap();
+    let reply = json!({"provider":"openai","id":"gpt","name":"GPT"});
+    let batch = runtime.ingest(&response(&set, reply), &Mapper).unwrap();
+    assert_eq!(config(&runtime), after);
+    let [read] = batch.egress() else {
+        panic!("{} egress", batch.egress().len())
+    };
+    assert_eq!(request(read)["type"], "get_state");
     // A model outside the catalogue is read with the next prompt.
     runtime
         .ingest(&model("router", "virtual"), &Mapper)
@@ -211,7 +232,19 @@ fn an_extension_sent_user_message_shows_once_per_marker_and_sages_echo_stays_abs
     assert!(shown(&mut runtime, "queued 8"));
     assert!(shown(&mut runtime, "queued 1"));
     // A marker whose message never came (another input handler swallowed
-    // it) does not claim Sage's own steer of the same text.
+    // it) does not claim Sage's own steer of the same text; a steer that
+    // never reached Pi gives its marker back.
+    marker(&mut runtime, "Use the cache");
+    let unsent = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "Use the cache").unwrap(),
+            client_message_id: RequiredText::new("client", "unsent").unwrap(),
+        })
+        .unwrap();
+    runtime
+        .resolve_egress(unsent.into_token(), EgressResolution::WriteZeroBytes)
+        .unwrap();
+    assert!(shown(&mut runtime, "Use the cache"));
     marker(&mut runtime, "Use the cache");
     let steer = runtime
         .command(AdapterCommand::Steer {

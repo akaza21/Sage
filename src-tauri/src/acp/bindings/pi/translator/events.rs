@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 mod injected;
+pub(super) use injected::injected_digest;
 mod message;
 mod permission;
 mod tool_result;

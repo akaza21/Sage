@@ -36,25 +36,32 @@ impl PiTranslator {
     /// A marker whose message a later `input` handler rewrote or swallowed
     /// never meets its echo. Pi's agent loop can hold a steer or follow-up
     /// across several assistant messages, so no assistant boundary proves it
-    /// stale; only `agent_end`, after both queues drain, does. Until then a
-    /// Sage steer of the same text takes one such marker, so its own echo
-    /// cannot be shown twice (a real injected twin then stays hidden).
-    pub(in crate::acp::bindings::pi::translator) fn settle_injected(
+    /// stale; only `agent_end`, after both queues drain, does.
+    pub(in crate::acp::bindings::pi::translator) fn settle_injected(&mut self) {
+        if let Some(turn) = self.active.as_mut() {
+            turn.injected_user_messages.clear();
+        }
+    }
+
+    /// Until `agent_end`, a Sage steer of the same text takes one such
+    /// marker, so its own echo cannot be shown twice (a real injected twin
+    /// then stays hidden). Returns the marker taken.
+    pub(in crate::acp::bindings::pi::translator) fn claim_injected(
         &mut self,
-        sage_steer: Option<&str>,
-    ) {
-        let Some(turn) = self.active.as_mut() else {
-            return;
-        };
-        let pending = &mut turn.injected_user_messages;
-        match sage_steer {
-            None => pending.clear(),
-            Some(text) => {
-                let digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
-                if let Some(index) = pending.iter().position(|marked| *marked == digest) {
-                    pending.remove(index);
-                }
-            }
+        digest: [u8; 32],
+    ) -> Option<[u8; 32]> {
+        let pending = &mut self.active.as_mut()?.injected_user_messages;
+        let index = pending.iter().position(|marked| *marked == digest)?;
+        pending.remove(index)
+    }
+
+    /// Gives back the marker of a steer that never reached Pi, unless the
+    /// turn's markers filled up meanwhile.
+    pub(in crate::acp::bindings::pi::translator) fn restore_injected(&mut self, digest: [u8; 32]) {
+        if let Some(turn) = self.active.as_mut()
+            && turn.injected_user_messages.len() < INJECTED_USER_MESSAGES_PER_TURN
+        {
+            turn.injected_user_messages.push_front(digest);
         }
     }
 
@@ -74,7 +81,7 @@ impl PiTranslator {
                 .join("\n"),
             _ => return Ok(vec![AdapterOutput::Absorbed]),
         };
-        let digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
+        let digest = injected_digest(&text);
         let pending = &mut self.live_turn_any_phase()?.injected_user_messages;
         let Some(index) = pending.iter().position(|marked| *marked == digest) else {
             return Ok(vec![AdapterOutput::Absorbed]);
@@ -91,4 +98,8 @@ impl PiTranslator {
             },
         )])
     }
+}
+
+pub(in crate::acp::bindings::pi::translator) fn injected_digest(text: &str) -> [u8; 32] {
+    Sha256::digest(text.as_bytes()).into()
 }

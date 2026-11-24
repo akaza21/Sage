@@ -9,8 +9,12 @@ type Catcher = (caught: Caught) => boolean;
 const failed = "The terminal did not take the command.";
 // The dock opens at most 4 tabs per chat.
 const tabsFull = "4 terminals are already open.";
+const switched = "Open in terminal was cancelled when you left this chat.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
+// A choice whose request a chat switch cancelled, kept for when its chat's
+// field mounts again to say why; one per chat, at most 8.
+const cancelled = new Map<string, Caught>();
 
 /** The send path's hand-off: true when the chat's field took the command. */
 // eslint-disable-next-line react-refresh/only-export-components -- the send path and the choice it opens share this chunk
@@ -33,9 +37,13 @@ export function ComposerTerminalCatch({
   onAnnounce: (message: string) => void;
   text: string;
 }) {
-  const [caught, setCaught] = useState<Caught | null>(null);
+  // A choice a chat switch cancelled comes back with its reason, once.
+  const [caught, setCaught] = useState(() => cancelled.get(chatId) ?? null);
   const [opening, setOpening] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    cancelled.has(chatId) ? switched : "",
+  );
+  useEffect(() => void cancelled.delete(chatId), [chatId]);
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
@@ -81,12 +89,18 @@ export function ComposerTerminalCatch({
   // control character, so nothing presses Enter. A request that has not
   // settled in time fails here, whether or not the dock took it.
   const openInTerminal = () => {
+    // A new request supersedes any kept cancelled choice for this chat.
+    cancelled.delete(chatId);
     if (/\p{Cc}/u.test(command)) {
       setError(failed);
       return;
     }
     const store = useWorkbenchStore;
-    const { project, nativeTransitionEpoch } = store.getState();
+    const {
+      project,
+      nativeTransitionEpoch,
+      activeTabId: from,
+    } = store.getState();
     const leave = () => {
       if (store.getState().terminalHandoff === handoff)
         store.setState({ terminalHandoff: null });
@@ -96,6 +110,7 @@ export function ComposerTerminalCatch({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      unwatch();
       leave();
       setOpening(false);
       if (failure) setError(failure);
@@ -109,6 +124,7 @@ export function ComposerTerminalCatch({
       chatId,
       run: (type) => {
         if (settled) return;
+        unwatch();
         leave();
         if (!type) return settle(tabsFull);
         void type(command).then(
@@ -118,8 +134,25 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(failed), 10_000);
-    // Settling after unmount only clears the slot and timer.
-    cancel.current = settle;
+    // Another chat taking the dock closes it, and it never reopens on its
+    // own: until the dock takes it, leaving the chat (its field unmounting
+    // or another chat becoming active) ends the request, and the choice
+    // waits for this chat's field to say why.
+    const leaveChat = () => {
+      if (settled) return;
+      if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
+      cancelled.set(chatId, caught);
+      settle(switched);
+    };
+    const unwatch = store.subscribe(({ activeTabId, tabs }) => {
+      if (
+        activeTabId !== from &&
+        activeTabId !== chatId &&
+        tabs.some((tab) => tab.kind === "chat" && tab.id === activeTabId)
+      )
+        leaveChat();
+    });
+    cancel.current = leaveChat;
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });

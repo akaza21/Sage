@@ -55,6 +55,65 @@ pub(crate) fn scheduler_fixture() -> (sage_db::database::Database, crate::acp::r
     (database, intent)
 }
 
+/// A session whose activation is still under way, in a database: its owner,
+/// the capabilities its activation negotiates, and the step that completes it.
+#[cfg(feature = "acp-fixture")]
+pub(crate) fn activating_fixture() -> (
+    sage_db::database::Database,
+    RuntimeOwner,
+    sage_acp_protocol::intent::CapabilitySnapshotV1,
+    impl Fn(&mut rusqlite::Connection),
+) {
+    let mut connection = setup();
+    let started = start_session(&mut connection, start(0, "catalog-start")).unwrap();
+    let session_id = started.session_id;
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    activate_session(
+        &mut connection,
+        ActivateSessionCommand {
+            project_id: project(),
+            chat_id: chat(),
+            expected_projection_revision: ProjectionRevision::new(1).unwrap(),
+            client_intent_id: ClientIntentId::parse("catalog-activate").unwrap(),
+            session_id: session_id.clone(),
+            runtime_epoch: epoch,
+            artifact_digest: "d".repeat(64),
+            now_millis: 2,
+        },
+    )
+    .unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
+    rusqlite::backup::Backup::new(&connection, &mut database.connection())
+        .unwrap()
+        .run_to_completion(100, std::time::Duration::ZERO, None)
+        .unwrap();
+    let owner = RuntimeOwner {
+        project_id: project(),
+        chat_id: chat(),
+        session_id: session_id.clone(),
+        runtime_epoch: epoch,
+    };
+    let complete = move |connection: &mut rusqlite::Connection| {
+        complete_activation(
+            connection,
+            CompleteActivationCommand {
+                project_id: project(),
+                chat_id: chat(),
+                session_id: session_id.clone(),
+                runtime_epoch: epoch,
+                binding_digest: "a".repeat(64),
+                artifact_digest: "d".repeat(64),
+                external_session_id: ExternalId::new("external", "catalog-session").unwrap(),
+                capabilities_json: capabilities(),
+                now_millis: 3,
+            },
+        )
+        .unwrap();
+    };
+    let negotiated = serde_json::from_str(&capabilities()).unwrap();
+    (database, owner, negotiated, complete)
+}
+
 fn claim(fixture: &mut Fixture) -> Option<TitleAttempt> {
     let owner = &fixture.owner;
     match title_attempt::claim(

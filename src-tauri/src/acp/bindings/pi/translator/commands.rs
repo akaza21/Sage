@@ -49,6 +49,9 @@ impl PiTranslator {
         }
         self.pending.remove(command_id);
         self.closed_config_requests.remove(command_id);
+        if let Some(digest) = request.claimed_echo {
+            self.restore_injected(digest);
+        }
         self.clear_pending_setting(kind);
         match kind {
             PendingKind::Prompt | PendingKind::Compact => {
@@ -178,10 +181,15 @@ impl PiTranslator {
         }) {
             return Err(AdapterError::StaleIntent);
         }
-        self.settle_injected(Some(&message));
+        let echo = super::events::injected_digest(&message);
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
-        self.one(PendingKind::Steer, fields)
+        let outbound = self.issue(PendingKind::Steer, fields)?;
+        let claimed_echo = self.claim_injected(echo);
+        if let Some(request) = self.pending.get_mut(&outbound.command_id) {
+            request.claimed_echo = claimed_echo;
+        }
+        Ok(vec![outbound])
     }
 
     pub(super) fn one(
@@ -228,8 +236,14 @@ impl PiTranslator {
             }
             _ => None,
         };
-        self.pending
-            .insert(id.clone(), PendingRequest { kind, owner });
+        self.pending.insert(
+            id.clone(),
+            PendingRequest {
+                kind,
+                owner,
+                claimed_echo: None,
+            },
+        );
         Ok(Outbound {
             command_id: id,
             line,

@@ -6,6 +6,7 @@ mod fingerprint;
 mod initialization;
 mod lifecycle;
 mod payload;
+mod pending;
 mod responses;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -16,12 +17,13 @@ use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
 use self::lifecycle::{TurnLifecycle, TurnPhase};
 use self::payload::{parse_entries, parse_messages, parse_models, parse_state};
+use self::pending::{CompletedResponse, PendingKind, PendingRequest};
 use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
     protocol::{
-        AdapterError, AdapterOutput, NativeCommand, NativeRequest, Operation, Outbound,
-        TerminalOutcome, ToolOutcome,
+        AdapterError, AdapterOutput, NativeRequest, Operation, Outbound, TerminalOutcome,
+        ToolOutcome,
     },
 };
 
@@ -31,72 +33,6 @@ const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
 /// Sage sends at most a chat title, whose cap this mirrors.
 const SESSION_NAME_BYTES: usize = sage_acp_protocol::intent::session_event::SESSION_TITLE_BYTES;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PendingKind {
-    Configuration,
-    ConfigurationModels,
-    State,
-    Models,
-    SetModel,
-    ThinkingLevels,
-    Commands,
-    SetThinkingLevel,
-    SetAutoCompaction,
-    NewSession,
-    Resume,
-    Prompt,
-    Compact,
-    Steer,
-    ClearQueue,
-    Abort,
-    Messages,
-    Entries,
-    Native(NativeCommand),
-}
-
-impl PendingKind {
-    const fn starts_turn(self) -> bool {
-        matches!(self, Self::Prompt | Self::Compact)
-    }
-
-    const fn is_config(self) -> bool {
-        matches!(
-            self,
-            Self::State
-                | Self::SetModel
-                | Self::ThinkingLevels
-                | Self::SetThinkingLevel
-                | Self::SetAutoCompaction
-        )
-    }
-
-    const fn command(self) -> &'static str {
-        match self {
-            Self::Configuration => "get_state",
-            Self::ConfigurationModels => "get_available_models",
-            Self::State => "get_state",
-            Self::Models => "get_available_models",
-            Self::SetModel => "set_model",
-            Self::Commands => "get_commands",
-            Self::ThinkingLevels => "get_available_thinking_levels",
-            Self::SetThinkingLevel => "set_thinking_level",
-            Self::SetAutoCompaction => "set_auto_compaction",
-            // Pi opens a fresh session at launch and Sage runs one session
-            // per process, so a new chat takes that session by its id.
-            Self::NewSession => "get_state",
-            Self::Resume => "switch_session",
-            Self::Prompt => "prompt",
-            Self::Compact => "compact",
-            Self::Steer => "steer",
-            Self::ClearQueue => "clear_queue",
-            Self::Abort => "abort",
-            Self::Messages => "get_messages",
-            Self::Entries => "get_entries",
-            Self::Native(command) => command.wire(),
-        }
-    }
-}
 
 #[derive(Debug)]
 struct ActiveTurn {
@@ -128,21 +64,6 @@ struct ActiveTurn {
     reply_open: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PendingRequest {
-    kind: PendingKind,
-    // Ownership survives settlement and replacement of the active turn, within
-    // the same 16-entry pending bound as every other command.
-    owner: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CompletedResponse {
-    command: String,
-    success: bool,
-    payload_fingerprint: u64,
-}
-
 #[derive(Debug)]
 pub struct PiTranslator {
     pub(crate) bridge_tools: bool,
@@ -171,20 +92,9 @@ pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
     pub(crate) fn awaits_large_response(&self) -> bool {
-        self.pending.values().any(|request| {
-            !matches!(
-                request.kind,
-                PendingKind::Prompt
-                    | PendingKind::Compact
-                    | PendingKind::Steer
-                    | PendingKind::ClearQueue
-                    | PendingKind::Abort
-                    | PendingKind::SetModel
-                    | PendingKind::SetThinkingLevel
-                    | PendingKind::SetAutoCompaction
-                    | PendingKind::Native(_)
-            )
-        })
+        self.pending
+            .values()
+            .any(|request| request.kind.awaits_large_reply())
     }
 
     pub(crate) fn waiting_to_retry(&self) -> bool {

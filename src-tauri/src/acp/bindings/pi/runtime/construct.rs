@@ -80,6 +80,7 @@ impl PiRuntime {
             commands_pending: false,
             commands_discovered: false,
             configuration_dirty: false,
+            model_hint: None,
             configuration_models_pending: false,
             thinking_request_session: None,
             thinking_request_owner: None,

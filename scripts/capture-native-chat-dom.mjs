@@ -14,6 +14,42 @@ import {
   parityRules,
   parityChatPredicates,
 } from "./capture-native-chat-parity-dom.mjs";
+import {
+  NAMED_KINDS,
+  accessibleName,
+  visibleRectangle,
+  hiddenByClosedDetails,
+  assistantTextRendered,
+  hasVisibleLazyFallback,
+} from "./capture-native-chat-visibility.mjs";
+export {
+  NAMED_KINDS,
+  accessibleName,
+  visibleRectangle,
+  hiddenByClosedDetails,
+  assistantTextRendered,
+  hasVisibleLazyFallback,
+};
+import {
+  FILES_EDITED,
+  EFFORT_TRIGGER,
+  clickExpression,
+} from "./capture-native-chat-actions.mjs";
+export {
+  FILES_EDITED_HEADER,
+  EFFORT_TRIGGER,
+  clickExpression,
+  clickableExpression,
+  openExpression,
+  isDisclosure,
+  isExpandable,
+  expandExpression,
+  APPROVAL_ALLOW,
+  APPROVAL_DENY,
+  isLiveTurnAction,
+  scopeToTurn,
+  actionsFor,
+} from "./capture-native-chat-actions.mjs";
 export const IDLE_CAPTURE_STATES = Object.freeze([
   "new-chat",
   "composer-idle",
@@ -36,9 +72,6 @@ export const composerTurnControlReady = (controls) =>
   (controls.dictate === true || controls.send === true);
 /** CP-29e: one composer action menu; session modes are a group inside it. */
 const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
-/** CP-30c chat-wide edit summary above the composer. */
-const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
-export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
 /**
  * Prepare and submit controls, matched by role and exact accessible name.
  * Each click admits exactly one match (clickExpression), so a renamed or
@@ -48,9 +81,6 @@ export const NEW_CHAT = 'button[aria-label="New chat"]';
 export const HARNESS_PICKER = 'button[aria-label="Harness"]';
 export const ACCESS_OPTIONS = 'button[aria-label="Access options"]';
 export const SEND_MESSAGE = 'button[aria-label="Send message"]';
-/** The effort trigger is named "Thinking level: <level>" (ComposerEffortControl). */
-export const EFFORT_TRIGGER =
-  'button[aria-haspopup="dialog"][aria-label^="Thinking level: "]';
 /** The usage meter: a progressbar inside the named Composer context container. */
 export const CONTEXT_METER =
   '[aria-label="Composer context"] [role="progressbar"]';
@@ -71,35 +101,6 @@ export function accessModeOption(mode) {
     '"]'
   );
 }
-/** Kinds whose matching node must also carry this accessible name. */
-// Wave 5 names the plan session mode "Plan mode" (ComposerAddActions.tsx).
-// The harness picker's listbox is aria-label="Harness" (SearchablePicker);
-// the model listbox is aria-labelledby its "Select model" title (ChatModelPicker).
-export const NAMED_KINDS = Object.freeze({
-  planEntry: "Plan mode",
-  harnessMenu: "Harness",
-  modelMenu: "Select model",
-});
-/**
- * Accessible name in accname precedence: aria-labelledby, then aria-label,
- * then text content. Self-contained: serialized into page expressions.
- */
-export function accessibleName(element) {
-  const normalize = (text) => text.replace(/\s+/gu, " ").trim();
-  const labelledBy = (element.getAttribute("aria-labelledby") ?? "").trim();
-  if (labelledBy) {
-    const ids = labelledBy.split(/\s+/u);
-    if (ids.length > 4) throw new Error("capture-name-bound");
-    const labels = ids
-      .map((id) => element.ownerDocument.getElementById(id))
-      .filter(Boolean);
-    if (labels.length > 0)
-      return normalize(labels.map((label) => label.textContent).join(" "));
-  }
-  return normalize(
-    element.getAttribute("aria-label") ?? element.textContent ?? "",
-  );
-}
 export const HARNESS = Object.freeze({
   pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-1.5.0" },
   codex: {
@@ -113,69 +114,6 @@ export const HARNESS = Object.freeze({
     protocol: "standard-acp-1",
   },
 });
-export function visibleRectangle(rectangle, viewport) {
-  return (
-    [
-      rectangle.x,
-      rectangle.y,
-      rectangle.width,
-      rectangle.height,
-      viewport.width,
-      viewport.height,
-    ].every(Number.isFinite) &&
-    rectangle.width > 0 &&
-    rectangle.height > 0 &&
-    rectangle.x < viewport.width &&
-    rectangle.y < viewport.height &&
-    rectangle.x + rectangle.width > 0 &&
-    rectangle.y + rectangle.height > 0
-  );
-}
-/**
- * A closed <details> hides its descendants except its own summary. The element
- * itself may be a closed <details>: its summary row is still rendered.
- */
-export function hiddenByClosedDetails(element) {
-  for (
-    let details = element.parentElement?.closest("details:not([open])");
-    details;
-    details = details.parentElement?.closest("details:not([open])")
-  )
-    if (!details.querySelector(":scope > summary")?.contains(element))
-      return true;
-  return false;
-}
-export function assistantTextRendered(turnId, document, visible) {
-  return (
-    Array.from(document.querySelectorAll(".acp-turn"))
-      .filter((element) => element.dataset.turnId === turnId)
-      .some((element) =>
-        Array.from(
-          element.querySelectorAll(
-            ".acp-message--assistant .acp-markdown, .acp-permission:not(.acp-permission--settled) > p:first-of-type",
-          ),
-        ).some((text) => visible(text) && text.textContent.trim().length > 0),
-      ) ||
-    Array.from(
-      document.querySelectorAll(
-        ".acp-permission-prompt .acp-permission-prompt__question",
-      ),
-    ).some(
-      (text) => visible(text) && (text.textContent ?? "").trim().length > 0,
-    )
-  );
-}
-export function hasVisibleLazyFallback(document, visible) {
-  return Array.from(
-    document.querySelectorAll(
-      '.acp-chat-projection [role="status"], .chat-surface [role="status"]',
-    ),
-  ).some(
-    (element) =>
-      visible(element) &&
-      /^Loading\s+.+(?:\u2026|\.\.\.)$/u.test(element.textContent.trim()),
-  );
-}
 /** Selects the title-bar Agent window mode; true only once it is checked. */
 export const AGENT_MODE = String.raw`(()=>{const inputs=document.querySelectorAll('input[name="workbench-window-mode"][value="agent"]');if(inputs.length!==1 || inputs[0].disabled)return false;if(!inputs[0].checked)inputs[0].click();return inputs[0].checked})()`;
 /**
@@ -437,114 +375,4 @@ export function namedState(options, observation, captureChat) {
   predicates.namedState =
     rules[state] === true && observation.lazyFallbackVisible === false;
   return predicates;
-}
-/** `chatId` also admits that Chat's owned artifact pane (Subagents, Diff). */
-function singleEnabledControl(selector, chatId) {
-  if (chatId !== null && !/^[A-Za-z0-9:_-]{1,128}$/u.test(chatId))
-    throw new Error("chat-identity");
-  return `const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;`;
-}
-/** Clicks the single enabled owned match; false while none or several match. */
-export function clickExpression(selector, chatId = null) {
-  return `(()=>{${singleEnabledControl(selector, chatId)}elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
-}
-/** True exactly when clickExpression would click: one enabled owned match. */
-export function clickableExpression(selector, chatId = null) {
-  return `(()=>{${singleEnabledControl(selector, chatId)}return true})()`;
-}
-/** Opens the single matching disclosure summary; idempotent, true once open. */
-export function openExpression(selector) {
-  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});const details=elements[0]?.parentElement;if(elements.length!==1 || details?.tagName!=='DETAILS')return false;if(!details.open){elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click()}return details.open})()`;
-}
-export function isDisclosure(selector) {
-  return selector.endsWith("> summary");
-}
-/** Toggle buttons that default open must not be clicked closed. */
-export function isExpandable(selector) {
-  return (
-    selector === FILES_EDITED_HEADER ||
-    selector.endsWith(".chat-transcript-work__toggle") ||
-    selector.includes('[aria-label^="Preview saved diff"]')
-  );
-}
-/** Expands the single matching aria-expanded button; idempotent, true once open. */
-export function expandExpression(selector) {
-  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});const button=elements[0];if(elements.length!==1 || button.disabled || !button.hasAttribute('aria-expanded'))return false;if(button.getAttribute('aria-expanded')!=='true'){button.scrollIntoView({block:'center',inline:'nearest'});button.click()}return button.getAttribute('aria-expanded')==='true'})()`;
-}
-export const APPROVAL_ALLOW =
-  ".acp-permission-prompt__split > button:first-child";
-export const APPROVAL_DENY =
-  ".acp-permission-prompt__actions > button:not(.acp-permission-prompt__stop)";
-export function isLiveTurnAction(selector) {
-  return (
-    selector === 'button[aria-label="Cancel turn"]' ||
-    selector === APPROVAL_ALLOW ||
-    selector === APPROVAL_DENY
-  );
-}
-const LAST_TURN = ".acp-turn:last-of-type ";
-/**
- * The project welcome turn precedes the replayed one, and the newest section can
- * render after the projection settles; pin latest-turn actions to its identity.
- */
-export function scopeToTurn(selector, turnId) {
-  if (!selector.startsWith(LAST_TURN)) return selector;
-  if (!IDENTIFIER.test(turnId)) throw new Error("turn-identity");
-  return (
-    '.acp-turn[data-turn-id="' +
-    turnId +
-    '"] ' +
-    selector.slice(LAST_TURN.length)
-  );
-}
-export function actionsFor(state, harness) {
-  if (state === "subagents-popover")
-    return ['button[aria-label="Show chat resources"]'];
-  if (state === "effort-menu") return [EFFORT_TRIGGER];
-  if (state === "turn-retry" && harness === "pi") return [];
-  if (
-    [
-      "worked-expanded",
-      "tool-expanded",
-      "plan-completed",
-      "answer-image",
-      "compaction-completed",
-      "compaction-failed",
-      "compaction-cancelled",
-      "non-read-denial",
-      "cancelled-dialog",
-      "subagents-finished",
-      "subagents-grouped",
-      "child-opened",
-    ].includes(state)
-  )
-    return [
-      LAST_TURN + ".chat-transcript-work__toggle",
-      ...(state === "tool-expanded"
-        ? [LAST_TURN + ".acp-tool-rollup > summary"]
-        : []),
-      ...(state === "child-opened"
-        ? [LAST_TURN + ".acp-subagent-row .acp-subagent-name"]
-        : []),
-    ];
-  // Wave 7: the pending approval replaces the composer (PermissionPrompt).
-  if (state === "approval-approved") return [APPROVAL_ALLOW];
-  if (state === "approval-declined") return [APPROVAL_DENY];
-  if (state === "turn-stopped") return ['button[aria-label="Cancel turn"]'];
-  if (state === "turn-retry") return [".acp-turn__failure button"];
-  if (state === "file-hunk" || state === "file-diff-tab")
-    return [
-      FILES_EDITED_HEADER,
-      state === "file-hunk"
-        ? FILES_EDITED + ' button[aria-label^="Preview saved diff"]'
-        : FILES_EDITED + ' button[aria-label^="Open diff"]',
-    ];
-  if (state === "access-menu") return ['button[aria-label="Access options"]'];
-  const menus = {
-    "harness-menu": "Harness",
-    "model-menu": "Model",
-    "add-menu": "Composer options",
-    "plan-mode-entry": "Composer options",
-  };
-  return menus[state] ? ['button[aria-label="' + menus[state] + '"]'] : [];
 }

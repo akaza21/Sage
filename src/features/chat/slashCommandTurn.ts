@@ -15,8 +15,13 @@ export type SlashCommandPort = Pick<
 >;
 
 /** A new chat's first send naming a curated built-in command, carried by that
- * one submit; `live` turns false once Stop or leaving the chat ends it. */
-export type FirstCommandHold = { name: string; live: () => boolean };
+ * one submit for its chat; `live` turns false once Stop or leaving the chat
+ * ends it. */
+export type FirstCommandHold = {
+  chatId: string;
+  name: string;
+  live: () => boolean;
+};
 
 export function parseSlashCommand(
   prompt: string,
