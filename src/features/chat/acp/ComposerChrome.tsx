@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useEffectEvent, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
 import { autoFilledText, setAutoFilled } from "./useAcpChatActions";
@@ -65,24 +65,29 @@ export function ComposerChrome({
     chrome?.editorText && answered.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
+  const key = offer?.key;
+  const proposed = offer?.text;
   const untouched = autoFilledText(scope) === text;
-  useEffect(() => {
-    // Any other text in this chat's field means the suggestion is the user's.
-    if (!untouched) setAutoFilled(scope);
-    // The chat's `sending` covers a send in flight and its failure restore.
-    if (
-      !offer?.text ||
-      text ||
-      actionBusy ||
-      hidden ||
-      projectTransitioning ||
-      page?.chatId !== scope
-    )
-      return;
-    answer(scope, offer.key);
-    setAutoFilled(scope, offer.text);
-    onTextChange(offer.text);
+  // The chat's `sending` covers a send in flight and its failure restore.
+  const idle =
+    !text &&
+    !actionBusy &&
+    !hidden &&
+    !projectTransitioning &&
+    page?.chatId === scope;
+  const fill = useEffectEvent((key: string, proposed: string) => {
+    answer(scope, key);
+    setAutoFilled(scope, proposed);
+    onTextChange(proposed);
   });
+  // Any other text in this chat's field means the suggestion is the user's.
+  useEffect(() => {
+    if (!untouched) setAutoFilled(scope);
+  }, [untouched, scope]);
+  useEffect(() => () => setAutoFilled(scope), [scope]);
+  useEffect(() => {
+    if (idle && key && proposed) fill(key, proposed);
+  }, [idle, key, proposed]);
   if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;

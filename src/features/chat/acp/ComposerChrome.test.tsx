@@ -4,9 +4,11 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import { useSessionAccessModeStore } from "../../../app/sessionAccessModeStore";
@@ -54,7 +56,10 @@ beforeEach(() => {
   } as unknown as AcpChatPage;
   useWorkbenchStore.setState({
     project: { id: page.projectId, name: "A", roots: [] },
-    tabs: [{ id: page.chatId, kind: "chat", title: "A" }] as never,
+    tabs: [
+      { id: page.chatId, kind: "chat", title: "A" },
+      { id: "chat-b", kind: "chat", title: "B" },
+    ] as never,
     activeTabId: page.chatId,
     archivedChats: [],
     chatUiById: {},
@@ -91,24 +96,28 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   setAutoFilled("chat-a");
+  setAutoFilled("chat-b");
+  acpProjectionStoreFor("chat-b").getState().clear();
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);
 });
 
 /**
- * The real chat composer state and send/restore path. "Offer" delivers an
- * extension's editor text; "Send queued" sends a prompt that is not in the
- * field, as the queue does.
+ * The real chat composer state and send/restore path, unbound (the active
+ * chat) or bound to `chatId`. "Offer" delivers an extension's editor text;
+ * "Send queued" sends a prompt that is not in the field, as the queue does.
  */
-function Composer() {
-  const composer = useBoundChatComposer();
-  const actions = useAcpChatActions();
+function Composer({ chatId }: { chatId?: string }) {
+  const composer = useBoundChatComposer(chatId);
+  const actions = useAcpChatActions(chatId);
   const [offer, setOffer] = useState<unknown>();
+  const scope = chatId ?? page.chatId;
   const send = (prompt: string) => {
     completion = actions.submit(prompt, [], binding, null);
   };
   return (
     <form
+      aria-label={scope}
       onSubmit={(event) => {
         event.preventDefault();
         send(composer.composerText);
@@ -121,10 +130,14 @@ function Composer() {
       />
       <ComposerChrome
         chatAuth={{
-          page: { ...page, sessionSurface: offer } as AcpChatPage,
+          page: {
+            ...page,
+            chatId: scope,
+            sessionSurface: offer,
+          } as AcpChatPage,
           errorKind: null,
         }}
-        dictationScope={page.chatId}
+        dictationScope={scope}
         actionBusy={actions.busy}
         projectTransitioning={false}
         text={composer.composerText}
@@ -151,16 +164,21 @@ function Composer() {
   );
 }
 
-const field = () => screen.getByLabelText<HTMLTextAreaElement>("Message agent");
-const click = (name: string) =>
-  fireEvent.click(screen.getByRole("button", { name }));
-const banner = () => screen.queryByRole("button", { name: /Use suggestion|Replace draft/ });
-const sendAndFail = async (name: string) => {
-  await act(async () => click(name));
-  await act(async () => {
+const chat = (name = "chat-a") => within(screen.getByRole("form", { name }));
+const field = (name?: string) =>
+  chat(name).getByLabelText<HTMLTextAreaElement>("Message agent");
+const click = (button: string, name?: string) =>
+  fireEvent.click(chat(name).getByRole("button", { name: button }));
+const banner = () =>
+  screen.queryByRole("button", { name: /Use suggestion|Replace draft/ });
+const failSend = async () =>
+  act(async () => {
     fail();
     await completion;
   });
+const sendAndFail = async (name?: string) => {
+  await act(async () => click("Send queued", name));
+  await failSend();
 };
 
 it("fills an empty idle field by itself, and Clear empties it for good", () => {
@@ -186,19 +204,38 @@ it("keeps the offer as a banner while a send is in flight, and the failed send's
   click("Offer");
   expect(field().value).toBe("");
   expect(banner()).toBeTruthy();
-  await act(async () => {
-    fail();
-    await completion;
-  });
+  await failSend();
   expect(field().value).toBe("My prompt");
   expect(banner()).toBeTruthy();
 });
 
-it("lets a failed restore replace untouched auto-filled text, never edited text", async () => {
-  render(<Composer />);
+it("lets a failed restore replace untouched auto-filled text per chat, never edited text", async () => {
+  const scopeB = {
+    projectId: page.projectId,
+    chatId: "chat-b",
+    projectGeneration: "0" as ProjectGeneration,
+  };
+  const storeB = acpProjectionStoreFor("chat-b");
+  storeB.getState().activateScope(scopeB);
+  storeB.getState().applyAuthoritativePage(scopeB, {
+    ...page,
+    chatId: "chat-b",
+  } as AcpChatPage);
+  render(
+    <>
+      <Composer />
+      <Composer chatId="chat-b" />
+    </>,
+  );
   click("Offer");
+  click("Offer", "chat-b");
   expect(field().value).toBe("Suggested");
-  await sendAndFail("Send queued");
+  expect(field("chat-b").value).toBe("Suggested");
+  // Each side-by-side chat keeps its own untouched fill.
+  await sendAndFail("chat-b");
+  expect(field("chat-b").value).toBe("Queued prompt");
+  expect(field().value).toBe("Suggested");
+  await sendAndFail();
   expect(field().value).toBe("Queued prompt");
   cleanup();
   offerKey++;
@@ -207,6 +244,6 @@ it("lets a failed restore replace untouched auto-filled text, never edited text"
   click("Offer");
   fireEvent.change(field(), { target: { value: "My edit" } });
   fireEvent.change(field(), { target: { value: "Suggested" } });
-  await sendAndFail("Send queued");
+  await sendAndFail();
   expect(field().value).toBe("Suggested");
 });

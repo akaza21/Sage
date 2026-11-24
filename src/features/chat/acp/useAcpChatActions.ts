@@ -59,18 +59,21 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
 }
 
 /**
- * The one offer text auto-filled into an empty field and not yet edited, so
- * a failed send's restore (from the composer or the queue) replaces it.
+ * Per chat, the offer text auto-filled into its empty field and not yet
+ * edited, so a failed send's restore (from the composer or the queue)
+ * replaces it. The composer forgets an entry on edit or unmount; at most 4.
  */
-let autoFilled: { chatId: string; text: string } | null = null;
+const autoFilled = new Map<string, string>();
 
-export const autoFilledText = (chatId: string) =>
-  autoFilled?.chatId === chatId ? autoFilled.text : undefined;
+export const autoFilledText = (chatId: string) => autoFilled.get(chatId);
 
 /** Records a chat's auto-filled text, or forgets it when `text` is absent. */
 export function setAutoFilled(chatId: string, text?: string) {
-  if (text !== undefined) autoFilled = { chatId, text };
-  else if (autoFilled?.chatId === chatId) autoFilled = null;
+  autoFilled.delete(chatId);
+  if (text === undefined) return;
+  autoFilled.set(chatId, text);
+  if (autoFilled.size > 4)
+    autoFilled.delete(autoFilled.keys().next().value as string);
 }
 
 export function useAcpChatActions(boundChatId?: string | null) {
