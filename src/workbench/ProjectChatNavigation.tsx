@@ -33,7 +33,7 @@ import {
 import type * as HoverChunk from "./ProjectChatHoverCard";
 import type * as RenameChunk from "./ProjectChatRename";
 import { chatRowErrorId } from "./chatRowError";
-import { openRailChat } from "./heldRailChatOpen";
+import { openRailChat, useHeldRailChatScope } from "./heldRailChatOpen";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import {
   isSideChatId,
@@ -81,6 +81,7 @@ export function ProjectChatNavigation({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
   const activeRowRef = useRef<HTMLButtonElement>(null);
+  useHeldRailChatScope();
   const interactions = useAgentRailInteractions();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());

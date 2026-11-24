@@ -40,15 +40,32 @@ function holdDiscovery() {
 
 function Rail({ rows }: { rows: Row[] }) {
   const current = useWorkbenchStore((state) => state.project?.id);
-  return rows.map((row) => (
-    <ProjectChatNavigation
-      key={row.project}
-      projectId={row.project}
-      chats={[row.chat]}
-      selected={row.project === current}
-      hideArchived
-    />
-  ));
+  return (
+    <>
+      {/* Stands in for a rail project row, which switches project. */}
+      <button
+        type="button"
+        onClick={() => void store().switchProject(real.project)}
+      >
+        Open project
+      </button>
+      {rows.map((row) => (
+        <ProjectChatNavigation
+          key={row.project}
+          projectId={row.project}
+          chats={[row.chat]}
+          selected={row.project === current}
+          hideArchived
+        />
+      ))}
+    </>
+  );
+}
+
+async function idle() {
+  await vi.waitFor(() => expect(store().projectTransitioning).toBe(false));
+  for (let turn = 0; turn < 3; turn++)
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 
 function click(view: ReturnType<typeof render>, row: Row) {
@@ -150,4 +167,57 @@ it("drops a held rail chat that was archived before the switch settled", async (
   expect(
     switches.mock.calls.map(([request]) => request.targetProjectId),
   ).toEqual([first.project, second.project, real.project]);
+});
+
+it("cancels a held rail chat on a later rail action or when the rail unmounts", async () => {
+  const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
+  const view = render(<Rail rows={[real, first, second]} />);
+  let held = holdDiscovery();
+  click(view, first);
+  await held.started;
+  click(view, second);
+  // A project row clicked after the held chat is the user's latest action.
+  fireEvent.click(view.getByRole("button", { name: "Open project" }));
+  held.release();
+  await opened(first.project, first.chat.id);
+  await idle();
+  expect(store().project?.id).toBe(first.project);
+
+  held = holdDiscovery();
+  click(view, second);
+  await held.started;
+  click(view, first);
+  view.unmount();
+  held.release();
+  await opened(second.project, second.chat.id);
+  await idle();
+  expect(store().project?.id).toBe(second.project);
+  expect(
+    switches.mock.calls.map(([request]) => request.targetProjectId),
+  ).toEqual([first.project, second.project]);
+});
+
+it("keeps a failed switch's error instead of replaying a held rail chat", async () => {
+  const ports = getWorkbenchPorts().project;
+  let fail!: () => void;
+  const failing = new Promise<void>((resolve) => (fail = resolve));
+  const switches = vi
+    .spyOn(ports, "switchProject")
+    .mockImplementationOnce(async () => {
+      await failing;
+      throw new Error("Switch failed");
+    });
+  const view = render(<Rail rows={[first, second]} />);
+  click(view, first);
+  await vi.waitFor(() => expect(switches).toHaveBeenCalledTimes(1));
+  click(view, second);
+  fail();
+  await vi.waitFor(() => expect(store().error).toBe("Switch failed"));
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: real.project },
+    activeTabId: real.chat.id,
+    error: "Switch failed",
+  });
+  expect(switches).toHaveBeenCalledTimes(1);
 });
