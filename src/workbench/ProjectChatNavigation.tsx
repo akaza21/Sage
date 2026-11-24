@@ -33,6 +33,7 @@ import {
 import type * as HoverChunk from "./ProjectChatHoverCard";
 import type * as RenameChunk from "./ProjectChatRename";
 import { chatRowErrorId } from "./chatRowError";
+import { openRailChat, useHeldRailChatScope } from "./heldRailChatOpen";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import {
   isSideChatId,
@@ -80,6 +81,7 @@ export function ProjectChatNavigation({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
   const activeRowRef = useRef<HTMLButtonElement>(null);
+  useHeldRailChatScope();
   const interactions = useAgentRailInteractions();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -97,8 +99,6 @@ export function ProjectChatNavigation({
     useWorkbenchStore((state) => state.activeTabId),
   );
   const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
-  const activateTab = useWorkbenchStore((state) => state.activateTab);
-  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const projectName = useWorkbenchStore(
     (state) =>
@@ -247,12 +247,8 @@ export function ProjectChatNavigation({
                 aria-current={focused ? "page" : undefined}
                 onClick={() => {
                   clearAgentRailUnread(tab.id);
-                  if (selected) {
-                    if (sessionRailFinished(status))
-                      markChatRead(tab.id, tab.finishedAt ?? 0);
-                    void activateTab(tab.id);
-                    return;
-                  }
+                  if (selected && sessionRailFinished(status))
+                    markChatRead(tab.id, tab.finishedAt ?? 0);
                   void openRailChat(projectId, tab.id);
                 }}
               >
