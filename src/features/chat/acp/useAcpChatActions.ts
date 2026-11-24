@@ -1,5 +1,4 @@
-import type { AttachedContext } from "../../../domain/attachedContext";
-import { useCallback, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useStore } from "zustand";
 
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
@@ -12,7 +11,6 @@ import type {
   SageTurnId,
 } from "../../../domain/acp";
 import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
-import type { ComposerSuggestionRef } from "../chatComposerRegionProps";
 import {
   type AcpActionContext,
   type AcpActionState,
@@ -60,8 +58,14 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
   };
 }
 
+/**
+ * The one offer text auto-filled into an empty field and not yet edited, so
+ * a failed send's restore (from the composer or the queue) replaces it.
+ */
+export const autoFilled: { current: { chatId: string; text: string } | null } =
+  { current: null };
+
 export function useAcpChatActions(boundChatId?: string | null) {
-  const suggestionRef: ComposerSuggestionRef = useRef(null);
   const store = acpProjectionStoreFor(boundChatId);
   const page = useStore(store, (projection) => projection.page);
   const chatUi = (state: WorkbenchState) =>
@@ -90,39 +94,6 @@ export function useAcpChatActions(boundChatId?: string | null) {
   const modeOwnerMatches =
     modeErrorOwner?.sessionId === page?.sessionConfig?.sageAgentSessionId &&
     modeErrorOwner?.runtimeEpoch === page?.sessionConfig?.runtimeEpoch;
-
-  const restoreComposer = useCallback(
-    (
-      context: AcpActionContext,
-      prompt: string,
-      attachedContext: readonly AttachedContext[],
-    ) => {
-      const workbench = useWorkbenchStore.getState();
-      const filled = suggestionRef.current;
-      suggestionRef.current = null;
-      // Treat an untouched suggestion as empty for the existing restore.
-      // clearChatComposer compares the text and checks chat ownership.
-      if (
-        filled?.scope ===
-        JSON.stringify([
-          context.page.projectId,
-          context.page.chatId,
-          context.page.currentSessionId,
-        ])
-      )
-        workbench.clearChatComposer(
-          ownershipIntent(context),
-          filled.text.trim(),
-          [],
-        );
-      workbench.restoreChatComposer(
-        ownershipIntent(context),
-        prompt,
-        attachedContext,
-      );
-    },
-    [],
-  );
 
   const controller = useMemo(
     () =>
@@ -194,13 +165,23 @@ export function useAcpChatActions(boundChatId?: string | null) {
             attachedContext,
           );
         },
-        restoreComposer,
+        restoreComposer: (context, prompt, attachedContext) => {
+          const workbench = useWorkbenchStore.getState();
+          const intent = ownershipIntent(context);
+          const filled = autoFilled.current;
+          // The restore wins over auto-filled text the user never touched;
+          // the clear only applies while the field still holds that text.
+          if (prompt && filled?.chatId === intent.chatId) {
+            autoFilled.current = null;
+            workbench.clearChatComposer(intent, filled.text.trim(), []);
+          }
+          workbench.restoreChatComposer(intent, prompt, attachedContext);
+        },
       }),
-    [boundChatId, restoreComposer],
+    [boundChatId],
   );
 
   return {
-    suggestionRef,
     busy: sending,
     error: chatError,
     errorKind,
@@ -217,7 +198,6 @@ export function useAcpChatActions(boundChatId?: string | null) {
     setSessionMode: controller.setSessionMode,
     setSessionConfigOption: controller.setSessionConfigOption,
   } satisfies {
-    suggestionRef: ComposerSuggestionRef;
     busy: boolean;
     error: string | null;
     errorKind: AcpCommandFailure["kind"] | null;

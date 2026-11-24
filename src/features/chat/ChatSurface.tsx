@@ -77,7 +77,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const acpRetentionIncomplete = useAcpRetentionIncomplete(chatId);
   const acpLoadFailure = useAcpChatLoadFailure(chatId);
   const acpActions = useAcpChatActions(chatId);
-  const { suggestionRef } = acpActions;
   const acpHistory = useAcpChatHistory(chatId);
   const surfaceRef = useRef<HTMLElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -369,11 +368,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             : undefined
         }
         onSubmit={submit}
-        suggestionRef={suggestionRef}
-        onTextChange={(text) => {
-          suggestionRef.current = null;
-          setComposerText(text);
-        }}
+        onTextChange={setComposerText}
         onRemoveContext={removeAttachedContext}
         onCancelTurn={cancelTurn}
         onDeleteQueuedPrompt={(id) => updateQueuedPrompt(id, "deleted")}

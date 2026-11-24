@@ -21,13 +21,6 @@ export interface ComposerAccessTarget {
   endedPage?: EndedPage;
 }
 
-/** Disposable composer ownership: cleared synchronously by every user edit. */
-export type ComposerSuggestionRef = RefObject<{
-  scope: string;
-  text: string;
-  suggestionRef?: ComposerSuggestionRef;
-} | null>;
-
 export interface ChatComposerRegionProps {
   draftPickers?: ControlledDraftPickers;
   /** Kept mounted while an approval holds the slot, so the draft survives. */

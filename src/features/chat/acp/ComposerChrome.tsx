@@ -1,6 +1,7 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
+import { autoFilled } from "./useAcpChatActions";
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -33,18 +34,16 @@ function Widget({ widget }: { widget: ChromeWidget }) {
  * A harness's subtitle, status lines, text widgets and composer offer,
  * rendered by kind for every extension from one slot before the field, so
  * they are read in the order they show. Only widgets an extension placed
- * below the editor are moved after the field, by flex order. Offers fill an
- * idle, empty composer in their own session; otherwise they wait for Use or
- * Ignore. Untouched automatic text yields to a failed prompt's restore.
+ * below the editor are moved after the field, by flex order. An offer fills
+ * the field by itself only when the field is empty, no send is in flight or
+ * about to restore its prompt, and the page is this chat's; otherwise it
+ * waits as a notice for Use or Ignore. Auto-filled text the user has not
+ * touched yields to a failed send's restore (see `useAcpChatActions`).
  */
 export function ComposerChrome({
   chatAuth,
-  suggestionRef,
-  dictationScope,
-  sessionId,
-  composerRef,
+  dictationScope: scope,
   actionBusy,
-  queuedPrompts,
   hidden,
   projectTransitioning,
   text,
@@ -52,73 +51,39 @@ export function ComposerChrome({
 }: Pick<
   ChatComposerRegionProps,
   | "chatAuth"
-  | "suggestionRef"
   | "dictationScope"
-  | "sessionId"
-  | "composerRef"
   | "actionBusy"
-  | "queuedPrompts"
   | "hidden"
   | "projectTransitioning"
   | "text"
   | "onTextChange"
 >) {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
-  const [filled, setFilled] = useState(false);
   const page = chatAuth?.page;
-  const scope = JSON.stringify([page?.projectId, dictationScope, sessionId]);
   const chrome = decodeSessionChrome(page?.sessionSurface);
   const offer =
     chrome?.editorText && answered.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
-  const key = offer?.key;
-  const proposed = offer?.text;
-  const busy =
-    actionBusy ||
-    queuedPrompts?.some((item) => ["saving", "sending"].includes(item.status));
+  const filled = autoFilled.current;
+  const untouched = filled?.chatId === scope && filled.text === text;
   useEffect(() => {
-    if (!suggestionRef) return;
+    // Any other text in this chat's field means the suggestion is the user's.
+    if (filled?.chatId === scope && !untouched) autoFilled.current = null;
+    // The chat's `sending` covers a send in flight and its failure restore.
     if (
-      suggestionRef.current?.scope !== scope ||
-      suggestionRef.current.text !== text
-    ) {
-      suggestionRef.current = null;
-      setFilled(false);
-    }
-    if (
-      !key ||
-      proposed === undefined ||
+      !offer?.text ||
       text ||
-      composerRef.current?.value ||
-      busy ||
+      actionBusy ||
       hidden ||
       projectTransitioning ||
-      page?.chatId !== dictationScope ||
-      !sessionId ||
-      page.currentSessionId !== sessionId ||
-      answered.get(scope) === key
+      page?.chatId !== scope
     )
       return;
-    answer(scope, key);
-    onTextChange(proposed);
-    suggestionRef.current = { scope, text: proposed };
-    setFilled(true);
-  }, [
-    suggestionRef,
-    scope,
-    text,
-    composerRef,
-    busy,
-    hidden,
-    projectTransitioning,
-    page,
-    dictationScope,
-    sessionId,
-    key,
-    proposed,
-    onTextChange,
-  ]);
+    answer(scope, offer.key);
+    autoFilled.current = { chatId: scope, text: offer.text };
+    onTextChange(offer.text);
+  });
   if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;
@@ -171,22 +136,15 @@ export function ComposerChrome({
             details={<pre>{offer.text}</pre>}
           />
         ) : null}
-        <p className={filled ? "notice" : "sr-only"} role="status">
-          {filled ? (
+        {/* Announced once per new offer or fill: the line is inserted afresh. */}
+        <p className={untouched ? "notice" : "sr-only"} role="status">
+          {untouched ? (
             <>
               Suggested text added to the message.{" "}
               <button
                 type="button"
                 className="notice__text-link"
-                onClick={() => {
-                  if (
-                    suggestionRef?.current?.scope === scope &&
-                    suggestionRef.current.text === text
-                  )
-                    onTextChange("");
-                  if (suggestionRef) suggestionRef.current = null;
-                  setFilled(false);
-                }}
+                onClick={() => onTextChange("")}
               >
                 Clear suggested text
               </button>

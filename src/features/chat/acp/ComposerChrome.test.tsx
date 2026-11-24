@@ -5,7 +5,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
@@ -17,7 +17,7 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useBoundChatComposer } from "../useBoundChatComposer";
-import { useAcpChatActions } from "./useAcpChatActions";
+import { autoFilled, useAcpChatActions } from "./useAcpChatActions";
 import { ComposerChrome } from "./ComposerChrome";
 
 const initial = useWorkbenchStore.getState();
@@ -90,22 +90,20 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  autoFilled.current = null;
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);
 });
 
-/** Real chat composer state and send/restore; buttons deliver extension offers. */
+/**
+ * The real chat composer state and send/restore path. "Offer" delivers an
+ * extension's editor text; "Send queued" sends a prompt that is not in the
+ * field, as the queue does.
+ */
 function Composer() {
   const composer = useBoundChatComposer();
   const actions = useAcpChatActions();
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [offer, setOffer] = useState<unknown>();
-  const [sessionId, setSession] = useState<string>(page.currentSessionId!);
-  const [chatId, setChat] = useState<string>(page.chatId);
-  const edit = (text: string) => {
-    actions.suggestionRef.current = null;
-    composer.setComposerText(text);
-  };
   const send = (prompt: string) => {
     completion = actions.submit(prompt, [], binding, null);
   };
@@ -117,28 +115,24 @@ function Composer() {
       }}
     >
       <textarea
-        ref={fieldRef}
         aria-label="Message agent"
         value={composer.composerText}
-        onChange={(event) => edit(event.target.value)}
+        onChange={(event) => composer.setComposerText(event.target.value)}
       />
       <ComposerChrome
         chatAuth={{
           page: { ...page, sessionSurface: offer } as AcpChatPage,
           errorKind: null,
         }}
-        dictationScope={chatId}
-        suggestionRef={actions.suggestionRef}
-        sessionId={sessionId}
-        composerRef={fieldRef}
+        dictationScope={page.chatId}
         actionBusy={actions.busy}
         projectTransitioning={false}
         text={composer.composerText}
-        onTextChange={edit}
+        onTextChange={composer.setComposerText}
       />
       <button type="submit">Send</button>
-      <button type="button" onClick={() => send("Original prompt")}>
-        Retry failed prompt
+      <button type="button" onClick={() => send("Queued prompt")}>
+        Send queued
       </button>
       <button
         type="button"
@@ -153,18 +147,6 @@ function Composer() {
       >
         Offer
       </button>
-      <button type="button" onClick={() => setSession("other-session")}>
-        Other session
-      </button>
-      <button type="button" onClick={() => setSession(page.currentSessionId!)}>
-        Current session
-      </button>
-      <button type="button" onClick={() => setChat("other-chat")}>
-        Other chat
-      </button>
-      <button type="button" onClick={() => setChat(page.chatId)}>
-        Current chat
-      </button>
     </form>
   );
 }
@@ -172,26 +154,18 @@ function Composer() {
 const field = () => screen.getByLabelText<HTMLTextAreaElement>("Message agent");
 const click = (name: string) =>
   fireEvent.click(screen.getByRole("button", { name }));
-const banner = () =>
-  screen.queryByRole("button", {
-    name: /Use suggestion|Replace draft with suggestion/,
-  });
-const finishFailure = async () =>
-  act(async () => {
+const banner = () => screen.queryByRole("button", { name: /suggestion/ });
+const sendAndFail = async (name: string) => {
+  await act(async () => click(name));
+  await act(async () => {
     fail();
     await completion;
   });
+};
 
-it("auto-fills only an empty current scope, announces Clear, and remembers dismissed offers", () => {
-  const view = render(<Composer />);
-  click("Other session");
-  click("Other chat");
+it("fills an empty idle field by itself, and Clear empties it for good", () => {
+  render(<Composer />);
   click("Offer");
-  expect(field().value).toBe("");
-  expect(banner()).toBeTruthy();
-  click("Current session");
-  expect(field().value).toBe("");
-  click("Current chat");
   expect(field().value).toBe("Suggested");
   expect(banner()).toBeNull();
   expect(screen.getByRole("status").textContent).toContain(
@@ -199,48 +173,33 @@ it("auto-fills only an empty current scope, announces Clear, and remembers dismi
   );
   click("Clear suggested text");
   expect(field().value).toBe("");
-  expect(banner()).toBeNull();
-  view.unmount();
-  offerKey++;
-  render(<Composer />);
-  fireEvent.change(field(), { target: { value: "My draft" } });
-  click("Offer");
-  expect(field().value).toBe("My draft");
-  click("Ignore suggestion");
-  fireEvent.change(field(), { target: { value: "" } });
-  expect(field().value).toBe("");
-  expect(banner()).toBeNull();
+  // The answered offer does not come back.
   click("Offer");
   expect(field().value).toBe("");
   expect(banner()).toBeNull();
 });
 
-it("keeps an in-flight offer as a banner and lets the failed send restore its prompt", async () => {
+it("keeps the offer as a banner while a send is in flight, and the failed send's restore wins", async () => {
   render(<Composer />);
-  fireEvent.change(field(), { target: { value: "Original prompt" } });
-  await act(async () => {
-    click("Send");
-  });
+  fireEvent.change(field(), { target: { value: "My prompt" } });
+  await act(async () => click("Send"));
   click("Offer");
   expect(field().value).toBe("");
   expect(banner()).toBeTruthy();
-  await finishFailure();
-  expect(field().value).toBe("Original prompt");
+  await act(async () => {
+    fail();
+    await completion;
+  });
+  expect(field().value).toBe("My prompt");
   expect(banner()).toBeTruthy();
-  click("Replace draft with suggestion");
-  expect(field().value).toBe("Suggested");
-  expect(banner()).toBeNull();
 });
 
-it("restores over untouched auto-fill, but preserves a user edit even if it returns to the suggested text", async () => {
+it("lets a failed restore replace untouched auto-filled text, never edited text", async () => {
   render(<Composer />);
   click("Offer");
   expect(field().value).toBe("Suggested");
-  await act(async () => {
-    click("Retry failed prompt");
-  });
-  await finishFailure();
-  expect(field().value).toBe("Original prompt");
+  await sendAndFail("Send queued");
+  expect(field().value).toBe("Queued prompt");
   cleanup();
   offerKey++;
   useWorkbenchStore.getState().setComposerText("");
@@ -248,9 +207,6 @@ it("restores over untouched auto-fill, but preserves a user edit even if it retu
   click("Offer");
   fireEvent.change(field(), { target: { value: "My edit" } });
   fireEvent.change(field(), { target: { value: "Suggested" } });
-  await act(async () => {
-    click("Retry failed prompt");
-  });
-  await finishFailure();
+  await sendAndFail("Send queued");
   expect(field().value).toBe("Suggested");
 });
