@@ -123,7 +123,7 @@ function scopeKey(context: AcpActionContext): string {
 /** The page's head session, which activation may have replaced. */
 function headSession(page: AcpChatPage): AgentSessionProjection {
   const session = currentSession(page);
-  if (!session) throw localFailure("The authoritative session is unavailable.");
+  if (!session) throw localFailure("Could not start the session. Try again.");
   return session;
 }
 

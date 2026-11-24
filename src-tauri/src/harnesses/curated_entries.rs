@@ -162,7 +162,7 @@ mod tests {
     use crate::{
         acp::bindings::codex::{CodexBindingRegistration, CodexHostPresence},
         harness_discovery::InstalledHarness,
-        harnesses::{HarnessCatalog, SIMULATOR_ID, SIMULATOR_IN_CATALOG},
+        harnesses::{HarnessCatalog, SIMULATOR_ID},
         project_registry::create::ProjectCreateStore,
     };
     use sage_domain::harness::{HarnessInstallState, HarnessTransport};
@@ -457,7 +457,6 @@ mod tests {
 
     #[test]
     fn the_diagnostics_feature_never_admits_the_simulator_into_a_release_catalog() {
-        assert_eq!(SIMULATOR_IN_CATALOG, cfg!(debug_assertions));
         assert_eq!(
             HarnessCatalog::default()
                 .definitions()

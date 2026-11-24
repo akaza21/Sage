@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore, type TerminalHandoff } from "../../app/store";
+import { useTerminalDockStore } from "../../app/terminalDockStore";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 
 type Caught = { input: string; name: string; command: string };
@@ -44,6 +45,10 @@ export function ComposerTerminalCatch({
     cancelled.has(chatId) ? switched : "",
   );
   useEffect(() => void cancelled.delete(chatId), [chatId]);
+  // A released choice (edited text, "Send as text anyway") never comes back.
+  useEffect(() => {
+    if (!caught) cancelled.delete(chatId);
+  }, [caught, chatId]);
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
@@ -143,6 +148,10 @@ export function ComposerTerminalCatch({
       if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
       cancelled.set(chatId, caught);
       settle(switched);
+      // A dock still loading has taken no chat yet, so it would open for
+      // the one the user went to: the pending open ends here too.
+      const dock = useTerminalDockStore.getState();
+      if (dock.visible && !dock.owner) dock.setVisible(false);
     };
     const unwatch = store.subscribe(({ activeTabId, tabs }) => {
       if (

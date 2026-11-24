@@ -66,19 +66,22 @@ impl PiRuntime {
             .map_err(|_| AdapterRuntimeError::Operation)?;
         match (config_id.as_str(), value) {
             (MODEL, ConfigValue::Select { value }) => {
-                self.model_hint = None;
                 let model = self
                     .available_models
                     .iter()
                     .find(|model| model_key(model).ok().as_deref() == Some(value.as_str()))
                     .ok_or(AdapterRuntimeError::Operation)?;
-                self.begin_one(
+                let asked = (model.provider.clone(), model.id.clone());
+                let egress = self.begin_one(
                     Operation::SetModel {
-                        provider: model.provider.clone(),
-                        id: model.id.clone(),
+                        provider: asked.0.clone(),
+                        id: asked.1.clone(),
                     },
                     super::super::RequestKind::SetModel,
-                )
+                )?;
+                self.model_request = Some(asked);
+                self.model_disagreed = false;
+                Ok(egress)
             }
             (THINKING, ConfigValue::Select { value }) => self.begin_one(
                 Operation::SetThinkingLevel {
