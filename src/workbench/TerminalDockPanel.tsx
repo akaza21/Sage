@@ -11,6 +11,7 @@ import {
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import { sameScope } from "./terminalScope";
 import {
   ChevronDown,
   ChevronUp,
@@ -54,10 +55,7 @@ export function TerminalDockPanel({
   // A pending handoff for this dock's chat and project takes the next new tab;
   // one for another chat or project stays pending until its sender expires it.
   const pending = useWorkbenchStore((state) => state.terminalHandoff);
-  const handoff =
-    pending?.chatId === scope.chatId && pending.projectId === scope.projectId
-      ? pending
-      : null;
+  const handoff = sameScope(pending, scope) ? pending : null;
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,

@@ -196,6 +196,7 @@ async function handOff(input: string) {
       useWorkbenchStore.setState({
         terminalHandoff: {
           projectId: "project-1",
+          projectGeneration: "2",
           chatId: "chat-1",
           run: (type) => {
             useWorkbenchStore.setState({ terminalHandoff: null });

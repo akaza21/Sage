@@ -90,6 +90,7 @@ export type ResourceState<T> =
  */
 export type TerminalHandoff = {
   projectId: string;
+  projectGeneration: string;
   chatId: string;
   run: (type: ((text: string) => Promise<void>) | null) => void;
 };

@@ -5,6 +5,7 @@ import { usePortalHost } from "../ui/usePortalHost";
 import { useWorkbenchStore } from "../app/store";
 import type { UserTerminalScope } from "../services/userTerminalDesktop";
 import { TerminalDockPanel } from "./TerminalDockPanel";
+import { sameScope } from "./terminalScope";
 import { firstChatTabId } from "./workbenchWindowMode";
 import "./terminal-dock.css";
 
@@ -60,12 +61,8 @@ export default function TerminalDockForWorkbench({
     return useWorkbenchStore.subscribe(() => {
       const current = selectedScope(pinnedChatId, scope.chatId);
       if (
-        !current ||
-        useWorkbenchStore.getState().projectGeneration !==
-          uiProjectGeneration ||
-        current.projectId !== scope.projectId ||
-        current.projectGeneration !== scope.projectGeneration ||
-        current.chatId !== scope.chatId
+        !sameScope(current, scope) ||
+        useWorkbenchStore.getState().projectGeneration !== uiProjectGeneration
       ) {
         setOwner([null, uiProjectGeneration]);
         onClose();

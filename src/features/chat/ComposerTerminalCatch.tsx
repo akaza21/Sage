@@ -40,6 +40,9 @@ export function ComposerTerminalCatch({
   const projectId = useWorkbenchStore((state) =>
     state.projectTransitioning ? undefined : state.project?.id,
   );
+  const projectGeneration = String(
+    useWorkbenchStore((state) => state.nativeTransitionEpoch),
+  );
   const unavailable = !projectId
     ? "Open this chat's project first."
     : !tools.terminalAvailable
@@ -108,6 +111,7 @@ export function ComposerTerminalCatch({
     // ended types nothing, however late its tab opens.
     const handoff: TerminalHandoff = {
       projectId: projectId!,
+      projectGeneration,
       chatId,
       run: (type) => {
         if (settled) return;
