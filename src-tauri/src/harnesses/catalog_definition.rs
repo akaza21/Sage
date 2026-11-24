@@ -120,3 +120,33 @@ pub(super) fn safe_display_version(version: &str) -> Option<String> {
         .then(|| token.to_owned())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::safe_display_version;
+
+    #[test]
+    fn harness_display_version_never_echoes_paths_or_control_characters() {
+        assert_eq!(
+            safe_display_version("codex-cli v1.2.3"),
+            Some("1.2.3".into())
+        );
+        assert_eq!(
+            safe_display_version("codex-cli 0.155.0-alpha.16.3"),
+            Some("0.155.0-alpha.16.3".into())
+        );
+        for text in [
+            "C:\\private\\1.2.exe",
+            "/home/private/1.2",
+            "https://host/1.2",
+            "1.2\u{1b}",
+            "1.123456789",
+            "",
+            "private label",
+            "0.155.0-",
+            "0.155.0-alpha/secret",
+        ] {
+            assert_eq!(safe_display_version(text), None, "{text}");
+        }
+    }
+}
