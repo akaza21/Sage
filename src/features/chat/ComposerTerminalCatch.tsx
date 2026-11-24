@@ -5,11 +5,10 @@ import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 
 type Caught = { input: string; name: string; command: string };
 type Catcher = (caught: Caught) => boolean;
-const notOpened = "The terminal did not open. Try again.";
-const notTyped = "This command could not be typed into the terminal.";
+const notOpened = "The terminal did not open.";
+const notTyped = "The command could not be typed.";
 // The dock opens at most 4 tabs per chat.
-const tabsFull =
-  "4 terminals are already open for this chat. Close one, then try again.";
+const tabsFull = "4 terminals are already open.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -44,7 +43,7 @@ export function ComposerTerminalCatch({
   const unavailable = !projectId
     ? "Open this chat's project first."
     : !tools.terminalAvailable
-      ? "The terminal is not available here."
+      ? "No terminal here."
       : undefined;
   const message =
     caught &&
