@@ -9,6 +9,8 @@ type Catcher = (caught: Caught) => boolean;
 const failed = "The terminal did not take the command.";
 // The dock opens at most 4 tabs per chat.
 const tabsFull = "4 terminals are already open.";
+const switched =
+  "Open in terminal was cancelled because you switched chats.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 
@@ -86,7 +88,8 @@ export function ComposerTerminalCatch({
       return;
     }
     const store = useWorkbenchStore;
-    const { project, nativeTransitionEpoch } = store.getState();
+    const { project, nativeTransitionEpoch, activeTabId: from } =
+      store.getState();
     const leave = () => {
       if (store.getState().terminalHandoff === handoff)
         store.setState({ terminalHandoff: null });
@@ -96,6 +99,7 @@ export function ComposerTerminalCatch({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      unwatch();
       leave();
       setOpening(false);
       if (failure) setError(failure);
@@ -109,6 +113,7 @@ export function ComposerTerminalCatch({
       chatId,
       run: (type) => {
         if (settled) return;
+        unwatch();
         leave();
         if (!type) return settle(tabsFull);
         void type(command).then(
@@ -118,6 +123,16 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(failed), 10_000);
+    // Another chat taking the dock closes it, and it never reopens on its
+    // own: until the dock takes it, the request ends with the switch.
+    const unwatch = store.subscribe(({ activeTabId, tabs }) => {
+      if (
+        activeTabId !== from &&
+        activeTabId !== chatId &&
+        tabs.some((tab) => tab.kind === "chat" && tab.id === activeTabId)
+      )
+        settle(switched);
+    });
     // Settling after unmount only clears the slot and timer.
     cancel.current = settle;
     setOpening(true);

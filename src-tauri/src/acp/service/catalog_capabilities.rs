@@ -118,3 +118,66 @@ impl CatalogCapabilities {
         }
     }
 }
+
+#[cfg(all(test, feature = "acp-fixture"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_change_refused_while_starting_is_kept_until_a_ready_store_takes_it() {
+        let (database, intent) = crate::acp::store::title_fixture();
+        let session = intent.session_id.as_str().to_owned();
+        let set_state = |state: &str| {
+            database
+                .connection()
+                .execute(
+                    "UPDATE agent_sessions SET state=?2 WHERE id=?1",
+                    [session.as_str(), state],
+                )
+                .unwrap();
+        };
+        let stored = || -> CapabilitySnapshotV1 {
+            let json: String = database
+                .connection()
+                .query_row(
+                    "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                    [session.as_str()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            serde_json::from_str(&json).unwrap()
+        };
+        let negotiated = stored();
+        let mut advertised = negotiated.clone();
+        advertised.goal.set = !negotiated.goal.set;
+        let notices = Arc::new(crate::acp::runtime::ProjectionMailbox::default());
+        let mut capabilities = CatalogCapabilities::new(
+            RuntimeOwner {
+                project_id: intent.project_id,
+                chat_id: intent.chat_id,
+                session_id: intent.session_id,
+                runtime_epoch: intent.runtime_epoch,
+            },
+            (advertised.clone(), advertised.clone()),
+            database.clone(),
+            notices.clone(),
+        );
+        capabilities.observe(Some(1), Some(negotiated.clone()));
+        set_state("starting");
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        // Held back, it is not retried on every frame.
+        assert!(capabilities.settled(Some(2)));
+        // Readied before the activation commits: refused again, still kept.
+        capabilities.session_ready();
+        assert!(!capabilities.settled(Some(2)));
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        assert!(capabilities.settled(Some(2)));
+        assert_eq!(stored(), negotiated);
+        set_state("ready");
+        capabilities.session_ready();
+        capabilities.observe(Some(2), Some(advertised.clone()));
+        assert_eq!(stored().goal, advertised.goal);
+        assert!(notices.take().is_some());
+        assert!(capabilities.settled(Some(2)));
+    }
+}

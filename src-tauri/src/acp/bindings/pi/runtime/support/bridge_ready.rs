@@ -83,11 +83,15 @@ impl PiRuntime {
 
     /// The same update as Sage's own `set_model` reply, so the model chip
     /// follows. The current model is a no-op; a model outside the catalogue
-    /// is read with the next prompt, like other extension changes.
+    /// is read with the next prompt, like other extension changes. While
+    /// Sage's own change is in flight it is kept, to check that change's reply.
     fn bridge_model(&mut self, provider: &str, id: &str) -> Result<(), AdapterRuntimeError> {
         // Until the session opens, Sage's own state read carries the model.
         if !self.initialized || self.external_session.is_none() {
             return Ok(());
+        }
+        if self.translator.set_model_pending() {
+            self.model_hint = Some((provider.to_owned(), id.to_owned()));
         }
         let Some(model) = self
             .available_models

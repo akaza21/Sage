@@ -114,6 +114,8 @@ pub(crate) struct PiRuntime {
     commands_pending: bool,
     commands_discovered: bool,
     configuration_dirty: bool,
+    /// The last model Pi reported while Sage's own `set_model` was in flight.
+    model_hint: Option<(String, String)>,
     /// A configuration read asked for the model registry; its reply continues
     /// to the thinking levels.
     configuration_models_pending: bool,

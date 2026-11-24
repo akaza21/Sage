@@ -185,6 +185,20 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   expect(backend.sessions.size).toBe(1);
   act(() => closeOther());
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
+  // Switching chats before the dock takes a request ends it at once with its
+  // reason; switching back neither reopens the dock nor types anything.
+  catchCommand(text);
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-2" }));
+  expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Open in terminal was cancelled because you switched chats.",
+  );
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(useTerminalDockStore.getState().visible).toBe(false);
+  // The closed dock took its tabs with it, and none was opened again.
+  expect(backend.sessions.size).toBe(0);
 });
 
 // Stores a request in the workbench slot and shows the dock, as the composer

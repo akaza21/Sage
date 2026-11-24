@@ -5,7 +5,7 @@ use sage_acp_protocol::{
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
 };
 
-fn config_intent(id: &str, value: &str) -> ConfigIntent {
+pub(super) fn config_intent(id: &str, value: &str) -> ConfigIntent {
     ConfigIntent {
         owner: RuntimeOwner {
             project_id: SageProjectId::parse("project-pi").unwrap(),

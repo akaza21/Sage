@@ -48,7 +48,9 @@ export async function slashCommandTurn(
     hold.name !== runtime.parseSlashCommand(request.prompt)?.name
   )
     return turn();
-  const { name, live } = hold;
+  const { name } = hold;
+  // A hold is for its own chat's send only; for any other it has ended.
+  const live = () => hold.chatId === request.chatId && hold.live();
   // The typed command route carries no attachments or staged files.
   if (request.attachedContext?.length || request.staged)
     throw notSent("Commands can't include images or files.");
@@ -148,7 +150,7 @@ async function sendFirstCommand(
     // Stopped while looking: nothing is sent.
     if (!live()) return;
     if (name && Array.isArray(builtins) && builtins.includes(name))
-      return await submit({ name, live });
+      return await submit({ chatId, name, live });
     store.setState({ pendingFirstSend: null });
     await submit();
   } finally {

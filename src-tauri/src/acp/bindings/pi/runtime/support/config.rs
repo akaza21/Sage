@@ -66,6 +66,7 @@ impl PiRuntime {
             .map_err(|_| AdapterRuntimeError::Operation)?;
         match (config_id.as_str(), value) {
             (MODEL, ConfigValue::Select { value }) => {
+                self.model_hint = None;
                 let model = self
                     .available_models
                     .iter()
