@@ -40,7 +40,7 @@ export function ComposerTerminalCatch({
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
   )
-    ? "Open this chat's project first."
+    ? "Open a project first."
     : !tools.terminalAvailable
       ? "No terminal here."
       : undefined;
