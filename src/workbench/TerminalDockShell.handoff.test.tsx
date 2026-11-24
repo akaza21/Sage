@@ -163,7 +163,9 @@ it("never opens a dock that had not mounted for the chat the user went to, and a
   await mount(false);
   catchCommand(text);
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
-  expect(useTerminalDockStore.getState().visible).toBe(true);
+  await waitFor(() =>
+    expect(useTerminalDockStore.getState().visible).toBe(true),
+  );
   // Side by side, chat-1's field stays mounted while chat-3 becomes active.
   act(() =>
     useWorkbenchStore.setState(({ tabs }) => ({

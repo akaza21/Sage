@@ -11,7 +11,6 @@ import type {
   SageTurnId,
 } from "../../../domain/acp";
 import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
-import { take } from "../composerAutoFill";
 import {
   type AcpActionContext,
   type AcpActionState,
@@ -58,6 +57,14 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
     transitionEpoch: Number(context.commandProjectGeneration),
   };
 }
+
+/**
+ * Per chat, the offer text auto-filled into its empty field and not yet
+ * edited, so a failed send's restore (from the composer or the queue)
+ * replaces it. Trimmed, as the store matches a sent prompt. `composerAutoFill`
+ * owns the entries: one per open chat, kept while the chrome is unmounted.
+ */
+export const autoFilled = new Map<string, string>();
 
 export function useAcpChatActions(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
@@ -162,9 +169,10 @@ export function useAcpChatActions(boundChatId?: string | null) {
         restoreComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
           const intent = ownershipIntent(context);
-          // The restore wins over auto-filled text the user never touched.
-          const filled = take(intent.chatId);
-          if (filled) workbench.clearChatComposer(intent, filled.trim(), []);
+          const filled = autoFilled.get(intent.chatId);
+          // The restore wins over auto-filled text the user never touched;
+          // the clear only applies while the field still holds that text.
+          if (filled) workbench.clearChatComposer(intent, filled, []);
           workbench.restoreChatComposer(intent, prompt, attachedContext);
         },
       }),

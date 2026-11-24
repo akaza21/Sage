@@ -19,7 +19,7 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useBoundChatComposer } from "../useBoundChatComposer";
-import { useAcpChatActions } from "./useAcpChatActions";
+import { autoFilled, useAcpChatActions } from "./useAcpChatActions";
 import { ComposerChrome } from "./ComposerChrome";
 
 const initial = useWorkbenchStore.getState();
@@ -95,6 +95,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  autoFilled.clear();
   acpProjectionStoreFor("chat-b").getState().clear();
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);

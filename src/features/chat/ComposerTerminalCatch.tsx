@@ -1,7 +1,6 @@
 import { useContext, useEffect, useRef, useState, type RefObject } from "react";
 import { Notice } from "../../ui/Notice";
 import { useWorkbenchStore, type TerminalHandoff } from "../../app/store";
-import { useTerminalDockStore } from "../../app/terminalDockStore";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 
 type Caught = { input: string; name: string; command: string };
@@ -139,7 +138,8 @@ export function ComposerTerminalCatch({
       },
     };
     const timer = setTimeout(() => settle(failed), 10_000);
-    const opened = !useTerminalDockStore.getState().visible;
+    // Closes the dock this request opened, once it has opened it.
+    let close: (() => void) | undefined;
     // Another chat taking the dock closes it, and it never reopens on its
     // own: until the dock takes it, leaving the chat (its field unmounting
     // or another chat becoming active) ends the request, and the choice
@@ -151,7 +151,7 @@ export function ComposerTerminalCatch({
       settle(switched);
       // The dock this request opened ends with it: a lazy dock that has not
       // mounted yet would otherwise open for the chat the user went to.
-      if (opened) useTerminalDockStore.getState().setVisible(false);
+      close?.();
     };
     const unwatch = store.subscribe(({ activeTabId, tabs }) => {
       if (
@@ -165,8 +165,16 @@ export function ComposerTerminalCatch({
     setOpening(true);
     setError("");
     store.setState({ terminalHandoff: handoff });
-    // The Agent tools seam opens the dock; the dock takes the request.
-    tools.launch("terminal", chatId);
+    // The Agent tools seam opens the dock; the dock takes the request. The
+    // dock's commands, loaded with the workbench, say whether it was shown.
+    void import("../../workbench/terminalDockCommands").then(
+      ({ useTerminalDockStore: dock }) => {
+        if (settled) return;
+        if (!dock.getState().visible)
+          close = () => dock.getState().setVisible(false);
+        tools.launch("terminal", chatId);
+      },
+    );
   };
   return (
     // The shared Notice explains; its resolutions sit beside it, as for a
