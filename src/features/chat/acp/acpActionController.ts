@@ -305,9 +305,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
         if (session.residency === "cold") {
           if (!session.nextRuntimeEpoch) {
-            throw localFailure(
-              "The session cannot be activated.",
-            );
+            throw localFailure("The session cannot be activated.");
           }
           const activated = await commands.activateSession({
             ...captured.scope,
