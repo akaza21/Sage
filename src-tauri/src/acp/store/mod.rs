@@ -391,7 +391,9 @@ mod activation_resume_tests;
 #[cfg(test)]
 mod adapter_batch_tests;
 #[cfg(all(test, feature = "acp-fixture"))]
-pub(crate) use adapter_batch_tests::title_attempt_tests::scheduler_fixture as title_fixture;
+pub(crate) use adapter_batch_tests::title_attempt_tests::{
+    activating_fixture, scheduler_fixture as title_fixture,
+};
 #[cfg(test)]
 mod extended_tests;
 #[cfg(test)]
