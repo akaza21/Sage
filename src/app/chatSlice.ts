@@ -11,6 +11,7 @@ import {
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
+import { chatPlacement } from "./chatPlacement";
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import type { CreateChatResult } from "./runCreateChat";
@@ -25,6 +26,8 @@ import {
 } from "./chatTransitions";
 
 export interface ChatSlice {
+  /** The latest rail chat open refused by a transition, opened once it ends. */
+  pendingChatOpen: { projectId: string; chatId: string } | null;
   setChatProject: (
     targetProjectId: string | null,
     sourceLayout?: ProjectLayoutRequest,
@@ -58,12 +61,32 @@ export const createChatSlice: StateCreator<
   [],
   [],
   ChatSlice
-> = (set, get) => {
+> = (set, get, store) => {
   const { chat } = getWorkbenchPorts();
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
+  let openRequest = 0;
+  // Every path that releases the transition lock passes this edge, so a held
+  // open replays exactly once, after the code that released it has run.
+  store.subscribe((state, previous) => {
+    if (
+      state.pendingChatOpen &&
+      previous.projectTransitioning &&
+      !state.projectTransitioning
+    )
+      queueMicrotask(() => {
+        const pending = get().pendingChatOpen;
+        if (!pending || get().projectTransitioning) return;
+        set({ pendingChatOpen: null });
+        const { projectId, chatId } = pending;
+        const { attached, archived } = chatPlacement(get(), projectId, chatId);
+        if (archived || (!attached && get().project?.id === projectId)) return;
+        void get().openRailChat(projectId, chatId);
+      });
+  });
 
   return {
+    pendingChatOpen: null,
     setChatProject: async (targetProjectId, sourceLayout, sourceComposer) => {
       const source = get();
       try {
@@ -234,17 +257,27 @@ export const createChatSlice: StateCreator<
         projectId.length > 512 ||
         typeof chatId !== "string" ||
         chatId.length === 0 ||
-        chatId.length > 512 ||
-        get().projectTransitioning
+        chatId.length > 512
       ) {
         return;
       }
+      const request = ++openRequest;
+      if (get().projectTransitioning) {
+        // Hold one open, latest wins; the release edge replays it.
+        set({ pendingChatOpen: { projectId, chatId } });
+        return;
+      }
+      if (get().pendingChatOpen) set({ pendingChatOpen: null });
       if (get().project?.id === projectId) {
         await get().activateTab(chatId);
         return;
       }
       await get().switchProject(projectId);
-      if (get().project?.id !== projectId || get().projectTransitioning) {
+      if (
+        request !== openRequest ||
+        get().project?.id !== projectId ||
+        get().projectTransitioning
+      ) {
         return;
       }
       await get().activateTab(chatId);

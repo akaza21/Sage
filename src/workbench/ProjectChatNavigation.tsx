@@ -97,7 +97,6 @@ export function ProjectChatNavigation({
     useWorkbenchStore((state) => state.activeTabId),
   );
   const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
-  const activateTab = useWorkbenchStore((state) => state.activateTab);
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const projectName = useWorkbenchStore(
@@ -247,12 +246,8 @@ export function ProjectChatNavigation({
                 aria-current={focused ? "page" : undefined}
                 onClick={() => {
                   clearAgentRailUnread(tab.id);
-                  if (selected) {
-                    if (sessionRailFinished(status))
-                      markChatRead(tab.id, tab.finishedAt ?? 0);
-                    void activateTab(tab.id);
-                    return;
-                  }
+                  if (selected && sessionRailFinished(status))
+                    markChatRead(tab.id, tab.finishedAt ?? 0);
                   void openRailChat(projectId, tab.id);
                 }}
               >
