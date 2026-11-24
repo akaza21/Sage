@@ -387,12 +387,6 @@ export const createProjectSlice: StateCreator<
 
     switchProject: (projectId) => {
       const state = get();
-      // A switch to another Project supersedes a held chat open.
-      if (
-        state.pendingChatOpen &&
-        state.pendingChatOpen.projectId !== projectId
-      )
-        set({ pendingChatOpen: null });
       const activeChatId =
         state.tabs.find(
           (tab) => tab.id === state.activeTabId && tab.kind === "chat",

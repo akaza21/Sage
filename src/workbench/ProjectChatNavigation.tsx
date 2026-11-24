@@ -33,6 +33,7 @@ import {
 import type * as HoverChunk from "./ProjectChatHoverCard";
 import type * as RenameChunk from "./ProjectChatRename";
 import { chatRowErrorId } from "./chatRowError";
+import { openRailChat } from "./heldRailChatOpen";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import {
   isSideChatId,
@@ -97,7 +98,6 @@ export function ProjectChatNavigation({
     useWorkbenchStore((state) => state.activeTabId),
   );
   const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
-  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const projectName = useWorkbenchStore(
     (state) =>

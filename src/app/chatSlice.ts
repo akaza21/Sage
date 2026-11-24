@@ -25,8 +25,6 @@ import {
 } from "./chatTransitions";
 
 export interface ChatSlice {
-  /** The latest rail chat open refused by a transition, opened once it ends. */
-  pendingChatOpen: { projectId: string; chatId: string } | null;
   setChatProject: (
     targetProjectId: string | null,
     sourceLayout?: ProjectLayoutRequest,
@@ -60,40 +58,12 @@ export const createChatSlice: StateCreator<
   [],
   [],
   ChatSlice
-> = (set, get, store) => {
+> = (set, get) => {
   const { chat } = getWorkbenchPorts();
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
-  let openRequest = 0;
-  // Every path that releases the transition lock passes this edge, so a held
-  // open replays exactly once, after the code that released it has run.
-  store.subscribe((state, previous) => {
-    if (
-      state.pendingChatOpen &&
-      previous.projectTransitioning &&
-      !state.projectTransitioning
-    )
-      queueMicrotask(() => {
-        const pending = get().pendingChatOpen;
-        if (!pending || get().projectTransitioning) return;
-        set({ pendingChatOpen: null });
-        const { projectId, chatId } = pending;
-        const state = get();
-        // Skip a chat the settled projection no longer lists as open.
-        if (
-          state.project?.id === projectId
-            ? !state.tabs.some((tab) => tab.id === chatId)
-            : [...state.projects, ...state.unscopedChats]
-                .find((item) => item.id === projectId)
-                ?.railArchived?.some((item) => item.id === chatId)
-        )
-          return;
-        void get().openRailChat(projectId, chatId);
-      });
-  });
 
   return {
-    pendingChatOpen: null,
     setChatProject: async (targetProjectId, sourceLayout, sourceComposer) => {
       const source = get();
       try {
@@ -259,14 +229,9 @@ export const createChatSlice: StateCreator<
         projectId.length > 512 ||
         typeof chatId !== "string" ||
         chatId.length === 0 ||
-        chatId.length > 512
+        chatId.length > 512 ||
+        get().projectTransitioning
       ) {
-        return;
-      }
-      const request = ++openRequest;
-      if (get().projectTransitioning) {
-        // Hold one open, latest wins; the release edge replays it.
-        set({ pendingChatOpen: { projectId, chatId } });
         return;
       }
       if (get().project?.id === projectId) {
@@ -274,11 +239,7 @@ export const createChatSlice: StateCreator<
         return;
       }
       await get().switchProject(projectId);
-      if (
-        request !== openRequest ||
-        get().project?.id !== projectId ||
-        get().projectTransitioning
-      ) {
+      if (get().project?.id !== projectId || get().projectTransitioning) {
         return;
       }
       await get().activateTab(chatId);
