@@ -17,7 +17,7 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useBoundChatComposer } from "../useBoundChatComposer";
-import { autoFilledRef, useAcpChatActions } from "./useAcpChatActions";
+import { setAutoFilled, useAcpChatActions } from "./useAcpChatActions";
 import { ComposerChrome } from "./ComposerChrome";
 
 const initial = useWorkbenchStore.getState();
@@ -90,7 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  autoFilledRef.current = null;
+  setAutoFilled("chat-a");
   useAcpProjectionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);
 });

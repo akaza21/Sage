@@ -62,8 +62,16 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
  * The one offer text auto-filled into an empty field and not yet edited, so
  * a failed send's restore (from the composer or the queue) replaces it.
  */
-export const autoFilledRef: { current: { chatId: string; text: string } | null } =
-  { current: null };
+let autoFilled: { chatId: string; text: string } | null = null;
+
+export const autoFilledText = (chatId: string) =>
+  autoFilled?.chatId === chatId ? autoFilled.text : undefined;
+
+/** Records a chat's auto-filled text, or forgets it when `text` is absent. */
+export function setAutoFilled(chatId: string, text?: string) {
+  if (text !== undefined) autoFilled = { chatId, text };
+  else if (autoFilled?.chatId === chatId) autoFilled = null;
+}
 
 export function useAcpChatActions(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
@@ -168,12 +176,12 @@ export function useAcpChatActions(boundChatId?: string | null) {
         restoreComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
           const intent = ownershipIntent(context);
-          const filled = autoFilledRef.current;
+          const filled = autoFilledText(intent.chatId);
           // The restore wins over auto-filled text the user never touched;
           // the clear only applies while the field still holds that text.
-          if (prompt && filled?.chatId === intent.chatId) {
-            autoFilledRef.current = null;
-            workbench.clearChatComposer(intent, filled.text.trim(), []);
+          if (prompt && filled !== undefined) {
+            setAutoFilled(intent.chatId);
+            workbench.clearChatComposer(intent, filled.trim(), []);
           }
           workbench.restoreChatComposer(intent, prompt, attachedContext);
         },
