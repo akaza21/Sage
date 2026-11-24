@@ -242,7 +242,9 @@ export function ComposerSlashController({
         />
       ) : null}
       {boundChatId ? (
+        // Keyed by chat: a field reused for another chat starts its own choice.
         <ComposerTerminalCatch
+          key={boundChatId}
           chatId={boundChatId}
           fieldRef={fieldRef}
           onAnnounce={setTerminalStatus}
