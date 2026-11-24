@@ -220,13 +220,8 @@ export const createChatSlice: StateCreator<
             ),
         });
       }
-      if (!target) {
-        set({
-          projectTransitioning: false,
-          error: "Chat rename target disappeared before mutation",
-        });
-        return false;
-      }
+      // A local rename passed the check above, so its target exists.
+      const previousTitle = target!.title;
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
       const classify = (snapshot: BootstrapSnapshot): ProjectionOutcome => {
         if (
@@ -234,7 +229,7 @@ export const createChatSlice: StateCreator<
         ) {
           return "committed";
         }
-        if (matchesRenameProjection(snapshot, current, chatId, target.title)) {
+        if (matchesRenameProjection(snapshot, current, chatId, previousTitle)) {
           return "unchanged";
         }
         return "diverged";
@@ -274,7 +269,6 @@ export const createChatSlice: StateCreator<
         set({ pendingChatOpen: { projectId, chatId } });
         return;
       }
-      if (get().pendingChatOpen) set({ pendingChatOpen: null });
       if (get().project?.id === projectId) {
         await get().activateTab(chatId);
         return;
