@@ -9,7 +9,7 @@ type Catcher = (caught: Caught) => boolean;
 const failed = "The terminal did not take the command.";
 // The dock opens at most 4 tabs per chat.
 const tabsFull = "4 terminals are already open.";
-const switched = "Open in terminal was cancelled because you switched chats.";
+const switched = "Open in terminal was cancelled when you left this chat.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
 // A choice whose request a chat switch cancelled, kept for when its chat's
@@ -89,6 +89,8 @@ export function ComposerTerminalCatch({
   // control character, so nothing presses Enter. A request that has not
   // settled in time fails here, whether or not the dock took it.
   const openInTerminal = () => {
+    // A new request supersedes any kept cancelled choice for this chat.
+    cancelled.delete(chatId);
     if (/\p{Cc}/u.test(command)) {
       setError(failed);
       return;

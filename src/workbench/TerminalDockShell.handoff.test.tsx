@@ -197,12 +197,36 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
   act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
   expect(screen.getByRole("alert")).toHaveTextContent(
-    "Open in terminal was cancelled because you switched chats.",
+    "Open in terminal was cancelled when you left this chat.",
   );
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   expect(useTerminalDockStore.getState().visible).toBe(false);
   // The closed dock took its tabs with it, and none was opened again.
   expect(backend.sessions.size).toBe(0);
+  // Side by side, the field stays mounted while another chat becomes active.
+  // A later open that succeeds supersedes the cancelled choice, so it never
+  // comes back when the field mounts again.
+  catchCommand(text);
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  act(() =>
+    useWorkbenchStore.setState(({ tabs }) => ({
+      tabs: [...tabs, { ...tabs[1]!, id: "chat-3", position: 2 }],
+      activeTabId: "chat-3",
+    })),
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("left this chat");
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("group", { name: "Terminal-only command" }),
+    ).toBeNull(),
+  );
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-2" }));
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
+  expect(
+    screen.queryByRole("group", { name: "Terminal-only command" }),
+  ).toBeNull();
 });
 
 // Stores a request in the workbench slot and shows the dock, as the composer

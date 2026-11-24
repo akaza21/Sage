@@ -45,12 +45,13 @@ export async function slashCommandTurn(
   if (
     request.target !== "session" ||
     !hold ||
+    // A hold is for its own chat's send only; any other sends as usual.
+    hold.chatId !== request.chatId ||
     hold.name !== runtime.parseSlashCommand(request.prompt)?.name
   )
     return turn();
   const { name } = hold;
-  // A hold is for its own chat's send only; for any other it has ended.
-  const live = () => hold.chatId === request.chatId && hold.live();
+  const live = () => hold.live();
   // The typed command route carries no attachments or staged files.
   if (request.attachedContext?.length || request.staged)
     throw notSent("Commands can't include images or files.");
