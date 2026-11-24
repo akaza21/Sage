@@ -126,6 +126,8 @@ export function ComposerTerminalCatch({
       chatId,
       run: (type) => {
         if (settled) return;
+        // The dock took it: leaving the chat now never closes the dock.
+        close = undefined;
         unwatch();
         leave();
         if (!type) return settle(tabsFull);
@@ -172,6 +174,7 @@ export function ComposerTerminalCatch({
         if (!visible) close = () => setVisible(false);
         tools.launch("terminal", chatId);
       },
+      () => settle(failed),
     );
   };
   return (

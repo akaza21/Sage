@@ -61,8 +61,9 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
 /**
  * Per chat, the offer text auto-filled into its empty field and not yet
  * edited, so a failed send's restore (from the composer or the queue)
- * replaces it. Trimmed, as the store matches a sent prompt. `composerAutoFill`
- * owns the entries: one per open chat, kept while the chrome is unmounted.
+ * replaces it. Trimmed, as the store matches a sent prompt. Entries are added
+ * only by `composerAutoFill.record` (one per open chat, kept while the chrome
+ * is unmounted) and dropped by the chrome once the user edits the field.
  */
 export const autoFilled = new Map<string, string>();
 
