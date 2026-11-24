@@ -104,17 +104,21 @@ async function mount() {
     const [other, setOther] = useState(true);
     closeOther = () => setOther(false);
     const visible = useTerminalDockStore((state) => state.visible);
+    // As in a single Agent pane, chat-1's field shows only while it is active.
+    const away = useWorkbenchStore((state) => state.activeTabId === "chat-2");
     return (
       <>
         <textarea ref={fieldRef} aria-label="Chat" defaultValue="/hooks" />
         <textarea ref={otherRef} aria-label="Other" defaultValue="/hooks" />
         <AgentToolsProvider onOpenTerminal={() => terminal.open()}>
-          <ComposerTerminalCatch
-            chatId="chat-1"
-            fieldRef={fieldRef}
-            onAnnounce={setStatus}
-            text="/hooks"
-          />
+          {away ? null : (
+            <ComposerTerminalCatch
+              chatId="chat-1"
+              fieldRef={fieldRef}
+              onAnnounce={setStatus}
+              text="/hooks"
+            />
+          )}
           {other ? (
             <ComposerTerminalCatch
               chatId="chat-2"
@@ -185,16 +189,16 @@ it("opens a caught command as unrun input in its chat's project terminal and cle
   expect(backend.sessions.size).toBe(1);
   act(() => closeOther());
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
-  // Switching chats before the dock takes a request ends it at once with its
-  // reason; switching back neither reopens the dock nor types anything.
+  // Switching chats before the dock takes a request ends it at once; on the
+  // way back the field says why, and the dock neither reopens nor types.
   catchCommand(text);
   fireEvent.click(screen.getByRole("button", { name: "Open in terminal" }));
   act(() => useWorkbenchStore.setState({ activeTabId: "chat-2" }));
   expect(useWorkbenchStore.getState().terminalHandoff).toBeNull();
+  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
   expect(screen.getByRole("alert")).toHaveTextContent(
     "Open in terminal was cancelled because you switched chats.",
   );
-  act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   expect(useTerminalDockStore.getState().visible).toBe(false);
   // The closed dock took its tabs with it, and none was opened again.

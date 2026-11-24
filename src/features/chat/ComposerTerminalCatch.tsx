@@ -12,6 +12,9 @@ const tabsFull = "4 terminals are already open.";
 const switched = "Open in terminal was cancelled because you switched chats.";
 // One mounted composer field per chat owns its caught command.
 const catchers = new Map<string, Catcher>();
+// A choice whose request a chat switch cancelled, kept for when its chat's
+// field mounts again to say why; one per chat, at most 8.
+const cancelled = new Map<string, Caught>();
 
 /** The send path's hand-off: true when the chat's field took the command. */
 // eslint-disable-next-line react-refresh/only-export-components -- the send path and the choice it opens share this chunk
@@ -34,9 +37,17 @@ export function ComposerTerminalCatch({
   onAnnounce: (message: string) => void;
   text: string;
 }) {
-  const [caught, setCaught] = useState<Caught | null>(null);
+  // A choice a chat switch cancelled comes back with its reason; once shown,
+  // it is no longer kept.
+  const [caught, setCaught] = useState(() => cancelled.get(chatId) ?? null);
   const [opening, setOpening] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    cancelled.has(chatId) ? switched : "",
+  );
+  useEffect(
+    () => void (error === switched && cancelled.delete(chatId)),
+    [chatId, error],
+  );
   const tools = useContext(AgentToolsContext);
   const unavailable = !useWorkbenchStore(
     (state) => !!state.project && !state.projectTransitioning,
@@ -133,7 +144,11 @@ export function ComposerTerminalCatch({
         activeTabId !== chatId &&
         tabs.some((tab) => tab.kind === "chat" && tab.id === activeTabId)
       )
+      ) {
+        if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
+        cancelled.set(chatId, caught);
         settle(switched);
+      }
     });
     // Settling after unmount only clears the slot and timer.
     cancel.current = settle;
