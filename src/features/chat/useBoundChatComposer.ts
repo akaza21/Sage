@@ -45,11 +45,11 @@ export function useBoundChatComposer(
 
   function setBoundComposerText(text: string) {
     if (chatId) {
+      // A bound chat that lost ownership writes nowhere, never into the
+      // active chat's field.
       const intent = captureChatOwnership(chatId);
-      if (intent) {
-        setChatComposer(intent, text);
-        return;
-      }
+      if (intent) setChatComposer(intent, text);
+      return;
     }
     setComposerText(text);
   }

@@ -58,6 +58,14 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
   };
 }
 
+/**
+ * Per chat, the offer text auto-filled into its empty field and not yet
+ * edited, so a failed send's restore (from the composer or the queue)
+ * replaces it. `ComposerChrome` owns the entries: it forgets one on edit or
+ * unmount and keeps at most 4.
+ */
+export const autoFilled = new Map<string, string>();
+
 export function useAcpChatActions(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
   const page = useStore(store, (projection) => projection.page);
@@ -160,11 +168,12 @@ export function useAcpChatActions(boundChatId?: string | null) {
         },
         restoreComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
-          workbench.restoreChatComposer(
-            ownershipIntent(context),
-            prompt,
-            attachedContext,
-          );
+          const intent = ownershipIntent(context);
+          const filled = autoFilled.get(intent.chatId);
+          // The restore wins over auto-filled text the user never touched;
+          // the clear only applies while the field still holds that text.
+          if (filled) workbench.clearChatComposer(intent, filled, []);
+          workbench.restoreChatComposer(intent, prompt, attachedContext);
         },
       }),
     [boundChatId],

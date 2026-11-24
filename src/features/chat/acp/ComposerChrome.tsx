@@ -1,6 +1,16 @@
-import { useReducer } from "react";
+import { useEffect, useEffectEvent, useReducer } from "react";
 import { Notice } from "../../../ui/Notice";
 import { decodeSessionChrome, type ChromeWidget } from "./sessionChrome";
+import { autoFilled } from "./useAcpChatActions";
+
+/** Records a chat's auto-filled text, or forgets it when `text` is absent. */
+function setAutoFilled(chatId: string, text?: string) {
+  autoFilled.delete(chatId);
+  if (text === undefined) return;
+  autoFilled.set(chatId, text);
+  if (autoFilled.size > 4)
+    autoFilled.delete(autoFilled.keys().next().value as string);
+}
 import type { ChatComposerRegionProps } from "../chatComposerRegionProps";
 
 /** Per composer scope, the newest offer the user answered; at most 32 scopes. */
@@ -33,26 +43,62 @@ function Widget({ widget }: { widget: ChromeWidget }) {
  * A harness's subtitle, status lines, text widgets and composer offer,
  * rendered by kind for every extension from one slot before the field, so
  * they are read in the order they show. Only widgets an extension placed
- * below the editor are moved after the field, by flex order. An offer never
- * changes the composer by itself: it waits as a notice until the user uses
- * or ignores it, or the harness withdraws it (a sent prompt does).
+ * below the editor are moved after the field, by flex order. An offer fills
+ * the field by itself only when the field is empty, no send is in flight or
+ * about to restore its prompt, and the page is this chat's; otherwise it
+ * waits as a notice for Use or Ignore. Auto-filled text the user has not
+ * touched yields to a failed send's restore (see `useAcpChatActions`).
  */
 export function ComposerChrome({
   chatAuth,
   dictationScope: scope,
+  actionBusy,
+  hidden,
+  projectTransitioning,
   text,
   onTextChange,
 }: Pick<
   ChatComposerRegionProps,
-  "chatAuth" | "dictationScope" | "text" | "onTextChange"
+  | "chatAuth"
+  | "dictationScope"
+  | "actionBusy"
+  | "hidden"
+  | "projectTransitioning"
+  | "text"
+  | "onTextChange"
 >) {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
-  const chrome = decodeSessionChrome(chatAuth?.page?.sessionSurface);
-  if (!chrome) return null;
+  const page = chatAuth?.page;
+  const chrome = decodeSessionChrome(page?.sessionSurface);
   const offer =
-    chrome.editorText && answered.get(scope) !== chrome.editorText.key
+    chrome?.editorText && answered.get(scope) !== chrome.editorText.key
       ? chrome.editorText
       : undefined;
+  const key = offer?.key;
+  // Trimmed, so the failed send's restore can match it as the store does.
+  const proposed = offer?.text.trim();
+  const untouched = autoFilled.get(scope) === text;
+  // The chat's `sending` covers a send in flight and its failure restore.
+  const idle =
+    !text &&
+    !actionBusy &&
+    !hidden &&
+    !projectTransitioning &&
+    page?.chatId === scope;
+  const fill = useEffectEvent((key: string, proposed: string) => {
+    answer(scope, key);
+    setAutoFilled(scope, proposed);
+    onTextChange(proposed);
+  });
+  // Any other text in this chat's field means the suggestion is the user's.
+  useEffect(() => {
+    if (!untouched) setAutoFilled(scope);
+  }, [untouched, scope]);
+  useEffect(() => () => setAutoFilled(scope), [scope]);
+  useEffect(() => {
+    if (idle && key && proposed) fill(key, proposed);
+  }, [idle, key, proposed]);
+  if (!chrome) return null;
   const settle = (use: boolean) => {
     if (!offer) return;
     answer(scope, offer.key);
@@ -104,9 +150,22 @@ export function ComposerChrome({
             details={<pre>{offer.text}</pre>}
           />
         ) : null}
-        {/* Announced once per new offer: the keyed line is inserted afresh. */}
-        <p className="sr-only" role="status">
-          {offer ? <span key={offer.key}>The agent suggests text.</span> : null}
+        {/* Announced once per new offer or fill: the line is inserted afresh. */}
+        <p className={untouched ? "notice" : "sr-only"} role="status">
+          {untouched ? (
+            <>
+              Suggested text added to the message.{" "}
+              <button
+                type="button"
+                className="notice__text-link"
+                onClick={() => onTextChange("")}
+              >
+                Clear suggested text
+              </button>
+            </>
+          ) : offer ? (
+            <span key={offer.key}>The agent suggests text.</span>
+          ) : null}
         </p>
       </div>
       {/* The input column is a flex column: these show after the field. */}
