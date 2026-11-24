@@ -62,7 +62,7 @@ export function TerminalDockPanel({
     creating: false,
     lifecycle: 0,
     closing: false,
-    dismissWhenCreateSettles: false,
+    closeAfterCreate: false,
   });
 
   const create = useCallback(async () => {
@@ -86,7 +86,7 @@ export function TerminalDockPanel({
         return void closeUserTerminal(scope, session).catch(() => undefined);
       const next = [...owner.entries, { session, ended: false, message: null }];
       owner.entries = next;
-      owner.dismissWhenCreateSettles = false;
+      owner.closeAfterCreate = false;
       setEntries(next);
       setActiveId(session.sessionId);
       setCollapsed(false);
@@ -99,7 +99,7 @@ export function TerminalDockPanel({
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;
         setCreating(false);
-        if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
+        if (owner.closeAfterCreate && !owner.entries.length) onClose();
       }
     }
   }, [scope, onClose, handoff]);
@@ -147,7 +147,7 @@ export function TerminalDockPanel({
           : current,
       );
       if (!next.length) {
-        if (owner.creating) owner.dismissWhenCreateSettles = true;
+        if (owner.creating) owner.closeAfterCreate = true;
         else onClose();
       }
     } catch (error) {
