@@ -106,6 +106,7 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
+    forkLatest: value.forkLatest === true,
   };
 }
 

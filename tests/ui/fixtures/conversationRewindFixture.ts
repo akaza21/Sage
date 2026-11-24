@@ -12,14 +12,15 @@ import { installTranscriptSelectionFixture } from "./transcriptSelectionFixtures
 /**
  * The native command boundary returns a rejection once, then commits the
  * suffix. `undo` offers any-turn rewind plus Undo on the latest turn, which
- * the boundary accepts; while `window.__failRewindPreview` is set, a preview
- * rejects with `PREVIEW_FAILURE`.
+ * the boundary accepts, and `forkLatest` adds a fork through the latest turn
+ * only; while `window.__failRewindPreview` is set, a preview rejects with
+ * `PREVIEW_FAILURE`.
  */
 export const PREVIEW_FAILURE = "Preview check failed.";
 export function installConversationRewindFixture(
   inPlace = true,
   residency: "hot" | "cold" = "hot",
-  availability: "all" | "latestTurn" | "undo" = "all",
+  availability: "all" | "latestTurn" | "undo" | "forkLatest" = "all",
   files?: { files: string[]; conflicts: string[]; unverified?: string[] },
 ) {
   installTranscriptSelectionFixture(false, true);
@@ -77,6 +78,7 @@ export function installConversationRewindFixture(
           targets: availability === "latestTurn" ? "latestTurn" : "anyTurn",
           forkAt: true,
           onResume: false,
+          forkLatest: availability === "forkLatest",
         },
       },
     })),

@@ -47,10 +47,11 @@ export async function forkChat({
     acpProjectionStoreFor(chatId).getState().page?.sessionConfig;
   const parentPage = acpProjectionStoreFor(chatId).getState().page;
   const sourceTurn = parentPage?.turns.find((turn) => turn.id === turnId);
-  const targets = parentPage?.sessions.find(
+  const offer = parentPage?.sessions.find(
     (session) => session.id === sourceTurn?.sessionId,
-  )?.capabilities?.rewind?.targets;
-  const before = targets !== undefined && targets !== "latestTurn";
+  )?.capabilities?.rewind;
+  const before =
+    !!offer && offer.targets !== "latestTurn" && !offer.forkLatest;
   const prompt = before
     ? sourceTurn?.items.find(
         (item) => item.kind === "text" && item.payload.role === "user",
@@ -117,15 +118,17 @@ export function AnswerMoreActions({
   const session = page.sessions.find(
     (session) => session.id === turn?.sessionId,
   );
+  const offer = session?.capabilities?.rewind;
   const canFork =
     requestFork &&
     forkable &&
     turn?.state === "completed" &&
     turn.sessionId === page.currentSessionId &&
-    session?.capabilities?.rewind?.targets === "latestTurn" &&
+    !!offer &&
+    (offer.targets === "latestTurn" || offer.forkLatest) &&
     !isSideChatId(page.chatId) &&
-    session.residency === "hot" &&
-    session.capabilities.rewind.forkAt;
+    session?.residency === "hot" &&
+    offer.forkAt;
   const [Icon, label] = canFork
     ? [GitBranch, "Branch in new chat"]
     : [Copy, "Copy"];

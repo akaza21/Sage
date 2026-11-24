@@ -32,6 +32,9 @@ impl CodexRuntime {
             if kind == Some(RequestKind::Models) {
                 self.refresh_model_config();
             }
+            if kind == Some(RequestKind::ThreadRevert) {
+                self.inner.revert_unwritten();
+            }
         }
         Ok(())
     }

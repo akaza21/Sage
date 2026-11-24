@@ -6,6 +6,9 @@ use super::{AdapterStoreOwner, StoreError, facts};
 
 mod prompt;
 
+/// Why a turn without a durable native identity can't be a rewind target.
+pub(crate) const OLDER_MESSAGES: &str = "Older messages can't be rewound.";
+
 pub(crate) fn record_native_turn(
     tx: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -82,7 +85,7 @@ pub(crate) fn target(
     };
     if native.is_none() && prompt_digest.is_none() {
         return Err(StoreError::RewindUnavailable {
-            reason: "Older messages can't be rewound.",
+            reason: OLDER_MESSAGES,
         });
     }
     // Native receipts stand alone, including in legacy history. Only a
