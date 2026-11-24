@@ -143,9 +143,9 @@ export function ComposerTerminalCatch({
         activeTabId !== from &&
         activeTabId !== chatId &&
         tabs.some((tab) => tab.kind === "chat" && tab.id === activeTabId)
-      )
       ) {
-        if (cancelled.size >= 8) cancelled.delete(cancelled.keys().next().value!);
+        if (cancelled.size >= 8)
+          cancelled.delete(cancelled.keys().next().value!);
         cancelled.set(chatId, caught);
         settle(switched);
       }
