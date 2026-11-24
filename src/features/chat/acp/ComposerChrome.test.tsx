@@ -211,7 +211,7 @@ it("keeps the offer as a banner while a send is in flight, and the failed send's
 it("lets a failed restore replace untouched auto-filled text per chat, never edited text", async () => {
   const scopeB = {
     projectId: page.projectId,
-    chatId: "chat-b",
+    chatId: "chat-b" as typeof page.chatId,
     projectGeneration: "0" as ProjectGeneration,
   };
   const storeB = acpProjectionStoreFor("chat-b");
