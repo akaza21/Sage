@@ -22,8 +22,8 @@ use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
     protocol::{
-        AdapterError, AdapterOutput, NativeRequest, Operation, Outbound,
-        TerminalOutcome, ToolOutcome,
+        AdapterError, AdapterOutput, NativeRequest, Operation, Outbound, TerminalOutcome,
+        ToolOutcome,
     },
 };
 

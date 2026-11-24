@@ -69,7 +69,10 @@ impl PiRuntime {
         match self.model_hint.take() {
             Some((provider, id)) if provider != model.provider || id != model.id => {
                 self.configuration_dirty = true;
-                Ok((Some(AdapterEvent::IgnoredLate), self.refresh_configuration()))
+                Ok((
+                    Some(AdapterEvent::IgnoredLate),
+                    self.refresh_configuration(),
+                ))
             }
             _ => self.model_selected(model),
         }

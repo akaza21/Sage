@@ -236,12 +236,14 @@ impl PiTranslator {
             }
             _ => None,
         };
-        self.pending
-            .insert(id.clone(), PendingRequest {
+        self.pending.insert(
+            id.clone(),
+            PendingRequest {
                 kind,
                 owner,
                 claimed_echo: None,
-            });
+            },
+        );
         Ok(Outbound {
             command_id: id,
             line,
