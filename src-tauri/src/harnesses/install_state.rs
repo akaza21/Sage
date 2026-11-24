@@ -61,9 +61,9 @@ impl HarnessCatalog {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     #[cfg(windows)]
     use std::fs;
+    use std::sync::Arc;
 
     use super::super::test_support::by_id;
     use crate::{
