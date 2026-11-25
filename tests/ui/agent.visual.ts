@@ -645,7 +645,9 @@ test.describe("ED02 picker visual states", () => {
   });
 
   test("captures the compact narrow composer picker", async ({ page }) => {
-    await page.setViewportSize({ width: 720, height: 560 });
+    // 660px sits inside the access tier (about 620-690px with the mic as the
+    // one turn control): narrower than every label, wider than harness icon.
+    await page.setViewportSize({ width: 660, height: 560 });
     const workbench = await openScenario(
       page,
       "agent-composer-narrow",
@@ -662,11 +664,11 @@ test.describe("ED02 picker visual states", () => {
     });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // With one turn control (the mic while idle) this narrow lane keeps every
-    // label; tighter widths are covered by composer-compaction.
+    // This narrow Chat lane has no room for every label: access yields to
+    // its icon while the harness and model keep their names.
     expect(
       await settledComposerFit(page.locator("form.composer").first()),
-    ).toEqual([]);
+    ).toEqual(["placeholder", "context", "capacity", "effort", "access"]);
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
     await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
