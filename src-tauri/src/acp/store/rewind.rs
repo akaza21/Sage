@@ -115,25 +115,31 @@ pub(crate) fn target(
 
 /// Page decoration uses the same durable identity rule as target admission.
 /// Delivery must be proven even when a queued prompt already has a digest.
+/// An `anyTurn` offer names a turn by its native id alone, so a prompt digest
+/// is never its identity: such a turn is not offered, and the binding still
+/// refuses one if asked.
 pub(crate) fn has_identity(
     connection: &Connection,
     session: &str,
     turn: &str,
 ) -> Result<bool, StoreError> {
-    let identity: Option<(bool, bool)> = connection
+    let identity: Option<(bool, bool, bool)> = connection
         .query_row(
             "SELECT t.delivery_state='correlated', EXISTS(SELECT 1 FROM session_facts f
            WHERE f.session_id=t.session_id AND f.turn_id=t.id AND f.kind='nativeTurnTarget'
-             AND json_extract(f.payload_json,'$.nativeTurnId') IS NOT NULL)
-         FROM turns t WHERE t.session_id=?1 AND t.id=?2",
+             AND json_extract(f.payload_json,'$.nativeTurnId') IS NOT NULL),
+           COALESCE(json_extract(s.capabilities_json,'$.rewind.targets')='anyTurn',0)
+         FROM turns t JOIN agent_sessions s ON s.id=t.session_id
+         WHERE t.session_id=?1 AND t.id=?2",
             params![session, turn],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?;
-    let Some((delivered, native)) = identity else {
+    let Some((delivered, native, native_only)) = identity else {
         return Ok(false);
     };
-    Ok(delivered && (native || prompt::digest(connection, session, turn)?.is_some()))
+    Ok(delivered
+        && (native || (!native_only && prompt::digest(connection, session, turn)?.is_some())))
 }
 
 pub(crate) fn suffix(

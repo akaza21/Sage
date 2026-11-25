@@ -101,6 +101,30 @@ fn file_snapshots_use_the_saved_native_digest_and_legacy_prompts_need_native_ide
     let target = correlated.target(0).unwrap();
     assert_eq!(target.native_turn_id.unwrap().as_str(), "native-turn");
     assert_eq!(target.prompt_digest, None);
+
+    // An any-turn offer (Codex) names a turn by its native id only: a turn
+    // with just a prompt digest is never offered, one with a native id is.
+    let identity = |history: &history::History| {
+        let connection = history.fixture.database.connection();
+        connection
+            .execute(
+                "UPDATE agent_sessions SET capabilities_json=
+                   json_set(capabilities_json,'$.rewind.targets','anyTurn')",
+                [],
+            )
+            .unwrap();
+        rewind::has_identity(&connection, "session-a", history.turns[0].as_str()).unwrap()
+    };
+    assert!(
+        rewind::has_identity(
+            &history.fixture.database.connection(),
+            "session-a",
+            history.turns[0].as_str()
+        )
+        .unwrap()
+    );
+    assert!(!identity(&history), "a digest alone is not a Codex turn");
+    assert!(identity(&correlated));
 }
 
 #[test]
