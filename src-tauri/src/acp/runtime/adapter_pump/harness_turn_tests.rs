@@ -232,10 +232,11 @@ fn a_started_turn_is_not_bound_while_a_setting_changes() {
 }
 
 /// A Turn Codex starts on its own after the last one ended, which Sage
-/// refuses (here: the chat's access changed since): it is interrupted and
-/// read to its end without reaching the chat, and the session stays.
+/// refuses (here: the chat's access changed since). Codex cannot decline it,
+/// so the session stops, but the chat is told why before anything else the
+/// refused Turn sends is read, and no prompt binds to it meanwhile.
 #[test]
-fn a_turn_codex_starts_that_sage_refuses_is_interrupted_unseen_and_the_session_stays() {
+fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_closed() {
     use crate::acp::bindings::adapter::HarnessTurnAuthority;
     use sage_acp_protocol::access_mode::SessionAccessMode;
     // Recorded order when a `turn/start` meets a Turn Codex is starting:
@@ -330,32 +331,45 @@ fn a_turn_codex_starts_that_sage_refuses_is_interrupted_unseen_and_the_session_s
             ))
         );
 
+        let notices = |shared: &Shared| {
+            shared
+                .0
+                .lock()
+                .unwrap()
+                .durable_batches
+                .iter()
+                .flatten()
+                .filter(|event| matches!(
+                    event,
+                    DurableAdapterEvent::Session {
+                        event: sage_acp_protocol::intent::session_event::SessionScopedEvent::Notice(notice),
+                        ..
+                    } if notice.level == sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error
+                ))
+                .count()
+        };
         let mut transport = CaptureTransport(Vec::new());
-        parts.decline_started_turn(5, &mut transport).await.unwrap();
-        let interrupt: serde_json::Value = serde_json::from_slice(&transport.0).unwrap();
-        assert_eq!(
-            (&interrupt["method"], &interrupt["params"]["turnId"]),
-            (
-                &serde_json::json!("turn/interrupt"),
-                &serde_json::json!("native-1")
-            )
-        );
-        let journaled = shared.0.lock().unwrap().durable_batches.len();
-        let mut rest = line(
-            serde_json::json!({"method":"item/agentMessage/delta","params":{
-            "threadId":"thread-1","turnId":"native-1","itemId":"msg-1","delta":"unseen"}}),
-        );
-        rest.extend(line(serde_json::json!({"id":interrupt["id"],"result":{}})));
-        rest.extend(ended("native-1", "interrupted"));
-        parts
-            .accept_idle_stdout_chunk(&rest, 6, &mut transport)
-            .await
-            .expect("the refused Turn drains without tearing the session down");
-        assert!(!parts.turn_started());
-        assert_eq!(shared.0.lock().unwrap().durable_batches.len(), journaled);
         assert!(
-            parts.bind_turn(next_turn()).is_ok(),
-            "the session takes the next prompt"
+            parts.decline_started_turn(5, &mut transport).await.is_err(),
+            "the runtime fails closed"
         );
+        assert!(transport.0.is_empty(), "nothing is written for the refused Turn");
+        assert_eq!(notices(&shared), 1, "the chat is told why the session stops");
+        // Until the runtime is gone, no prompt binds to the refused Turn, and
+        // a request the refused Turn sends adds no second, silent failure.
+        let Err(refused) = parts.bind_turn(next_turn()) else {
+            panic!("a prompt bound to the refused Turn");
+        };
+        let (mut parts, _) = *refused;
+        let _ = parts
+            .accept_idle_stdout_chunk(
+                &line(serde_json::json!({"id":90,"method":"item/commandExecution/requestApproval",
+                    "params":{"threadId":"thread-1","turnId":"native-1","itemId":"cmd-1",
+                    "command":"rm -rf /","cwd":"C:\\repo"}})),
+                6,
+                &mut transport,
+            )
+            .await;
+        assert_eq!(notices(&shared), 1);
     });
 }

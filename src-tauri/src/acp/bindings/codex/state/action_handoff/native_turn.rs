@@ -2,28 +2,23 @@
 //! such as an active goal's continuation after `thread/resume` or after a
 //! Turn ends. It is announced to the runtime, which opens it as a
 //! harness-started Turn and adopts it here under that Turn's client message
-//! id, so its items, end, Stop and errors take the prompted Turn's path. A
-//! Turn Sage refuses is interrupted and read to its end without being shown.
+//! id, so its items, end, Stop and errors take the prompted Turn's path.
+//! Codex has no decline: while a Turn is announced no prompt is admitted, so
+//! a Turn Sage refuses ends with the runtime, never bound to a prompt.
 //!
 //! Correlation is left to Codex. A `turn/started` while a Sage `turn/start`
 //! is unanswered stays with that request: Codex answers a `turn/start` sent
 //! during its own Turn with that Turn's id (it takes the prompt into it), and
 //! a reply naming another Turn stays an identity conflict.
-use serde_json::{Map, Value};
-
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
 
 use super::super::{AdapterError, CodexAdapter, ExternalKind, ScopedExternalId};
-use crate::acp::bindings::codex::{incoming::IngressDisposition, request::OutgoingRequest};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::acp::bindings::codex) struct NativeTurn {
     announced: Option<ExternalId>,
-    /// The refused Turn still draining: its id, the `turn/interrupt` not yet
-    /// answered, and whether Codex has ended it.
-    declined: Option<(ExternalId, Option<u64>, bool)>,
     /// `thread/start` and `thread/resume` leave the thread read-only; each
     /// prompt whose `turn/start` Codex accepts sets the policy the thread's
     /// later Turns keep.
@@ -36,7 +31,6 @@ impl Default for NativeTurn {
     fn default() -> Self {
         Self {
             announced: None,
-            declined: None,
             thread_access: SessionAccessMode::ReadOnly,
             pending_access: None,
         }
@@ -124,56 +118,5 @@ impl CodexAdapter {
         self.active_terminal_id_bytes = 0;
         self.active_turn_id = Some(id.clone());
         self.scoped_turn(id.as_str())
-    }
-
-    /// Interrupts the announced Turn Sage refused; what Codex still reports
-    /// for it is read and dropped.
-    pub(crate) fn decline_native_turn(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.cancel)?;
-        let thread = self
-            .external_thread_id
-            .clone()
-            .ok_or(AdapterError::SessionUnavailable)?;
-        let turn = self
-            .native_turn
-            .announced
-            .take()
-            .ok_or(AdapterError::TurnIntentConflict)?;
-        let request = self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)?;
-        self.native_turn.declined = Some((turn, Some(id), false));
-        Ok(request)
-    }
-
-    /// Drops `frame` when it reports the refused Turn or answers its
-    /// interrupt. A server request takes its own path.
-    pub(crate) fn drain_declined_turn(
-        &mut self,
-        frame: &Map<String, Value>,
-    ) -> Option<IngressDisposition> {
-        let (turn, interrupt, ended) = self.native_turn.declined.clone()?;
-        let mut next = (turn, interrupt, ended);
-        if frame.contains_key("result") || frame.contains_key("error") {
-            let id = frame.get("id").and_then(Value::as_u64)?;
-            if interrupt != Some(id) {
-                return None;
-            }
-            self.remove_pending(id);
-            next.1 = None;
-        } else {
-            if frame.contains_key("id") {
-                return None;
-            }
-            let params = frame.get("params")?.as_object()?;
-            let named = params
-                .get("turnId")
-                .or_else(|| params.get("turn")?.get("id"))?
-                .as_str()?;
-            if named != next.0.as_str() {
-                return None;
-            }
-            next.2 |= frame.get("method").and_then(Value::as_str) == Some("turn/completed");
-        }
-        self.native_turn.declined = (next.1.is_some() || !next.2).then_some(next);
-        Some(IngressDisposition::IgnoredLate)
     }
 }

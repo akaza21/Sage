@@ -1,4 +1,19 @@
 use super::*;
+use sage_acp_protocol::intent::session_event::{
+    PendingSessionEvents, SessionNotice, SessionNoticeLevel, SessionScopedEvent,
+};
+
+const REFUSED_TURN: &str = "The agent started a turn this chat cannot run with its current access or state, so the session was stopped. Send a message to continue.";
+
+fn refused_turn_notice() -> Result<SessionScopedEvent, AdapterPumpError> {
+    Ok(SessionScopedEvent::Notice(SessionNotice {
+        identity: None,
+        level: SessionNoticeLevel::Error,
+        diagnostic: false,
+        text: RequiredText::new("text", REFUSED_TURN).map_err(|_| AdapterPumpError::Frame)?,
+        source: None,
+    }))
+}
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
     pub(crate) fn turn_started(&self) -> bool {
@@ -12,7 +27,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     }
 
     /// Refuses the Turn the harness started, then reads on through the
-    /// stdout that followed the frame starting it.
+    /// stdout that followed the frame starting it. A harness that cannot
+    /// decline it keeps running it, so the session must stop: the chat is
+    /// told why first, before any later frame is read.
     pub(crate) async fn decline_started_turn(
         &mut self,
         now_millis: i64,
@@ -21,7 +38,16 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         if !self.turn_started {
             return Err(AdapterPumpError::Intent);
         }
-        let egress = self.adapter.decline_turn()?;
+        let egress = match self.adapter.decline_turn() {
+            Ok(egress) => egress,
+            Err(error) => {
+                let mut notice = PendingSessionEvents::default();
+                notice.push(refused_turn_notice()?);
+                self.commit_session_events(notice, REFUSED_TURN.len(), now_millis)
+                    .await?;
+                return Err(error.into());
+            }
+        };
         self.turn_started = false;
         crate::acp::runtime::adapter_pump::write_idle_egress(&mut self.adapter, egress, transport)?;
         let frame = if self.idle_decoder.has_pending_input() {
