@@ -136,7 +136,10 @@ async function expectComposerControlRow(page: Page) {
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
 }
 
-async function expectComposerToolbarLaidOut(form: Locator) {
+async function expectComposerToolbarLaidOut(
+  form: Locator,
+  turnControl: "Start dictation" | "Send message",
+) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
   // A resized pane refits its toolbar a frame or more later; measure the
@@ -188,8 +191,6 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     };
   });
   // One turn control trails: the mic for an empty draft, Send once it has text.
-  const turnControl = geometry.buttons.at(-1)?.name;
-  expect(["Start dictation", "Send message"]).toContain(turnControl);
   expect(geometry.buttons.map((button) => button.name)).toEqual([
     "Composer options",
     "Access options",
@@ -341,7 +342,8 @@ async function expectArtifactConstrainedComposer(
     expectedLabels[1]!,
   );
   await expectComposerControlsLaidOut(page);
-  await expectComposerToolbarLaidOut(form);
+  // An empty draft shows the mic, never Send (#471).
+  await expectComposerToolbarLaidOut(form, "Start dictation");
   const options = await openComposerOptions(page);
   await expect(
     options.getByRole("menuitemradio", {
@@ -1264,7 +1266,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
           .toBeLessThanOrEqual(280);
         for (const pane of await panes.all()) {
-          await expectComposerToolbarLaidOut(pane.locator("form.composer"));
+          await expectComposerToolbarLaidOut(
+            pane.locator("form.composer"),
+            "Start dictation",
+          );
           await expect(
             pane.getByRole("combobox", { name: "Message agent" }),
           ).toBeVisible();

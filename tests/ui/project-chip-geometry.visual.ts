@@ -983,11 +983,7 @@ for (const when of ["before creation", "during creation"]) {
     await dialog
       .getByRole("button", { name: "Create project", exact: true })
       .click();
-    // The refusal is the composer's own notice; the fixture chat also carries
-    // an unrelated chat-load alert.
-    await expect(
-      page.getByRole("region", { name: "Composer notices" }).getByRole("alert"),
-    ).toContainText(
+    await expect(page.getByRole("alert")).toContainText(
       "This chat's folder has files. Start a new chat in the project instead.",
     );
     await expect(
