@@ -226,6 +226,7 @@ pub(super) fn response<M: ResourceMapper>(
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
             let external = text(turn, "id", 512)?;
+            adapter.accept_thread_access(id);
             let (id, binding) = adapter
                 .complete_turn_start(id, external)
                 .map_err(identity)?;

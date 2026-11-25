@@ -230,3 +230,128 @@ fn a_started_turn_is_not_bound_while_a_setting_changes() {
         assert!(parts.bind_harness_turn(next_turn()).is_ok());
     });
 }
+
+/// A Turn Codex starts on its own after the last one ended, which Sage
+/// refuses (here: the chat's access changed since): it is interrupted and
+/// read to its end without reaching the chat, and the session stays.
+#[test]
+fn a_turn_codex_starts_that_sage_refuses_is_interrupted_unseen_and_the_session_stays() {
+    use crate::acp::bindings::adapter::HarnessTurnAuthority;
+    use sage_acp_protocol::access_mode::SessionAccessMode;
+    // Recorded order when a `turn/start` meets a Turn Codex is starting:
+    // `turn/started` first, then the reply naming that same Turn.
+    const RACED: &str = "01a210c8-5f47-7bb3-a068-4d11d6174741";
+    let line = |value: serde_json::Value| codex_line(value);
+    let started = |id: &str| {
+        line(
+            serde_json::json!({"method":"turn/started","params":{"threadId":"thread-1",
+            "turn":{"id":id,"rootTurnId":id,"items":[],"itemsView":"notLoaded",
+            "status":"inProgress","error":null}}}),
+        )
+    };
+    let ended = |id: &str, status: &str| {
+        line(
+            serde_json::json!({"method":"turn/completed","params":{"threadId":"thread-1",
+            "turn":{"id":id,"status":status}}}),
+        )
+    };
+    runtime().block_on(async {
+        let mut codex = ready_codex();
+        let prompt = codex
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Write the fix").unwrap(),
+                client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                access_mode: SessionAccessMode::WorkspaceWrite,
+            })
+            .unwrap();
+        let prompt_id = codex_request_id(&prompt);
+        codex
+            .resolve_egress(prompt.into_token(), EgressResolution::Queued)
+            .unwrap();
+        let (mut pump, shared) = codex_pump(codex);
+        for frame in [
+            started(RACED),
+            line(
+                serde_json::json!({"id":prompt_id,"result":{"turn":{"id":RACED,
+                "rootTurnId":RACED,"items":[],"itemsView":"notLoaded",
+                "status":"inProgress","error":null}}}),
+            ),
+            ended(RACED, "completed"),
+        ] {
+            pump.push_stdout_chunk(&frame, 2).await.unwrap();
+        }
+        let parts = pump
+            .try_into_completed_parts()
+            .ok()
+            .expect("the prompt owns the raced Turn");
+
+        // A prompt Codex refuses changes nothing the thread keeps.
+        let next = next_turn();
+        let mut pump = parts
+            .bind_turn(next.clone())
+            .ok()
+            .expect("a prompt may follow");
+        pump.queue_prompt(
+            Prompt::new("prompt", "Look only").unwrap(),
+            &next.client_message_id,
+            SessionAccessMode::ReadOnly,
+        )
+        .unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        let refused =
+            serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"].clone();
+        pump.push_stdout_chunk(
+            &line(serde_json::json!({"id":refused,"error":{"code":-32600,"message":"rejected"}})),
+            3,
+        )
+        .await
+        .unwrap();
+        pump.push_stdout_chunk(&started("native-1"), 4)
+            .await
+            .unwrap();
+        assert!(pump.next_turn_started());
+        let mut parts = pump
+            .try_into_completed_parts()
+            .ok()
+            .expect("the failed prompt ends");
+        assert!(parts.turn_started());
+        assert_eq!(
+            parts.harness_turn_authority(),
+            Some(HarnessTurnAuthority::Access(
+                SessionAccessMode::WorkspaceWrite
+            ))
+        );
+
+        let mut transport = CaptureTransport(Vec::new());
+        parts.decline_started_turn(5, &mut transport).await.unwrap();
+        let interrupt: serde_json::Value = serde_json::from_slice(&transport.0).unwrap();
+        assert_eq!(
+            (&interrupt["method"], &interrupt["params"]["turnId"]),
+            (
+                &serde_json::json!("turn/interrupt"),
+                &serde_json::json!("native-1")
+            )
+        );
+        let journaled = shared.0.lock().unwrap().durable_batches.len();
+        let mut rest = line(
+            serde_json::json!({"method":"item/agentMessage/delta","params":{
+            "threadId":"thread-1","turnId":"native-1","itemId":"msg-1","delta":"unseen"}}),
+        );
+        rest.extend(line(serde_json::json!({"id":interrupt["id"],"result":{}})));
+        rest.extend(ended("native-1", "interrupted"));
+        parts
+            .accept_idle_stdout_chunk(&rest, 6, &mut transport)
+            .await
+            .expect("the refused Turn drains without tearing the session down");
+        assert!(!parts.turn_started());
+        assert_eq!(shared.0.lock().unwrap().durable_batches.len(), journaled);
+        assert!(
+            parts.bind_turn(next_turn()).is_ok(),
+            "the session takes the next prompt"
+        );
+    });
+}

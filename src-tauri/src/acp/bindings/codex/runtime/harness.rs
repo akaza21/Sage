@@ -367,6 +367,9 @@ impl HarnessAdapter for CodexRuntime {
     fn harness_turn_authority(&self) -> Option<HarnessTurnAuthority> {
         self.native_turn_authority()
     }
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.decline_native_turn()
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.cancelled_permission_request() {
             return self

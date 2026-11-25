@@ -2059,8 +2059,8 @@ fn turn_started_rejection_diagnostic_classifies_only_safe_adapter_state() {
     overlapping_turn
         .observe_turn_started("turn-1")
         .expect("first turn starts");
-    // While a Turn runs, another one is not Codex's own: it stays a protocol
-    // error, which fails the running Turn visibly.
+    // While a Turn runs, another one is not announced as Codex's own: it
+    // stays the identity conflict it was before.
     assert_eq!(
         overlapping_turn.announce_native_turn("turn-2").unwrap(),
         None

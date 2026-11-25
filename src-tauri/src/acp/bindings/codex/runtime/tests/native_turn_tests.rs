@@ -81,7 +81,7 @@ fn names_adopted_turn(id: &AdapterIdentity) -> bool {
 }
 
 #[test]
-fn a_turn_codex_starts_after_resume_runs_as_an_adopted_turn_through_its_failed_end() {
+fn a_turn_codex_starts_after_resume_runs_as_an_adopted_turn_with_stop_through_its_failed_end() {
     let (mut runtime, started) = resumed_until_codex_starts_a_turn();
     let [AdapterEvent::TurnStarted { id }] = started.events() else {
         panic!("expected only the announcement, got {:?}", started.events());
@@ -93,6 +93,16 @@ fn a_turn_codex_starts_after_resume_runs_as_an_adopted_turn_through_its_failed_e
         Some(HarnessTurnAuthority::Access(SessionAccessMode::ReadOnly)),
         "a resumed thread runs read-only until a prompt sets its access"
     );
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Too early").unwrap(),
+                client_message_id: RequiredText::new("client", "early").unwrap(),
+                access_mode: SessionAccessMode::ReadOnly,
+            })
+            .is_err(),
+        "no prompt starts while Codex's own Turn waits to be opened or refused"
+    );
 
     let opened = adopt(&mut runtime);
     assert!(matches!(
@@ -100,6 +110,13 @@ fn a_turn_codex_starts_after_resume_runs_as_an_adopted_turn_through_its_failed_e
         [AdapterEvent::Turn { id, state: TurnState::Running }] if names_adopted_turn(id)
     ));
     assert_eq!(runtime.harness_turn_authority(), None);
+    // Stop addresses Codex's own Turn id.
+    let stop = runtime.command(AdapterCommand::Cancel).unwrap();
+    let wire: Value = serde_json::from_slice(stop.frame().payload()).unwrap();
+    assert_eq!(
+        (&wire["method"], &wire["params"]["turnId"]),
+        (&json!("turn/interrupt"), &json!(TURN))
+    );
 
     for frame in [
         goal("active", json!(TURN)),
@@ -135,65 +152,4 @@ fn a_turn_codex_starts_after_resume_runs_as_an_adopted_turn_through_its_failed_e
         event,
         AdapterEvent::Turn { id, state: TurnState::Failed } if names_adopted_turn(id)
     )));
-}
-
-#[test]
-fn stop_interrupts_the_adopted_turn_and_a_prompt_sets_the_access_codex_keeps() {
-    let (mut runtime, _) = resumed_until_codex_starts_a_turn();
-    adopt(&mut runtime);
-    let stop = runtime.command(AdapterCommand::Cancel).unwrap();
-    let wire: Value = serde_json::from_slice(stop.frame().payload()).unwrap();
-    assert_eq!(wire["method"], "turn/interrupt");
-    assert_eq!(wire["params"]["turnId"], TURN);
-    let stop_id = request_id(&stop);
-    runtime
-        .resolve_egress(stop.into_token(), EgressResolution::Written)
-        .unwrap();
-    runtime
-        .ingest(&frame(json!({"id":stop_id,"result":{}})), &Mapper)
-        .unwrap();
-    let interrupted = runtime
-        .ingest(
-            &notification(
-                "turn/completed",
-                json!({"threadId":THREAD,"turn":turn("interrupted", Value::Null)}),
-            ),
-            &Mapper,
-        )
-        .unwrap();
-    assert!(interrupted.events().iter().any(|event| matches!(
-        event,
-        AdapterEvent::Turn { id, state: TurnState::Cancelled } if names_adopted_turn(id)
-    )));
-
-    let prompt = runtime
-        .command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Write the fix").unwrap(),
-            client_message_id: RequiredText::new("client", "sage-turn-2").unwrap(),
-            access_mode: SessionAccessMode::WorkspaceWrite,
-        })
-        .unwrap();
-    for frame in [
-        frame(json!({"id":request_id(&prompt),"result":{"turn":{"id":"turn-2"}}})),
-        notification(
-            "turn/started",
-            json!({"threadId":THREAD,"turn":{"id":"turn-2"}}),
-        ),
-        notification(
-            "turn/completed",
-            json!({"threadId":THREAD,"turn":{"id":"turn-2","status":"completed"}}),
-        ),
-        notification(
-            "turn/started",
-            json!({"threadId":THREAD,"turn":{"id":"turn-3"}}),
-        ),
-    ] {
-        runtime.ingest(&frame, &Mapper).unwrap();
-    }
-    assert_eq!(
-        runtime.harness_turn_authority(),
-        Some(HarnessTurnAuthority::Access(
-            SessionAccessMode::WorkspaceWrite
-        ))
-    );
 }

@@ -296,6 +296,9 @@ fn ingest_inner<M: ResourceMapper>(
         return Err(IngressError::Identity);
     }
     let object = value.as_object().ok_or(IngressError::Malformed)?;
+    if let Some(disposition) = adapter.drain_declined_turn(object) {
+        return Ok(disposition);
+    }
     if object.contains_key("result") || object.contains_key("error") {
         return response(adapter, object, mapper);
     }
