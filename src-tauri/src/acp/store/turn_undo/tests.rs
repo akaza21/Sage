@@ -184,7 +184,7 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
         .database
         .connection()
         .execute(
-            "UPDATE session_runtime_epochs SET state='exited',terminal_at=62 WHERE session_id='session-a'",
+            "UPDATE session_runtime_epochs SET state='exited',terminal_at=62 WHERE session_id='session-a' AND state='running'",
             [],
         )
         .unwrap();
