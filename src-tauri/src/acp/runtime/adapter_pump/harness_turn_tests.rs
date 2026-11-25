@@ -286,7 +286,11 @@ fn a_turn_codex_starts_that_sage_refuses_is_interrupted_unseen_and_the_session_s
             .expect("the prompt owns the raced Turn");
 
         // A prompt Codex refuses changes nothing the thread keeps.
-        let next = next_turn();
+        let next = ActiveTurnIntent {
+            turn_id: turn("two"),
+            external_turn_id: None,
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        };
         let mut pump = parts
             .bind_turn(next.clone())
             .ok()
