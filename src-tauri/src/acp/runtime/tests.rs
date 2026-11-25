@@ -612,7 +612,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
 fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_scheduler() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        let (handle, _runner, order) = fake(None, false);
+        let (handle, runner, order) = fake(None, false);
         let coordinator = SendCoordinator::new(
             Arc::new(Authority(snapshot(None))),
             handle.clone(),
@@ -650,10 +650,18 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
         // its session stops; before the session's first Turn too, the chat is
         // told why through a notice no Turn owns.
         let owner = tree.owner().clone();
-        coordinator
-            .notice_refused_harness_turn(&owner, super::journal::now_millis() as i64)
-            .await
-            .unwrap();
+        let (noticed, drained) = tokio::join!(
+            async {
+                let noticed = coordinator
+                    .notice_refused_harness_turn(&owner, super::journal::now_millis() as i64)
+                    .await;
+                handle.close_when_drained();
+                noticed
+            },
+            runner.spawn(),
+        );
+        noticed.unwrap();
+        drained.unwrap();
         let order = order.lock().unwrap();
         let [notice] = order.as_slice() else {
             panic!("one notice, got {order:?}");
