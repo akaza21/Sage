@@ -270,14 +270,12 @@ export function safeAcpMutationResponse(
     return null;
   const safeTurns = turns as NonNullable<(typeof turns)[number]>[];
 
-  const itemCount = safeTurns.reduce(
-    (count, turn) => count + turn.items.length,
-    0,
-  );
-  const activityCount = safeTurns.reduce(
-    (count, turn) => count + turn.activities.length,
-    0,
-  );
+  let itemCount = 0;
+  let activityCount = 0;
+  for (const turn of safeTurns) {
+    itemCount += turn.items.length;
+    activityCount += turn.activities.length;
+  }
   const sessionIds = new Set(safeSessions.map((session) => session.id));
   if (
     itemCount > ACP_PAGE_LIMITS.items ||
