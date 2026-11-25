@@ -7,6 +7,9 @@ use crate::acp::bindings::adapter::PROVISIONAL_TURN_HANDOFF_MILLIS;
 
 use super::{AdapterError, CodexAdapter, RequestKind, TurnStartFailure};
 
+mod native_turn;
+pub(super) use native_turn::NativeTurn;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ActionHandoff {
     request_id: u64,

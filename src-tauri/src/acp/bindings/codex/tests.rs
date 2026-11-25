@@ -2059,6 +2059,12 @@ fn turn_started_rejection_diagnostic_classifies_only_safe_adapter_state() {
     overlapping_turn
         .observe_turn_started("turn-1")
         .expect("first turn starts");
+    // While a Turn runs, another one is not Codex's own: it stays a protocol
+    // error, which fails the running Turn visibly.
+    assert_eq!(
+        overlapping_turn.announce_native_turn("turn-2").unwrap(),
+        None
+    );
     assert_eq!(
         TurnStartedRejection::from_adapter_error(
             &overlapping_turn.observe_turn_started("turn-2").unwrap_err()
@@ -2066,16 +2072,29 @@ fn turn_started_rejection_diagnostic_classifies_only_safe_adapter_state() {
         TurnStartedRejection::OverlappingTurn
     );
 
-    let mut missing_correlation = adapter();
-    ready(&mut missing_correlation);
+    // Idle and bound, a Turn Codex starts on its own is announced on the
+    // thread's session identity; a second one before Sage opens the first,
+    // or one while a Sage turn start is unanswered, is not.
+    let mut native = adapter();
+    ready(&mut native);
+    let announced = native
+        .announce_native_turn("native-turn")
+        .unwrap()
+        .expect("an idle bound thread announces Codex's own Turn");
+    assert_eq!(announced.kind, super::state::ExternalKind::Session);
+    assert_eq!(announced.external_id.as_str(), "thread-1");
     assert_eq!(
         TurnStartedRejection::from_adapter_error(
-            &missing_correlation
-                .observe_turn_started("uncorrelated-turn")
+            &native
+                .announce_native_turn("second-native-turn")
                 .unwrap_err()
         ),
-        TurnStartedRejection::MissingCorrelation
+        TurnStartedRejection::OverlappingTurn
     );
+    let mut correlating = adapter();
+    ready(&mut correlating);
+    arm_turn(&mut correlating, 2, "client-pending");
+    assert_eq!(correlating.announce_native_turn("turn-1").unwrap(), None);
     assert_eq!(
         TurnStartedRejection::ForeignThread.as_str(),
         "foreignThread"

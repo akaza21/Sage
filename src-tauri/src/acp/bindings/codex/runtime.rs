@@ -155,6 +155,9 @@ impl CodexRuntime {
                 Ok(batch.finish())
             }
             IngressDisposition::IgnoredLate => one(AdapterEvent::IgnoredLate),
+            IngressDisposition::HarnessTurnStarted(id) => {
+                one(AdapterEvent::TurnStarted { id: identity(id) })
+            }
             IngressDisposition::DroppedRawReasoning => one(AdapterEvent::Absorbed),
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)

@@ -8,9 +8,10 @@ use super::{prepare::prepare_failure, *};
 impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     /// Opens the Turn a harness started on its own in the tree's session,
     /// running in the harness session `mode`, which must be the one the
-    /// chat's access allows now. It takes the tree's one Turn slot like a
-    /// prompt does, so a prompt sent meanwhile is refused, and it is running
-    /// from the start.
+    /// chat's access allows now. A Turn running under an access opens while
+    /// the chat's access is that one, or when it runs read-only. It takes the
+    /// tree's one Turn slot like a prompt does, so a prompt sent meanwhile is
+    /// refused, and it is running from the start.
     pub(crate) async fn open_harness_turn(
         &self,
         tree: &TreeLease,
@@ -19,8 +20,10 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     ) -> Result<ActiveDispatch, Box<PrepareFailure>> {
         let owner = tree.owner();
         use crate::acp::bindings::adapter::HarnessTurnAuthority;
+        use sage_acp_protocol::access_mode::SessionAccessMode;
         if mode.is_none()
             || matches!(mode, Some(HarnessTurnAuthority::SessionMode(mode)) if self.authority.harness_turn_mode(owner) != Some(mode))
+            || matches!(mode, Some(HarnessTurnAuthority::Access(access)) if access != SessionAccessMode::ReadOnly && self.authority.harness_turn_access(owner) != Some(access))
         {
             return Err(prepare_failure(CoordinatorError::Intent));
         }

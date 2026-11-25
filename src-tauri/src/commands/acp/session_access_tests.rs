@@ -533,7 +533,10 @@ fn a_harness_started_turn_may_run_only_in_the_mode_of_the_chats_current_access()
         session_id: session("session-a"),
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
-    assert_eq!(harness_turn_mode(&state, &owner), Some("plan"));
+    assert_eq!(
+        harness_turn_grant(&state, &owner),
+        Some((SessionAccessMode::Plan, Some("plan")))
+    );
     let full = SessionAccessMode::FullAccess;
     let token = state
         .settings
@@ -543,21 +546,24 @@ fn a_harness_started_turn_may_run_only_in_the_mode_of_the_chats_current_access()
         .settings
         .grant_chat_access("session-a", full, &token, 2)
         .unwrap();
-    assert_eq!(harness_turn_mode(&state, &owner), Some("bypassPermissions"));
+    assert_eq!(
+        harness_turn_grant(&state, &owner),
+        Some((full, Some("bypassPermissions")))
+    );
     state
         .settings
         .set_chat_access("session-a", SessionAccessMode::Ask, 3)
         .unwrap();
     assert_eq!(
-        harness_turn_mode(&state, &owner),
-        Some("default"),
+        harness_turn_grant(&state, &owner),
+        Some((SessionAccessMode::Ask, Some("default"))),
         "a step down from Full access applies to the next harness turn"
     );
     let unknown = RuntimeOwner {
         session_id: session("session-unknown"),
         ..owner
     };
-    assert_eq!(harness_turn_mode(&state, &unknown), None);
+    assert_eq!(harness_turn_grant(&state, &unknown), None);
     drop(state);
     std::fs::remove_dir_all(root).unwrap();
 }
