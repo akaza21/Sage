@@ -94,11 +94,10 @@ function safeRewind(
     onResume,
   } = value;
   if (
-    typeof conversation !== "boolean" ||
-    typeof files !== "boolean" ||
-    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
-    typeof forkAt !== "boolean" ||
-    typeof onResume !== "boolean"
+    [conversation, files, forkAt, onResume].some(
+      (flag) => typeof flag !== "boolean",
+    ) ||
+    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"])
   )
     return undefined;
   return {
@@ -107,7 +106,7 @@ function safeRewind(
     forkAt,
     onResume,
     forkLatest: value.forkLatest === true || undefined,
-  };
+  } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
