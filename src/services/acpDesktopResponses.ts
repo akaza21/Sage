@@ -105,7 +105,8 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
-    forkLatest: value.forkLatest === true,
+    // Only ever narrows what a fork may target, so any truthy value is safe.
+    forkLatest: !!value.forkLatest,
   } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
