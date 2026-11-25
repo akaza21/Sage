@@ -13,7 +13,8 @@ pub struct RewindCapability {
     #[serde(default, skip_serializing_if = "is_false")]
     pub runtime_checkpoint: bool,
     /// Forks only through the latest turn, whatever `targets` admits for
-    /// a rewind.
+    /// a rewind. No binding offers it now, but durable Codex sessions
+    /// negotiated before its fork cut at any turn still carry it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub fork_latest: bool,
 }

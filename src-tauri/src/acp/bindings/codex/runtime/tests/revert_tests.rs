@@ -215,6 +215,83 @@ fn a_rewind_never_written_may_be_retried() {
     assert_eq!(request["params"]["beforeTurnId"], "turn-3");
 }
 
+fn fork_at(turn: &str, native: Option<&str>) -> SessionControl {
+    let SessionControl::RewindConversation { before } = rewind(turn, native) else {
+        unreachable!()
+    };
+    SessionControl::ForkAt { target: before }
+}
+
+#[test]
+fn forking_at_a_middle_turn_cuts_before_its_native_id_and_deletes_an_uncommitted_fork() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    three_turns(&mut runtime);
+    assert!(
+        runtime.session_control(&fork_at(SECOND, None)).is_err(),
+        "a prompt position is never a Codex Turn"
+    );
+    let cut = fork_at(SECOND, Some("turn-2"));
+    let unwritten = runtime.session_control(&cut).expect("fork");
+    runtime
+        .resolve_egress(unwritten.into_token(), EgressResolution::QueueRejected)
+        .unwrap();
+    assert!(!runtime.native_rpc_pending());
+    let egress = runtime.session_control(&cut).expect("retry admitted");
+    let id = request_id(&egress);
+    let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(
+        request,
+        json!({"id":id,"method":"thread/fork","params":{
+            "threadId":"thread-1","beforeTurnId":"turn-2","excludeTurns":true}})
+    );
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    // The live 0.167.1 answer to this request, with the fixture's ids and
+    // paths: a new thread whose one Turn keeps turn 1's native id.
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{
+                "thread":{"id":"thread-fork","sessionId":"thread-fork",
+                    "forkedFromId":"thread-1","parentThreadId":null,"preview":"",
+                    "ephemeral":false,"historyMode":"paginated","status":{"type":"idle"},
+                    "modelProvider":"openai","model":"gpt-6.1-sol","cwd":"C:\\repo",
+                    "cliVersion":"0.167.1","turns":[]},
+                "model":"gpt-6.1-sol","modelProvider":"openai","cwd":"C:\\repo",
+                "approvalPolicy":"never","approvalsReviewer":"user",
+                "sandbox":{"type":"readOnly","networkAccess":false}
+            }})),
+            &Mapper,
+        )
+        .expect("forked");
+    let fork = ExternalId::new("externalSessionId", "thread-fork".to_owned()).unwrap();
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Forked(fork.clone()))
+    );
+    // The fork Chat's commit failed: the fork thread is deleted, never the
+    // source, which keeps its own latest-turn undo.
+    let release = runtime.release_fork(&fork, false).unwrap().unwrap();
+    let request: Value = serde_json::from_slice(release.frame().payload()).unwrap();
+    assert_eq!(request["method"], "thread/delete");
+    assert_eq!(request["params"], json!({"threadId":"thread-fork"}));
+    let id = request_id(&release);
+    runtime
+        .resolve_egress(release.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime
+        .ingest(&frame(json!({"id":id,"result":{}})), &Mapper)
+        .expect("deleted");
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Released)
+    );
+    let egress = runtime.session_control(&undo(THIRD)).expect("undo kept");
+    let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(request["params"]["beforeTurnId"], "turn-3");
+}
+
 #[test]
 fn stopping_an_activity_is_not_a_codex_control() {
     let mut runtime = fixture_runtime();

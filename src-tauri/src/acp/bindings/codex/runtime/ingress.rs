@@ -247,8 +247,16 @@ impl CodexRuntime {
             | SessionControl::SignInMcpServer { .. } => {
                 self.request(|adapter, id| adapter.mcp_request(id, control))
             }
-            SessionControl::ForkAt { .. }
-            | SessionControl::RewindFiles { .. }
+            // The fork keeps the copied Turns' native ids; Sage keys them
+            // per session, so the source and the fork never share one.
+            SessionControl::ForkAt { target } => {
+                let native = target
+                    .native_turn_id
+                    .as_ref()
+                    .ok_or(AdapterRuntimeError::UnsupportedCommand)?;
+                self.fork_request(Some(native.as_str()))
+            }
+            SessionControl::RewindFiles { .. }
             | SessionControl::StopActivity { .. }
             | SessionControl::SetTitle { .. }
             | SessionControl::ReconnectMcpServer { .. } => {
@@ -283,12 +291,15 @@ impl CodexRuntime {
 
     /// A full fork ledger is a capacity refusal (BatchCount) the service turns
     /// into a reason the user can act on.
-    pub(super) fn fork_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+    pub(super) fn fork_request(
+        &mut self,
+        before: Option<&str>,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
         if self.inner.fork_ledger_full() {
             return Err(AdapterRuntimeError::BatchCount);
         }
-        self.request(CodexAdapter::fork)
+        self.request(|adapter, id| adapter.fork(id, before))
     }
 
     pub(super) fn release_fork_request(

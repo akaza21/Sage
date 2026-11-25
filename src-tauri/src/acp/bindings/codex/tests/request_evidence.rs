@@ -48,7 +48,8 @@ fn outgoing_request_evidence_matches_real_serializers() {
     };
     send(OutgoingRequest::initialize(1));
     send(OutgoingRequest::read(1, &thread));
-    send(OutgoingRequest::fork(1, &thread));
+    send(OutgoingRequest::fork(1, &thread, None));
+    send(OutgoingRequest::fork(1, &thread, Some("turn-1")));
     send(OutgoingRequest::fork_release(1, thread.as_str(), false));
     send(OutgoingRequest::fork_release(1, thread.as_str(), true));
     send(OutgoingRequest::unsubscribe(1, &thread));
