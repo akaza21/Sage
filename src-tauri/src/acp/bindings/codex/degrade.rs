@@ -96,8 +96,9 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
 }
 
 /// Every build admitted here (pinned or schema-proven, 0.167.0 on) declares
-/// `thread/revert`, which cuts before any Turn by its native id. `thread/fork`
-/// still forks through the latest Turn only.
+/// `thread/revert` and `thread/fork` with `beforeTurnId`, which cut before
+/// any Turn by its native id. A build is proven only if it accepts every sent
+/// shape, both of these included (`sent-requests.json`).
 fn codex_rewind() -> sage_acp_protocol::intent::RewindCapability {
     use sage_acp_protocol::intent::{RewindCapability, RewindEffects, RewindTargets};
     RewindCapability {
@@ -110,7 +111,7 @@ fn codex_rewind() -> sage_acp_protocol::intent::RewindCapability {
         fork_at: true,
         on_resume: false,
         runtime_checkpoint: true,
-        fork_latest: true,
+        fork_latest: false,
     }
 }
 

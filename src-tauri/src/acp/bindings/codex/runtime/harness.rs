@@ -174,7 +174,7 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.fork_request()
+        self.fork_request(None)
     }
 
     fn release_fork(&mut self, fork: &ExternalId, done: bool) -> AdapterOptionalEgress {

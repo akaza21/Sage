@@ -255,6 +255,15 @@
           "threadId": "thread-1",
           "excludeTurns": true
         }
+      },
+      {
+        "id": 1,
+        "method": "thread/fork",
+        "params": {
+          "threadId": "thread-1",
+          "excludeTurns": true,
+          "beforeTurnId": "turn-1"
+        }
       }
     ],
     "client:thread/goal/clear": [

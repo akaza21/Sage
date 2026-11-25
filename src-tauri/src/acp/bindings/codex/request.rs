@@ -255,15 +255,20 @@ impl OutgoingRequest {
     }
 
     /// The pinned schema requires only `threadId`; omitted overrides inherit
-    /// the source thread, and `lastTurnId` is left out because Sage forks only
-    /// between Turns. Sage imports no native history, so the forked Turns are
-    /// excluded; asking for them draws a `deprecationNotice` from the pinned server.
-    pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::Fork,
-            json!({"threadId": thread_id.as_str(), "excludeTurns": true}),
-        )
+    /// the source thread. `beforeTurnId` (experimental schema) cuts the fork
+    /// before that native Turn; without it the fork carries every Turn. The
+    /// copied Turns keep their native ids. Sage imports no native history, so
+    /// they are excluded; asking for them draws a `deprecationNotice`.
+    pub(crate) fn fork(
+        id: u64,
+        thread_id: &RequiredText<512>,
+        before: Option<&str>,
+    ) -> Result<Self, RequestError> {
+        let mut params = json!({"threadId": thread_id.as_str(), "excludeTurns": true});
+        if let Some(before) = before {
+            params["beforeTurnId"] = json!(before);
+        }
+        Self::build(id, RequestKind::Fork, params)
     }
 
     pub(crate) fn rate_limits_read(id: u64) -> Result<Self, RequestError> {
