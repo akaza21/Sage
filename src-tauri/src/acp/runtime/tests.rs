@@ -651,7 +651,7 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
         // told why through a notice no Turn owns.
         let owner = tree.owner().clone();
         coordinator
-            .notice_refused_harness_turn(&owner, 1)
+            .notice_refused_harness_turn(&owner, super::journal::now_millis() as i64)
             .await
             .unwrap();
         let order = order.lock().unwrap();
