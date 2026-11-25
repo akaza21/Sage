@@ -17,12 +17,11 @@ import { decodeGoalCapabilities, type AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
 import { safeSessionNotices } from "./acpSessionNotices";
 
-const ACP_PAGE_LIMITS = {
-  sessions: 32,
-  turns: 20,
-  items: 256,
-  activities: 128,
-} as const;
+// ACP page limits; plain constants so the build inlines them.
+const MAX_PAGE_SESSIONS = 32;
+const MAX_PAGE_TURNS = 20;
+const MAX_PAGE_ITEMS = 256;
+const MAX_PAGE_ACTIVITIES = 128;
 
 const REQUIRED_CAPABILITIES = [
   "newSession",
@@ -206,14 +205,15 @@ export function safeAcpMutationResponse(
     (projection.currentSessionId !== null && !currentSessionId) ||
     !Array.isArray(projection.sessions) ||
     !Array.isArray(projection.turns) ||
-    projection.sessions.length > ACP_PAGE_LIMITS.sessions ||
-    projection.turns.length > ACP_PAGE_LIMITS.turns ||
+    projection.sessions.length > MAX_PAGE_SESSIONS ||
+    projection.turns.length > MAX_PAGE_TURNS ||
     (projection.nextCursor !== null && !nextCursor)
   )
     return null;
   const sessions = projection.sessions.map(safeSession);
   const turns = projection.turns.map(safeTurn);
-  if ([...sessions, ...turns].some((entry) => !entry)) return null;
+  if (sessions.some((session) => !session) || turns.some((turn) => !turn))
+    return null;
   const safeSessions = sessions as AgentSessionProjection[];
   const sessionConfig =
     projection.sessionConfig == null
@@ -277,8 +277,8 @@ export function safeAcpMutationResponse(
   }
   const sessionIds = new Set(safeSessions.map((session) => session.id));
   if (
-    itemCount > ACP_PAGE_LIMITS.items ||
-    activityCount > ACP_PAGE_LIMITS.activities ||
+    itemCount > MAX_PAGE_ITEMS ||
+    activityCount > MAX_PAGE_ACTIVITIES ||
     (currentSessionId !== null &&
       !sessionIds.has(currentSessionId as AgentSessionProjection["id"])) ||
     safeTurns.some(
