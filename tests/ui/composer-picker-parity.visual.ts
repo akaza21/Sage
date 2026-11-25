@@ -313,7 +313,13 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   expect(columnBox).not.toBeNull();
   expect(composerBox!.width).toBeCloseTo(columnBox!.width, 1);
   expect(composerBox!.x).toBeCloseTo(columnBox!.x, 1);
-  // A single rounded card with a hairline edge and a round, white send.
+  // A single rounded card with a hairline edge and a round, white send. An
+  // idle empty composer shows the mic, so a typed prompt brings Send.
+  const prompt = composer.getByRole("combobox", { name: "Message agent" });
+  await prompt.fill("Measure Send");
+  await expect(
+    composer.getByRole("button", { name: "Send message", exact: true }),
+  ).toBeVisible();
   const footprint = await page
     .locator(".chat-dock")
     .first()
@@ -341,6 +347,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   expect(footprint.sendRadius).toBeGreaterThanOrEqual(14);
   for (const channel of footprint.sendFill.slice(0, 3))
     expect(channel).toBeGreaterThanOrEqual(230);
+  await prompt.fill("");
 
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
@@ -506,7 +513,8 @@ for (const forcedColors of ["none", "active"] as const) {
     });
     await expect(meter).toBeVisible();
     // The meter is laid out in the toolbar row between the controls and
-    // the send action, not floated over the prompt.
+    // the turn control (the mic while the composer is idle and empty), not
+    // floated over the prompt.
     const placement = await meter.evaluate((element) => {
       const toolbar = element.closest(".composer__toolbar")!;
       const row = toolbar.getBoundingClientRect();
@@ -515,7 +523,7 @@ for (const forcedColors of ["none", "active"] as const) {
         .querySelector(".composer__controls")!
         .getBoundingClientRect();
       const send = toolbar
-        .querySelector(".send-button")!
+        .querySelector(".send-button, .composer__mic")!
         .getBoundingClientRect();
       const prompt = element
         .closest("form")!
@@ -552,6 +560,13 @@ for (const forcedColors of ["none", "active"] as const) {
     expect(ring.style).not.toBe("none");
     expect(ring.width).toBeGreaterThan(0);
     if (forcedColors === "active") {
+      // Send replaces the idle mic once the prompt has text.
+      await composer
+        .getByRole("combobox", { name: "Message agent" })
+        .fill("Check forced-colour edges");
+      await expect(
+        composer.getByRole("button", { name: "Send message", exact: true }),
+      ).toBeVisible();
       const edges = await meter.evaluate((element) => {
         const system = document.createElement("span");
         system.style.cssText = "color: CanvasText; background-color: Highlight";

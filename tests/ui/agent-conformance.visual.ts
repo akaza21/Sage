@@ -89,8 +89,12 @@ async function anchorScenario(page: Page, scenario: PendingScenario) {
   await expect(
     page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
+  // An idle empty composer shows the mic as its one turn control.
   await expect(
-    composer(page).getByRole("button", { name: "Send message" }),
+    composer(page).getByRole("button", {
+      name: "Start dictation",
+      exact: true,
+    }),
   ).toBeVisible();
 
   if (scenario === "agent-declared-test") {
@@ -974,9 +978,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(dictation).toHaveAttribute("aria-pressed", "false");
     await expect(dictation).toHaveAttribute(
       "title",
-      "Speech may be processed by an online service",
+      "May use an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(6);
+    await expect(toolbar.getByRole("button")).toHaveCount(5);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
@@ -989,7 +993,10 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("pins the closed composer's interactive inventory", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(
-      composer(page).getByRole("button", { name: "Send message" }),
+      composer(page).getByRole("button", {
+        name: "Start dictation",
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /^2 files changed/ }),
@@ -1015,7 +1022,6 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Harness",
       "Model",
       "Start dictation",
-      "Send message",
     ]);
     await expect(composer(page).locator(".composer__access-label")).toHaveText(
       "Read-only",
@@ -1030,12 +1036,15 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     ).toHaveCount(0);
   });
 
-  test("orders toolbar actions, harness and model with send trailing", async ({
+  test("orders toolbar actions, harness and model with the turn control trailing", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(
-      composer(page).getByRole("button", { name: "Send message" }),
+      composer(page).getByRole("button", {
+        name: "Start dictation",
+        exact: true,
+      }),
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
       "Composer options",
@@ -1043,23 +1052,32 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Harness",
       "Model",
       "Start dictation",
-      "Send message",
     ]);
-    const [access, harness, send] = await Promise.all([
+    const [access, harness, turnControl] = await Promise.all([
       boundsOf(composer(page).locator(".composer__access-label")),
       boundsOf(
         composer(page).getByRole("button", { name: "Harness", exact: true }),
       ),
-      boundsOf(composer(page).getByRole("button", { name: "Send message" })),
+      boundsOf(
+        composer(page).getByRole("button", {
+          name: "Start dictation",
+          exact: true,
+        }),
+      ),
     ]);
     expect(access.x + access.width).toBeLessThanOrEqual(harness.x + 1);
-    expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(turnControl.width - turnControl.height),
+    ).toBeLessThanOrEqual(1);
   });
 
   test("keeps the closed toolbar on one line", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(
-      composer(page).getByRole("button", { name: "Send message" }),
+      composer(page).getByRole("button", {
+        name: "Start dictation",
+        exact: true,
+      }),
     ).toBeVisible();
     const centres = await composer(page)
       .locator(".composer__toolbar")
@@ -1073,7 +1091,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(6);
+    expect(centres).toHaveLength(5);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
@@ -1120,7 +1138,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 460, height: 900 });
+    // The idle composer's one turn control (the mic) leaves the meter room at
+    // 460px; 424px is the narrow lane that still has to drop it.
+    await page.setViewportSize({ width: 424, height: 900 });
     await openScenario(page, "agent-composer-context-known", "agent");
     await settleChatProjections(page);
     await expect(
@@ -1162,7 +1182,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
         Boolean(node.closest(".composer__toolbar")),
       ),
     ).toBe(true);
-    const [inputBox, contextBox, micBox, sendBox] = await Promise.all([
+    const [inputBox, contextBox, micBox] = await Promise.all([
       boundsOf(composer(page).getByRole("combobox", { name: "Message agent" })),
       boundsOf(context),
       boundsOf(
@@ -1171,16 +1191,15 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           exact: true,
         }),
       ),
-      boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
     expect(contextBox.y).toBeGreaterThanOrEqual(
       inputBox.y + inputBox.height - 1,
     );
-    expect(contextBox.x).toBeGreaterThanOrEqual(micBox.x + micBox.width - 1);
-    expect(contextBox.x + contextBox.width).toBeLessThanOrEqual(sendBox.x + 1);
+    // The idle turn control (the mic) trails the toolbar; the meter sits before it.
+    expect(contextBox.x + contextBox.width).toBeLessThanOrEqual(micBox.x + 1);
     expect(
       Math.abs(
-        contextBox.y + contextBox.height / 2 - (sendBox.y + sendBox.height / 2),
+        contextBox.y + contextBox.height / 2 - (micBox.y + micBox.height / 2),
       ),
     ).toBeLessThanOrEqual(1);
   });

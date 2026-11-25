@@ -121,8 +121,8 @@ async function expectComposerControlRow(page: Page) {
     form.locator(".composer__access-label"),
     form.getByRole("button", { name: "Harness", exact: true }),
     form.getByLabel("Model", { exact: true }),
+    // An idle empty composer shows the mic as its one turn control.
     form.getByRole("button", { name: "Start dictation", exact: true }),
-    form.getByRole("button", { name: "Send message", exact: true }),
   ];
   const centers = await Promise.all(
     controls.map(async (control) => {
@@ -187,13 +187,15 @@ async function expectComposerToolbarLaidOut(form: Locator) {
       }),
     };
   });
+  // One turn control trails: the mic for an empty draft, Send once it has text.
+  const turnControl = geometry.buttons.at(-1)?.name;
+  expect(["Start dictation", "Send message"]).toContain(turnControl);
   expect(geometry.buttons.map((button) => button.name)).toEqual([
     "Composer options",
     "Access options",
     "Harness",
     "Model",
-    "Start dictation",
-    "Send message",
+    turnControl,
   ]);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
@@ -208,7 +210,7 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     expect(button.height).toBeGreaterThan(0);
     expect(button.contained, button.name ?? "toolbar button").toBe(true);
   }
-  const trailing = ["Start dictation", "Send message"];
+  const trailing = [turnControl];
   // The toolbar wraps only when its full sequence of compacted controls cannot fit.
   const rows = geometry.fit.includes("wrap")
     ? [
@@ -278,7 +280,8 @@ async function expectComposerControlsLaidOut(page: Page) {
     page.getByRole("button", { name: "Harness" }),
     page.getByLabel("Model", { exact: true }),
     page.getByRole("combobox", { name: "Message agent" }),
-    page.getByRole("button", { name: "Send message" }),
+    // An idle empty composer shows the mic as its one turn control.
+    page.getByRole("button", { name: "Start dictation", exact: true }),
   ];
   const boxes: ComposerControlBox[] = [];
   for (const control of controls) {
@@ -481,7 +484,7 @@ test.describe("ED02 picker visual states", () => {
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Sage can't start this harness\./,
+      name: /Unavailable Codex.*can't start yet\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
@@ -657,11 +660,11 @@ test.describe("ED02 picker visual states", () => {
     });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // This narrow Chat lane has no room for every label: access yields to
-    // its icon while the harness and model keep their names.
+    // With one turn control (the mic while idle) this narrow lane keeps every
+    // label; tighter widths are covered by composer-compaction.
     expect(
       await settledComposerFit(page.locator("form.composer").first()),
-    ).toEqual(["placeholder", "context", "capacity", "effort", "access"]);
+    ).toEqual([]);
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
     await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
@@ -805,7 +808,8 @@ test.describe("V2-4 session mode picker", () => {
     const openInput = page.getByRole("menuitemradio", {
       name: "Review changes",
     });
-    const openListbox = page.getByRole("group", { name: "Session mode" });
+    // Session modes sit in the shared "Model and access" options section.
+    const openListbox = page.getByRole("group", { name: "Model and access" });
     await expect(openListbox.getByRole("menuitemradio")).toHaveCount(2);
     // Rows show the advertised description beside the name (Codex ref 34).
     await expect(openListbox.getByRole("menuitemradio").nth(0)).toHaveText(
@@ -833,7 +837,7 @@ test.describe("V2-4 session mode picker", () => {
     await expectOpenPickerContained(
       page,
       narrowTrigger,
-      page.getByRole("group", { name: "Session mode" }),
+      page.getByRole("group", { name: "Model and access" }),
     );
     await expectNoViewportOverflow(page);
     await settleTranscriptAtEnd(page);
@@ -850,7 +854,7 @@ test.describe("V2-4 session mode picker", () => {
     );
     await openComposerOptions(page);
     const forcedState = await page
-      .getByRole("group", { name: "Session mode" })
+      .getByRole("group", { name: "Model and access" })
       .getByRole("menuitemradio", { name: "Review changes" })
       .evaluate((option) => ({
         background: getComputedStyle(option).backgroundColor,

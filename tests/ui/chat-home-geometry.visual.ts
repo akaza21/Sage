@@ -37,20 +37,23 @@ test("unavailable chat recovery silently selects the first usable harness in cat
       ],
     });
   });
-  const issue = page.getByText(
-    "This chat used a harness that isn't available here.",
-    { exact: true },
-  );
+  // The disabled composer carries the one explanation; recovery lives in the
+  // harness picker beside it.
+  const issue = page.getByText("Codex is unavailable.", { exact: true });
   await expect(issue).toHaveCount(1);
   await expect(issue).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "Message agent" }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   const duplicates = page.getByText(
     /can't start this harness|reviewed local binding|selected harness is unavailable/,
   );
   await expect(duplicates).toHaveCount(0);
-  await page.getByRole("button", { name: "Continue in a new chat" }).click();
+  await page.getByRole("button", { name: "Harness", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Harness", exact: true })
+    .getByRole("button", { name: "Continue in a new chat" })
+    .click();
   const draft = page.getByRole("region", {
     name: "New chat draft",
     exact: true,
@@ -81,12 +84,17 @@ test("unavailable chat recovery silently selects the first usable harness in cat
     });
     await state.openNewChatDraft();
   });
-  await expect(draft.getByText(/No harness is available here/)).toHaveCount(1);
-  await expect(draft.getByRole("status")).toHaveCount(1);
+  // With no usable harness the draft keeps one explanation on its disabled
+  // composer; the harness picker carries the recovery.
+  await expect(
+    draft.getByText("Choose an available harness before sending.", {
+      exact: true,
+    }),
+  ).toHaveCount(1);
   await expect(duplicates).toHaveCount(0);
   await expect(
     draft.getByRole("combobox", { name: "Message agent" }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
 });
 
 for (const width of [1400, 900]) {

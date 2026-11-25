@@ -88,7 +88,21 @@ for (const width of [1888, 720, 480]) {
           page.getByRole("menu", { name: "Access mode" }),
         ).toHaveCount(0);
         await expect(accessReason).toBeVisible();
-        await expect(send).toBeDisabled();
+        // Without a supported access mode the prompt is disabled, so the
+        // empty composer offers only a disabled mic and no Send.
+        await expect(
+          composer.getByRole("combobox", {
+            name: "Message agent",
+            exact: true,
+          }),
+        ).toBeDisabled();
+        await expect(send).toHaveCount(0);
+        await expect(
+          composer.getByRole("button", {
+            name: "Start dictation",
+            exact: true,
+          }),
+        ).toBeDisabled();
         return;
       }
       await expect(accessReason).toHaveCount(0);

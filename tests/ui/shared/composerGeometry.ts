@@ -64,7 +64,7 @@ export async function settledComposerFit(composer: Locator) {
  * Every toolbar target is at least 24px, inside the composer and in order on
  * one line. A caller passes `wraps` only where the row cannot fit on one
  * line even with every label compacted: the fit must then have wrapped, with
- * the send controls on a line of their own below the rest.
+ * the turn control on a line of its own below the rest.
  */
 export async function expectCompactComposerTargets(
   composer: Locator,
@@ -98,7 +98,8 @@ export async function expectCompactComposerTargets(
         })
         .filter((box) => box.width > 0 && box.height > 0),
     );
-  expect(targets.length).toBeGreaterThanOrEqual(5);
+  // Add, harness, model and the one turn control are always offered.
+  expect(targets.length).toBeGreaterThanOrEqual(4);
   const ordered = targets.sort((left, right) => left.x - right.x);
   const rows = wrapped
     ? [ordered.filter((box) => !box.send), ordered.filter((box) => box.send)]

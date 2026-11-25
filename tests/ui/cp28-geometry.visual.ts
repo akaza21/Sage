@@ -110,7 +110,8 @@ async function expectComposerControlsContained(pane: Locator) {
   for (const control of [
     composer.getByRole("button", { name: "Harness", exact: true }),
     composer.getByRole("button", { name: "Model", exact: true }),
-    composer.locator(".send-button"),
+    // The one turn control: the mic while idle and empty, else Send or Stop.
+    composer.locator(".send-button, .composer__mic"),
   ]) {
     await expect(control).toBeVisible();
     const controlBox = await control.boundingBox();

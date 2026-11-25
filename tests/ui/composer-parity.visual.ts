@@ -529,9 +529,13 @@ for (const width of [1888, 720, 480]) {
       // Even the 200px composer of a 480px window fits the compacted row,
       // disabled effort placeholder included, on one line.
       await expectCompactComposerTargets(composer);
+      // An empty draft offers dictation in place of Send.
       await expect(
         composer.getByRole("button", { name: "Send message" }),
-      ).toBeDisabled();
+      ).toHaveCount(0);
+      await expect(
+        composer.getByRole("button", { name: "Start dictation", exact: true }),
+      ).toBeVisible();
     });
     test("model groups use human labels and retain exact selection IDs", async ({
       page,

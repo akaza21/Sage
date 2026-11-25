@@ -173,13 +173,13 @@ async function expectToolbarGeometry(composer: Locator) {
     );
     const bounds = buttons.map((button) => button.getBoundingClientRect());
     const controlsRow = controls.getBoundingClientRect();
-    const mic = toolbar
-      .querySelector(".composer__mic")!
+    // The one turn control: the mic while idle and empty, else Send or Stop.
+    const turn = toolbar
+      .querySelector(".send-button, .composer__mic")!
       .getBoundingClientRect();
-    const send = toolbar.querySelector(".send-button")!.getBoundingClientRect();
-    // Only a row that cannot fit even as icons wraps, with the dictation and
-    // send actions on a row of their own.
-    const secondRow = mic.top >= controlsRow.bottom - 1;
+    // Only a row that cannot fit even as icons wraps, with the turn control
+    // on a row of its own.
+    const secondRow = turn.top >= controlsRow.bottom - 1;
     return {
       overflow: toolbar.scrollWidth > toolbar.clientWidth,
       disjoint: bounds.every((button, index) =>
@@ -221,9 +221,6 @@ async function expectToolbarGeometry(composer: Locator) {
           target.top >= row.top &&
           target.bottom <= row.bottom,
       ),
-      // Mic (28px tall) and the 24px compact send share a centre line.
-      actionsAligned:
-        Math.abs(mic.top + mic.height / 2 - send.top - send.height / 2) <= 1,
       identityRow:
         secondRow ||
         targets.every(
@@ -236,9 +233,12 @@ async function expectToolbarGeometry(composer: Locator) {
             ) <= 1,
         ),
       responsiveRows: secondRow
-        ? mic.top >= controlsRow.bottom
+        ? turn.top >= controlsRow.bottom
         : Math.abs(
-            mic.top + mic.height / 2 - controlsRow.top - controlsRow.height / 2,
+            turn.top +
+              turn.height / 2 -
+              controlsRow.top -
+              controlsRow.height / 2,
           ) <= 1,
     };
   });
@@ -247,7 +247,6 @@ async function expectToolbarGeometry(composer: Locator) {
     disjoint: true,
     hitTestable: true,
     contained: true,
-    actionsAligned: true,
     identityRow: true,
     responsiveRows: true,
   });
@@ -752,6 +751,13 @@ test("new chat can choose no project and distinguishes duplicate project names",
   await expect(draftComposer).toHaveValue(
     "Keep this project-selected unsent prompt",
   );
+  // The global New chat keeps unsent text but always opens project-less.
+  await expect(choose).toBeVisible();
+  await expect(selected).toHaveCount(0);
+  await choose.click();
+  await page
+    .getByRole("option", { name: "Sage, /work/first", exact: true })
+    .click();
   await expect(selected).toBeVisible();
   const clear = location.locator(".project-scope__clear");
   await selected.hover();
@@ -977,7 +983,11 @@ for (const when of ["before creation", "during creation"]) {
     await dialog
       .getByRole("button", { name: "Create project", exact: true })
       .click();
-    await expect(page.getByRole("alert")).toContainText(
+    // The refusal is the composer's own notice; the fixture chat also carries
+    // an unrelated chat-load alert.
+    await expect(
+      page.getByRole("region", { name: "Composer notices" }).getByRole("alert"),
+    ).toContainText(
       "This chat's folder has files. Start a new chat in the project instead.",
     );
     await expect(

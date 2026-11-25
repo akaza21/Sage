@@ -43,6 +43,10 @@ export function registerAgentTurnActionScenarios() {
     await expect(alphaComposer).toHaveValue("");
     await expect(alphaComposer).toBeEnabled();
     await expect(alphaComposer).toBeFocused();
+    // The emptied composer shows the mic; retyping the prompt brings Send back,
+    // disabled while the first send is pending.
+    await expect(alphaSend).toHaveCount(0);
+    await alphaComposer.fill("Run Alpha once");
     await expect(alphaSend).toBeDisabled();
     await expect(
       alpha.getByText("Wait for the current action to finish.", {
@@ -59,6 +63,7 @@ export function registerAgentTurnActionScenarios() {
         exact: true,
       }),
     ).toBeVisible();
+    await alphaComposer.fill("");
 
     await runEvent(page, {
       type: "resolveSend",
@@ -149,8 +154,9 @@ export function registerAgentTurnActionScenarios() {
       chat: "alpha",
       certainty: "definite",
     });
+    // The shared Notice prefixes its severity for screen readers.
     await expect(alpha.getByRole("alert")).toHaveText(
-      "The prompt was definitely not dispatched.",
+      "Error: The prompt was definitely not dispatched.",
     );
     await expect(composer).toHaveValue("Restore this exact prompt");
     await evidence("definite-nondispatch-restored");
