@@ -5,14 +5,15 @@ use sage_acp_protocol::intent::session_event::{
 
 const REFUSED_TURN: &str = "The agent started a turn this chat cannot run with its current access or state, so the session was stopped. Send a message to continue.";
 
-fn refused_turn_notice() -> Result<SessionScopedEvent, AdapterPumpError> {
-    Ok(SessionScopedEvent::Notice(SessionNotice {
+/// Why the session stopped when a harness keeps running a Turn Sage refused.
+pub(crate) fn refused_turn_notice() -> Result<SessionNotice, AdapterPumpError> {
+    Ok(SessionNotice {
         identity: None,
         level: SessionNoticeLevel::Error,
         diagnostic: false,
         text: RequiredText::new("text", REFUSED_TURN).map_err(|_| AdapterPumpError::Frame)?,
         source: None,
-    }))
+    })
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
@@ -42,7 +43,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
             Ok(egress) => egress,
             Err(error) => {
                 let mut notice = PendingSessionEvents::default();
-                notice.push(refused_turn_notice()?);
+                notice.push(SessionScopedEvent::Notice(refused_turn_notice()?));
                 self.commit_session_events(notice, REFUSED_TURN.len(), now_millis)
                     .await?;
                 return Err(error.into());

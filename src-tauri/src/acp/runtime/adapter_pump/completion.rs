@@ -2,6 +2,7 @@ use super::*;
 use sage_acp_protocol::intent::session_event::PendingSessionEvents;
 
 mod harness_turn;
+pub(crate) use harness_turn::refused_turn_notice;
 
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,

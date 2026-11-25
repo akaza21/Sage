@@ -50,6 +50,21 @@ impl AcpStore for FakeStore {
             return Err(StoreError::BatchShape);
         };
         match mutation {
+            StoreMutation::SessionNotice(command) => {
+                let level = match command.notice.level {
+                    sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error => "error",
+                    _ => "other",
+                };
+                self.order
+                    .lock()
+                    .unwrap()
+                    .push(format!("notice:{level}:{}", command.notice.text.as_str()));
+                let revision = ProjectionRevision::new(4).unwrap();
+                Ok(StoreCommit {
+                    projection_revision: revision,
+                    results: vec![StoreMutationResult::Notice(revision)],
+                })
+            }
             StoreMutation::LookupTurn(_) => Ok(StoreCommit {
                 projection_revision: self
                     .duplicate
@@ -631,6 +646,19 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
         }
         assert!(!scheduler.active().unwrap().turn_reserved);
         assert!(order.lock().unwrap().is_empty());
+        // A harness that cannot decline the refused Turn keeps running it, so
+        // its session stops; before the session's first Turn too, the chat is
+        // told why through a notice no Turn owns.
+        let owner = tree.owner().clone();
+        coordinator
+            .notice_refused_harness_turn(&owner, 1)
+            .await
+            .unwrap();
+        let order = order.lock().unwrap();
+        let [notice] = order.as_slice() else {
+            panic!("one notice, got {order:?}");
+        };
+        assert!(notice.starts_with("notice:error:The agent started a turn"));
     });
 }
 

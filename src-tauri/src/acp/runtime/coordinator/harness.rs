@@ -81,6 +81,49 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     }
 }
 
+impl<A: ProjectIntentAuthority> SendCoordinator<A> {
+    /// Tells `owner`'s chat that its session stopped because the harness
+    /// keeps running a Turn Sage refused and cannot decline. It needs no
+    /// Turn, so it also covers a refusal before the session's first one.
+    pub(crate) async fn notice_refused_harness_turn(
+        &self,
+        owner: &sage_acp_protocol::scheduler::RuntimeOwner,
+        now_millis: i64,
+    ) -> Result<(), CoordinatorError> {
+        let notice = crate::acp::runtime::adapter_pump::refused_turn_notice()
+            .map_err(|_| CoordinatorError::JournalProtocol)?;
+        let mutation = StoreMutation::SessionNotice(crate::acp::store::SessionNoticeCommand {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            notice,
+            now_millis,
+        });
+        let deadline = u64::try_from(sage_core::time::now_millis())
+            .unwrap_or_default()
+            .saturating_add(5_000);
+        let commit = self
+            .journal
+            .enqueue_one(JournalLane::Control, mutation, deadline)?
+            .committed()
+            .await?;
+        match commit.results.as_slice() {
+            [StoreMutationResult::Notice(revision)] if *revision == ProjectionRevision::ZERO => {
+                Ok(())
+            }
+            [StoreMutationResult::Notice(revision)] => publish(
+                &self.publisher,
+                &owner.project_id,
+                &owner.chat_id,
+                &owner.session_id,
+                *revision,
+            ),
+            _ => Err(CoordinatorError::JournalProtocol),
+        }
+    }
+}
+
 fn one_opened(commit: StoreCommit) -> Result<TurnMutation, CoordinatorError> {
     match commit.results.as_slice() {
         [StoreMutationResult::Turn(mutation)]

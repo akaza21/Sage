@@ -26,6 +26,7 @@ pub(crate) enum StoreMutationResult {
     Activity(ActivityIngressMutation),
     AdapterBatch(AdapterBatchMutation),
     Recovery(RecoveryReport),
+    Notice(ProjectionRevision),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub(crate) enum StoreMutation {
         now_millis: i64,
     },
     RecoverRuntimeAfterZero(RecoverRuntimeCommand),
+    SessionNotice(super::SessionNoticeCommand),
 }
 
 impl StoreMutation {
@@ -158,6 +160,9 @@ pub(super) fn standalone_commit(
         StoreMutation::RecoverRuntimeAfterZero(command) => StoreMutationResult::Recovery(
             crate::acp::recovery::recover_runtime_after_zero_process(connection, command.clone())?,
         ),
+        StoreMutation::SessionNotice(command) => StoreMutationResult::Notice(
+            super::session_notice::record_session_notice(connection, command)?,
+        ),
         StoreMutation::LookupTurn(_)
         | StoreMutation::LookupActiveTurn(_)
         | StoreMutation::PrepareTurn(_)
@@ -188,5 +193,6 @@ fn result_projection(result: &StoreMutationResult) -> ProjectionRevision {
         StoreMutationResult::Recovery(value) => value
             .projection_revision
             .unwrap_or(ProjectionRevision::ZERO),
+        StoreMutationResult::Notice(value) => *value,
     }
 }

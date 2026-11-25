@@ -152,6 +152,7 @@ fn owner(mutation: &StoreMutation) -> Option<(&SageProjectId, &SageChatId)> {
         StoreMutation::ActivityIngress(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::AdapterInboundBatch(c) => Some((&c.owner().project_id, &c.owner().chat_id)),
         StoreMutation::RecoverRuntimeAfterZero(c) => Some((&c.project_id, &c.chat_id)),
+        StoreMutation::SessionNotice(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::RecoverAfterRestart { .. } => None,
     }
 }
