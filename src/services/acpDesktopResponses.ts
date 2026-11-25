@@ -105,7 +105,7 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
-    forkLatest: value.forkLatest === true || undefined,
+    forkLatest: value.forkLatest === true,
   } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
@@ -268,9 +268,8 @@ export function safeAcpMutationResponse(
     )
   )
     return null;
-  const safeTurns = turns.filter(
-    (turn): turn is NonNullable<typeof turn> => turn !== null,
-  );
+  const safeTurns = turns as NonNullable<(typeof turns)[number]>[];
+
   const itemCount = safeTurns.reduce(
     (count, turn) => count + turn.items.length,
     0,
@@ -309,9 +308,9 @@ export function safeAcpMutationResponse(
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       sessionConfig,
-      ...(restoredSessionConfig ? { restoredSessionConfig } : {}),
-      ...(sessionConfigNotice ? { sessionConfigNotice } : {}),
-      ...(goal ? { goal } : {}),
+      ...(restoredSessionConfig && { restoredSessionConfig }),
+      ...(sessionConfigNotice && { sessionConfigNotice }),
+      ...(goal && { goal }),
       ...(projection.usage === true && { usage: true }),
       // Decoded where it is shown, in the panel's lazy chunk.
       ...(projection.sessionSurface != null && {
@@ -322,6 +321,7 @@ export function safeAcpMutationResponse(
       ...(forkedFrom
         ? { forkedFrom: forkedFrom as AcpChatPage["chatId"] }
         : {}),
+
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
       }),
