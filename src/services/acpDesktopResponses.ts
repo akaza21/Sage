@@ -91,9 +91,10 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
+    forkLatest = false,
   } = value;
   if (
-    [conversation, files, forkAt, onResume].some(
+    [conversation, files, forkAt, onResume, forkLatest].some(
       (flag) => typeof flag !== "boolean",
     ) ||
     !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"])
@@ -104,7 +105,7 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
-    forkLatest: value.forkLatest === true,
+    forkLatest,
   } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
@@ -318,7 +319,6 @@ export function safeAcpMutationResponse(
       ...(forkedFrom
         ? { forkedFrom: forkedFrom as AcpChatPage["chatId"] }
         : {}),
-
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
       }),

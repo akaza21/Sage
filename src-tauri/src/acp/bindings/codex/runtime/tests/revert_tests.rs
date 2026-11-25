@@ -185,7 +185,7 @@ fn rewinding_at_a_middle_turn_reverts_before_its_native_id_and_retires_the_last_
 }
 
 #[test]
-fn a_rewind_never_written_leaves_no_state_and_may_be_retried() {
+fn a_rewind_never_written_may_be_retried() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     three_turns(&mut runtime);
