@@ -103,7 +103,8 @@ fn file_snapshots_use_the_saved_native_digest_and_legacy_prompts_need_native_ide
     assert_eq!(target.prompt_digest, None);
 
     // An any-turn offer (Codex) names a turn by its native id only: a turn
-    // with just a prompt digest is never offered, one with a native id is.
+    // with just a prompt digest is never offered or admitted, one with a
+    // native id is.
     let identity = |history: &history::History| {
         let connection = history.fixture.database.connection();
         connection
@@ -124,7 +125,12 @@ fn file_snapshots_use_the_saved_native_digest_and_legacy_prompts_need_native_ide
         .unwrap()
     );
     assert!(!identity(&history), "a digest alone is not a Codex turn");
+    let Err(super::StoreError::RewindUnavailable { reason }) = history.target(0) else {
+        panic!("admission refuses a digest-only Codex turn");
+    };
+    assert_eq!(reason, rewind::OLDER_MESSAGES);
     assert!(identity(&correlated));
+    assert!(correlated.target(0).unwrap().native_turn_id.is_some());
 }
 
 #[test]

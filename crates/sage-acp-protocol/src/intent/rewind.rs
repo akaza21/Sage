@@ -36,7 +36,10 @@ pub struct RewindEffects {
 pub enum RewindTargets {
     #[default]
     LatestTurn,
+    /// Any finished turn, addressed by its native turn id only.
     AnyTurn,
+    /// Any user message, addressed by its native id or its send-time prompt
+    /// digest and position.
     AnyUserMessage,
 }
 

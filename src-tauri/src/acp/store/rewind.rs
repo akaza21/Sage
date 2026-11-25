@@ -79,7 +79,7 @@ pub(crate) fn target(
         )
         .optional()?;
     let prompt_digest = if native.is_none() {
-        prompt::digest(connection, session, turn)?
+        digest_identity(connection, session, turn)?
     } else {
         None
     };
@@ -113,33 +113,53 @@ pub(crate) fn target(
     })
 }
 
-/// Page decoration uses the same durable identity rule as target admission.
-/// Delivery must be proven even when a queued prompt already has a digest.
-/// An `anyTurn` offer names a turn by its native id alone, so a prompt digest
-/// is never its identity: such a turn is not offered, and the binding still
-/// refuses one if asked.
+/// Page decoration uses the same durable identity rule as target admission:
+/// a native turn id, or a send-time prompt digest where the session's offer
+/// admits one (see `digest_identity`). Delivery must be proven even when a
+/// queued prompt already has a digest.
 pub(crate) fn has_identity(
     connection: &Connection,
     session: &str,
     turn: &str,
 ) -> Result<bool, StoreError> {
-    let identity: Option<(bool, bool, bool)> = connection
+    let identity: Option<(bool, bool)> = connection
         .query_row(
             "SELECT t.delivery_state='correlated', EXISTS(SELECT 1 FROM session_facts f
            WHERE f.session_id=t.session_id AND f.turn_id=t.id AND f.kind='nativeTurnTarget'
-             AND json_extract(f.payload_json,'$.nativeTurnId') IS NOT NULL),
-           COALESCE(json_extract(s.capabilities_json,'$.rewind.targets')='anyTurn',0)
-         FROM turns t JOIN agent_sessions s ON s.id=t.session_id
-         WHERE t.session_id=?1 AND t.id=?2",
+             AND json_extract(f.payload_json,'$.nativeTurnId') IS NOT NULL)
+         FROM turns t WHERE t.session_id=?1 AND t.id=?2",
             params![session, turn],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
-    let Some((delivered, native, native_only)) = identity else {
+    let Some((delivered, native)) = identity else {
         return Ok(false);
     };
-    Ok(delivered
-        && (native || (!native_only && prompt::digest(connection, session, turn)?.is_some())))
+    Ok(delivered && (native || digest_identity(connection, session, turn)?.is_some()))
+}
+
+/// The send-time prompt digest that identifies `turn`, if the session's offer
+/// admits one. An `anyTurn` offer addresses turns by native id only, so under
+/// it a digest is never an identity: such a turn is neither offered nor
+/// admitted, and the binding's refusal stays a backstop.
+fn digest_identity(
+    connection: &Connection,
+    session: &str,
+    turn: &str,
+) -> Result<Option<[u8; 32]>, StoreError> {
+    let native_only: bool = connection
+        .query_row(
+            "SELECT COALESCE(json_extract(capabilities_json,'$.rewind.targets')='anyTurn',0)
+             FROM agent_sessions WHERE id=?1",
+            [session],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if native_only {
+        return Ok(None);
+    }
+    prompt::digest(connection, session, turn)
 }
 
 pub(crate) fn suffix(
