@@ -105,8 +105,7 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
-    // Only ever narrows what a fork may target, so any truthy value is safe.
-    forkLatest: !!value.forkLatest,
+    forkLatest: value.forkLatest === true,
   } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
@@ -214,8 +213,7 @@ export function safeAcpMutationResponse(
     return null;
   const sessions = projection.sessions.map(safeSession);
   const turns = projection.turns.map(safeTurn);
-  if (sessions.some((session) => !session) || turns.some((turn) => !turn))
-    return null;
+  if ([...sessions, ...turns].some((entry) => !entry)) return null;
   const safeSessions = sessions as AgentSessionProjection[];
   const sessionConfig =
     projection.sessionConfig == null
