@@ -1267,10 +1267,16 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         await expect
           .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
           .toBeLessThanOrEqual(280);
-        for (const pane of await panes.all()) {
+        // The source chat's draft is empty, so it shows the mic (#471); the
+        // side chat opens carrying the selected phrase, so it shows Send.
+        for (const [index, turnControl] of [
+          [0, "Start dictation"],
+          [1, "Send message"],
+        ] as const) {
+          const pane = panes.nth(index);
           await expectComposerToolbarLaidOut(
             pane.locator("form.composer"),
-            "Start dictation",
+            turnControl,
           );
           await expect(
             pane.getByRole("combobox", { name: "Message agent" }),
