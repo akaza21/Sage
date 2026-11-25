@@ -6,6 +6,9 @@ use super::{AdapterStoreOwner, StoreError, facts};
 
 mod prompt;
 
+/// Why a turn without a durable native identity can't be a rewind target.
+pub(crate) const OLDER_MESSAGES: &str = "Older messages can't be rewound.";
+
 pub(crate) fn record_native_turn(
     tx: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -76,13 +79,13 @@ pub(crate) fn target(
         )
         .optional()?;
     let prompt_digest = if native.is_none() {
-        prompt::digest(connection, session, turn)?
+        digest_identity(connection, session, turn)?
     } else {
         None
     };
     if native.is_none() && prompt_digest.is_none() {
         return Err(StoreError::RewindUnavailable {
-            reason: "Older messages can't be rewound.",
+            reason: OLDER_MESSAGES,
         });
     }
     // Native receipts stand alone, including in legacy history. Only a
@@ -110,8 +113,10 @@ pub(crate) fn target(
     })
 }
 
-/// Page decoration uses the same durable identity rule as target admission.
-/// Delivery must be proven even when a queued prompt already has a digest.
+/// Page decoration uses the same durable identity rule as target admission:
+/// a native turn id, or a send-time prompt digest where the session's offer
+/// admits one (see `digest_identity`). Delivery must be proven even when a
+/// queued prompt already has a digest.
 pub(crate) fn has_identity(
     connection: &Connection,
     session: &str,
@@ -130,7 +135,31 @@ pub(crate) fn has_identity(
     let Some((delivered, native)) = identity else {
         return Ok(false);
     };
-    Ok(delivered && (native || prompt::digest(connection, session, turn)?.is_some()))
+    Ok(delivered && (native || digest_identity(connection, session, turn)?.is_some()))
+}
+
+/// The send-time prompt digest that identifies `turn`, if the session's offer
+/// admits one. An `anyTurn` offer addresses turns by native id only, so under
+/// it a digest is never an identity: such a turn is neither offered nor
+/// admitted, and the binding's refusal stays a backstop.
+fn digest_identity(
+    connection: &Connection,
+    session: &str,
+    turn: &str,
+) -> Result<Option<[u8; 32]>, StoreError> {
+    let native_only: bool = connection
+        .query_row(
+            "SELECT COALESCE(json_extract(capabilities_json,'$.rewind.targets')='anyTurn',0)
+             FROM agent_sessions WHERE id=?1",
+            [session],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if native_only {
+        return Ok(None);
+    }
+    prompt::digest(connection, session, turn)
 }
 
 pub(crate) fn suffix(

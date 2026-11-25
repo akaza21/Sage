@@ -77,7 +77,9 @@ pub(crate) fn fork_source(
         });
     }
     super::turn_undo::intent::ensure_settled(connection, project_id.as_str(), chat_id.as_str())?;
-    let target = if rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn {
+    let target = if rewind.fork_latest
+        || rewind.targets == sage_acp_protocol::intent::RewindTargets::LatestTurn
+    {
         require_latest_completed(connection, &session, turn_id)?;
         None
     } else {

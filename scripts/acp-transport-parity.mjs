@@ -36,6 +36,7 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
   AcpRewindCapability: [
     "effects",
     "forkAt",
+    "forkLatest",
     "onResume",
     "runtimeCheckpoint",
     "targets",

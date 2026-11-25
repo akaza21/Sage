@@ -8,6 +8,8 @@ use crate::acp::bindings::codex::request::OutgoingRequest;
 use crate::acp::goal::NativeRpcReply;
 use sage_acp_protocol::contract::SafeText;
 
+mod rewind_at;
+
 impl CodexAdapter {
     /// `thread/revert` for the Turn Sage sent as `client_message_id`, which
     /// must be the last Turn this runtime ran and finished.
@@ -16,14 +18,7 @@ impl CodexAdapter {
         id: u64,
         client_message_id: &str,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if self.revert_pending()
-            || self.pending_fork.is_some()
-            || self.turn_start_correlations.has_pending()
-            || self.active_turn_id.is_some()
-            || self.provisional_turn.is_some()
-        {
-            return Err(AdapterError::TurnAlreadyActive);
-        }
+        self.admit_revert()?;
         let turn = self
             .previous_turn
             .as_ref()
@@ -32,13 +27,35 @@ impl CodexAdapter {
             .filter(|turn| !turn.id.as_str().starts_with(super::REJECTED_TURN))
             .map(|turn| turn.id.as_str().to_owned())
             .ok_or(AdapterError::ForeignRequest)?;
+        let request = self.revert_before(id, &turn)?;
+        self.revert_target = Some(turn);
+        Ok(request)
+    }
+
+    /// A revert waits for the thread to be idle: no Turn, fork or revert
+    /// in flight.
+    fn admit_revert(&self) -> Result<(), AdapterError> {
+        if self.revert_pending()
+            || self.pending_fork.is_some()
+            || self.turn_start_correlations.has_pending()
+            || self.active_turn_id.is_some()
+            || self.provisional_turn.is_some()
+        {
+            return Err(AdapterError::TurnAlreadyActive);
+        }
+        Ok(())
+    }
+
+    fn revert_before(
+        &mut self,
+        id: u64,
+        native_turn: &str,
+    ) -> Result<OutgoingRequest, AdapterError> {
         let thread = self
             .external_thread_id
             .clone()
             .ok_or(AdapterError::SessionUnavailable)?;
-        let request = self.reserve(OutgoingRequest::thread_revert(id, &thread, &turn)?)?;
-        self.revert_target = Some(turn);
-        Ok(request)
+        self.reserve(OutgoingRequest::thread_revert(id, &thread, native_turn)?)
     }
 
     pub(crate) fn reverted(&self, client_message_id: &str) -> bool {
@@ -52,6 +69,11 @@ impl CodexAdapter {
         self.pending
             .iter()
             .any(|(_, kind)| *kind == RequestKind::ThreadRevert)
+    }
+
+    /// A revert never written leaves nothing to settle.
+    pub(crate) fn revert_unwritten(&mut self) {
+        self.revert_target = None;
     }
 
     pub(crate) fn complete_revert(&mut self, id: u64, error: Option<&Value>) -> NativeRpcReply {

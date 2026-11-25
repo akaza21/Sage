@@ -520,6 +520,56 @@ test("T22b: latest-turn actions appear only at the offered undo prompt", async (
   await expect(menu.getByRole("menuitem")).toHaveText(["Rewind here"]);
 });
 
+test("T11c: a latest-only fork offer rewinds an earlier prompt and forks from the latest answer", async ({
+  page,
+}) => {
+  await openForkableAnswer(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/conversationRewindFixture.ts");
+    fixture.installConversationRewindFixture(true, "hot", "forkLatest");
+  });
+  const turns = page.locator(".acp-turn");
+  await expect(turns).toHaveCount(2);
+  await turns
+    .last()
+    .getByRole("button", { name: "More actions", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("menu", { name: "Answer actions" }).getByRole("menuitem"),
+  ).toHaveText(["Branch in new chat"]);
+  await page.keyboard.press("Escape");
+  const earlier = turns
+    .first()
+    .locator(".acp-turn__items > :has(.acp-message--user)");
+  await earlier.hover();
+  await earlier
+    .getByRole("button", { name: "Message actions", exact: true })
+    .click();
+  const menu = page.getByRole("menu", { name: "Prompt actions" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rewind here"]);
+  await menu
+    .getByRole("menuitem", { name: "Rewind here", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Rewind conversation from here",
+  });
+  await dialog
+    .getByRole("button", { name: "Confirm rewind", exact: true })
+    .click();
+  await dialog.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(turns).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => (window as { __rewindControls?: unknown[] }).__rewindControls,
+    ),
+  ).toContainEqual({
+    kind: "rewindConversation",
+    before: "turn-00000000-0000-4000-8000-000000000001",
+  });
+});
+
 test.describe("T22b: no-hover devices", () => {
   test.use({ hasTouch: true });
 

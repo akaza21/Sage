@@ -319,6 +319,29 @@ it("offers Retry and Branch only on the latest answer, following its session's r
   expect(await moreItems(row(1))).toEqual(["Copy"]);
   expect(await moreItems(row(2))).toEqual(["Branch in new chat"]);
 
+  // A rewind at any turn keeps the fork through the latest answer.
+  const anyTurn: AcpChatPage = {
+    ...projection,
+    sessions: projection.sessions.map((session) => ({
+      ...session,
+      capabilities: {
+        rewind: {
+          effects: { conversation: true, files: false },
+          targets: "anyTurn",
+          forkAt: true,
+          onResume: false,
+          forkLatest: true,
+        },
+      },
+    })) as never,
+  };
+  await act(async () => {
+    acpProjectionStoreFor(projection.chatId).setState({ page: anyTurn });
+  });
+  rerender(ui(anyTurn));
+  expect(await moreItems(row(1))).toEqual(["Copy"]);
+  expect(await moreItems(row(2))).toEqual(["Branch in new chat"]);
+
   const parked: AcpChatPage = {
     ...projection,
     sessions: projection.sessions.map((session) => ({

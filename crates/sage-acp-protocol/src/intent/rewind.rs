@@ -12,6 +12,10 @@ pub struct RewindCapability {
     /// Only the last turn completed by this runtime has a native undo checkpoint.
     #[serde(default, skip_serializing_if = "is_false")]
     pub runtime_checkpoint: bool,
+    /// Forks only through the latest turn, whatever `targets` admits for
+    /// a rewind.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fork_latest: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,7 +36,10 @@ pub struct RewindEffects {
 pub enum RewindTargets {
     #[default]
     LatestTurn,
+    /// Any finished turn, addressed by its native turn id only.
     AnyTurn,
+    /// Any user message, addressed by its native id or its send-time prompt
+    /// digest and position.
     AnyUserMessage,
 }
 
@@ -54,6 +61,7 @@ impl RewindCapability {
             fork_at: self.fork_at && other.fork_at,
             on_resume: self.on_resume && other.on_resume,
             runtime_checkpoint: self.runtime_checkpoint || other.runtime_checkpoint,
+            fork_latest: self.fork_latest || other.fork_latest,
         }
     }
     /// Standard ACP's characterised fork remains a latest-turn operation.

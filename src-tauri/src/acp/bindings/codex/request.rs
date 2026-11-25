@@ -95,7 +95,7 @@ pub(crate) enum RequestKind {
     TerminalsStopAll,
     /// `skills/list` for the `/` menu.
     SkillsList,
-    /// `thread/revert`: drops the latest Turn from the thread's history.
+    /// `thread/revert`: drops a Turn and every later one from the history.
     ThreadRevert,
     /// `mcpServerStatus/list` for `/mcp`.
     McpList,

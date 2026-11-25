@@ -393,6 +393,14 @@ fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
     ));
     assert!(unforkable.source("turn-1").is_err());
 
+    // A rewind at any turn still forks through the latest one only.
+    targeted["rewind"]["targets"] = "anyTurn".into();
+    targeted["rewind"]["forkLatest"] = true.into();
+    let latest = Fixture::with_identity(&targeted.to_string(), false);
+    assert!(latest.source("turn-1").unwrap().target.is_none());
+    latest.turn("turn-2", 1, "completed");
+    assert!(latest.source("turn-1").is_err());
+
     let fixture = Fixture::new(&forkable());
     assert!(fixture.source("turn-1").is_ok());
     assert!(fixture.source("turn-missing").is_err());

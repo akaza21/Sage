@@ -17,12 +17,11 @@ import { decodeGoalCapabilities, type AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
 import { safeSessionNotices } from "./acpSessionNotices";
 
-const ACP_PAGE_LIMITS = {
-  sessions: 32,
-  turns: 20,
-  items: 256,
-  activities: 128,
-} as const;
+// ACP page limits; plain constants so the build inlines them.
+const MAX_PAGE_SESSIONS = 32;
+const MAX_PAGE_TURNS = 20;
+const MAX_PAGE_ITEMS = 256;
+const MAX_PAGE_ACTIVITIES = 128;
 
 const REQUIRED_CAPABILITIES = [
   "newSession",
@@ -92,13 +91,13 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
+    forkLatest = false,
   } = value;
   if (
-    typeof conversation !== "boolean" ||
-    typeof files !== "boolean" ||
-    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"]) ||
-    typeof forkAt !== "boolean" ||
-    typeof onResume !== "boolean"
+    [conversation, files, forkAt, onResume, forkLatest].some(
+      (flag) => typeof flag !== "boolean",
+    ) ||
+    !isOneOf(targets, ["latestTurn", "anyTurn", "anyUserMessage"])
   )
     return undefined;
   return {
@@ -106,7 +105,8 @@ function safeRewind(
     targets,
     forkAt,
     onResume,
-  };
+    forkLatest,
+  } as AgentSessionProjection["capabilities"]["rewind"];
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
@@ -206,8 +206,8 @@ export function safeAcpMutationResponse(
     (projection.currentSessionId !== null && !currentSessionId) ||
     !Array.isArray(projection.sessions) ||
     !Array.isArray(projection.turns) ||
-    projection.sessions.length > ACP_PAGE_LIMITS.sessions ||
-    projection.turns.length > ACP_PAGE_LIMITS.turns ||
+    projection.sessions.length > MAX_PAGE_SESSIONS ||
+    projection.turns.length > MAX_PAGE_TURNS ||
     (projection.nextCursor !== null && !nextCursor)
   )
     return null;
@@ -268,21 +268,18 @@ export function safeAcpMutationResponse(
     )
   )
     return null;
-  const safeTurns = turns.filter(
-    (turn): turn is NonNullable<typeof turn> => turn !== null,
-  );
-  const itemCount = safeTurns.reduce(
-    (count, turn) => count + turn.items.length,
-    0,
-  );
-  const activityCount = safeTurns.reduce(
-    (count, turn) => count + turn.activities.length,
-    0,
-  );
+  const safeTurns = turns as NonNullable<(typeof turns)[number]>[];
+
+  let itemCount = 0;
+  let activityCount = 0;
+  for (const turn of safeTurns) {
+    itemCount += turn.items.length;
+    activityCount += turn.activities.length;
+  }
   const sessionIds = new Set(safeSessions.map((session) => session.id));
   if (
-    itemCount > ACP_PAGE_LIMITS.items ||
-    activityCount > ACP_PAGE_LIMITS.activities ||
+    itemCount > MAX_PAGE_ITEMS ||
+    activityCount > MAX_PAGE_ACTIVITIES ||
     (currentSessionId !== null &&
       !sessionIds.has(currentSessionId as AgentSessionProjection["id"])) ||
     safeTurns.some(
@@ -309,9 +306,9 @@ export function safeAcpMutationResponse(
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       sessionConfig,
-      ...(restoredSessionConfig ? { restoredSessionConfig } : {}),
-      ...(sessionConfigNotice ? { sessionConfigNotice } : {}),
-      ...(goal ? { goal } : {}),
+      ...(restoredSessionConfig && { restoredSessionConfig }),
+      ...(sessionConfigNotice && { sessionConfigNotice }),
+      ...(goal && { goal }),
       ...(projection.usage === true && { usage: true }),
       // Decoded where it is shown, in the panel's lazy chunk.
       ...(projection.sessionSurface != null && {

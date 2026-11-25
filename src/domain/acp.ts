@@ -163,6 +163,8 @@ export interface AcpRewindCapability {
   forkAt: boolean;
   onResume: boolean;
   runtimeCheckpoint?: boolean;
+  /** Forks only through the latest turn, whatever `targets` admits. */
+  forkLatest?: boolean;
 }
 
 export interface AcpCapabilitySet {

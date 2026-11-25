@@ -30,6 +30,7 @@ function session(index = 0, overrides: Record<string, unknown> = {}): object {
         targets: "latestTurn",
         forkAt: false,
         onResume: false,
+        forkLatest: false,
       },
       activeTurnSteer: false,
       childConversationProjection: false,

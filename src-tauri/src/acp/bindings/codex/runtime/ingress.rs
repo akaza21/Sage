@@ -223,7 +223,8 @@ fn ingest_disposition(
 }
 
 impl CodexRuntime {
-    /// Undo removes the latest Turn from Codex's history; files stay.
+    /// Undo removes the latest Turn from Codex's history, a rewind any
+    /// Turn with its native id and every later one; files stay.
     pub(super) fn control_request(
         &mut self,
         control: &sage_acp_protocol::session_control::SessionControl,
@@ -234,13 +235,19 @@ impl CodexRuntime {
             SessionControl::UndoTurn { turn_id } => {
                 self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
             }
+            SessionControl::RewindConversation { before } => {
+                let native = before
+                    .native_turn_id
+                    .as_ref()
+                    .ok_or(AdapterRuntimeError::UnsupportedCommand)?;
+                self.request(|adapter, id| adapter.rewind_at(id, native.as_str()))
+            }
             SessionControl::ReadMcpServers
             | SessionControl::ReloadMcpServers
             | SessionControl::SignInMcpServer { .. } => {
                 self.request(|adapter, id| adapter.mcp_request(id, control))
             }
-            SessionControl::RewindConversation { .. }
-            | SessionControl::ForkAt { .. }
+            SessionControl::ForkAt { .. }
             | SessionControl::RewindFiles { .. }
             | SessionControl::StopActivity { .. }
             | SessionControl::SetTitle { .. }
@@ -251,19 +258,26 @@ impl CodexRuntime {
     }
 
     /// An undo of the Turn Codex already reverted is confirmed again, so a
-    /// revert whose record Sage lost can still be recorded.
+    /// revert whose record Sage lost can still be recorded. A rewind target
+    /// without a stored native id is refused here: a prompt's position in
+    /// the thread is never a Codex Turn.
     pub(super) fn answered_undo(
         &mut self,
         control: &sage_acp_protocol::session_control::SessionControl,
     ) -> bool {
-        let sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id } = control
-        else {
-            return false;
-        };
-        if !self.inner.reverted(turn_id.as_str()) {
-            return false;
-        }
-        self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::Controlled(None));
+        use crate::acp::goal::NativeRpcReply;
+        use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
+        self.native_rpc_reply = Some(match control {
+            SessionControl::UndoTurn { turn_id } if self.inner.reverted(turn_id.as_str()) => {
+                NativeRpcReply::Controlled(None)
+            }
+            SessionControl::RewindConversation { before } if before.native_turn_id.is_none() => {
+                NativeRpcReply::ControlRefused(
+                    SafeText::new("controlSummary", crate::acp::store::rewind::OLDER_MESSAGES).ok(),
+                )
+            }
+            _ => return false,
+        });
         true
     }
 

@@ -57,8 +57,9 @@ fn the_fork_request_is_the_pinned_thread_fork_shape() {
     assert!(!offer.effects.files);
     assert_eq!(
         offer.targets,
-        sage_acp_protocol::intent::RewindTargets::LatestTurn
+        sage_acp_protocol::intent::RewindTargets::AnyTurn
     );
+    assert!(offer.fork_latest, "a fork still cuts at the latest Turn");
     assert!(offer.runtime_checkpoint);
     let (_, request) = fork_request(&mut runtime);
     assert_eq!(request["method"], schema["method"]);

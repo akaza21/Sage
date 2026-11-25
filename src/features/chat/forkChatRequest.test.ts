@@ -50,6 +50,11 @@ const cases: {
     expected: [true, false],
   },
   {
+    name: "any-turn rewind with a latest-only fork",
+    offer: { ...all, forkLatest: true },
+    expected: [true, false],
+  },
+  {
     name: "earlier turn with latest-only offer",
     offer: { ...all, targets: "latestTurn" },
     expected: [false, false],

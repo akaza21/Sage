@@ -77,6 +77,7 @@ function loadedTurnActions(
     fork: !!(
       available &&
       !latestOnly &&
+      !offer.forkLatest &&
       offer.forkAt &&
       !isSideChatId(page.chatId)
     ),
