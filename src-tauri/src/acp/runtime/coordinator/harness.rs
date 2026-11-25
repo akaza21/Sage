@@ -100,12 +100,13 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
             notice,
             now_millis,
         });
-        let deadline = u64::try_from(sage_core::time::now_millis())
-            .unwrap_or_default()
-            .saturating_add(5_000);
         let commit = self
             .journal
-            .enqueue_one(JournalLane::Control, mutation, deadline)?
+            .enqueue_one(
+                JournalLane::Control,
+                mutation,
+                super::deadline(now_millis, 5_000),
+            )?
             .committed()
             .await?;
         match commit.results.as_slice() {
