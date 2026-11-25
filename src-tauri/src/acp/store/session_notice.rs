@@ -1,13 +1,17 @@
 //! A session notice that no Turn owns, such as why the runtime stopped
 //! before the session's first Turn. It folds into the session's bounded
-//! surface row like a harness notice, for the live runtime epoch only.
+//! surface row like a harness notice, for the running runtime epoch only.
+//! Unlike a Turn, it does not need the session resident or free of an undo:
+//! it explains why a Turn could not open, often for exactly those reasons.
 
 use sage_acp_protocol::{
     contract::{ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     intent::session_event::{SessionNotice, SessionScopedEvent},
 };
 
-use super::{StoreError, session_surface, turn_admission::require_current_runtime};
+use rusqlite::{OptionalExtension, Transaction, params};
+
+use super::{StoreError, session_surface};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionNoticeCommand {
@@ -31,13 +35,7 @@ pub(crate) fn record_session_notice(
         command.chat_id.as_str(),
         command.session_id.as_str(),
     ];
-    require_current_runtime(
-        &transaction,
-        owner[0],
-        owner[1],
-        owner[2],
-        command.runtime_epoch,
-    )?;
+    require_running_epoch(&transaction, owner, command.runtime_epoch)?;
     let published = session_surface::notice_in(
         &transaction,
         owner,
@@ -51,4 +49,24 @@ pub(crate) fn record_session_notice(
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;
     Ok(published.unwrap_or(ProjectionRevision::ZERO))
+}
+
+/// `runtime_epoch` is the running epoch of this chat's session.
+fn require_running_epoch(
+    transaction: &Transaction<'_>,
+    [project, chat, session]: [&str; 3],
+    runtime_epoch: RuntimeEpoch,
+) -> Result<(), StoreError> {
+    transaction
+        .query_row(
+            "SELECT 1 FROM agent_sessions s
+             JOIN session_runtime_epochs e ON e.session_id=s.id AND e.state='running'
+             WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3 AND e.runtime_epoch=?4",
+            params![project, chat, session, runtime_epoch.get() as i64],
+            |_| Ok(()),
+        )
+        .optional()?
+        .ok_or(StoreError::Conflict {
+            resource: "sessionEpoch",
+        })
 }

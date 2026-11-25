@@ -252,6 +252,8 @@ where
 /// user undid or no longer runs, the session's history or Turn slot is
 /// full, or Sage is switching branches in the Project's repository. The run
 /// is declined and the session stays.
+// Other failures (a stale scheduler token, a missing lease) are teardown
+// races: the runtime is already going away, so they recover without a notice.
 fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
     failure.recovery.is_none()
         && matches!(

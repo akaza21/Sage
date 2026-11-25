@@ -50,21 +50,6 @@ impl AcpStore for FakeStore {
             return Err(StoreError::BatchShape);
         };
         match mutation {
-            StoreMutation::SessionNotice(command) => {
-                let level = match command.notice.level {
-                    sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error => "error",
-                    _ => "other",
-                };
-                self.order
-                    .lock()
-                    .unwrap()
-                    .push(format!("notice:{level}:{}", command.notice.text.as_str()));
-                let revision = ProjectionRevision::new(4).unwrap();
-                Ok(StoreCommit {
-                    projection_revision: revision,
-                    results: vec![StoreMutationResult::Notice(revision)],
-                })
-            }
             StoreMutation::LookupTurn(_) => Ok(StoreCommit {
                 projection_revision: self
                     .duplicate
@@ -612,7 +597,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
 fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_scheduler() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        let (handle, runner, order) = fake(None, false);
+        let (handle, _runner, order) = fake(None, false);
         let coordinator = SendCoordinator::new(
             Arc::new(Authority(snapshot(None))),
             handle.clone(),
@@ -646,27 +631,6 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
         }
         assert!(!scheduler.active().unwrap().turn_reserved);
         assert!(order.lock().unwrap().is_empty());
-        // A harness that cannot decline the refused Turn keeps running it, so
-        // its session stops; before the session's first Turn too, the chat is
-        // told why through a notice no Turn owns.
-        let owner = tree.owner().clone();
-        let (noticed, drained) = tokio::join!(
-            async {
-                let noticed = coordinator
-                    .notice_refused_harness_turn(&owner, super::journal::now_millis() as i64)
-                    .await;
-                handle.close_when_drained();
-                noticed
-            },
-            runner.spawn(),
-        );
-        noticed.unwrap();
-        drained.unwrap();
-        let order = order.lock().unwrap();
-        let [notice] = order.as_slice() else {
-            panic!("one notice, got {order:?}");
-        };
-        assert!(notice.starts_with("notice:error:The agent started a turn"));
     });
 }
 

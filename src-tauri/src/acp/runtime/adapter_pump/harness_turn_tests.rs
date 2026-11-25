@@ -361,7 +361,7 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
             panic!("a prompt bound to the refused Turn");
         };
         let (mut parts, _) = *refused;
-        let _ = parts
+        let approval = parts
             .accept_idle_stdout_chunk(
                 &line(serde_json::json!({"id":90,"method":"item/commandExecution/requestApproval",
                     "params":{"threadId":"thread-1","turnId":"native-1","itemId":"cmd-1",
@@ -370,6 +370,7 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
                 &mut transport,
             )
             .await;
+        assert!(matches!(approval, Err(AdapterPumpError::Intent)), "{approval:?}");
         assert_eq!(notices(&shared), 1);
     });
 }
