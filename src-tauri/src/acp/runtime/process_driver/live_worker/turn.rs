@@ -53,7 +53,7 @@ where
             }
             if let Err(error) = parts
                 .completed
-                .validate_command_prompt(&intent.command.prompt)
+                .validate_command_prompt(&intent.command.prompt, intent.access_mode)
             {
                 responder.respond(Err(error));
                 return FirstTurnWorkerState::Reusable(parts);
@@ -124,7 +124,10 @@ where
                 responder.respond(Err(HostError::Intent));
                 return FirstTurnWorkerState::Idle(parts);
             }
-            if let Err(error) = parts.parts.validate_command_prompt(&intent.command.prompt) {
+            if let Err(error) = parts
+                .parts
+                .validate_command_prompt(&intent.command.prompt, intent.access_mode)
+            {
                 responder.respond(Err(error));
                 return FirstTurnWorkerState::Idle(parts);
             }

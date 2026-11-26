@@ -20,6 +20,8 @@ pub(crate) enum CodexSessionError {
     CapacityAnswering,
     #[error("the harness requires sign-in before it can continue")]
     SignInRequired,
+    #[error("{0}")]
+    PromptRefused(&'static str),
     #[error("Codex live runtime requires recovery")]
     Recovery,
     #[error("the Steer acknowledgement timed out; the message may have been delivered")]

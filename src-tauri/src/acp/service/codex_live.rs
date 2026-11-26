@@ -243,6 +243,9 @@ fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
             CodexSessionError::SteerOutcomeUnknown
         }
         crate::acp::runtime::HostError::SignInRequired => CodexSessionError::SignInRequired,
+        crate::acp::runtime::HostError::PromptRefused(reason) => {
+            CodexSessionError::PromptRefused(reason)
+        }
         _ => CodexSessionError::Recovery,
     }
 }

@@ -2,7 +2,7 @@ use super::*;
 use sage_acp_protocol::intent::session_event::PendingSessionEvents;
 
 mod harness_turn;
-pub(crate) use harness_turn::{JOINED_TURN_REFUSED, refused_turn_notice};
+pub(crate) use harness_turn::{JOINED_TURN_REFUSED, REVIEW_ACCESS_REFUSED, refused_turn_notice};
 
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
@@ -32,7 +32,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     pub(crate) fn validate_command_prompt(
         &self,
         prompt: &crate::acp::transcript_quote::Prompt,
+        access: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(refusal) = self.adapter.prompt_refusal(prompt, access) {
+            return Err(crate::acp::runtime::HostError::PromptRefused(refusal));
+        }
         if let Some(revision) = prompt.command_revision {
             self.adapter
                 .available_commands()
