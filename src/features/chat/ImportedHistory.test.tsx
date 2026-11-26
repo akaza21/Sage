@@ -18,6 +18,7 @@ import { ImportedHistory } from "./ImportedHistory";
 beforeAll(async () => {
   await Promise.all([
     import("./acp/SessionNoticeStrip"),
+    import("./ConversationActions"),
     import("./acp/AcpChatPresentation"),
   ]);
 });
