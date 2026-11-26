@@ -8,7 +8,7 @@ use crate::acp::bindings::wire_replay::{self, FixtureMapper, ROOT, Replay};
 fn replayed(scenario: &str) -> Value {
     let mut runtime = runtime_at(ROOT);
     let records = wire_replay::load("claude", scenario);
-    let replay = Replay::run(&mut runtime, &records, &FixtureMapper);
+    let replay = Replay::run(&mut runtime, "session-claude-sdk", &records, &FixtureMapper);
     replay.summary(&runtime)
 }
 

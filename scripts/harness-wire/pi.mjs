@@ -59,9 +59,10 @@ export async function run(scenario, { cwd, env, emptyHome, image }) {
   let outcome = "completed";
   let gap;
   try {
+    // Sage's initialize asks for the models once the state is back.
     const state = command("get_state", {}, { command: "initialize" });
-    const models = command("get_available_models");
     await wire.until(answered(state), { serve, timeoutMs: 120000 });
+    const models = command("get_available_models");
     await wire.until(answered(models), { serve, timeoutMs: 60000 });
     const session = command("get_state", {}, { command: "session" });
     await wire.until(answered(session), { serve });

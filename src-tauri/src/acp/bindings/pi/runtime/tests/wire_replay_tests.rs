@@ -15,7 +15,7 @@ fn every_recorded_pi_transcript_projects_as_committed() {
     for scenario in &scenarios {
         let mut runtime = fixture_runtime(1);
         let records = wire_replay::load("pi", scenario);
-        let replay = Replay::run(&mut runtime, &records, &FixtureMapper);
+        let replay = Replay::run(&mut runtime, "session-pi-1", &records, &FixtureMapper);
         wire_replay::assert_summary("pi", scenario, &replay.summary(&runtime));
     }
 }

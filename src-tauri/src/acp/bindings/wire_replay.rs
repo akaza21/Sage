@@ -164,6 +164,8 @@ fn first_png(value: &Value) -> Option<Vec<u8>> {
 
 #[derive(Default)]
 pub(crate) struct Replay {
+    /// The Sage session the runtime was built for; a mode change names it.
+    session: String,
     pub(crate) events: Vec<AdapterEvent>,
     pub(crate) refused: Vec<String>,
     pub(crate) ingest_errors: Vec<String>,
@@ -258,7 +260,7 @@ impl Replay {
             owner: RuntimeOwner {
                 project_id: SageProjectId::parse("project-replay").expect("project"),
                 chat_id: SageChatId::parse("chat-replay").expect("chat"),
-                session_id: SageAgentSessionId::parse("session-replay").expect("session"),
+                session_id: SageAgentSessionId::parse(&self.session).expect("session"),
                 runtime_epoch: RuntimeEpoch::new(1).expect("epoch"),
             },
             expected_config_revision: serde_json::from_value(json!("1")).expect("revision"),
@@ -367,13 +369,18 @@ impl Replay {
         }
     }
 
-    /// Feeds `records` to `adapter` and ends as the harness's output ends.
+    /// Feeds `records` to `adapter`, built for Sage session `session` at
+    /// epoch 1, and ends as the harness's output ends.
     pub(crate) fn run(
         adapter: &mut dyn HarnessAdapter,
+        session: &str,
         records: &[Record],
         resources: &dyn ResourceMapper,
     ) -> Self {
-        let mut replay = Self::default();
+        let mut replay = Self {
+            session: session.to_owned(),
+            ..Self::default()
+        };
         for record in records {
             if record.out {
                 replay.client(adapter, record);
