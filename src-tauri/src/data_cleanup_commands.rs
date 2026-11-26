@@ -84,6 +84,7 @@ pub(crate) async fn clean_up(
         "project changed before the requested cleanup",
         move |database| {
             let outcome = database.clean_up(&project_id, scope)?;
+            tracing::info!(deleted = outcome.deleted, ?scope, "old data cleaned up");
             *stopped.lock().unwrap_or_else(PoisonError::into_inner) =
                 outcome.refusal.map(|error| error.public_message());
             Ok(())
