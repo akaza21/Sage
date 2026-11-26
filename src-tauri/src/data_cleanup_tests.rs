@@ -161,13 +161,14 @@ fn removing_a_project_deletes_its_chats_roots_and_activity_only() {
         .create_project_with_chat(&root.join("b"))
         .unwrap()
         .id;
-    let (parent, image) = with_history(database, project);
-    fork(database, project, &parent);
-    archive(database, project, &parent);
+    // Creating the other Project made it active; the history needs this one.
     database
         .connection()
         .execute("UPDATE app_state SET active_project_id=?1", [project])
         .unwrap();
+    let (parent, image) = with_history(database, project);
+    fork(database, project, &parent);
+    archive(database, project, &parent);
     let other_chats = count(
         database,
         "SELECT COUNT(*) FROM chats WHERE project_id=?1",
