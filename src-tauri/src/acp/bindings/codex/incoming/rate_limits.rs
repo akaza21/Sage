@@ -2,6 +2,8 @@ use serde_json::{Map, Value};
 
 use sage_acp_protocol::usage::{MAX_USAGE_WINDOWS, UsageSnapshot};
 
+mod limit_notices;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Window {
     used_percent: i64,

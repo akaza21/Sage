@@ -15,6 +15,7 @@ export {
   PromptActions,
 } from "../MessageActionsTrigger";
 export { ComposerChromeGate } from "./ComposerChromeGate";
+export { UsageLimitBanner } from "./SessionNoticeStripUsageBanner";
 const versionOf = (notice: SessionNotice) =>
   JSON.stringify([
     notice.identity,
@@ -92,6 +93,8 @@ export function SessionNoticeStrip({
   }
   const shown = notices.filter(
     (notice) =>
+      // Usage limits show above the composer instead.
+      !notice.usageLimit &&
       (notice.diagnostic !== true || notice.level === "error") &&
       !kept.includes(versionOf(notice)),
   );

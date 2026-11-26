@@ -324,6 +324,8 @@ export interface SessionNotice {
   diagnostic?: boolean;
   text: string;
   source: string | null;
+  /** A harness usage-limit report; read only by the composer banner. */
+  usageLimit?: unknown;
 }
 
 export interface AcpChatPage {

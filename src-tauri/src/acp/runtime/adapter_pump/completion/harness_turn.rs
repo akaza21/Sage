@@ -11,6 +11,7 @@ pub(crate) const JOINED_TURN_REFUSED: &str = "The agent was already running a tu
 /// Why the session stopped when a harness keeps running a Turn Sage refused.
 pub(crate) fn refused_turn_notice() -> Result<SessionNotice, AdapterPumpError> {
     Ok(SessionNotice {
+        usage_limit: None,
         identity: None,
         level: SessionNoticeLevel::Error,
         diagnostic: false,
