@@ -1,11 +1,20 @@
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
-import { currentOrLatestTurn, terminalTurnStates } from "./statusSemantics";
+import { terminalTurnStates } from "./statusSemantics";
 
 export function currentNonterminalTurn(
   page: AcpChatPage | null,
 ): TurnProjection | null {
-  const turn = page?.currentSessionId
-    ? currentOrLatestTurn(page, page.currentSessionId)
-    : null;
-  return turn && !terminalTurnStates.has(turn.state) ? turn : null;
+  const sessionId = page?.currentSessionId;
+  if (!sessionId) return null;
+  let current: TurnProjection | null = null;
+  for (const turn of page?.turns ?? []) {
+    if (
+      turn.sessionId === sessionId &&
+      !terminalTurnStates.has(turn.state) &&
+      (!current || turn.ordinal > current.ordinal)
+    ) {
+      current = turn;
+    }
+  }
+  return current;
 }

@@ -6,7 +6,7 @@ import type {
   SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
-import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
+import { terminalItemLifecycles } from "./statusSemantics";
 
 export function turnBindingId(page: AcpChatPage, turn: TurnProjection) {
   return page.sessions.find((session) => session.id === turn.sessionId)
@@ -158,8 +158,3 @@ export const backgroundWorkRunning = (page: AcpChatPage) => {
     )
   );
 };
-
-/** A chat is busy while a turn is unsettled or background work still runs. */
-export const chatBusy = (page: AcpChatPage) =>
-  page.turns.some((turn) => !terminalTurnStates.has(turn.state)) ||
-  backgroundWorkRunning(page);
