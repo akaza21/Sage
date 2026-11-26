@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-/** What a chat's latest turn waits on the user for. */
-export type RailAttention = "approval" | "input" | "signIn";
+import type { RailAttention } from "../features/chat/acp/sessionRail";
 
 interface ArchiveUndo {
   projectId: string;

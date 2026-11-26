@@ -2,7 +2,10 @@ import { Info } from "../ui/leanIcons";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import type { SessionStatus } from "../domain/workbench";
-import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
+import {
+  sessionRailPill,
+  sessionRailStatusLabel,
+} from "../features/chat/acp/sessionRail";
 import { useAgentRailInteractions } from "./agentRailInteractions";
 import { useParentChatStatus } from "./sideChatState";
 
@@ -21,12 +24,11 @@ export function AgentTaskStatus({
   const interactions = useAgentRailInteractions();
   const parentStatus = useParentChatStatus();
   const resolvedStatus = parentStatus(chatId, status);
+  const attention = interactions.attention.get(chatId);
   const label =
-    sessionRailStatusLabel(
-      resolvedStatus,
-      awaiting.has(chatId) ||
-        interactions.attention.get(chatId) === "approval",
-    ) || (resolvedStatus ? "Idle" : (snapshot?.statusLabel ?? "Idle"));
+    sessionRailPill(awaiting.has(chatId), attention) ||
+    sessionRailStatusLabel(resolvedStatus, attention) ||
+    (resolvedStatus ? "Idle" : (snapshot?.statusLabel ?? "Idle"));
   return (
     <>
       <span

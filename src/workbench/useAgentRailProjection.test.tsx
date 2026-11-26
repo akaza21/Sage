@@ -9,7 +9,7 @@ import {
   resetAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
-import { railPill, railTrailing } from "./railAttentionLabels";
+import { sessionRailPill } from "../features/chat/acp/sessionRail";
 import {
   agentRailTrailingState,
   compareAgentRailViewChats,
@@ -181,7 +181,7 @@ it("labels a sign-in failure Sign in, not Failed", () => {
   const tab = mirrorLatest({ ...settled, state: "failed", signIn: true });
   const attention = result.current.attention.get("chat-1");
   expect(
-    railTrailing(agentRailTrailingState({ status: tab.status, unread: false }), attention),
+    agentRailTrailingState({ status: tab.status, unread: false, attention }),
   ).toEqual({ kind: "failed", label: "Sign in" });
   mirrorLatest({ ...settled, state: "failed" });
   expect(result.current.attention.get("chat-1")).toBeUndefined();
@@ -191,7 +191,7 @@ it("keeps a question's Needs input pill without a mounted chat", () => {
   seed();
   const { result } = renderHook(() => useAgentRailInteractions());
   mirrorLatest({ ...settled, state: "waitingUser", terminalAt: null });
-  expect(railPill(false, result.current.attention.get("chat-1"))).toBe(
+  expect(sessionRailPill(false, result.current.attention.get("chat-1"))).toBe(
     "Needs input",
   );
 });
