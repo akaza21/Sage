@@ -15,6 +15,7 @@ use super::decode::{
 };
 #[cfg(test)]
 use super::decode_frame;
+use super::permission_text::card_summary;
 use super::{AdapterEvent, StandardAcpTranslator, TranslationError};
 use crate::acp::bindings::command_summary::{CommandSummaryError, sanitize_command_summary};
 
@@ -82,7 +83,7 @@ impl StandardAcpTranslator {
         let command = permission_command(tool)?;
         let relabel = self.adopt_permission_label(tool_call_id.as_str(), tool);
         let restated = self.adopt_permission_input(tool_call_id.as_str(), command.as_ref());
-        let summary = self.permission_summary(tool_call_id.as_str(), command)?;
+        let summary = self.permission_summary(tool_call_id.as_str(), category, tool, command)?;
         let offered_option_kinds = offered_option_kinds(params)?;
         self.tools.insert(
             tool_call_id.as_str().to_owned(),
@@ -278,6 +279,8 @@ impl StandardAcpTranslator {
     fn permission_summary(
         &self,
         tool_call_id: &str,
+        category: ToolCategory,
+        tool: &Map<String, Value>,
         command: Option<SafeText<65536>>,
     ) -> Result<SafeText<65536>, TranslationError> {
         if let Some(command) = command {
@@ -285,7 +288,7 @@ impl StandardAcpTranslator {
         }
         let summary = match self.tool_labels.get(tool_call_id) {
             Some(named) if !self.generic_permission_label(named.as_str()) => {
-                SafeText::new("permissionSummary", named.as_str())?
+                card_summary(named.as_str(), category, tool)?
             }
             _ => SafeText::new(
                 "permissionSummary",

@@ -28,6 +28,7 @@ mod diff_records;
 mod error;
 mod images;
 mod open_items;
+mod permission_text;
 mod permissions;
 mod terminal;
 mod tool_execution;

@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
 use super::*;
+#[path = "runtime_plan_tests.rs"]
+mod plan;
 #[path = "runtime_refresh_tests.rs"]
 mod refresh;
 use crate::acp::{transcript_quote::Prompt, transport::FrameReader};
@@ -523,7 +525,7 @@ fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
             .unwrap();
         let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
         let expected = if mode == "plan" {
-            json!({"behavior":"deny","message":"The user chose to keep planning.","interrupt":true})
+            json!({"behavior":"deny","message":"The user chose to keep planning. Stop and wait for the user to say what to change."})
         } else {
             json!({"behavior":"allow","updatedInput":input,
                 "updatedPermissions":[{"type":"setMode","mode":mode,"destination":"session"}]})

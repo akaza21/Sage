@@ -167,3 +167,10 @@
   margin: 0;
   color: var(--color-danger);
 }
+
+/* A plan to approve reads as prose and may run long. */
+.acp-permission-prompt__detail--plan {
+  max-height: min(40vh, 320px);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+}

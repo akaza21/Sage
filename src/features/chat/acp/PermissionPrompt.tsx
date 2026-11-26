@@ -11,6 +11,7 @@ import {
   useCardKeyGuard,
 } from "./approvalCard";
 import { ToolKindIcon } from "./ToolKindIcon";
+import { leavePlanAccess } from "./leavePlanAccess";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -46,11 +47,21 @@ export function PermissionPrompt({
   const execute = item?.payload.category === "execute";
   /** A developer-mode card (ADR-0009b): CDP for this tab and site. */
   const developer = item?.payload.source === "browserDeveloper";
+  /** A mode switch asks its own question; the text after it (a plan) is
+   * what the person approves. */
+  const switchMode = item?.payload.category === "switchMode";
+  const [asked, ...rest] = switchMode
+    ? (item?.payload.summary ?? "").split("\n\n")
+    : [];
+  const plan = rest.length > 0;
   const question = developer
     ? "Allow developer mode on this site?"
     : execute
       ? "Allow this command?"
-      : "Allow this action?";
+      : plan
+        ? asked
+        : "Allow this action?";
+  const detail = plan ? rest.join("\n\n") : item?.payload.summary;
   useEffect(() => {
     if (!item) return;
     // A Deny pressed on the loading fallback carries into the card.
@@ -102,7 +113,12 @@ export function PermissionPrompt({
     if (pending) return;
     approvalHold.at = Date.now();
     setSent([item.id, true]);
-    void resolveApproval(item, decision).catch(() => setSent([item.id, false]));
+    void resolveApproval(item, decision).then(
+      () => {
+        if (switchMode) void leavePlanAccess(item.sessionId, decision);
+      },
+      () => setSent([item.id, false]),
+    );
   };
   const Detail = execute || item.payload.category === "extension" ? "pre" : "p";
   return (
@@ -149,9 +165,13 @@ export function PermissionPrompt({
           <span>Agent&apos;s reason:</span> {payload.reason}
         </p>
       ) : null}
-      <Detail className="acp-permission-prompt__detail">
-        {payload.summary}
-      </Detail>
+      {detail ? (
+        <Detail
+          className={`acp-permission-prompt__detail${plan ? " acp-permission-prompt__detail--plan" : ""}`}
+        >
+          {detail}
+        </Detail>
+      ) : null}
       {developer ? (
         <p className="acp-permission-prompt__risk">
           The agent gets allowlisted Chrome DevTools Protocol access to this
