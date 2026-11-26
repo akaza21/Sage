@@ -736,6 +736,32 @@ fn a_tasks_last_report_ends_it_and_one_for_an_unknown_task_is_ignored() {
 }
 
 #[test]
+fn many_foreground_tasks_do_not_make_a_running_background_task_forgotten() {
+    use sage_acp_protocol::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let mut feed = |frame: Value| bridge.inbound(frame).unwrap().session;
+    feed(
+        json!({"type":"system","subtype":"task_started","task_id":"b1",
+        "description":"Serve the docs","is_backgrounded":true}),
+    );
+    for n in 0..80 {
+        feed(
+            json!({"type":"system","subtype":"task_started","task_id":format!("f{n}"),
+            "description":"Run the build","is_backgrounded":false}),
+        );
+    }
+    let ended = feed(
+        json!({"type":"system","subtype":"task_notification","task_id":"b1",
+        "status":"completed","output_file":"","summary":"Exited"}),
+    );
+    let [SessionScopedEvent::Activity(row)] = &ended[..] else {
+        panic!("{ended:?}")
+    };
+    assert_eq!(row.state, SessionActivityState::Completed);
+}
+
+#[test]
 fn only_tasks_running_in_the_background_become_activities() {
     use sage_acp_protocol::intent::session_event::{SessionActivityState, SessionScopedEvent};
     let mut bridge = initialized();
