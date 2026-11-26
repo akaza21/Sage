@@ -12,7 +12,7 @@ import {
   ARCHIVE_UNDO_MS,
   pruneAgentRailInteractions,
   resetAgentRailInteractions,
-  setAgentRailApproval,
+  setAgentRailAttention,
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
@@ -34,12 +34,12 @@ it("admits the newest approvals at capacity and prunes closed chats", () => {
   const hook = renderHook(useAgentRailInteractions);
   act(() => {
     for (let index = 0; index < 65; index++)
-      setAgentRailApproval(`chat-${index}`, "approval");
+      setAgentRailAttention(`chat-${index}`, "approval");
   });
-  expect(hook.result.current.approval.size).toBe(64);
-  expect(hook.result.current.approval.has("chat-64")).toBe(true);
+  expect(hook.result.current.attention.size).toBe(64);
+  expect(hook.result.current.attention.has("chat-64")).toBe(true);
   act(() => pruneAgentRailInteractions(new Set(["chat-64"])));
-  expect([...hook.result.current.approval.keys()]).toEqual(["chat-64"]);
+  expect([...hook.result.current.attention.keys()]).toEqual(["chat-64"]);
 });
 
 it("removes archive Undo after a manual restore is observed", () => {

@@ -24,7 +24,7 @@ export function AgentTaskStatus({
   const label =
     sessionRailStatusLabel(
       resolvedStatus,
-      awaiting.has(chatId) || interactions.approval.has(chatId),
+      awaiting.has(chatId) || interactions.attention.has(chatId),
     ) || (resolvedStatus ? "Idle" : (snapshot?.statusLabel ?? "Idle"));
   return (
     <>
