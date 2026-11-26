@@ -23,8 +23,15 @@ impl SessionAccessMode {
         !self.needs_confirmation()
     }
 
-    /// Modes that run actions without asking beyond file edits require a confirmed token.
+    /// Only Full access runs every action unchecked, so only it takes a confirmed token; Auto
+    /// still has the harness judge each action and may be a default.
     pub fn needs_confirmation(self) -> bool {
+        matches!(self, Self::FullAccess)
+    }
+
+    /// Modes that run actions without asking beyond file edits; stepping down from one stops
+    /// the running turn.
+    pub fn runs_unasked(self) -> bool {
         matches!(self, Self::FullAccess | Self::Auto)
     }
 }

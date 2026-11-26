@@ -250,10 +250,10 @@ fn stepping_down_from_a_permissive_mode_cancels_the_running_turn() {
 fn a_chat_can_step_down_while_its_harness_is_unavailable() {
     use SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite};
     let registry = crate::acp::bindings::registry::BindingRegistry::default();
-    for mode in [Ask, AcceptEdits, Plan] {
+    for mode in [Ask, AcceptEdits, Plan, Auto] {
         assert!(chat::carries_mode(&registry, "claude-agent-acp", mode));
     }
-    for mode in [ReadOnly, WorkspaceWrite, FullAccess, Auto] {
+    for mode in [ReadOnly, WorkspaceWrite, FullAccess] {
         assert!(!chat::carries_mode(&registry, "claude-agent-acp", mode));
     }
     assert!(!chat::carries_mode(&registry, "unknown-harness", Ask));

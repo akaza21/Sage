@@ -1,7 +1,7 @@
 //! The access mode a prompt runs under, and each chat's own choice of it.
 //! A binding's stored default (Settings) covers every chat; a chat's choice
-//! applies to its session only. The permissive modes (Full access, Auto)
-//! take a confirmed two-step command and are never a default. A binding
+//! applies to its session only. Full access takes a confirmed two-step
+//! command and is never a default; Auto may be both chosen and a default. A binding
 //! that enforces access through harness session modes (Claude Code's
 //! permission modes) gets the matching mode selected before each prompt, so
 //! a mode the harness or an older runtime left behind never outlives the
@@ -263,7 +263,7 @@ fn record_turn_access(
     previous_mode: Option<&str>,
 ) {
     let switched = session_mode.is_some() && session_mode != previous_mode;
-    if mode.needs_confirmation() {
+    if mode.runs_unasked() {
         tracing::warn!(
             session_id = session_id.as_str(),
             binding_id,

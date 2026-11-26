@@ -115,7 +115,6 @@ fn advertised_claude_ask_emits_prompt_then_requires_permission() {
         capabilities[0].id,
         sage_acp_protocol::access_mode::SessionAccessMode::Ask
     );
-    assert!(capabilities[0].fallback);
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let egress = runtime

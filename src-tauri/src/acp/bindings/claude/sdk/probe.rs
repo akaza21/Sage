@@ -21,9 +21,12 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Startup output before the reply is small; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const REQUEST_ID: &str = "sage-model-probe";
+const SETTINGS_ID: &str = "sage-settings-probe";
 const MAX_EFFORT_LEVELS: usize = 16;
 const MAX_EFFORT_BYTES: usize = 64;
 const RETRY_AFTER: Duration = Duration::from_secs(60);
+/// How long the settings reply may trail the `initialize` one.
+const SETTINGS_TIMEOUT: Duration = Duration::from_secs(2);
 /// Only the probe's own request runs: no MCP server starts and no hook runs.
 const PROBE_ARGS: [&str; 3] = [
     "--strict-mcp-config",
@@ -32,7 +35,8 @@ const PROBE_ARGS: [&str; 3] = [
 ];
 
 enum Probed {
-    Models(Vec<ModelOption>),
+    /// The models, and the permission mode the person's settings start a session in.
+    Models(Vec<ModelOption>, Option<&'static str>),
     Failed(Instant),
 }
 
@@ -45,7 +49,7 @@ static PROBING: Mutex<()> = Mutex::new(());
 pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     let digest = binding.binding_digest();
     let ready = || match lock(&PROBED).as_ref() {
-        Some((key, Probed::Models(models))) if *key == digest => Some(Some(models.clone())),
+        Some((key, Probed::Models(models, _))) if *key == digest => Some(Some(models.clone())),
         Some((key, Probed::Failed(at))) if *key == digest && at.elapsed() < RETRY_AFTER => {
             Some(None)
         }
@@ -58,28 +62,48 @@ pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOpti
     if let Some(known) = ready() {
         return known;
     }
-    let models = binding
+    let probed = binding
         .revalidate()
         .ok()
         .and(binding.probe_executable())
         .and_then(|executable| run(executable, &launch_environment()))
-        .map(|reply| model_options(&reply))
-        .filter(|models| !models.is_empty());
+        .map(|(reply, settings)| (model_options(&reply), configured_mode(settings.as_ref())))
+        .filter(|(models, _)| !models.is_empty());
     *lock(&PROBED) = Some((
         digest,
-        models
-            .clone()
-            .map_or_else(|| Probed::Failed(Instant::now()), Probed::Models),
+        probed.clone().map_or_else(
+            || Probed::Failed(Instant::now()),
+            |(models, mode)| Probed::Models(models, mode),
+        ),
     ));
-    models
+    probed.map(|(models, _)| models)
 }
 
 pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     match lock(&PROBED).as_ref() {
-        Some((key, Probed::Models(models))) if *key == binding.binding_digest() => {
+        Some((key, Probed::Models(models, _))) if *key == binding.binding_digest() => {
             Some(models.clone())
         }
         _ => None,
+    }
+}
+
+/// The permission mode `permissions.defaultMode` in the person's settings names, once a probe
+/// has read it; `manual` is Claude Code's other name for `default`.
+pub(crate) fn known_start_mode(binding: &AdmittedClaudeSdkBinding) -> Option<&'static str> {
+    match lock(&PROBED).as_ref() {
+        Some((key, Probed::Models(_, mode))) if *key == binding.binding_digest() => *mode,
+        _ => None,
+    }
+}
+
+fn configured_mode(settings: Option<&Value>) -> Option<&'static str> {
+    match settings?
+        .pointer("/effective/permissions/defaultMode")?
+        .as_str()?
+    {
+        "manual" => Some("default"),
+        mode => crate::acp::bindings::claude::known_mode(mode),
     }
 }
 
@@ -98,7 +122,8 @@ fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
         .filter(|path| path.is_absolute() && path.is_dir())
 }
 
-fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value> {
+/// The `initialize` reply, and the `get_settings` reply when Claude Code gave one.
+fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value, Option<Value>)> {
     let mut command = Command::new(executable);
     command
         .args(SDK_ARGS)
@@ -117,25 +142,34 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value>
     let mut child = command.spawn().ok()?;
     let stdout = child.stdout.take();
     let mut stdin = child.stdin.take();
-    let (sender, receiver) = mpsc::sync_channel(1);
+    let (sender, receiver) = mpsc::sync_channel(2);
     if let Some(stdout) = stdout {
         thread::spawn(move || {
-            let _ = sender.send(read_reply(BufReader::new(stdout.take(PROBE_BYTES))));
+            let lines = BufReader::new(stdout.take(PROBE_BYTES)).lines();
+            for answer in lines.map_while(Result::ok).filter_map(|line| answer(&line)) {
+                let last = answer.0 == SETTINGS_ID;
+                if sender.send(answer).is_err() || last {
+                    break;
+                }
+            }
         });
     }
-    let request = json!({
-        "type": "control_request",
-        "request_id": REQUEST_ID,
-        "request": {"subtype": "initialize"},
-    });
+    let request = |id: &str, subtype: &str| json!({"type": "control_request", "request_id": id, "request": {"subtype": subtype}});
     let written = stdin.as_mut().is_some_and(|stdin| {
-        writeln!(stdin, "{request}")
+        writeln!(stdin, "{}", request(REQUEST_ID, "initialize"))
+            .and_then(|()| writeln!(stdin, "{}", request(SETTINGS_ID, "get_settings")))
             .and_then(|()| stdin.flush())
             .is_ok()
     });
+    // Claude Code answers in order; settings that come late or not at all stay unknown.
+    let next = |id: &str, wait| {
+        let (answered, reply) = receiver.recv_timeout(wait).ok()?;
+        (answered == id).then_some(reply).flatten()
+    };
     let reply = written
-        .then(|| receiver.recv_timeout(PROBE_TIMEOUT).ok().flatten())
-        .flatten();
+        .then(|| next(REQUEST_ID, PROBE_TIMEOUT))
+        .flatten()
+        .map(|reply| (reply, next(SETTINGS_ID, SETTINGS_TIMEOUT)));
     drop(stdin);
     let _ = child.kill();
     thread::spawn(move || {
@@ -144,17 +178,18 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value>
     reply
 }
 
-fn read_reply(reader: impl BufRead) -> Option<Value> {
-    for line in reader.lines() {
-        let Ok(value) = serde_json::from_str::<Value>(&line.ok()?) else {
-            continue;
-        };
-        let response = &value["response"];
-        if value["type"] == "control_response" && response["request_id"] == REQUEST_ID {
-            return (response["subtype"] == "success").then(|| response["response"].clone());
-        }
+/// An answer to one of the probe's requests: its id, and its reply when it succeeded.
+fn answer(line: &str) -> Option<(&'static str, Option<Value>)> {
+    let value = serde_json::from_str::<Value>(line).ok()?;
+    let response = &value["response"];
+    if value["type"] != "control_response" {
+        return None;
     }
-    None
+    let id = [REQUEST_ID, SETTINGS_ID]
+        .into_iter()
+        .find(|id| response["request_id"] == *id)?;
+    let reply = (response["subtype"] == "success").then(|| response["response"].clone());
+    Some((id, reply))
 }
 
 /// Claude Code's own `default` entry is the default, or else its first model.
@@ -236,23 +271,35 @@ mod tests {
     static PROBE_STATE: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn the_reply_is_found_among_startup_output_and_a_refusal_is_not_a_list() {
-        let output = format!(
-            "not json\n{}\n{}\n",
-            json!({"type": "system", "subtype": "init"}),
+    fn answers_are_told_apart_from_startup_output_and_a_refusal_has_no_reply() {
+        let line = |id: &str, subtype: &str| {
             json!({"type": "control_response", "response": {
-                "subtype": "success", "request_id": REQUEST_ID,
+                "subtype": subtype, "request_id": id,
                 "response": {"models": [{"value": "default"}]},
-            }}),
+            }})
+            .to_string()
+        };
+        let (id, reply) = answer(&line(REQUEST_ID, "success")).unwrap();
+        assert_eq!(id, REQUEST_ID);
+        assert_eq!(reply.unwrap()["models"][0]["value"], "default");
+        assert_eq!(
+            answer(&line(SETTINGS_ID, "error")),
+            Some((SETTINGS_ID, None))
         );
-        let reply = read_reply(output.as_bytes()).unwrap();
-        assert_eq!(reply["models"][0]["value"], "default");
-        let refused = json!({"type": "control_response", "response": {
-            "subtype": "error", "request_id": REQUEST_ID, "error": "no",
-        }})
-        .to_string();
-        assert!(read_reply(refused.as_bytes()).is_none());
-        assert!(read_reply(&b"{}\n"[..]).is_none());
+        assert!(answer(&line("other", "success")).is_none());
+        assert!(answer(&json!({"type": "system", "subtype": "init"}).to_string()).is_none());
+        assert!(answer("not json").is_none());
+    }
+
+    #[test]
+    fn the_settings_default_mode_names_a_known_mode_or_nothing() {
+        let settings = |mode: &str| json!({"effective": {"permissions": {"defaultMode": mode}}});
+        assert_eq!(configured_mode(Some(&settings("auto"))), Some("auto"));
+        assert_eq!(configured_mode(Some(&settings("manual"))), Some("default"));
+        assert_eq!(configured_mode(Some(&settings("plan"))), Some("plan"));
+        assert_eq!(configured_mode(Some(&settings("someFutureMode"))), None);
+        assert_eq!(configured_mode(Some(&json!({"effective": {}}))), None);
+        assert_eq!(configured_mode(None), None);
     }
 
     #[test]
@@ -368,7 +415,7 @@ mod tests {
         sage_test_support::test_executable::write(
             &script,
             format!(
-                "#!/bin/sh\nread line\necho '{}'\nsleep 30\n",
+                "#!/bin/sh\nread line\nread line\necho '{}'\nsleep 30\n",
                 json!({"type": "control_response", "response": {
                     "subtype": "success", "request_id": REQUEST_ID,
                     "response": {"models": [{"value": "default", "displayName": "Default"}]},
@@ -382,8 +429,9 @@ mod tests {
             (OsString::from("PATH"), OsString::from("/usr/bin:/bin")),
         ];
         let started = std::time::Instant::now();
-        let reply = run(&script, &environment).unwrap();
+        let (reply, settings) = run(&script, &environment).unwrap();
         assert_eq!(reply["models"][0]["value"], "default");
+        assert!(settings.is_none(), "unanswered settings stay unknown");
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(run(&directory.join("missing"), &environment).is_none());
         let _ = std::fs::remove_dir_all(&directory);

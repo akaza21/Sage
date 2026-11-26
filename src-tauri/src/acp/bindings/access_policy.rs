@@ -19,7 +19,7 @@ pub(crate) struct NativeAccessMode {
     pub(crate) session_mode: &'static str,
 }
 
-/// The curated binding's native access modes, first being its default.
+/// The curated binding's native access modes.
 fn native_access_modes(binding: &str) -> &'static [NativeAccessMode] {
     match binding {
         "claude-agent-acp" => super::claude::CLAUDE_ACCESS_MODES,
@@ -36,6 +36,36 @@ pub(crate) fn session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'s
 }
 
 pub(crate) fn access_modes(
+    binding: &str,
+    version: &str,
+    characterised: bool,
+) -> Vec<AccessModeCapability> {
+    starting_access_modes(binding, version, characterised, None)
+}
+
+/// `start_mode` is the harness session mode the person's own harness settings start a session
+/// in. It is the default when the binding lists it as a mode that may be a default.
+pub(crate) fn starting_access_modes(
+    binding: &str,
+    version: &str,
+    characterised: bool,
+    start_mode: Option<&str>,
+) -> Vec<AccessModeCapability> {
+    let mut modes = binding_access_modes(binding, version, characterised);
+    let configured = |mode: &AccessModeCapability| {
+        start_mode.is_some()
+            && mode.session_mode_id.as_deref() == start_mode
+            && mode.id.is_default_eligible()
+    };
+    if let Some(start) = modes.iter().position(configured) {
+        for (index, mode) in modes.iter_mut().enumerate() {
+            mode.fallback = index == start;
+        }
+    }
+    modes
+}
+
+fn binding_access_modes(
     binding: &str,
     version: &str,
     characterised: bool,
@@ -59,6 +89,11 @@ pub(crate) fn admitted_modes(
     use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
     let native = native_access_modes(binding);
     if !native.is_empty() {
+        // A harness that offers Auto starts new chats in it; any other starts in its first mode.
+        let default = native
+            .iter()
+            .position(|mode| mode.id == SessionAccessMode::Auto)
+            .unwrap_or(0);
         return native
             .iter()
             .enumerate()
@@ -66,7 +101,7 @@ pub(crate) fn admitted_modes(
                 id: mode.id,
                 label: mode.label.into(),
                 description: mode.description.into(),
-                fallback: index == 0 && mode.id.is_default_eligible(),
+                fallback: index == default && mode.id.is_default_eligible(),
                 session_mode_id: Some(mode.session_mode.into()),
             })
             .collect();
@@ -170,7 +205,13 @@ pub(crate) fn effective_mode(
     requested: Option<SessionAccessMode>,
     characterised: bool,
 ) -> Option<SessionAccessMode> {
-    let admitted = access_modes(binding, version, characterised);
+    effective_among(&access_modes(binding, version, characterised), requested)
+}
+
+fn effective_among(
+    admitted: &[AccessModeCapability],
+    requested: Option<SessionAccessMode>,
+) -> Option<SessionAccessMode> {
     admitted
         .iter()
         .find(|mode| Some(mode.id) == requested)
@@ -190,12 +231,24 @@ pub(crate) fn turn_mode(
     chat: Option<SessionAccessMode>,
     default: Option<SessionAccessMode>,
 ) -> Option<SessionAccessMode> {
+    turn_among(
+        &access_modes(binding, version, characterised),
+        chat,
+        default,
+    )
+}
+
+fn turn_among(
+    admitted: &[AccessModeCapability],
+    chat: Option<SessionAccessMode>,
+    default: Option<SessionAccessMode>,
+) -> Option<SessionAccessMode> {
     if let Some(chat) = chat
-        && effective_mode(binding, version, Some(chat), characterised) == Some(chat)
+        && effective_among(admitted, Some(chat)) == Some(chat)
     {
         return Some(chat);
     }
-    effective_mode(binding, version, default, characterised)
+    effective_among(admitted, default)
 }
 
 pub(crate) fn turn_mode_for_binding(
@@ -206,13 +259,13 @@ pub(crate) fn turn_mode_for_binding(
 ) -> Option<SessionAccessMode> {
     let record = registry.route(binding).ok()?;
     let bound = record.bound_build()?;
-    turn_mode(
+    let admitted = starting_access_modes(
         record.access_policy_binding_id(),
         &bound.reported_version,
         bound.characterisation.runs_tested_features(),
-        chat,
-        default,
-    )
+        bound.start_mode,
+    );
+    turn_among(&admitted, chat, default)
 }
 
 pub(crate) fn offers_mode(
@@ -318,10 +371,11 @@ mod tests {
     }
 
     #[test]
-    fn each_binding_defaults_to_its_safest_admitted_policy() {
-        use SessionAccessMode::{Ask, ReadOnly};
+    fn a_binding_offering_auto_defaults_to_it_and_every_other_to_its_safest_mode() {
+        use SessionAccessMode::{Auto, ReadOnly};
         for (binding, expected) in [
-            ("claude-agent-acp", Some(Ask)),
+            ("claude-agent-acp", Some(Auto)),
+            ("claude-code-sdk", Some(Auto)),
             ("codex-app-server", Some(ReadOnly)),
             ("opencode-acp", Some(ReadOnly)),
             ("pi-rpc", Some(ReadOnly)),
@@ -395,7 +449,12 @@ mod tests {
                 assert!(!mode["label"].as_str().unwrap().is_empty());
                 assert!(!mode["description"].as_str().unwrap().is_empty());
                 assert_ne!(mode["label"], "Approve for me");
-                assert_eq!(mode["fallback"], mode["id"] == modes[0]);
+                let default = if modes.contains(&"auto") {
+                    "auto"
+                } else {
+                    modes[0]
+                };
+                assert_eq!(mode["fallback"], mode["id"] == default, "{binding}");
                 if mode["id"] == "fullAccess" {
                     assert_eq!(mode["sessionModeId"], "bypassPermissions");
                     assert_eq!(mode["fallback"], false);
@@ -489,7 +548,8 @@ mod tests {
                 (json!("auto"), json!("auto")),
             ]
         );
-        assert!(Auto.needs_confirmation());
+        assert!(!Auto.needs_confirmation() && Auto.is_default_eligible());
+        assert!(FullAccess.needs_confirmation() && !FullAccess.is_default_eligible());
         assert!(lists_mode(&registry, "claude-code-sdk", AcceptEdits));
         assert!(lists_mode(&registry, "claude-code-sdk", Plan));
         assert!(lists_mode(&registry, "claude-code-sdk", Ask));
@@ -513,7 +573,7 @@ mod tests {
         assert_eq!(claude(Some(FullAccess), Some(Plan)), Some(FullAccess));
         assert_eq!(claude(Some(Auto), Some(AcceptEdits)), Some(Auto));
         assert_eq!(claude(Some(Plan), Some(AcceptEdits)), Some(Plan));
-        assert_eq!(claude(None, None), Some(Ask));
+        assert_eq!(claude(None, None), Some(Auto));
         assert_eq!(claude(None, Some(AcceptEdits)), Some(AcceptEdits));
         assert_eq!(claude(None, Some(ReadOnly)), None);
         assert_eq!(claude(Some(WorkspaceWrite), Some(Plan)), Some(Plan));
@@ -535,6 +595,46 @@ mod tests {
             turn_mode("opencode-acp", "1", true, Some(Ask), Some(ReadOnly)),
             Some(Ask)
         );
+    }
+
+    #[test]
+    fn the_harness_settings_start_mode_is_the_default_where_the_binding_lists_it() {
+        use SessionAccessMode::{AcceptEdits, Ask, Auto, Plan, ReadOnly, WorkspaceWrite};
+        let default = |binding, version, start| {
+            let modes = starting_access_modes(binding, version, true, start);
+            let defaults: Vec<_> = modes.iter().filter(|mode| mode.fallback).collect();
+            assert!(defaults.len() <= 1, "{binding}");
+            defaults.first().map(|mode| mode.id)
+        };
+        let claude = |start| default("claude-code-sdk", "2.1.320", start);
+        assert_eq!(claude(None), Some(Auto));
+        assert_eq!(claude(Some("plan")), Some(Plan));
+        assert_eq!(claude(Some("default")), Some(Ask));
+        // A start mode the picker lacks or that cannot be a default leaves Auto.
+        assert_eq!(claude(Some("bypassPermissions")), Some(Auto));
+        assert_eq!(claude(Some("dontAsk")), Some(Auto));
+        // Codex and Pi start where they did before, whatever a start mode names.
+        for start in [None, Some("plan"), Some("auto")] {
+            assert_eq!(
+                default("codex-app-server", PINNED_CODEX_VERSION, start),
+                Some(ReadOnly)
+            );
+            assert_eq!(default("pi-rpc", "1", start), Some(ReadOnly));
+            assert_eq!(default("opencode-acp", "1", start), Some(ReadOnly));
+        }
+        // The chat's choice, then the stored default, then the start mode.
+        let admitted = starting_access_modes("claude-code-sdk", "2.1.320", true, Some("plan"));
+        assert_eq!(turn_among(&admitted, None, None), Some(Plan));
+        assert_eq!(
+            turn_among(&admitted, None, Some(AcceptEdits)),
+            Some(AcceptEdits)
+        );
+        assert_eq!(
+            turn_among(&admitted, Some(Auto), Some(AcceptEdits)),
+            Some(Auto)
+        );
+        assert_eq!(turn_among(&admitted, None, Some(WorkspaceWrite)), None);
+        assert_eq!(turn_among(&admitted, Some(Ask), None), Some(Ask));
     }
 
     #[test]

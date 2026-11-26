@@ -16,7 +16,7 @@ pub(crate) struct ChatAccessChange {
 
 /// A mode that needs a confirmation must be offered by the bound build; any
 /// other only has to be in the binding's own table, so a chat can always step
-/// down from Full access or Auto, even while its harness is unavailable.
+/// down from Full access, even while its harness is unavailable.
 pub(super) fn carries_mode(
     registry: &crate::acp::bindings::registry::BindingRegistry,
     binding_id: &str,
@@ -81,7 +81,7 @@ pub(crate) async fn set_chat_access(
         .settings
         .set_chat_access(session, request.mode, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
-    let stepped_down = previous.is_some_and(SessionAccessMode::needs_confirmation);
+    let stepped_down = previous.is_some_and(SessionAccessMode::runs_unasked);
     let transition = state.project_transitions.lock().await;
     let Ok(generation) = ProjectGeneration::new(*transition) else {
         return Ok(ChatAccessChange::default());
@@ -272,7 +272,7 @@ pub(super) async fn grant_confirmed(
         return Err(confirmation_missing());
     }
     let label = native_confirm::session_label(state, &request.session_id);
-    let text = native_confirm::dialog_text(request.mode, &label);
+    let text = native_confirm::dialog_text(&label);
     if let Err(refusal) = native_confirm::ask(gate, dialog, text, timing).await {
         tracing::info!(
             session_id = session,

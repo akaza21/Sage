@@ -10,11 +10,11 @@ use sage_acp_protocol::access_mode::SessionAccessMode;
 pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
 
 /// The stored defaults admit every mode a new chat may start in. Full access
-/// is granted per chat session (`full_access.rs`) and is never a default, so
+/// is granted per chat session (`chat_access.rs`) and is never a default, so
 /// the schema itself refuses it.
 macro_rules! default_modes {
     () => {
-        "'readOnly','ask','workspaceWrite','acceptEdits','plan'"
+        "'readOnly','ask','workspaceWrite','acceptEdits','plan','auto'"
     };
 }
 const DEFAULT_MODES: &str = default_modes!();
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn no_mode_that_needs_a_confirmation_is_a_stored_default() {
         let store = SettingsStore::in_memory().unwrap();
-        for (mode, id) in [(FullAccess, "fullAccess"), (Auto, "auto")] {
+        for (mode, id) in [(FullAccess, "fullAccess")] {
             assert!(!mode.is_default_eligible());
             let modes = BTreeMap::from([("claude-agent-acp".into(), mode)]);
             assert!(store.set_session_access_modes(&modes).is_err());
@@ -216,6 +216,7 @@ mod tests {
         }
         let modes = BTreeMap::from([
             ("claude-agent-acp".into(), AcceptEdits),
+            ("claude-code-sdk".into(), Auto),
             ("other".into(), Plan),
         ]);
         assert_eq!(store.set_session_access_modes(&modes).unwrap(), modes);
@@ -255,23 +256,26 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_auto_default_is_dropped_on_open() {
+    fn a_table_without_auto_is_widened_and_an_auto_default_is_kept() {
         let directory = std::env::temp_dir().join(format!("sage-access-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("settings.sqlite");
         rusqlite::Connection::open(&path)
             .unwrap()
             .execute_batch(
-                "CREATE TABLE binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite','acceptEdits','plan','auto'))) STRICT;
-                 INSERT INTO binding_access_modes VALUES ('claude-agent-acp','auto');
+                "CREATE TABLE binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite','acceptEdits','plan'))) STRICT;
                  INSERT INTO binding_access_modes VALUES ('codex-app-server','workspaceWrite');",
             )
             .unwrap();
         let store = SettingsStore::open(&path).unwrap();
-        assert_eq!(
-            store.session_access_modes().unwrap(),
-            BTreeMap::from([("codex-app-server".into(), WorkspaceWrite)])
-        );
+        let modes = BTreeMap::from([
+            ("claude-code-sdk".into(), Auto),
+            ("codex-app-server".into(), WorkspaceWrite),
+        ]);
+        store.set_session_access_modes(&modes).unwrap();
+        drop(store);
+        let store = SettingsStore::open(&path).unwrap();
+        assert_eq!(store.session_access_modes().unwrap(), modes);
         drop(store);
         std::fs::remove_dir_all(directory).unwrap();
     }
