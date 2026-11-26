@@ -2414,9 +2414,12 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
 
-    expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toBeEnabled();
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
+    expect(composer).toBeEnabled();
+    expect(composer).not.toHaveAttribute(
+      "placeholder",
+      "This session cannot accept prompts.",
+    );
     expect(
       screen.queryByText(
         "The selected harness cannot accept prompts in this session.",

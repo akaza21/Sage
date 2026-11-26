@@ -198,17 +198,18 @@ export function useChatSurfaceModel({
       currentSession?.runtimeEpoch &&
       !currentSession.capabilities.closeSession,
     );
+    // A created session has not started (or its slow first start was
+    // abandoned, leaving the pending capabilities); a send starts it.
+    const sessionRefusesPrompts =
+      model.selectedSession?.capabilities.prompt === false &&
+      model.selectedSession.state !== "created";
     const canPrompt = model.useNativeAcp
       ? Boolean(
           page &&
           model.harnessAvailable &&
           model.bindingId &&
           discoveryPhase === "ready" &&
-          // A created session has not started (or its slow first start was
-          // abandoned, leaving the pending capabilities); a send starts it.
-          (!model.selectedSession ||
-            model.selectedSession.capabilities.prompt ||
-            model.selectedSession.state === "created"),
+          !sessionRefusesPrompts,
         )
       : model.harnessAvailable;
     const usage =
@@ -221,6 +222,7 @@ export function useChatSurfaceModel({
       canCloseSession,
       canEndSession,
       canPrompt,
+      sessionRefusesPrompts,
       usage,
     };
   }, [
@@ -237,6 +239,7 @@ export function useChatSurfaceModel({
     canCloseSession,
     canEndSession,
     canPrompt: protocolCanPrompt,
+    sessionRefusesPrompts,
     usage,
   } = turnEligibility;
   const canPrompt = protocolCanPrompt && !accessReason;
@@ -285,10 +288,7 @@ export function useChatSurfaceModel({
   // The session's own refusal: it lacks prompts and no other reason applies,
   // so a session or launch error explains it; a local reason never hides.
   const sessionPromptUnavailable =
-    !reason &&
-    !queueAvailable &&
-    model.selectedSession?.capabilities.prompt === false &&
-    model.selectedSession.state !== "created";
+    !reason && !queueAvailable && sessionRefusesPrompts;
   const submit = useCallback(
     // The composer names the batch it staged; a queued message never does.
     (event: FormEvent, stagedRevision?: string | null) => {
