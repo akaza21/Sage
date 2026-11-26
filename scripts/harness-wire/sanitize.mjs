@@ -200,7 +200,10 @@ function joinSplitRuns(records, text) {
   records.forEach((record, at) => {
     // Content is numbered within a message, so a message start (Pi's, or a
     // stream-json stream event's) opens new streams.
-    if (record.frame?.type === "message_start" || record.frame?.event?.type === "message_start") {
+    if (
+      record.frame?.type === "message_start" ||
+      record.frame?.event?.type === "message_start"
+    ) {
       messages += 1;
     }
     const slot = record.direction === "in" ? deltaSlot(record.frame) : null;
