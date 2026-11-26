@@ -76,7 +76,7 @@ test("a + menu taller than a short window scrolls with its bar shown only on hov
   const hidden = await thumb(menu);
   expect(hidden).toBe("rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)");
   await menu.hover();
-  expect(await thumb(menu)).not.toBe(hidden);
+  expect(await thumb(menu)).toBe("rgb(58, 58, 58) rgba(0, 0, 0, 0)");
 });
 
 test("the / picker clamps a long description and keeps it whole for assistive tech", async ({

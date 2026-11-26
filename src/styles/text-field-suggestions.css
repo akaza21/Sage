@@ -48,6 +48,13 @@
   margin-left: var(--space-1);
 }
 
+/* A mention's description is its folder path: one line, never split. */
+.composer-mention-menu .menu-description {
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .text-field-suggestions__footer button {
   margin-left: var(--space-2);
   padding: 0;
