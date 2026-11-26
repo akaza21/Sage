@@ -48,7 +48,11 @@ fn owned_stage(file_name: &str) -> bool {
         && Uuid::parse_str(nonce).is_ok_and(|id| id.to_string() == nonce)
 }
 
-pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppResult<()> {
+/// Drops pending rows, sweeps owned orphans and stage files, and returns how
+/// many live rows point at a missing or corrupt file. Those rows stay: every
+/// read verifies its bytes and fails closed, so a damaged store (a copied
+/// profile without `image-artifacts`, say) degrades instead of blocking startup.
+pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppResult<usize> {
     validate_root(root)?;
     connection
         .execute(
@@ -63,6 +67,7 @@ pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppRes
         )
         .db()?;
     let mut rows = statement.query([]).db()?;
+    let mut damaged = 0;
     while let Some(row) = rows.next().db()? {
         let id: String = row.get(0).db()?;
         let lifecycle: String = row.get(1).db()?;
@@ -70,20 +75,24 @@ pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppRes
         let full_sha256: String = row.get(3).db()?;
         let thumbnail_bytes: i64 = row.get(4).db()?;
         let thumbnail_sha256: String = row.get(5).db()?;
-        if lifecycle != "retired" {
-            verify_file(
+        let full_ok = lifecycle == "retired"
+            || verify_file(
                 &full_path(root, &id),
                 full_bytes,
                 &full_sha256,
                 sage_core::limits::STORED_IMAGE_BYTES as u64,
-            )?;
-        }
-        verify_file(
+            )
+            .is_ok();
+        let thumb_ok = verify_file(
             &thumb_path(root, &id),
             thumbnail_bytes,
             &thumbnail_sha256,
             256 * 1024,
-        )?;
+        )
+        .is_ok();
+        if !(full_ok && thumb_ok) {
+            damaged += 1;
+        }
     }
     drop(rows);
     drop(statement);
@@ -110,5 +119,5 @@ pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppRes
             remove_image_file(&entry.path())?;
         }
     }
-    Ok(())
+    Ok(damaged)
 }

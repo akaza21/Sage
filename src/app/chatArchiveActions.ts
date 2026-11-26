@@ -329,12 +329,13 @@ export function createChatArchiveActions(set: Set, get: Get) {
 
 /**
  * Bulk cleanup in one native transition: `delete_archived_chats` deletes a
- * Project's archived Chats, `remove_project` the Project with all its Chats.
+ * Project's archived Chats, `remove_project` the Project with all its Chats,
+ * `delete_stale_chats` every Chat last used before a cutoff.
  * Permanent; callers confirm first.
  */
 export async function cleanUpProjectData(
-  command: "delete_archived_chats" | "remove_project",
-  projectId: string,
+  command: "delete_archived_chats" | "remove_project" | "delete_stale_chats",
+  target: string | { cutoff: number },
 ) {
   const { setState: set, getState: get } = useWorkbenchStore;
   if (get().projectTransitioning) return false;
@@ -355,12 +356,13 @@ export async function cleanUpProjectData(
           ) => Promise<ProjectTransitionResult>;
         }
       ).cleanUp;
-      const result = fixture
-        ? await fixture(command, projectId, expectedTransitionEpoch)
-        : await invokeNative<ProjectTransitionResult>(command, {
-            projectId,
-            expectedTransitionEpoch,
-          });
+      const result =
+        fixture && typeof target === "string"
+          ? await fixture(command, target, expectedTransitionEpoch)
+          : await invokeNative<ProjectTransitionResult>(command, {
+              ...(typeof target === "string" ? { projectId: target } : target),
+              expectedTransitionEpoch,
+            });
       // A cleanup that stopped part way still commits what it removed.
       if (result.committed) stopped = result.recoveryError;
       return result;

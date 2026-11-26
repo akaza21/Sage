@@ -39,11 +39,22 @@ fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppR
         tracing::warn!(?error, "temporary Chat cleanup will retry later");
     }
     crate::private_chat::cleanup_empty(&database);
+    // Image artifacts degrade, never block startup: reads verify each file
+    // and fail closed, so a missing, unreadable or damaged store only costs
+    // those images.
     if let Ok(root) = database.image_artifact_root() {
-        sage_images::reconcile_image_artifacts(&database.connection(), root)?;
+        match sage_images::reconcile_image_artifacts(&database.connection(), root) {
+            Ok(0) => {}
+            Ok(damaged) => tracing::warn!(damaged, "image artifacts missing or corrupt"),
+            Err(error) => tracing::warn!(?error, "image artifact reconcile skipped"),
+        }
     }
     Ok(database)
 }
+
+#[cfg(test)]
+#[path = "database_image_tests.rs"]
+mod image_tests;
 
 #[cfg(test)]
 mod tests {

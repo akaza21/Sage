@@ -328,6 +328,7 @@ it("shows T3 Code's settings sections in its order, plus Sage's Passwords next t
     "Browser",
     "Passwords",
     "Archived chats",
+    "Data",
   ]);
   expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
 });
@@ -406,14 +407,14 @@ it("moves between sections with the arrow keys, wrapping at either end", () => {
   });
   expect(appearance).toHaveFocus();
   fireEvent.keyDown(appearance, { key: "ArrowUp" });
-  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+  expect(screen.getByRole("button", { name: "Data" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Data" }), {
     key: "ArrowDown",
   });
   expect(appearance).toHaveFocus();
   fireEvent.keyDown(appearance, { key: "End" });
-  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+  expect(screen.getByRole("button", { name: "Data" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Data" }), {
     key: "Home",
   });
   expect(appearance).toHaveFocus();
