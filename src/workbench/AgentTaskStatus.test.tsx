@@ -5,7 +5,7 @@ import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
 import { AgentTaskStatus } from "./AgentTaskStatus";
 import {
   resetAgentRailInteractions,
-  setAgentRailAttention,
+  setAgentRailApproval,
 } from "./agentRailInteractions";
 import { useSideChatState } from "./sideChatState";
 
@@ -41,7 +41,7 @@ it("uses the rail's parent status while a side chat runs", () => {
 });
 
 it("uses the rail's approval status before the turn reports waiting", () => {
-  setAgentRailAttention("chat-1", "approval");
+  setAgentRailApproval("chat-1", "approval");
   render(
     <AgentTaskStatus
       chatId="chat-1"

@@ -81,7 +81,7 @@ it("updates an unmounted background chat on completion and approval without acti
     for (let index = 0; index < 100; index += 1) notify(event);
   });
   await waitFor(() =>
-    expect(hook.result.current.attention.get("chat-1")).toBe("approval"),
+    expect(hook.result.current.approval.get("chat-1")).toBe("approval"),
   );
   expect(load).toHaveBeenCalledTimes(3);
   current = status("completed");
@@ -89,7 +89,7 @@ it("updates an unmounted background chat on completion and approval without acti
   await waitFor(() =>
     expect(useWorkbenchStore.getState().tabs[0].status).toBe("complete"),
   );
-  expect(hook.result.current.attention.has("chat-1")).toBe(false);
+  expect(hook.result.current.approval.has("chat-1")).toBe(false);
   expect(useWorkbenchStore.getState().activeTabId).toBe("chat-2");
   hook.unmount();
   expect(dispose).toHaveBeenCalledOnce();

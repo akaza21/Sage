@@ -199,7 +199,7 @@ export function ProjectChatNavigation({
             finishedAt: tab.finishedAt,
             readThrough: readMarks.get(tab.id),
           });
-        const attention = interactions.attention.get(tab.id);
+        const attention = interactions.approval.get(tab.id);
         const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
