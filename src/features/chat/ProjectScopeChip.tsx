@@ -21,6 +21,7 @@ const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
   () => import("./CreateChatProjectDialog"),
 );
 type ProjectScopeVariant = "inline" | "caption" | "menuItem";
+const CLEAR_LABEL = "Remove project from this chat";
 
 export function ProjectScopeChip({
   projectName,
@@ -158,8 +159,8 @@ export function ProjectScopeChip({
         <button
           type="button"
           className="project-scope__clear"
-          aria-label="Remove project from this chat"
-          title={NO_PROJECT_ACTION.label}
+          aria-label={CLEAR_LABEL}
+          title={CLEAR_LABEL}
           onClick={() => choose(null)}
         >
           <X size={12} />

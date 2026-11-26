@@ -416,6 +416,57 @@ async function installChrome(page: Page, home: boolean) {
   }, home);
 }
 
+test("each project chip shows its clear button right after the name", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1380, height: 880 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await installChrome(page, true);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    await useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id);
+  });
+  const home = page.getByRole("region", { name: "New chat", exact: true });
+  // The name is the caption text on the home screen and the shrink-wrapped
+  // trigger in the strip.
+  for (const [chip, label] of [
+    [home.locator(".project-scope--caption"), ".project-scope__caption"],
+    [
+      page
+        .getByRole("group", { name: "Chat location" })
+        .locator(".project-scope"),
+      ".project-scope__picker",
+    ],
+  ] as const) {
+    await page.mouse.move(0, 0);
+    const name = (await chip.locator(label).boundingBox())!;
+    await chip.hover();
+    const clear = chip.getByRole("button", {
+      name: "Remove project from this chat",
+    });
+    await expect(clear).toBeVisible();
+    const box = (await clear.boundingBox())!;
+    expect(box.x - (name.x + name.width)).toBeGreaterThanOrEqual(0);
+    expect(box.x - (name.x + name.width)).toBeLessThanOrEqual(2);
+    // Showing the button moves nothing.
+    expect(await chip.locator(label).boundingBox()).toEqual(name);
+    await expect(clear).toHaveAttribute(
+      "title",
+      "Remove project from this chat",
+    );
+  }
+  const heading = (await home.getByRole("heading").boundingBox())!;
+  const caption = (await home
+    .locator(".project-scope__caption")
+    .boundingBox())!;
+  expect(
+    Math.abs(caption.x + caption.width / 2 - (heading.x + heading.width / 2)),
+  ).toBeLessThanOrEqual(1);
+});
+
 test("a new chat's location sits on a tab joined to the top of its composer", async ({
   page,
 }) => {
