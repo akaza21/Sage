@@ -14,6 +14,7 @@ pub(crate) const REVIEW_ACCESS_REFUSED: &str = "This review was not started beca
 /// Why the session stopped when a harness keeps running a Turn Sage refused.
 pub(crate) fn refused_turn_notice() -> Result<SessionNotice, AdapterPumpError> {
     Ok(SessionNotice {
+        usage_limit: None,
         identity: None,
         level: SessionNoticeLevel::Error,
         diagnostic: false,

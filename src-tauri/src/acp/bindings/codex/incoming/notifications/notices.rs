@@ -358,6 +358,7 @@ pub(super) fn notice(
 ) -> Result<SessionScopedEvent, IngressError> {
     let message = clip(&message, SESSION_NOTICE_TEXT_BYTES);
     Ok(SessionScopedEvent::Notice(SessionNotice {
+        usage_limit: None,
         identity: None,
         diagnostic: false,
         level,

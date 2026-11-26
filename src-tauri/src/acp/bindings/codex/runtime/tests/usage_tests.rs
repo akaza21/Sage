@@ -187,3 +187,25 @@ fn a_chatgpt_sign_in_lifts_an_earlier_refusal() {
         assert_eq!(runtime.usage().unwrap().state(), state);
     }
 }
+
+#[test]
+fn a_pushed_limit_near_its_end_reaches_the_bound_session_as_a_usage_limit() {
+    use sage_acp_protocol::intent::session_event::{SessionNoticeLevel, SessionScopedEvent};
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let batch = runtime.ingest(&update("codex", 91), &Mapper).unwrap();
+    let [AdapterEvent::Session { id, event }] = batch.events() else {
+        panic!("one session event: {:?}", batch.events());
+    };
+    assert_eq!(id.external_id.as_str(), "thread-1");
+    let SessionScopedEvent::Notice(notice) = event else {
+        panic!("a notice: {event:?}");
+    };
+    assert_eq!(notice.level, SessionNoticeLevel::Warning);
+    let usage = notice.usage_limit.as_ref().unwrap();
+    assert_eq!(
+        (usage.used_percent, usage.window_minutes, usage.resets_at),
+        (Some(91), Some(300), Some(1_762_900_000))
+    );
+    assert_eq!(used(&runtime), vec![91]);
+}

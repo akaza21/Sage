@@ -309,6 +309,7 @@ impl PiRuntime {
         };
         Ok(
             self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                usage_limit: None,
                 identity: None,
                 diagnostic: false,
                 level: SessionNoticeLevel::Warning,

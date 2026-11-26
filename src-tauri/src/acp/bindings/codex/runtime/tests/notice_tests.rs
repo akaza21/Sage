@@ -46,6 +46,7 @@ fn notice(
     diagnostic: bool,
 ) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        usage_limit: None,
         identity: None,
         diagnostic,
         level,

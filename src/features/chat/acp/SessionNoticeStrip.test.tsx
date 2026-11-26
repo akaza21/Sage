@@ -57,7 +57,7 @@ describe("SessionNoticeStrip", () => {
       expect(screen.queryByRole("button", { name: "Dismiss all" })).toBeNull();
     },
   );
-  it("shows one highest-severity notice per problem identity across wording and sources", () => {
+  it("shows one notice per problem identity, the latest, across wording and sources", () => {
     const decoded = safeSessionNotices([
       {
         identity: "mcp-start:calendar",

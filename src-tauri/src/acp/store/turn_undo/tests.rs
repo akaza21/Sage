@@ -154,6 +154,7 @@ fn a_session_notice_records_once_on_the_running_epoch_of_a_session_holding_an_un
         session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),
         runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
         notice: sage_acp_protocol::intent::session_event::SessionNotice {
+            usage_limit: None,
             identity: None,
             level: sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error,
             diagnostic: false,

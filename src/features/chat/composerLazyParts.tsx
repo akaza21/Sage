@@ -1,5 +1,10 @@
+import type * as LocationChunk from "./ComposerLocationStrip";
 import type * as SlashChunk from "./ComposerSlashController";
 import { lazyParts } from "./lazyParts";
+
+export const LocationPart = lazyParts<typeof LocationChunk>(
+  () => import("./ComposerLocationStrip"),
+);
 
 /** The `/` controller facade: composer commands and a chat's first send. */
 export const SlashPart = lazyParts<
