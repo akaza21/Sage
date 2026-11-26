@@ -51,13 +51,16 @@ export default function ComposerModelMenu({
       className="composer__popover composer__model-menu composer-model-picker"
       ariaLabel="Select model"
     >
-      <ChatModelPicker
-        listboxId={panelId}
-        models={choices}
-        selectedId={selectedId}
-        disabled={disabled}
-        onSelect={onSelect}
-      />
+      {/* Without listed models the popover holds only the thinking level. */}
+      {choices.length > 0 ? (
+        <ChatModelPicker
+          listboxId={panelId}
+          models={choices}
+          selectedId={selectedId}
+          disabled={disabled}
+          onSelect={onSelect}
+        />
+      ) : null}
       {contextWindow ? (
         <span className="composer__capacity">{contextWindow} context</span>
       ) : null}

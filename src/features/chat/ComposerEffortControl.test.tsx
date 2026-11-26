@@ -292,4 +292,38 @@ describe("Composer model and thinking level", () => {
     expect(screen.getAllByRole("option")).toHaveLength(2);
     expect(screen.queryByRole("slider")).toBeNull();
   });
+
+  it.each(["Escape", "Tab"])(
+    "returns focus to the model chip on %s while a level change is pending",
+    async (key) => {
+      const { rerender, Host } = controls(effort("effort", ["low", "high"]));
+      await openPopover();
+      rerender(<Host pending />);
+      const slider = screen.getByRole("slider");
+      slider.focus();
+      fireEvent.keyDown(slider, { key });
+      await act(async () => {});
+      expect(screen.queryByRole("slider")).toBeNull();
+      expect(screen.getByRole("button", { name: "Model" })).toHaveFocus();
+    },
+  );
+
+  it("describes the chip with the level it shows, not a stale caller label", () => {
+    controls(effort("effort", ["low", "high"], "low"));
+    expect(
+      screen.getByRole("button", { name: "Model" }),
+    ).toHaveAccessibleDescription("Actual model Low");
+  });
+
+  it("opens the level while the model list is still loading", async () => {
+    const { rerender, Host } = controls(effort("effort", ["low", "high"]));
+    rerender(<Host pending />);
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toBeEnabled();
+    fireEvent.click(model);
+    expect(await screen.findByRole("slider")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
 });

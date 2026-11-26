@@ -3,7 +3,6 @@ import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 
 // Lowest priority first; chat-container-controls.css keys on these data-fit tokens.
 const TOOLBAR_STEPS = [
-  "placeholder",
   "context",
   "effort",
   "model-shrink",

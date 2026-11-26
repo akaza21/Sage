@@ -198,13 +198,13 @@
       },
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
-        "maxGzipBytes": 968,
+        "maxGzipBytes": 974,
         "maxCssGzipBytes": 243,
         "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; and the thinking-level section slot; JS and CSS load on the first Model request."
       },
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
-        "maxGzipBytes": 1345,
+        "maxGzipBytes": 1339,
         "reason": "Advertised thinking-level slider inside the model popover; loads with it while the level label on the model chip remains eager.",
         "maxCssGzipBytes": 180
       },

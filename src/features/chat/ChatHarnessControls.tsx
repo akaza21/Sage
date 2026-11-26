@@ -12,7 +12,6 @@ import { ComposerContext } from "./ComposerContext";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
-  selectedConfigChoice,
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
@@ -211,7 +210,6 @@ export function ChatHarnessControls({
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
-  const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
   const { controls, contextVisible } = useComposerToolbarFit(
     active !== null && active !== "options",
   );
@@ -337,7 +335,6 @@ export function ChatHarnessControls({
             }
             id={optionsId}
             selectionKey={JSON.stringify([selectedHarnessId, selectedModelId])}
-            canSelectEffort={canSelectEffort}
             focused={focused}
             onModeRemoved={onModeRemoved}
             triggerRef={optionsTriggerRef}

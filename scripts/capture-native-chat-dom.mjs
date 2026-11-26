@@ -33,7 +33,6 @@ export {
 import {
   FILES_EDITED,
   EFFORT_TRIGGER,
-  EFFORT_LEVEL,
   clickExpression,
 } from "./capture-native-chat-actions.mjs";
 export {
@@ -171,7 +170,7 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={composer:has('textarea[aria-label="Message agent"]'),harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_LEVEL}'),effortEnabled:has('${EFFORT_LEVEL}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),dictate:has('button.composer__mic'),meter:has('${CONTEXT_METER}')};
+  const controls={composer:has('textarea[aria-label="Message agent"]'),harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}[data-effort-control]'),effortEnabled:has('${EFFORT_TRIGGER}[data-effort-control]') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),dictate:has('button.composer__mic'),meter:has('${CONTEXT_METER}')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));

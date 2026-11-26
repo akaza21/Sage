@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type RefObject,
 } from "react";
 import { ChevronDown, Sparkles } from "../../ui/leanIcons";
@@ -93,12 +94,17 @@ export function ComposerModelControls({
   // The chip opens while either its models or its level can change, so a
   // level stays reachable without a catalog or while the prompt is blocked.
   // A change in flight keeps the popover open; only its controls wait.
-  const openable =
-    listed || (!!(selectEffort || draftLevels) && !effortDisabled);
+  // Models still loading leave the level reachable; only the list waits.
+  const levelReachable = !!(selectEffort || draftLevels) && !effortDisabled;
+  const openable = listed || levelReachable;
+  // The level the chip shows, as its label reports it, so the chip's
+  // description names the same level for assistive technology.
+  const [shownLevel, setShownLevel] = useState<string | null>(null);
   const effort = (mode: "label" | "panel") =>
     selectEffort ? (
       <ComposerEffortControl
         mode={mode}
+        onLabel={setShownLevel}
         option={selectEffort}
         disabled={effortDisabled}
         pending={pending}
@@ -108,20 +114,18 @@ export function ComposerModelControls({
       <Suspense fallback={null}>
         <DraftEffortControl
           mode={mode}
+          onLabel={setShownLevel}
           draft={draftLevels}
           disabled={effortDisabled}
           pending={pending}
         />
       </Suspense>
     ) : null;
+  const levelText = selectEffort || draftLevels ? shownLevel : effortLabel;
   const modelDescription =
     modelLabel === "Model"
       ? undefined
-      : [
-          `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`,
-          restored,
-          notice,
-        ]
+      : [`${modelLabel}${levelText ? ` ${levelText}` : ""}`, restored, notice]
           .filter(Boolean)
           .join(". ");
   useEffect(() => {
@@ -140,10 +144,13 @@ export function ComposerModelControls({
           title={modelDescription}
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
           data-restored={restored ? true : undefined}
-          aria-controls={panelId}
+          aria-controls={panelId + "-popover"}
           aria-haspopup="dialog"
+          data-effort-control={selectEffort || draftLevels ? true : undefined}
           aria-expanded={open && openable}
-          disabled={!openable || pending}
+          // Never disabled while open, so Escape and Tab can return focus here
+          // while a change is in flight.
+          disabled={!open && (!openable || (pending && !levelReachable))}
           onPointerDown={(event) => event.currentTarget.blur()}
           onClick={onToggle}
         >

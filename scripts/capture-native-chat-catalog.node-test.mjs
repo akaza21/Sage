@@ -272,7 +272,7 @@ async function observeMarkup(markup, outsideMarkup = "", state = "completed") {
 
 // The Model chip shows the level; its Select model dialog holds the slider.
 const modelChip = (attributes = "", level = "Medium") =>
-  `<button aria-label="Model" aria-haspopup="dialog"${attributes}><span class="composer__model-label">Opus</span>${level ? `<span class="composer__model-effort">${level}</span>` : ""}</button>`;
+  `<button aria-label="Model" aria-haspopup="dialog"${level ? " data-effort-control" : ""}${attributes}><span class="composer__model-label">Opus</span>${level ? `<span class="composer__model-effort">${level}</span>` : ""}</button>`;
 
 test("observation sees the effort slider in the Model dialog and shared Access options trigger", async () => {
   const observation = await observeMarkup(
@@ -290,10 +290,12 @@ test("observation sees the effort slider in the Model dialog and shared Access o
   );
   assert.equal(withdrawn.controls.effortEnabled, false);
   assert.equal(withdrawn.visible.effortSlider, false);
-  // A chip without a level offers no effort, and the removed separate
+  // A chip without a level control offers no effort (a confirmed level shown
+  // as plain text has no slider), and the removed separate
   // "Thinking level: <level>" trigger is not it.
   for (const stale of [
     modelChip("", ""),
+    '<button aria-label="Model" aria-haspopup="dialog"><span class="composer__model-effort">High</span></button>',
     '<button aria-haspopup="dialog" aria-label="Thinking level: Medium">Medium</button>',
   ])
     assert.equal((await observeMarkup(stale)).controls.effort, false);

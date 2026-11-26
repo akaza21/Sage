@@ -186,7 +186,10 @@ async function findEffort(level: string) {
 async function openModelPopover() {
   fireEvent.click(modelButton());
   const dialog = await screen.findByRole("dialog", { name: "Select model" });
-  await screen.findByRole("listbox");
+  // The list is lazy; the level section can stand alone without models.
+  await waitFor(() =>
+    expect(dialog.querySelector("[role=listbox], input")).not.toBeNull(),
+  );
   return dialog;
 }
 
@@ -2306,7 +2309,7 @@ describe("composer permission mode picker", () => {
     const list = screen.getByRole("listbox", { name: "Select model" });
     expect(dialog).toContainElement(screen.getByText("1M context"));
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
-    expect(trigger).toHaveAttribute("aria-controls", list.id);
+    expect(trigger).toHaveAttribute("aria-controls", dialog.id);
     const title = screen.getByText("Select model");
     expect(title).toBeVisible();
     expect(list).not.toContainElement(title);
