@@ -172,11 +172,11 @@ export function useChatSurfaceModel({
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
-  // A created session has not started (or its slow first start was
-  // abandoned, leaving the pending capabilities); a send starts it.
+  // A session the next send starts (a new one, or one whose slow first start
+  // was abandoned with the pending capabilities) learns them on that start.
   const sessionRefusesPrompts =
     model.selectedSession?.capabilities.prompt === false &&
-    model.selectedSession.state !== "created";
+    !model.selectedSession.nextRuntimeEpoch;
   const turnEligibility = useMemo(() => {
     const activeAcpTurn = model.useNativeAcp
       ? currentNonterminalTurn(page)
