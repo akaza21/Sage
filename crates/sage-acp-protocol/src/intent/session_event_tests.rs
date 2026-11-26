@@ -54,6 +54,15 @@ fn a_usage_window_keeps_only_its_latest_report_and_never_stores_a_bare_all_clear
     surface.apply(1, &parse("info", 5));
     assert_eq!(surface.notices.len(), 1);
     assert_eq!(surface.notices[0].level, SessionNoticeLevel::Info);
+    assert_eq!(surface.apply(1, &parse("info", 9)), None);
+    assert_eq!(
+        surface.notices[0]
+            .usage_limit
+            .as_ref()
+            .unwrap()
+            .used_percent,
+        Some(5)
+    );
 }
 
 fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionScopedEvent {

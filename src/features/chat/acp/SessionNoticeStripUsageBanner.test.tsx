@@ -17,7 +17,8 @@ import { UsageLimitBanner } from "./SessionNoticeStripUsageBanner";
 afterEach(cleanup);
 
 // The session notices as the native projection serializes them.
-const wire = (level: string, usedPercent: number) => [
+const inAnHour = () => Math.floor(Date.now() / 1_000) + 3_600;
+const wire = (level: string, usedPercent: number, resetsAt = inAnHour()) => [
   {
     identity: "usage-limit:seven_day",
     level,
@@ -28,7 +29,7 @@ const wire = (level: string, usedPercent: number) => [
       provider: "Claude",
       usedPercent,
       windowMinutes: 10_080,
-      resetsAt: 1_795_600_000,
+      resetsAt,
     },
   },
   {
@@ -84,6 +85,12 @@ it("stays dismissed until the window's level changes, and a reached limit is an 
     /^You've reached your weekly Claude limit · resets /,
   );
   rerender(<UsageLimitBanner page={pageWith(wire("info", 3))} />);
+  expect(screen.queryByRole("list", { name: "Usage limits" })).toBeNull();
+});
+
+it("hides a limit whose window has already reset", () => {
+  const passed = Math.floor(Date.now() / 1_000) - 60;
+  render(<UsageLimitBanner page={pageWith(wire("error", 100, passed))} />);
   expect(screen.queryByRole("list", { name: "Usage limits" })).toBeNull();
 });
 

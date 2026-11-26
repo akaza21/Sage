@@ -84,12 +84,16 @@ interface Dismissed {
 }
 
 /** The harness's usage-limit warnings, just above the composer: one per
- * window, each hidden once dismissed until its level changes. */
+ * window, each hidden once dismissed until its level changes, and once its
+ * window has reset. */
 export function UsageLimitBanner({ page }: { page: AcpChatPage }) {
   const session = JSON.stringify([page.chatId, page.currentSessionId]);
+  const now = Date.now() / 1_000;
   const limits = (page.sessionNotices ?? []).flatMap((notice) => {
     const limit = notice.level === "info" ? null : usageLimitOf(notice);
-    return limit ? [{ notice, limit }] : [];
+    return limit && !(limit.resetsAt !== null && limit.resetsAt <= now)
+      ? [{ notice, limit }]
+      : [];
   });
   const [dismissed, setDismissed] = useState<Dismissed>(() => ({
     session,

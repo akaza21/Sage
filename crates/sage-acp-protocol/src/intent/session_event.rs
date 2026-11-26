@@ -271,21 +271,23 @@ impl SessionSurface {
     }
 
     fn push_notice(&mut self, notice: &SessionNotice) -> bool {
+        let all_clear = notice.usage_limit.is_some() && notice.level == SessionNoticeLevel::Info;
         if let Some(existing) = self
             .notices
             .iter_mut()
             .find(|stored| notice.identity.is_some() && stored.identity == notice.identity)
         {
-            // A usage window's latest report wins, even at a lower level.
-            if existing == notice || (existing.level > notice.level && notice.usage_limit.is_none())
-            {
+            // A usage window's latest report wins, even at a lower level; a
+            // cleared window ignores further all-clears.
+            let lower = existing.level > notice.level && notice.usage_limit.is_none();
+            let cleared = all_clear && existing.level == SessionNoticeLevel::Info;
+            if existing == notice || lower || cleared {
                 return false;
             }
             *existing = notice.clone();
             return true;
         }
         // An all-clear for a window never warned about says nothing.
-        let all_clear = notice.usage_limit.is_some() && notice.level == SessionNoticeLevel::Info;
         if all_clear || self.notices.contains(notice) {
             return false;
         }
