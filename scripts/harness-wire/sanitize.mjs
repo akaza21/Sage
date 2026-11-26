@@ -139,7 +139,8 @@ export function makeSanitizer({ roots }) {
   const findSynced = (value) => {
     if (Array.isArray(value)) value.forEach(findSynced);
     else if (value && typeof value === "object") {
-      if (isSynced(value) && typeof value.name === "string") synced.add(value.name);
+      if (isSynced(value) && typeof value.name === "string")
+        synced.add(value.name);
       Object.values(value).forEach(findSynced);
     }
   };
@@ -152,7 +153,11 @@ export function makeSanitizer({ roots }) {
     }
     if (Array.isArray(value)) {
       return value
-        .filter((entry) => !isSynced(entry) && !(typeof entry === "string" && synced.has(entry)))
+        .filter(
+          (entry) =>
+            !isSynced(entry) &&
+            !(typeof entry === "string" && synced.has(entry)),
+        )
         .map((entry) => walk(entry, key));
     }
     if (value && typeof value === "object") {

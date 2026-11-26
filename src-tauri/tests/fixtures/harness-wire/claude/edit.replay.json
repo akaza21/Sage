@@ -60,19 +60,7 @@
     "design-consent",
     "design-revoke",
     "list-agents",
-    "team-onboarding",
-    "built-in-browser",
-    "chrome-browser",
-    "computer-use",
-    "anthropic-skills:deep-research",
-    "docs",
-    "docx",
-    "import-memory",
-    "morning",
-    "pdf",
-    "pptx",
-    "skill-creator",
-    "xlsx"
+    "team-onboarding"
   ],
   "rows": [
     "Initialized {}",
