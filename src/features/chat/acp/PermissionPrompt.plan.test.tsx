@@ -74,6 +74,17 @@ afterEach(() => {
 });
 
 describe("PermissionPrompt plan approval", () => {
+  it("keeps the generic question for a mode switch that carries no text", () => {
+    const card = planCard();
+    const generic = {
+      ...card,
+      payload: { ...card.payload, summary: "Switch mode requested" },
+    };
+    render(<PermissionPrompt items={[generic]} />);
+    expect(screen.getByText("Allow this action?")).toBeTruthy();
+    expect(screen.getByText("Switch mode requested")).toBeTruthy();
+  });
+
   it("asks the plan's question over the plan it approves", () => {
     render(<PermissionPrompt items={[planCard()]} />);
     expect(screen.getByText("Ready to code?")).toBeTruthy();

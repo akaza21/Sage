@@ -53,12 +53,15 @@ export function PermissionPrompt({
   const [asked, ...rest] = switchMode
     ? (item?.payload.summary ?? "").split("\n\n")
     : [];
+  const plan = rest.length > 0;
   const question = developer
     ? "Allow developer mode on this site?"
     : execute
       ? "Allow this command?"
-      : (asked ?? "Allow this action?");
-  const detail = switchMode ? rest.join("\n\n") : item?.payload.summary;
+      : plan
+        ? asked
+        : "Allow this action?";
+  const detail = plan ? rest.join("\n\n") : item?.payload.summary;
   useEffect(() => {
     if (!item) return;
     // A Deny pressed on the loading fallback carries into the card.
@@ -164,7 +167,7 @@ export function PermissionPrompt({
       ) : null}
       {detail ? (
         <Detail
-          className={`acp-permission-prompt__detail${switchMode ? " acp-permission-prompt__detail--plan" : ""}`}
+          className={`acp-permission-prompt__detail${plan ? " acp-permission-prompt__detail--plan" : ""}`}
         >
           {detail}
         </Detail>
