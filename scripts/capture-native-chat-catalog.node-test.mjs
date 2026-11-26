@@ -270,9 +270,14 @@ async function observeMarkup(markup, outsideMarkup = "", state = "completed") {
   }
 }
 
-test("observation sees the current effort slider and shared Access options trigger", async () => {
+// The Model chip shows the level; its Select model dialog holds the slider.
+const modelChip = (attributes = "", level = "Medium") =>
+  `<button aria-label="Model" aria-haspopup="dialog"${attributes}><span class="composer__model-label">Opus</span>${level ? `<span class="composer__model-effort">${level}</span>` : ""}</button>`;
+
+test("observation sees the effort slider in the Model dialog and shared Access options trigger", async () => {
   const observation = await observeMarkup(
-    '<button aria-haspopup="dialog" title="Select effort" aria-label="Thinking level: Medium">Medium</button><div class="composer__effort-menu" role="dialog"><input type="range" aria-label="Thinking level"></div><button aria-label="Access options">Read-only</button>',
+    modelChip() +
+      '<div class="menu-popover composer__model-menu" role="dialog" aria-label="Select model"><div class="composer-effort" role="group" aria-label="Thinking level"><input type="range" aria-label="Thinking level"></div></div><button aria-label="Access options">Read-only</button>',
   );
   assert.equal(observation.controls.effort, true);
   assert.equal(observation.controls.effortEnabled, true);
@@ -280,15 +285,16 @@ test("observation sees the current effort slider and shared Access options trigg
   assert.equal(observation.visible.effortMenu, true);
   assert.equal(observation.visible.effortSlider, true);
   const withdrawn = await observeMarkup(
-    '<button aria-haspopup="dialog" title="Select effort" aria-label="Thinking level: Medium" disabled>Medium</button><div class="composer__effort-menu" role="dialog"></div>',
+    modelChip(" disabled") +
+      '<div class="menu-popover composer__model-menu" role="dialog" aria-label="Select model"></div>',
   );
   assert.equal(withdrawn.controls.effortEnabled, false);
   assert.equal(withdrawn.visible.effortSlider, false);
-  // A title alone no longer names the trigger; the "Thinking level: <level>"
-  // accessible name does. The disabled placeholder has no level and is not it.
+  // A chip without a level offers no effort, and the removed separate
+  // "Thinking level: <level>" trigger is not it.
   for (const stale of [
-    '<button aria-haspopup="dialog" title="Select effort">Medium</button>',
-    '<button aria-label="Thinking level" disabled>Thinking level</button>',
+    modelChip("", ""),
+    '<button aria-haspopup="dialog" aria-label="Thinking level: Medium">Medium</button>',
   ])
     assert.equal((await observeMarkup(stale)).controls.effort, false);
 });
@@ -297,7 +303,7 @@ test("observation names the harness and model listboxes, including aria-labelled
   const harness =
     '<button aria-label="Harness" aria-controls="h-list" aria-haspopup="listbox"></button>';
   const model =
-    '<button aria-label="Model" aria-controls="m-list" aria-haspopup="listbox"></button>';
+    '<button aria-label="Model" aria-controls="m-list" aria-haspopup="dialog"></button>';
   const harnessOpen = await observeMarkup(
     harness + model,
     '<div class="menu-popover"><div id="h-list" role="listbox" aria-label="Harness"><div role="option" data-option-id="codex">Codex</div></div></div>',
@@ -630,7 +636,7 @@ test("every admitted harness captures its advertised effort slider", () => {
         `${harness}-effort-menu`,
       );
     assert.deepEqual(actionsFor("effort-menu", harness), [
-      'button[aria-haspopup="dialog"][aria-label^="Thinking level: "]',
+      'button[aria-label="Model"][aria-haspopup="dialog"]',
     ]);
     const observation = {
       state: "completed",

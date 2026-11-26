@@ -72,6 +72,15 @@ async function expectContentSizedTrigger(
   return geometry;
 }
 
+/** The model chip's last shown text, which its chevron follows: the
+ * thinking level when the chip shows one, else the model name. */
+async function modelChipText(trigger: Locator) {
+  const level = trigger.locator(".composer__model-effort");
+  return (await level.count()) && (await level.isVisible())
+    ? ".composer__model-effort"
+    : ".composer__model-label";
+}
+
 for (const width of [1280, 720]) {
   for (const disabled of [false, true]) {
     test(`shared picker hugs every catalog label at ${width}px (disabled: ${disabled})`, async ({
@@ -149,38 +158,36 @@ for (const width of [1280, 960, 480]) {
           trigger,
           ".searchable-picker__trigger-label",
         );
-        if (width === 1280) {
-          expect(geometry.labelVisible).toBe(true);
-          expect(geometry.chevronVisible).toBe(true);
-        }
-        if (!geometry.labelVisible) {
-          await expect(trigger).toHaveAccessibleDescription(name);
-          await expect(trigger.locator("[data-harness-icon]")).toBeVisible();
-          expect(geometry.chevronVisible).toBe(false);
-        }
+        // The composer harness is its icon at every width; the name stays
+        // its description.
+        expect(geometry.labelVisible).toBe(false);
+        await expect(trigger).toHaveAccessibleDescription(name);
+        await expect(trigger.locator("[data-harness-icon]")).toBeVisible();
+        expect(geometry.chevronVisible).toBe(false);
         await test.info().attach(name, {
           body: JSON.stringify(geometry),
           contentType: "application/json",
         });
       }
-      for (const [selector, label] of [
-        [".composer__model-trigger", ".composer__model-label"],
-        [".composer__effort-picker", ".composer__effort-label"],
-        [
-          ".composer-location .searchable-picker__trigger",
+      const model = page
+        .locator(".chat-dock-frame")
+        .locator(".composer__model-trigger");
+      if (await model.count())
+        await expectContentSizedTrigger(model, await modelChipText(model));
+      const location = page
+        .locator(".chat-dock-frame")
+        .locator(".composer-location .searchable-picker__trigger");
+      if (await location.count())
+        await expectContentSizedTrigger(
+          location,
           ".searchable-picker__trigger-label",
-        ],
-      ]) {
-        const control = page.locator(".chat-dock-frame").locator(selector);
-        if (await control.count())
-          await expectContentSizedTrigger(control, label);
-      }
+        );
     });
   }
 }
 
 for (const width of [1280, 960]) {
-  test(`model and effort triggers keep the tight gap at ${width}px`, async ({
+  test(`model chip and its level keep the tight gap at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -194,17 +201,17 @@ for (const width of [1280, 960]) {
         currentValue: "high",
       });
     });
-    const composer = page.locator("form.composer");
-    for (const [selector, label] of [
-      [".composer__model-trigger", ".composer__model-label"],
-      [".composer__effort-picker", ".composer__effort-label"],
-    ]) {
-      const control = composer.locator(selector);
-      await expect(control).toBeVisible();
-      const geometry = await expectContentSizedTrigger(control, label);
-      expect(geometry.labelVisible).toBe(true);
-      // A single advertised model keeps the picker trigger and its chevron.
-      expect(geometry.chevronVisible).toBe(true);
-    }
+    const control = page.locator("form.composer .composer__model-trigger");
+    await expect(control).toBeVisible();
+    await expect(control.locator(".composer__model-label")).toBeVisible();
+    await expect(control.locator(".composer__model-effort")).toHaveText("High");
+    // The chevron follows the level with the same tight gap.
+    const geometry = await expectContentSizedTrigger(
+      control,
+      ".composer__model-effort",
+    );
+    expect(geometry.labelVisible).toBe(true);
+    // A single advertised model keeps the picker trigger and its chevron.
+    expect(geometry.chevronVisible).toBe(true);
   });
 }

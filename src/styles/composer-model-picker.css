@@ -46,7 +46,7 @@
    it. */
 .composer__model-group
   [data-restored]
-  :is(.composer__model-label, .composer__effort-label) {
+  :is(.composer__model-label, .composer__model-effort) {
   color: var(--composer-muted-text);
 }
 
@@ -71,6 +71,7 @@
 }
 
 .composer-effort__level {
+  justify-self: center;
   max-width: 100%;
   overflow: hidden;
   color: var(--color-accent);

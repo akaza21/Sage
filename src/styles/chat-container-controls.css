@@ -63,7 +63,6 @@
 /* Harness, model and thinking level read as one chip. */
 .composer__selector {
   display: flex;
-  min-width: 0;
   align-items: center;
   border-radius: var(--radius-md);
 }
@@ -73,7 +72,6 @@
 }
 
 .composer__selector .composer__model-group {
-  min-width: 0;
   margin-left: 0;
 }
 

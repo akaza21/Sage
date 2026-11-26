@@ -54,27 +54,19 @@ async function render(page: Page, name: string, state: ParityState) {
   );
   await expect(page.locator("form.composer")).toBeVisible();
 }
-/** Opens Thinking level from the toolbar, or from the options menu when the
- * toolbar has moved it there to keep the model name readable. */
+/** Opens Thinking level in the model chip's popover at every toolbar fit;
+ * the chip holds the level it shows. */
 async function openEffort(page: Page, level: string) {
   const composer = page.locator("form.composer");
-  const effort = composer.getByRole("button", {
-    name: `Thinking level: ${level}`,
-  });
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  await settledComposerFit(composer);
+  await expect(model.locator(".composer__model-effort")).toHaveText(level);
+  await model.click();
   await expect(
-    composer.locator(".composer__effort-picker[data-overflow-control]"),
-  ).toHaveCount(1);
-  if (!(await settledComposerFit(composer)).includes("effort-menu")) {
-    await expect(effort.locator(".lucide-brain")).toHaveCount(1);
-    return effort.click();
-  }
-  await composer
-    .getByRole("button", { name: "Composer options", exact: true })
-    .click();
-  await page
-    .getByRole("menu", { name: "Composer options menu" })
-    .getByRole("menuitem", { name: "Thinking level", exact: true })
-    .click();
+    page
+      .getByRole("dialog", { name: "Select model" })
+      .getByRole("slider", { name: "Thinking level" }),
+  ).toHaveAttribute("aria-valuetext", level);
 }
 async function noClip(page: Page, selector: string) {
   for (const element of await page.locator(selector).all()) {
@@ -164,7 +156,9 @@ for (const width of [1888, 720, 480]) {
         await expectCompactComposerTargets(composer);
         await render(page, name, "stopped");
         const model = composer.getByLabel("Model", { exact: true });
-        await expect(model).toHaveText("Confirmed session model");
+        await expect(model.locator(".composer__model-label")).toHaveText(
+          "Confirmed session model",
+        );
         await expect(model.locator(".lucide-sparkles")).toHaveCount(1);
         await expectCompactComposerTargets(composer);
         await openEffort(page, "High");
@@ -408,13 +402,9 @@ for (const width of [1888, 720, 480]) {
           exact: true,
         });
         await expect(access.locator(".lucide-eye")).toHaveCount(1);
-        // Access is a pill that is plain at rest: no border or fill. Only
-        // the widest composer keeps its label, padded by the pill's
-        // --space-2 (8px); narrower ones centre the icon alone.
-        const labelled = width === 1888;
-        await expect(access.locator(".composer__access-text")).toBeVisible({
-          visible: labelled,
-        });
+        // Access is a plain icon at rest at every width: no border, fill or
+        // padding around the centred icon. Its name stays accessible.
+        await expect(access.locator(".composer__access-text")).toBeHidden();
         expect(
           await access.evaluate((element) => {
             const style = getComputedStyle(element);
@@ -427,7 +417,7 @@ for (const width of [1888, 720, 480]) {
         ).toEqual({
           border: ["0px", "0px"],
           fill: "rgba(0, 0, 0, 0)",
-          padding: labelled ? "8px" : "0px",
+          padding: "0px",
         });
         await access.click();
         await expect(
@@ -517,17 +507,10 @@ for (const width of [1888, 720, 480]) {
         "Claude Sonnet 4.5",
       );
       await expect(composer.getByLabel("Model", { exact: true })).toBeEnabled();
-      const effort = composer.getByRole("button", {
-        name: "Thinking level",
-        exact: true,
-      });
-      await expect(effort).toBeDisabled();
-      await expect(effort).toHaveAttribute(
-        "title",
-        "Available when the harness advertises effort controls for this session.",
-      );
-      // Even the 200px composer of a 480px window fits the compacted row,
-      // disabled effort placeholder included, on one line.
+      // No level shows before a session advertises one.
+      await expect(composer.locator(".composer__model-effort")).toHaveCount(0);
+      // Even the 200px composer of a 480px window fits the compacted row on
+      // one line.
       await expectCompactComposerTargets(composer);
       // An empty draft offers dictation in place of Send.
       await expect(
@@ -556,9 +539,11 @@ for (const width of [1888, 720, 480]) {
         .getByRole("option", { name: "GPT-5.4 Mini", exact: true });
       await expect(other).toHaveAttribute("data-option-id", "gpt-5.4-mini");
       await other.click();
-      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
-        "GPT-5.4 Mini",
-      );
+      await expect(
+        page
+          .getByLabel("Model", { exact: true })
+          .locator(".composer__model-label"),
+      ).toHaveText("GPT-5.4 Mini");
     });
     test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
       page,
@@ -747,7 +732,7 @@ for (const width of [1888, 720, 480]) {
         page.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(0);
       await render(page, "OpenCode", "no-effort");
-      await expect(page.locator(".composer__effort-picker")).toHaveCount(0);
+      await expect(page.locator(".composer__model-effort")).toHaveCount(0);
       await render(page, "Pi", "unknown");
       await expect(page.getByLabel("Model", { exact: true })).toHaveText(
         "Model",
