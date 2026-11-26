@@ -34,7 +34,8 @@ export function useNotificationNavigation(enterAgent: () => void) {
           error: "The notification chat could not be opened.",
         });
     };
-    // A click during a project switch waits in the lazy held-open slot. A
+    // A click during a project switch waits in the held-open slot, loaded
+    // through the lazy rail entry so it adds no core chunk. A
     // chat deleted meanwhile is still handed to land, which reports it.
     const notified = {
       open: async (projectId: string, chatId: string) => {
@@ -56,7 +57,7 @@ export function useNotificationNavigation(enterAgent: () => void) {
     const navigation = listenNotificationNavigation(
       nativeNotificationPort,
       async ({ projectId, chatId }) =>
-        (await import("./heldRailChatOpen")).openChatWhenSettled(
+        (await import("./ProjectChatNavigation")).openChatWhenSettled(
           projectId,
           chatId,
           notified,
