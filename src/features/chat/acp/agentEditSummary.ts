@@ -229,11 +229,8 @@ function newerItem(current: AcpItem, candidate: AcpItem): AcpItem | null {
 export function agentEditSummaryChangeKey(
   change: FileChangeProjection,
 ): string {
-  return change.resource.kind === "resource"
-    ? `resource:${resourceKey(change.resource.resource)}`
-    : change.resource.displayResource
-      ? `resource:${resourceKey(change.resource.displayResource)}`
-      : `unavailable:${change.resource.reason}:${change.resource.label}`;
+  const resource = projectChangeResource(change);
+  return resource ? `resource:${resourceKey(resource)}` : "unavailable";
 }
 
 /** The project file a change names, or null when it lies outside the project's roots. */
@@ -316,16 +313,8 @@ export function projectAgentEditSummary(
         rejectedUnsafeOrStale = true;
         continue;
       }
-      if (
-        change.resource.kind === "unavailable" &&
-        !projectChangeResource(change)
-      ) {
-        // Outside the roots is not a project change; an unmappable path inside them is disclosed.
-        rejectedUnsafeOrStale ||= !["foreign", "missing"].includes(
-          change.resource.reason,
-        );
-        continue;
-      }
+      // A change that names no project file is not a project change.
+      if (!projectChangeResource(change)) continue;
       const key = agentEditSummaryChangeKey(change);
       const diffRef =
         change.pairState === "available" &&
