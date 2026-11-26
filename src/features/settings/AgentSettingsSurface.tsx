@@ -20,6 +20,7 @@ import {
   Command,
   Eye,
   Globe,
+  History,
   Lock,
   MessageSquare,
   Search,
@@ -69,10 +70,8 @@ const loadExecution = () => import("./AgentSettingsExecution");
 // The panel has no per-setting search, so the whole Passwords page shows.
 const passwordEntries = matchingSettingsEntryIds("", "passwords");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
-const loadArchivedSettings = () =>
-  import("./AgentArchivedSettings").then(({ AgentArchivedSettings }) => ({
-    default: AgentArchivedSettings,
-  }));
+// One chunk serves both pages of the last nav group.
+const loadArchivedSettings = () => import("./AgentArchivedSettings");
 
 export default AgentSettingsSurface;
 
@@ -85,7 +84,7 @@ const groups: readonly {
     heading: "Agents",
     pages: ["Harnesses", "Chats", "Browser", "Passwords"],
   },
-  { heading: null, pages: ["Archived chats"] },
+  { heading: null, pages: ["Archived chats", "Data"] },
 ];
 
 function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
@@ -116,6 +115,7 @@ const icons: Record<AgentSettingsPage, typeof Archive> = {
   Browser: Globe,
   Passwords: Lock,
   "Archived chats": Archive,
+  Data: History,
 };
 
 export function AgentSettingsSurface({
@@ -319,11 +319,11 @@ export function AgentSettingsSurface({
                   )}
                 />
               ) : null}
-              {shownPage === "Archived chats" ? (
+              {shownPage === "Archived chats" || shownPage === "Data" ? (
                 <LazyModuleBoundary
-                  label="Archived chats"
+                  label={shownPage}
                   load={loadArchivedSettings}
-                  render={(ArchivedSettings) => <ArchivedSettings />}
+                  render={(DataPage) => <DataPage page={shownPage} />}
                 />
               ) : null}
             </div>
