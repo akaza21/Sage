@@ -1,7 +1,10 @@
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatStatus, TurnState } from "../domain/acp";
 import type { SessionStatus } from "../domain/workbench";
-import { setAgentRailAttention } from "./agentRailInteractions";
+import {
+  setAgentRailAttention,
+  type RailAttention,
+} from "./agentRailInteractions";
 
 export function railStatusForTurn(state?: TurnState): SessionStatus {
   if (!state) return "idle";
@@ -24,11 +27,7 @@ export function mirrorAgentRailStatus(page: AcpChatStatus) {
   const status = railStatusForTurn(turn?.state);
   setAgentRailAttention(
     page.chatId,
-    turn?.state === "waitingApproval"
-      ? "approval"
-      : turn?.state === "waitingUser"
-        ? "input"
-        : undefined,
+    status === "waiting" ? (turn!.state as RailAttention) : undefined,
   );
   const metadataChanged = tab.title !== page.title || tab.status !== status;
   const updatedAt = turn

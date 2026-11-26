@@ -81,7 +81,7 @@ it("updates an unmounted background chat on completion and approval without acti
     for (let index = 0; index < 100; index += 1) notify(event);
   });
   await waitFor(() =>
-    expect(hook.result.current.attention.get("chat-1")).toBe("approval"),
+    expect(hook.result.current.attention.get("chat-1")).toBe("waitingApproval"),
   );
   expect(load).toHaveBeenCalledTimes(3);
   current = status("completed");

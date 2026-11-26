@@ -55,7 +55,7 @@ it("uses the newest turn for approvals regardless of native page order", () => {
   ]) {
     act(() => mirrorAgentRailProjection({ ...current, turns }));
     expect(useWorkbenchStore.getState().tabs[0].status).toBe("waiting");
-    expect(result.current.attention.get("chat-1")).toBe("approval");
+    expect(result.current.attention.get("chat-1")).toBe("waitingApproval");
   }
 });
 
@@ -69,7 +69,7 @@ it("mirrors real lifecycle status, native first-prompt titles, and approval atte
     updatedAt: 2,
   });
   act(() => mirrorAgentRailProjection(page("waitingApproval")));
-  expect(result.current.attention.get("chat-1")).toBe("approval");
+  expect(result.current.attention.get("chat-1")).toBe("waitingApproval");
   act(() => mirrorAgentRailProjection(page("completed")));
   expect(result.current.attention.has("chat-1")).toBe(false);
   expect(useWorkbenchStore.getState().tabs[0].status).toBe("complete");
@@ -157,5 +157,5 @@ it("keeps a question's Needs input flag without a mounted chat", () => {
       },
     }),
   );
-  expect(result.current.attention.get("chat-1")).toBe("input");
+  expect(result.current.attention.get("chat-1")).toBe("waitingUser");
 });

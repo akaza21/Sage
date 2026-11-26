@@ -224,7 +224,7 @@ export function ProjectChatNavigation({
         };
         // A question needs input; an approval, mounted or remembered, awaits one.
         const approvalLabel =
-          attention === "input"
+          attention === "waitingUser"
             ? "Needs input"
             : awaitingApprovalIds.has(tab.id) || attention
               ? sessionRailStatusLabel(tab.status, true)
