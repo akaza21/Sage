@@ -103,6 +103,7 @@ const scopeCommands = createBrowserScopeCommands({
 
 export const browserDesktop = {
   createProject: scopeCommands.createProject,
+  cleanUp: scopeCommands.cleanUp,
   async getBootstrapSnapshot() {
     return structuredClone({ ...snapshot, messages: activeMessages() });
   },

@@ -346,5 +346,38 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
       context.activate();
       return commit();
     },
+    /** Mirrors `delete_archived_chats` and `remove_project`. */
+    async cleanUp(command: string, project: string, epoch: number) {
+      admit(epoch);
+      rememberBrowserScope(snapshot);
+      const scope = scopes.get(project);
+      if (!scope) throw new Error("Project does not exist");
+      const removing = command === "remove_project";
+      if (removing && scope.project.isInternal)
+        throw new Error("Only a user Project can be removed");
+      const chats = removing
+        ? [
+            ...scope.tabs.filter((tab) => tab.kind === "chat"),
+            ...scope.archivedChats,
+          ]
+        : scope.archivedChats;
+      for (const chat of chats) {
+        owners.delete(chat.id);
+        context.remove(chat.id);
+      }
+      scope.archivedChats = [];
+      if (removing) {
+        forgetScope(scope);
+        snapshot.projects = snapshot.projects.filter(
+          (item) => item.id !== project,
+        );
+        if (snapshot.project?.id === project) {
+          snapshot.project = null;
+          selectBrowserScope(snapshot, null);
+        }
+      } else if (snapshot.project?.id === project) snapshot.archivedChats = [];
+      refreshUnscoped(snapshot);
+      return commit();
+    },
   };
 }

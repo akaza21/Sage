@@ -104,6 +104,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         chat_commands::rename_chat,
         chat_archive_commands::restore_chat,
         chat_archive_commands::delete_chat,
+        crate::data_cleanup_commands::delete_archived_chats,
+        crate::data_cleanup_commands::remove_project,
         chat_search_commands::search_project_chats,
         chat_queue_commands::get_project_chat_queued_prompts,
         chat_queue_commands::replace_chat_queued_prompts,

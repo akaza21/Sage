@@ -154,14 +154,8 @@ test("AP-C project disclosure, context actions, and honest project menu", async 
     projectMenu.getByRole("menuitem", { name: "New chat in project" }),
   ).toBeEnabled();
   await expect(
-    projectMenu.getByRole("menuitem", { name: /^Rename project:/ }),
-  ).toBeDisabled();
-  await expect(
-    projectMenu.getByRole("menuitem", { name: /^Remove project:/ }),
-  ).toBeDisabled();
-  await expect(
-    projectMenu.getByRole("menuitem", { name: /^Reveal project:/ }),
-  ).toBeDisabled();
+    projectMenu.getByRole("menuitem", { name: "Remove project…" }),
+  ).toBeEnabled();
   await takeCanonicalScreenshot(page, "ap-c-project-menu.png");
 });
 

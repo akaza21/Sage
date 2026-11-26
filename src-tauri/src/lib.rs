@@ -28,6 +28,8 @@ pub mod codex_helper_boundary;
 mod commands;
 #[cfg(all(test, windows))]
 mod console_window_fixture;
+mod data_cleanup;
+mod data_cleanup_commands;
 mod database;
 #[cfg(all(feature = "browser-bridge", debug_assertions))]
 mod dev_bridge;

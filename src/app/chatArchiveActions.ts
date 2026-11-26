@@ -5,6 +5,8 @@ import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
 } from "../domain/workbench";
+import type { ProjectTransitionResult } from "../domain/project";
+import { invokeNative } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ChatActionReport, ChatRowAction } from "./chatArchiveSlice";
 import {
@@ -15,7 +17,7 @@ import {
   type ProjectionOutcome,
 } from "./chatTransitions";
 import { currentProjectLayout } from "./projectProjection";
-import type { WorkbenchState } from "./store";
+import { useWorkbenchStore, type WorkbenchState } from "./store";
 
 type Creator = StateCreator<WorkbenchState, [], [], unknown>;
 type Set = Parameters<Creator>[0];
@@ -323,4 +325,47 @@ export function createChatArchiveActions(set: Set, get: Get) {
         ),
     });
   }
+}
+
+/**
+ * Bulk cleanup in one native transition: `delete_archived_chats` deletes a
+ * Project's archived Chats, `remove_project` the Project with all its Chats.
+ * Permanent; callers confirm first.
+ */
+export async function cleanUpProjectData(
+  command: "delete_archived_chats" | "remove_project",
+  projectId: string,
+) {
+  const { setState: set, getState: get } = useWorkbenchStore;
+  if (get().projectTransitioning) return false;
+  set({ projectTransitioning: true, error: null });
+  const expectedTransitionEpoch = get().nativeTransitionEpoch;
+  let stopped: string | null = null;
+  const committed = await commitIdentityChatResult({
+    set,
+    get,
+    ...createChatTransitionContext(set, get),
+    failedMessage: "native cleanup did not commit",
+    invoke: async () => {
+      // Only the browser fixture's chat port carries cleanUp.
+      const fixture = (
+        getWorkbenchPorts().chat as {
+          cleanUp?: (
+            ...args: [typeof command, string, number]
+          ) => Promise<ProjectTransitionResult>;
+        }
+      ).cleanUp;
+      const result = fixture
+        ? await fixture(command, projectId, expectedTransitionEpoch)
+        : await invokeNative<ProjectTransitionResult>(command, {
+            projectId,
+            expectedTransitionEpoch,
+          });
+      // A cleanup that stopped part way still commits what it removed.
+      if (result.committed) stopped = result.recoveryError;
+      return result;
+    },
+  });
+  if (stopped) set({ error: stopped });
+  return committed;
 }
