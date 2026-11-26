@@ -280,3 +280,69 @@
 .agent-settings .settings-surface__section-header h2 {
   display: none;
 }
+
+/* Settings › Harnesses: a bordered card per harness, grouped by status. */
+.harness-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.harness-group > p,
+.harness-card summary {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.harness-card[data-selected] {
+  border-color: var(--border-strong);
+}
+
+.harness-card .harness-icon {
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
+  flex-shrink: 0;
+}
+
+.harness-card__copy {
+  flex: 1;
+}
+
+.harness-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.harness-card h3 {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.harness-badge {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+}
+
+.harness-badge[data-status="ready"]::before,
+.harness-badge[data-status="signInNeeded"]::before {
+  content: "● ";
+  color: var(--success);
+}
+
+.harness-badge[data-status="signInNeeded"]::before {
+  color: var(--warning);
+}
+
+.harness-card details {
+  padding-bottom: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.harness-card[data-status="unavailable"],
+.harness-card[data-status="notInstalled"] {
+  opacity: 0.72;
+}
