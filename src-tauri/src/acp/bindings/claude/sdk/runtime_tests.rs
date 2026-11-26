@@ -1994,3 +1994,29 @@ fn files_claude_code_names_relative_to_its_cwd_resolve_under_it() {
         ]))
     );
 }
+
+#[test]
+fn an_expired_sign_in_is_refused_with_claude_codes_own_words_and_retry_first() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":null,"error":"authentication_failed",
+            "message":{"id":"synthetic","content":[{"type":"text","text":"Failed to authenticate."}]}}),
+    );
+    let text = "Failed to authenticate: OAuth session expired and could not be refreshed";
+    let result = runtime.ingest(
+        &frame(
+            json!({"type":"result","subtype":"success","is_error":true,"result":text,"usage":{}}),
+        ),
+        &Mapper,
+    );
+    assert!(matches!(result, Err(AdapterRuntimeError::SignInRequired)));
+    let detail = runtime.refusal_detail().expect("refusal detail");
+    assert_eq!(detail.message(), Some(text));
+    assert!(
+        detail
+            .remediation()
+            .is_some_and(|hint| hint.starts_with("Retry")),
+        "{detail:?}"
+    );
+}

@@ -44,6 +44,7 @@ it("decodes a native failure with its ownership metadata, explains it once and p
   expect(screen.queryByText("Turn failure")).toBeNull();
   expect(screen.queryByText(/"code": "harnessExited"/)).toBeNull();
   fireEvent.click(within(owner).getByRole("button", { name: "Details" }));
+  fireEvent.click(await within(owner).findByText("Raw"));
   expect(
     await within(owner).findByText(/"code": "harnessExited"/),
   ).toBeVisible();

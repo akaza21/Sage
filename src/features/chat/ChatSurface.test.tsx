@@ -2656,7 +2656,7 @@ describe("ChatSurface ACP resource integration", () => {
     const { rerender } = render(<ChatSurface />);
 
     expect(
-      await screen.findByText("Claude Code isn't signed in"),
+      await screen.findByText("Recheck Claude Code sign-in"),
     ).toBeVisible();
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(

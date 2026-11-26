@@ -60,7 +60,6 @@ export interface ChatOwnershipSlice {
       modeChanging?: boolean;
     },
   ) => boolean;
-  clearActiveChatError: () => void;
   setComposerText: (text: string) => void;
   sendPrompt: () => Promise<void>;
 }
@@ -236,16 +235,6 @@ export const createChatOwnershipSlice: StateCreator<
       ...(active ? { sending: updated.sending, chatError: updated.error } : {}),
     });
     return true;
-  },
-  clearActiveChatError: () => {
-    const state = get();
-    const intent = state.captureChatOwnership();
-    if (intent)
-      state.setChatActionState(intent, {
-        sending: state.sending,
-        error: null,
-        errorKind: null,
-      });
   },
   setComposerText: (text) => {
     try {

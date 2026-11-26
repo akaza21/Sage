@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::usage::{context_window, turn_usage};
 use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
-    acp_error, acp_result,
+    acp_auth_error, acp_error, acp_result,
 };
 use crate::acp::bindings::claude::runtime::ChildOutcome;
 use crate::acp::bindings::claude::sdk::{
@@ -11,10 +11,9 @@ use crate::acp::bindings::claude::sdk::{
     tools::{plan_entries, result_text, text_content, tool_fields},
 };
 
-/// JSON-RPC codes the session reads: a failed request, and the sign-in
-/// refusal Claude's ACP surface also uses.
+/// The JSON-RPC code for a failed request; `acp_auth_error` carries the
+/// sign-in refusal.
 const INTERNAL_ERROR: i64 = -32603;
-const AUTH_REQUIRED: i64 = -32000;
 /// Sage launches in `default`; any other starting mode would make the
 /// mode picker misstate whether approvals are asked for.
 const UNKNOWN_MODE: &str = "Claude Code started in a permission mode Sage cannot show";
@@ -360,7 +359,7 @@ impl SdkBridge {
         inbound.acp.push(if self.interrupted {
             acp_result(id, json!({"stopReason": "cancelled"}))
         } else if failed && self.auth_failed {
-            acp_error(id, AUTH_REQUIRED, "Authentication required")
+            acp_auth_error(id, failure_message(&sdk))
         } else if failed {
             acp_error(id, INTERNAL_ERROR, &failure_message(&sdk))
         } else {

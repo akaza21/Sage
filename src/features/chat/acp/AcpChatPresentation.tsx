@@ -172,7 +172,6 @@ export const Turn = memo(
               <TranscriptPart
                 part="SentAnnotations"
                 contexts={turn.attachedContext}
-                chatId={page.chatId}
               />
             ) : null}
             {attachmentItems.length > 0 ? (
@@ -267,7 +266,12 @@ export const Turn = memo(
             {stopped && !finalAnswer && onRetry ? (
               <RetryTurnButton onRetry={onRetry} />
             ) : null}
-            <TurnFailure turn={turn} onRetry={onRetry} page={failurePage} />
+            <TurnFailure
+              turn={turn}
+              onRetry={onRetry}
+              page={failurePage}
+              latest={latest}
+            />
           </div>
           {!inherited && actions}
         </section>
