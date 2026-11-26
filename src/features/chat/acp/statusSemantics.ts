@@ -66,7 +66,7 @@ export const turnTerminalReasonLabels: Record<TurnTerminalReason, string> = {
   cancelledByUser: "Cancelled by you",
   refusedVersion: "Version refused",
   timeout: "Timed out",
-  other: "Reason unavailable",
+  other: "The harness gave no error details.",
 };
 
 export function getTurnStatusLabel(turn: TurnProjection): string {
