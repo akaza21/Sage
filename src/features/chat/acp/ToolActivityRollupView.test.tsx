@@ -777,7 +777,7 @@ describe("ToolActivityRollup", () => {
         summary.querySelector(".acp-tool-rollup__label"),
       ).toHaveTextContent(`${action} npm run check`);
       expect(Boolean(summary.querySelector(".acp-live-shimmer"))).toBe(
-        action === "Running",
+        action !== "Ran",
       );
       expect(summary.querySelector(".acp-state")).toBeNull();
       expect(screen.queryByLabelText("Command line")).toBeNull();

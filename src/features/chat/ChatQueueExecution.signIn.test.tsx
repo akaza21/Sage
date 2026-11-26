@@ -26,7 +26,7 @@ it("holds a queued prompt after a sign-in failure until the harness is ready aga
     projectTransitioning: false,
     canPrompt: true,
     useNativeAcp: true,
-    signInHoldTurnId: "turn-failed",
+    hold: "turn-failed",
     observedOrder: null,
     submit,
     updateQueuedPrompt,

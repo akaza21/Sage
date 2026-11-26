@@ -18,7 +18,7 @@ export default function ChatQueueExecution({
   projectTransitioning,
   canPrompt,
   useNativeAcp,
-  signInHoldTurnId = null,
+  hold = null,
   observedOrder,
   submit,
   updateQueuedPrompt,
@@ -36,7 +36,7 @@ export default function ChatQueueExecution({
   canPrompt: boolean;
   useNativeAcp: boolean;
   /** The latest turn failed for sign-in; hold until the harness is ready again. */
-  signInHoldTurnId?: string | null;
+  hold?: string | null;
   observedOrder: ChatTurnOrder | null;
   submit: (
     text: string,
@@ -55,7 +55,7 @@ export default function ChatQueueExecution({
   // The hold lifts once the harness has been seen not ready and back.
   const notReadyFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!canPrompt || !signInHoldTurnId) notReadyFor.current = signInHoldTurnId;
+    if (!canPrompt || !hold) notReadyFor.current = hold;
     if (queuedTurnBarrier !== null) {
       if (
         !observedOrder ||
@@ -87,7 +87,7 @@ export default function ChatQueueExecution({
       projectTransitioning ||
       !canPrompt ||
       !useNativeAcp ||
-      notReadyFor.current !== signInHoldTurnId
+      notReadyFor.current !== hold
     )
       return;
     updateQueuedPrompt(next.id, "sending");
@@ -124,7 +124,7 @@ export default function ChatQueueExecution({
     queuedPrompts,
     queuedTurnBarrier,
     observedOrder,
-    signInHoldTurnId,
+    hold,
     setQueuedTurnBarrier,
     submit,
     updateQueuedPrompt,
