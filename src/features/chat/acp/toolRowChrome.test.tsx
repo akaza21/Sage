@@ -155,9 +155,12 @@ const shell: ToolPresentation = {
   activity: "ordinary",
 };
 
-it.each(["waitingForApproval", "pending"] as const)(
-  "names a %s command with the live Running label and shimmer (s6/f0526)",
-  (toolState) => {
+it.each([
+  ["pending", "Running"],
+  ["waitingForApproval", "Awaiting approval to run"],
+] as const)(
+  "names a %s command with the live %s label and shimmer (s6/f0526)",
+  (toolState, verb) => {
     const { container } = render(
       <ToolActivityRollup
         rollup={{
@@ -169,7 +172,7 @@ it.each(["waitingForApproval", "pending"] as const)(
       />,
     );
     const label = container.querySelector(".acp-tool-rollup__label");
-    expect(label).toHaveTextContent("Running curl.exe -s https://example.com");
+    expect(label).toHaveTextContent(`${verb} curl.exe -s https://example.com`);
     expect(label).toHaveClass("acp-live-shimmer");
   },
 );

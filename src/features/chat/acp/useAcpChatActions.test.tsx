@@ -176,7 +176,14 @@ describe("useAcpChatActions per-Chat ownership", () => {
     expect(reopened.result.current.errorUnavailableReason).toBe(
       "bindingUnavailable",
     );
-    act(() => useWorkbenchStore.getState().clearActiveChatError());
+    act(() => {
+      const state = useWorkbenchStore.getState();
+      state.setChatActionState(state.captureChatOwnership()!, {
+        sending: state.sending,
+        error: null,
+        errorKind: null,
+      });
+    });
     expect(reopened.result.current.errorUnavailableReason).toBeNull();
   });
   it.each(["read before delivery", "read after delivery"])(
@@ -422,7 +429,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       await act(async () => {
         await result.current.submit("Hello", [], bindingId, null);
       });
-      expect(await screen.findByText("Claude isn't signed in")).toBeVisible();
+      expect(await screen.findByText("Recheck Claude sign-in")).toBeVisible();
       act(() =>
         useWorkbenchStore.setState({
           selectedHarnessId: "account",
@@ -451,9 +458,6 @@ describe("useAcpChatActions per-Chat ownership", () => {
       fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
       await waitFor(() => expect(result.current.errorKind).toBeNull());
       expect(result.current.error).toBeNull();
-      expect(
-        useWorkbenchStore.getState().chatUiById["chat-a"].dismissedAuthTurnId,
-      ).toBeUndefined();
     },
   );
   it("keeps a newer sign-in when a refused command finishes settling", async () => {
@@ -558,7 +562,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
         );
       });
       expect(result.current.errorKind).toBe("signInRequired");
-      expect(harnessSignInStatus("auth-1").state).toBe("signedOut");
+      expect(harnessSignInStatus("auth-1").state).toBe("refused");
       expect(harnessSignInStatus("auth-0").state).toBe("unknown");
     },
   );
@@ -1008,7 +1012,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       await result.current.submit("Need access", [], bindingId, null);
     });
     expect(result.current.errorKind).toBe("signInRequired");
-    expect(harnessSignInStatus("auth-fixture").state).toBe("signedOut");
+    expect(harnessSignInStatus("auth-fixture").state).toBe("refused");
 
     const modeErrorOwner = { sessionId: "session-a", runtimeEpoch: "1" };
     act(() =>

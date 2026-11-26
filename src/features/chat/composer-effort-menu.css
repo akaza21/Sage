@@ -1,8 +1,7 @@
-.composer-effort__model-label {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--composer-muted-text);
-  font-size: var(--font-size-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.composer-effort {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px var(--space-2) var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
 }

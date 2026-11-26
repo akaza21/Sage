@@ -65,7 +65,7 @@ async function openChrome(
     await expect(composer.locator(".composer__model-label")).toHaveText(
       `${profile.name} confirmed model`,
     );
-    await expect(composer.locator(".composer__effort-picker")).toHaveCount(
+    await expect(composer.locator(".composer__model-effort")).toHaveCount(
       profile.effort ? 1 : 0,
     );
     await expect(

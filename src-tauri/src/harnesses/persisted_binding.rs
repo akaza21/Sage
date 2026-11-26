@@ -2,7 +2,7 @@ use super::{
     HarnessCatalog,
     catalog_definition::{CuratedProtocol, definition},
 };
-use sage_domain::harness::{HarnessDefinition, HarnessInstallState};
+use sage_domain::harness::{HarnessDefinition, HarnessInstallState, HarnessUnavailableReason};
 
 impl HarnessCatalog {
     /// Restore display identity without granting launch authority or changing
@@ -22,14 +22,16 @@ impl HarnessCatalog {
             return existing.id.clone();
         }
         let id = format!("unavailable-binding:{binding_id}");
-        definitions.push(definition(
+        let mut entry = definition(
             &id,
             "Unavailable harness",
             "The harness bound to this Chat is not available in this build.",
             HarnessInstallState::Unavailable.as_str(),
             "custom",
             CuratedProtocol::acp(Some(binding_id)),
-        ));
+        );
+        entry.unavailable_reason = Some(HarnessUnavailableReason::BindingMissing);
+        definitions.push(entry);
         id
     }
 }

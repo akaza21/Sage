@@ -150,12 +150,7 @@ describe("notification navigation", () => {
     const errors = vi.fn();
     const stop = vi.fn();
     vi.mocked(native.listenOpen).mockResolvedValue(stop);
-    const navigation = listenNotificationNavigation(
-      native,
-      () => true,
-      open,
-      errors,
-    );
+    const navigation = listenNotificationNavigation(native, open, errors);
     expect(native.takeChat).not.toHaveBeenCalled();
     await flush();
     expect(open).toHaveBeenCalledWith(target);
@@ -164,9 +159,13 @@ describe("notification navigation", () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
-  it("waits for conflicting project navigation and coalesces clicks while opening", async () => {
+  it("coalesces clicks while opening", async () => {
     const native = port();
-    let ready = false;
+    let click!: () => void;
+    vi.mocked(native.listenOpen).mockImplementation(async (wake) => {
+      click = wake;
+      return () => {};
+    });
     let finish!: () => void;
     const open = vi.fn(
       (_chat: NotificationChat) =>
@@ -178,18 +177,9 @@ describe("notification navigation", () => {
       projectId: "p",
       chatId: "c",
     });
-    const navigation = listenNotificationNavigation(
-      native,
-      () => ready,
-      open,
-      vi.fn(),
-    );
+    const navigation = listenNotificationNavigation(native, open, vi.fn());
     await flush();
-    expect(native.takeChat).not.toHaveBeenCalled();
-    ready = true;
-    navigation.wake();
-    await flush();
-    for (let i = 0; i < 100; i++) navigation.wake();
+    for (let i = 0; i < 100; i++) click();
     expect(native.takeChat).toHaveBeenCalledTimes(1);
     finish();
     await flush();
@@ -208,12 +198,7 @@ describe("notification navigation", () => {
     );
     const error = vi.fn();
     const open = vi.fn(async () => {});
-    const navigation = listenNotificationNavigation(
-      native,
-      () => true,
-      open,
-      error,
-    );
+    const navigation = listenNotificationNavigation(native, open, error);
     navigation.dispose();
     const stop = vi.fn();
     listen(stop);
@@ -222,38 +207,9 @@ describe("notification navigation", () => {
     expect(open).not.toHaveBeenCalled();
     const second = port();
     vi.mocked(second.takeChat).mockRejectedValue(new Error("unavailable"));
-    const next = listenNotificationNavigation(second, () => true, open, error);
+    const next = listenNotificationNavigation(second, open, error);
     await flush();
     expect(error).toHaveBeenCalledOnce();
     next.dispose();
   });
-});
-
-it("retains one click when a project transition starts during the native read", async () => {
-  const native = port();
-  let ready = true;
-  let finish!: (chat: NotificationChat) => void;
-  vi.mocked(native.takeChat).mockReturnValueOnce(
-    new Promise((resolve) => {
-      finish = resolve;
-    }),
-  );
-  const open = vi.fn(async () => {});
-  const navigation = listenNotificationNavigation(
-    native,
-    () => ready,
-    open,
-    vi.fn(),
-  );
-  await flush();
-  ready = false;
-  finish({ projectId: "p", chatId: "c" });
-  await flush();
-  expect(open).not.toHaveBeenCalled();
-  ready = true;
-  navigation.wake();
-  await flush();
-  expect(open).toHaveBeenCalledWith({ projectId: "p", chatId: "c" });
-  expect(native.takeChat).toHaveBeenCalledOnce();
-  navigation.dispose();
 });

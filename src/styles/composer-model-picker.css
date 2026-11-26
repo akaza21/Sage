@@ -46,7 +46,7 @@
    it. */
 .composer__model-group
   [data-restored]
-  :is(.composer__model-label, .composer__effort-label) {
+  :is(.composer__model-label, .composer__model-effort) {
   color: var(--composer-muted-text);
 }
 
@@ -63,23 +63,6 @@
   max-width: 240px;
 }
 
-.composer__model-group .composer__effort-picker {
-  min-width: 28px;
-  gap: 4px;
-  padding: 0 var(--space-2);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.composer__effort-menu.menu-popover {
-  display: flex;
-  flex-direction: column;
-  width: min(232px, calc(100vw - 32px));
-  gap: 8px;
-  padding: 12px;
-  border-radius: var(--radius-xl);
-}
-
 .composer-effort__heading {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 20px;
@@ -87,15 +70,8 @@
   gap: 4px;
 }
 
-.composer-effort__identity {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: center;
-  line-height: 16px;
-}
-
 .composer-effort__level {
+  justify-self: center;
   max-width: 100%;
   overflow: hidden;
   color: var(--color-accent);
@@ -125,17 +101,6 @@
 
 .composer-effort__heading button:hover:not(:disabled) {
   color: var(--color-text-emphasis);
-}
-
-.composer-effort__identity button {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-effort__identity svg {
-  display: inline;
 }
 
 .composer-effort__track {
@@ -297,4 +262,8 @@
     background: Highlight;
     box-shadow: none;
   }
+}
+
+.composer__model-menu .composer__capacity {
+  padding: 0 var(--space-2) var(--space-1);
 }

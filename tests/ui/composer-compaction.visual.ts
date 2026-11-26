@@ -162,11 +162,12 @@ for (const width of [1888, 720, 480]) {
       const label = model.locator(".composer__model-label");
       await expect(label).toHaveText(profile.model);
 
-      // The toolbar moves effort into the options menu only when the row
-      // cannot fit it even as an icon.
-      const fit = await settledComposerFit(composer);
-      const compactEffort = fit.includes("effort-menu");
-      await expect(model).not.toHaveText(/Medium/);
+      // The model chip holds the thinking level at every width; no control
+      // moves into the options menu.
+      await settledComposerFit(composer);
+      await expect(model.locator(".composer__model-effort")).toHaveText(
+        profile.effort ? ["Medium"] : [],
+      );
       await expect(
         composer.locator(".chat-goal-entry, .chat-goal-strip"),
       ).toHaveCount(profile.goal ? 1 : 0);
@@ -275,7 +276,7 @@ for (const width of [1888, 720, 480]) {
       ).toHaveCount(profile.goal ? 1 : 0);
       await expect(
         menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
-      ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
+      ).toHaveCount(0);
       if (profile.modes.includes("Plan")) {
         const plan = menu.getByRole("menuitemradio", {
           name: "Plan mode",
@@ -286,29 +287,17 @@ for (const width of [1888, 720, 480]) {
           plan.locator('svg[aria-hidden="true"]').first(),
         ).toBeVisible();
       }
-      if (!profile.effort) {
-        await page.keyboard.press("Escape");
-        return;
-      }
-      const effortAnchor = compactEffort
-        ? add
-        : composer.locator(".composer__effort-picker");
-      if (compactEffort) {
-        await menu
-          .getByRole("menuitem", { name: "Thinking level", exact: true })
-          .click();
-      } else {
-        await page.keyboard.press("Escape");
-        await effortAnchor.click();
-      }
-      const effort = page.getByRole("dialog", { name: "Thinking level" });
+      await page.keyboard.press("Escape");
+      if (!profile.effort) return;
+      // The level is changed in the model popover, anchored to the chip.
+      await model.click();
+      const effort = page.getByRole("dialog", { name: "Select model" });
       await expect(effort).toBeVisible();
-      await expect(page.getByRole("slider")).toHaveAttribute(
-        "aria-valuetext",
-        "Medium",
-      );
+      await expect(
+        effort.getByRole("slider", { name: "Thinking level" }),
+      ).toHaveAttribute("aria-valuetext", "Medium");
       await waitForAnimations(effort);
-      const anchor = (await effortAnchor.boundingBox())!;
+      const anchor = (await model.boundingBox())!;
       const panel = (await effort.boundingBox())!;
       expect(panel.x).toBeGreaterThanOrEqual(8);
       expect(panel.x + panel.width).toBeLessThanOrEqual(width - 8);
@@ -319,7 +308,7 @@ for (const width of [1888, 720, 480]) {
         ),
       ).toBeLessThanOrEqual(5);
       await page.keyboard.press("Escape");
-      await expect(effortAnchor).toBeFocused();
+      await expect(model).toBeFocused();
     });
   }
 }
@@ -342,9 +331,11 @@ const toolbarStates = {
         })),
       });
     },
-    // Until a session confirms effort, the toolbar shows its placeholder.
+    // Until a session confirms effort, the model chip shows no level.
     ready: (composer: Locator) =>
-      composer.locator(".composer__effort-picker:not([aria-controls])"),
+      composer.locator(
+        ".composer__model-trigger:not(:has(.composer__model-effort))",
+      ),
   },
   "with a confirmed model and effort": {
     install: async () => {
@@ -356,7 +347,7 @@ const toolbarStates = {
       });
     },
     ready: (composer: Locator) =>
-      composer.locator(".composer__effort-picker[data-overflow-control]"),
+      composer.locator(".composer__model-trigger .composer__model-effort"),
   },
   // A name shorter than the readable prefix must not need more room once the
   // model name starts to truncate.
@@ -401,9 +392,7 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
       await expect(
         composer.getByLabel("Composer context", { exact: true }),
       ).toBeVisible();
-      await expect(
-        composer.locator(".composer__effort-label").first(),
-      ).toBeVisible();
+      await expect(composer.locator(".composer__model-label")).toBeVisible();
       const widths = Array.from(
         { length: (from - to) / 2 + 1 },
         (_, index) => from - index * 2,
@@ -436,7 +425,7 @@ test("Composer toolbar refits when a control grows without a content change", as
   await composer
     .locator(".composer__model-trigger")
     .evaluate((trigger: HTMLElement) => {
-      trigger.style.marginInlineStart = "160px";
+      trigger.style.marginInlineStart = "320px";
     });
   const after = await settledComposerFit(composer);
   expect(after.length).toBeGreaterThan(before.length);
