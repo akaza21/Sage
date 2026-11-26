@@ -117,8 +117,16 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Launch is part of an activation's window: verifying, scanning and loading
+/// a large harness build on its first start after an update, or on a loaded
+/// machine, can take most of a request's deadline, which then left too little
+/// for the harness's own start. This bounded allowance covers the launch.
+const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(30);
+
 pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
-    let cleanup = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
+    let cleanup = Instant::now()
+        + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc)
+        + LAUNCH_ALLOWANCE;
     let reserve = Duration::from_millis(
         LIMITS.deadlines_ms.tree_termination.saturating_mul(2)
             + LIMITS.deadlines_ms.wal_convergence,
@@ -244,5 +252,24 @@ fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
         }
         crate::acp::runtime::HostError::SignInRequired => CodexSessionError::SignInRequired,
         _ => CodexSessionError::Recovery,
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    /// A launch that uses its whole allowance still leaves the harness the
+    /// start window an activation had before launch was counted against it.
+    #[test]
+    fn a_slow_launch_does_not_eat_the_harness_start_window() {
+        let started = Instant::now();
+        let (operation, cleanup) = deadlines().unwrap();
+        let reserve = Duration::from_millis(
+            LIMITS.deadlines_ms.tree_termination * 2 + LIMITS.deadlines_ms.wal_convergence,
+        );
+        let start_window = Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc) - reserve;
+        assert!(operation.saturating_duration_since(started + LAUNCH_ALLOWANCE) >= start_window);
+        assert_eq!(cleanup.saturating_duration_since(operation), reserve);
     }
 }
