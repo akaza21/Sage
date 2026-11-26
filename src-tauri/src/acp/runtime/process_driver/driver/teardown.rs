@@ -23,7 +23,7 @@ fn pump_error_summary(error: &AdapterPumpError) -> &'static str {
         AdapterPumpError::Refused(_) => "harness refused the request",
         AdapterPumpError::Adapter(
             crate::acp::bindings::adapter::AdapterRuntimeError::HarnessTurnRefused,
-        ) => crate::acp::runtime::adapter_pump::REFUSED_TURN,
+        ) => crate::acp::runtime::adapter_pump::JOINED_TURN_REFUSED,
         AdapterPumpError::Adapter(_) => "harness adapter rejected the exchange",
     }
 }

@@ -380,6 +380,9 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
 /// taken into that Turn, which keeps workspace-write and wrote to the
 /// workspace. The `turn/started` that arrives before Codex answers the
 /// prompt is refused, so the prompt never runs under the wider access.
+/// A `/compact` raced the same way gets the goal Turn's `turn/started`
+/// before its `{}` answer, so it is refused too; a compact answered first
+/// binds its own `turn/started`, whatever the thread's access.
 #[test]
 fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
     use crate::acp::bindings::adapter::AdapterRuntimeError;
@@ -397,62 +400,85 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
             "itemsView":"notLoaded","status":"inProgress","error":null,
             "startedAt":1795651426,"completedAt":null,"durationMs":null}}}))
     };
-    runtime().block_on(async {
-        let mut codex = ready_codex();
-        let prompt = codex
-            .command(AdapterCommand::Prompt {
-                prompt: Prompt::new("prompt", "Reply with exactly the word READY.").unwrap(),
-                client_message_id: RequiredText::new("client", "client-1").unwrap(),
-                access_mode: SessionAccessMode::WorkspaceWrite,
-            })
-            .unwrap();
-        let prompt_id = codex_request_id(&prompt);
-        codex
-            .resolve_egress(prompt.into_token(), EgressResolution::Queued)
-            .unwrap();
-        let (mut pump, _shared) = codex_pump(codex);
-        for frame in [
-            codex_line(serde_json::json!({"id":prompt_id,"result":{"turn":turn_object(FIRST)}})),
-            started(FIRST),
-            codex_line(serde_json::json!({"method":"turn/completed","params":{
-                "threadId":"thread-1","turn":{"id":FIRST,"status":"completed"}}})),
-        ] {
-            pump.push_stdout_chunk(&frame, 2).await.unwrap();
+    let joined = |compact: bool| {
+        if !compact {
+            return Prompt::new("prompt", "Reply with the word JOINED as well.").unwrap();
         }
-        let parts = pump
-            .try_into_completed_parts()
-            .ok()
-            .expect("the workspace-write prompt ends");
+        let mut prompt = Prompt::new("prompt", "/compact").unwrap();
+        prompt.action = Some(crate::acp::session_action::SessionAction::Compact {});
+        prompt
+    };
+    runtime().block_on(async {
+        for (compact, answered_first) in [(false, false), (true, false), (true, true)] {
+            let mut codex = ready_codex();
+            let prompt = codex
+                .command(AdapterCommand::Prompt {
+                    prompt: Prompt::new("prompt", "Reply with exactly the word READY.").unwrap(),
+                    client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                    access_mode: SessionAccessMode::WorkspaceWrite,
+                })
+                .unwrap();
+            let prompt_id = codex_request_id(&prompt);
+            codex
+                .resolve_egress(prompt.into_token(), EgressResolution::Queued)
+                .unwrap();
+            let (mut pump, _shared) = codex_pump(codex);
+            for frame in [
+                codex_line(
+                    serde_json::json!({"id":prompt_id,"result":{"turn":turn_object(FIRST)}}),
+                ),
+                started(FIRST),
+                codex_line(serde_json::json!({"method":"turn/completed","params":{
+                    "threadId":"thread-1","turn":{"id":FIRST,"status":"completed"}}})),
+            ] {
+                pump.push_stdout_chunk(&frame, 2).await.unwrap();
+            }
+            let parts = pump
+                .try_into_completed_parts()
+                .ok()
+                .expect("the workspace-write prompt ends");
 
-        let next = ActiveTurnIntent {
-            turn_id: turn("two"),
-            external_turn_id: None,
-            client_message_id: RequiredText::new("client", "client-2").unwrap(),
-        };
-        let mut pump = parts
-            .bind_turn(next.clone())
-            .ok()
-            .expect("a prompt may follow");
-        pump.queue_prompt(
-            Prompt::new("prompt", "Reply with the word JOINED as well.").unwrap(),
-            &next.client_message_id,
-            SessionAccessMode::ReadOnly,
-        )
-        .unwrap();
-        let mut transport = CaptureTransport(Vec::new());
-        assert_eq!(
-            pump.flush_one(&mut transport).unwrap(),
-            FlushDisposition::Written
-        );
-        let refused = pump.push_stdout_chunk(&started(GOAL), 3).await;
-        assert!(
-            matches!(
-                refused,
-                Err(AdapterPumpError::Adapter(
-                    AdapterRuntimeError::HarnessTurnRefused
-                ))
-            ),
-            "{refused:?}"
-        );
+            let next = ActiveTurnIntent {
+                turn_id: turn("two"),
+                external_turn_id: None,
+                client_message_id: RequiredText::new("client", "client-2").unwrap(),
+            };
+            let mut pump = parts
+                .bind_turn(next.clone())
+                .ok()
+                .expect("a prompt may follow");
+            pump.queue_prompt(
+                joined(compact),
+                &next.client_message_id,
+                SessionAccessMode::ReadOnly,
+            )
+            .unwrap();
+            let mut transport = CaptureTransport(Vec::new());
+            assert_eq!(
+                pump.flush_one(&mut transport).unwrap(),
+                FlushDisposition::Written
+            );
+            if answered_first {
+                let id = serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"]
+                    .as_u64()
+                    .unwrap();
+                let answer = codex_line(serde_json::json!({"id":id,"result":{}}));
+                pump.push_stdout_chunk(&answer, 3).await.unwrap();
+                pump.push_stdout_chunk(&started(GOAL), 3)
+                    .await
+                    .expect("the compact's own Turn binds");
+                continue;
+            }
+            let refused = pump.push_stdout_chunk(&started(GOAL), 3).await;
+            assert!(
+                matches!(
+                    refused,
+                    Err(AdapterPumpError::Adapter(
+                        AdapterRuntimeError::HarnessTurnRefused
+                    ))
+                ),
+                "compact={compact}: {refused:?}"
+            );
+        }
     });
 }

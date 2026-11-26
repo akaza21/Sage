@@ -1273,6 +1273,20 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
             control.lock().expect("control").requested,
             [TreeExit::ProtocolFailure]
         );
+
+        let (mut joined, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
+        shared.0.lock().expect("shared").ingest_error =
+            Some(AdapterRuntimeError::HarnessTurnRefused);
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox.try_push_chunk(b"{}\n".to_vec()).expect("data");
+        let _ = joined.run_next(&mailbox).await;
+        assert_eq!(
+            joined
+                .terminal_outcome()
+                .and_then(|outcome| outcome.message),
+            Some(crate::acp::runtime::adapter_pump::JOINED_TURN_REFUSED.to_owned()),
+            "a prompt the harness took into its own Turn is to be sent again"
+        );
     });
 }
 
