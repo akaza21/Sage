@@ -356,18 +356,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
-        retryNotice={
-          acpLoadFailure.error
-            ? { onRetry: acpLoadFailure.retry }
-            : sessionPromptUnavailable && selectedSession?.state === "starting"
-              ? {
-                  // Ending a start that never finished drives its recovery;
-                  // the session is then one the next send starts again.
-                  onRetry: endSession,
-                  message: "The agent did not finish starting.",
-                }
-              : null
-        }
+        onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         newChat={newChat && !isSideChatId(acpPage?.chatId ?? chatId)}
         usage={usage}

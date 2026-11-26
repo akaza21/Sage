@@ -7,14 +7,12 @@ export function ComposerAvailabilityNotice({
   scope,
   compact,
   onRetry,
-  message = "This chat failed to load.",
 }: {
   reason: string | null;
   id: string;
   scope: string;
   compact: boolean;
   onRetry?: (() => void) | null;
-  message?: string;
 }) {
   return (
     <>
@@ -32,7 +30,7 @@ export function ComposerAvailabilityNotice({
         <Notice
           identity={`${scope}:chat-load`}
           severity="blocking"
-          message={message}
+          message="This chat failed to load."
           action={{ label: "Retry", onClick: onRetry }}
         />
       )}

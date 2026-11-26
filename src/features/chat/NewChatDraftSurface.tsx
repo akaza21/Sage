@@ -113,6 +113,19 @@ export function NewChatDraftSurface({
           </button>
         ) : null}
       </>
+    ) : available && discoveryError ? (
+      // A harness that did not list its models in time is asked again.
+      <>
+        {discoveryError}
+        <button
+          type="button"
+          className="button button--compact"
+          disabled={transitioning}
+          onClick={() => void retryHarnessDiscovery()}
+        >
+          Retry
+        </button>
+      </>
     ) : null;
   return (
     <div
@@ -212,14 +225,6 @@ export function NewChatDraftSurface({
           onSelectHarness={chooseHarness}
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
-          retryNotice={
-            available && discoveryError
-              ? {
-                  onRetry: () => void retryHarnessDiscovery(),
-                  message: discoveryError,
-                }
-              : null
-          }
           disabledReason={
             available
               ? discoveryError

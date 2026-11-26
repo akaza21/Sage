@@ -77,9 +77,7 @@ export interface ChatComposerRegionProps {
   onSelectModel: (modelId: string) => void;
   missingBindingNotice: boolean;
   disabledReason: string | null;
-  /** A Retry for what keeps the composer refused; the message defaults to a
-   * chat that failed to load. */
-  retryNotice?: { onRetry: () => void; message?: string } | null;
+  onRetryLoad?: (() => void) | null;
   /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string; isInternal?: boolean } | null | undefined;
   newChat?: boolean;
