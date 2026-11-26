@@ -232,11 +232,10 @@ impl RuntimeHost {
                 &error,
                 self.lifecycle.load(Ordering::Acquire),
             );
-            match error {
-                HostError::Capacity | HostError::Intent | HostError::RepositoryBusy(_) => {
-                    PromptSendError::not_started(error)
-                }
-                _ => PromptSendError::unknown(error),
+            if error.refused_before_prepare() {
+                PromptSendError::not_started(error)
+            } else {
+                PromptSendError::unknown(error)
             }
         })?;
         let prepared_ms = started.elapsed().as_millis();

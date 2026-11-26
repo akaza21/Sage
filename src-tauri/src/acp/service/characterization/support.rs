@@ -170,6 +170,7 @@ fn classify_host_error(error: HostError) -> CharacterizationError {
     match error {
         HostError::Intent
         | HostError::RepositoryBusy(_)
+        | HostError::PromptRefused(_)
         | HostError::ConfigMutationRejected
         | HostError::GoalMutationRejected
         | HostError::SignInRequired => CharacterizationError::Intent,

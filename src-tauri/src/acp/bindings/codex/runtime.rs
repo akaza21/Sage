@@ -170,8 +170,8 @@ impl CodexRuntime {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
                 one(AdapterEvent::IgnoredLate)
             }
-            usage @ (IngressDisposition::UsageUpdated(_)
-            | IngressDisposition::UsageRead(_)
+            IngressDisposition::UsageUpdated(bucket) => self.usage_pushed(bucket, request_digest),
+            usage @ (IngressDisposition::UsageRead(_)
             | IngressDisposition::UsageRefused
             | IngressDisposition::UsageReset) => {
                 self.apply_usage(usage);
