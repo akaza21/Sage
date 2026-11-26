@@ -365,6 +365,8 @@ export function useChatSurfaceModel({
     },
     [],
   );
+  // A chat with no head session: the next send starts one.
+  const headless = page && !page.currentSessionId ? page : undefined;
   return {
     ...model,
     // Access and effort are drafted for the session the next send starts,
@@ -372,8 +374,8 @@ export function useChatSurfaceModel({
     // binding or model refuses a start.
     accessTarget: {
       bindingId: accessBindingId,
-      draftChatId: page && !page.currentSessionId ? page.chatId : undefined,
-      endedPage: page && !page.currentSessionId ? page : undefined,
+      draftChatId: headless?.chatId,
+      endedPage: headless,
     },
     foregroundError: acpActions.error ?? chatError,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
