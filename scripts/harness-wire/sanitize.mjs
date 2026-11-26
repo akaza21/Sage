@@ -6,6 +6,7 @@ import os from "node:os";
 
 export const WORKSPACE = "C:\\fixture-workspace";
 const MAX_STRING = 6000;
+const SYNCED = "(claude.ai sync)";
 
 const IDENTITY_KEYS = new Set([
   "email",
@@ -126,13 +127,34 @@ export function makeSanitizer({ roots }) {
     return out;
   };
 
+  // Skills a signed-in account syncs from claude.ai name the account's own
+  // skills and arrive whenever the sync lands, so they are left out wherever
+  // they are listed, by entry or by name.
+  const synced = new Set();
+  const isSynced = (entry) =>
+    entry &&
+    typeof entry === "object" &&
+    typeof entry.description === "string" &&
+    entry.description.endsWith(SYNCED);
+  const findSynced = (value) => {
+    if (Array.isArray(value)) value.forEach(findSynced);
+    else if (value && typeof value === "object") {
+      if (isSynced(value) && typeof value.name === "string") synced.add(value.name);
+      Object.values(value).forEach(findSynced);
+    }
+  };
+
   const walk = (value, key) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (typeof value === "string") {
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
-    if (Array.isArray(value)) return value.map((entry) => walk(entry, key));
+    if (Array.isArray(value)) {
+      return value
+        .filter((entry) => !isSynced(entry) && !(typeof entry === "string" && synced.has(entry)))
+        .map((entry) => walk(entry, key));
+    }
     if (value && typeof value === "object") {
       return Object.fromEntries(
         Object.entries(value).map(([name, entry]) => [
@@ -146,7 +168,10 @@ export function makeSanitizer({ roots }) {
 
   return {
     record: (record) => walk(record, ""),
-    records: (list) => joinSplitRuns(list, text).map((r) => walk(r, "")),
+    records: (list) => {
+      list.forEach((record) => findSynced(record.frame));
+      return joinSplitRuns(list, text).map((r) => walk(r, ""));
+    },
     text,
   };
 }
