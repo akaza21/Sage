@@ -436,18 +436,18 @@ test.describe("CP-47 chat motion", () => {
           getComputedStyle(node, "::before").getPropertyValue(name),
         property,
       );
-    await alpha.getByRole("combobox", { name: "Message agent" }).fill("");
-    await expect(send).toBeDisabled();
-    await expect.poll(() => layer("opacity")).toBe("1");
-    expect(await layer("transition-duration")).toBe("0.15s");
-    expect(await layer("transition-property")).toBe("opacity");
-    await alpha.getByRole("combobox", { name: "Message agent" }).fill("Hi");
+    const prompt = alpha.getByRole("combobox", { name: "Message agent" });
+    // An empty composer shows the mic; typed text brings an enabled Send.
+    await prompt.fill("Hi");
     await expect(send).toBeEnabled();
     await expect.poll(() => layer("opacity")).toBe("0");
+    expect(await layer("transition-duration")).toBe("0.15s");
+    expect(await layer("transition-property")).toBe("opacity");
 
-    // The journey has no composer options, so open the harness picker, which
-    // shares the menu popover surface.
-    await alpha.getByRole("button", { name: "Harness", exact: true }).click();
+    // The journey has no composer options, so open the model picker, which
+    // shares the menu popover surface. (The harness picker is a dialog now,
+    // and dialogs open without an enter animation.)
+    await alpha.getByRole("button", { name: "Model", exact: true }).click();
     const menu = page.locator(".menu-popover:not([hidden])").first();
     await expect(menu).toBeVisible();
     await expect(menu).toHaveCSS("animation-name", "menu-popover-enter");
@@ -460,5 +460,13 @@ test.describe("CP-47 chat motion", () => {
         ),
     );
     expect(keyframes.some((frame) => "transform" in frame)).toBe(false);
+
+    // While the first send is pending, a retyped prompt's Send is disabled
+    // and its fill layer fades back in.
+    await page.keyboard.press("Escape");
+    await send.click();
+    await prompt.fill("Hi again");
+    await expect(send).toBeDisabled();
+    await expect.poll(() => layer("opacity")).toBe("1");
   });
 });

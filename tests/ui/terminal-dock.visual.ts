@@ -398,11 +398,16 @@ test("defaults closed; the labelled toggle persists open and closed across reloa
   for (const visible of [true, false]) {
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
-    await page.evaluate(async () => {
-      const { useTerminalDockStore } =
-        await import("/src/app/terminalDockStore.ts");
-      await useTerminalDockStore.getState().flush();
-    });
+    // Reload only once the stored setting reads back the new state.
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { getTerminalDockVisible } =
+            await import("/src/services/terminalDockSettingsDesktop.ts");
+          return (await getTerminalDockVisible()) === true;
+        }),
+      )
+      .toBe(visible);
     await page.reload();
     await installScenario(page, "agent-single");
     await attachNativeTerminal(page);

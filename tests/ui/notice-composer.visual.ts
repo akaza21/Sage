@@ -125,12 +125,14 @@ test("a cold missing binding has one explanation and keyboard recovery", async (
     },
   );
   try {
-    const send = page.getByRole("button", {
-      name: "Send message",
-      exact: true,
-    });
-    await expect(send).toBeDisabled();
-    await expect(send).toHaveAccessibleDescription("Codex is unavailable.");
+    // The empty, disabled composer offers only a disabled mic as its turn
+    // control; the prompt carries the one explanation.
+    await expect(
+      page.getByRole("button", { name: "Start dictation", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("combobox", { name: "Message agent", exact: true }),
+    ).toHaveAccessibleDescription(/Codex is unavailable./);
     const trigger = page.getByRole("button", { name: "Harness", exact: true });
     await trigger.focus();
     await page.keyboard.press("Enter");

@@ -121,8 +121,8 @@ async function expectComposerControlRow(page: Page) {
     form.locator(".composer__access-label"),
     form.getByRole("button", { name: "Harness", exact: true }),
     form.getByLabel("Model", { exact: true }),
+    // An idle empty composer shows the mic as its one turn control.
     form.getByRole("button", { name: "Start dictation", exact: true }),
-    form.getByRole("button", { name: "Send message", exact: true }),
   ];
   const centers = await Promise.all(
     controls.map(async (control) => {
@@ -136,7 +136,10 @@ async function expectComposerControlRow(page: Page) {
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
 }
 
-async function expectComposerToolbarLaidOut(form: Locator) {
+async function expectComposerToolbarLaidOut(
+  form: Locator,
+  turnControl: "Start dictation" | "Send message",
+) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
   // A resized pane refits its toolbar a frame or more later; measure the
@@ -187,13 +190,13 @@ async function expectComposerToolbarLaidOut(form: Locator) {
       }),
     };
   });
+  // One turn control trails: the mic for an empty draft, Send once it has text.
   expect(geometry.buttons.map((button) => button.name)).toEqual([
     "Composer options",
     "Access options",
     "Harness",
     "Model",
-    "Start dictation",
-    "Send message",
+    turnControl,
   ]);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
@@ -208,7 +211,7 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     expect(button.height).toBeGreaterThan(0);
     expect(button.contained, button.name ?? "toolbar button").toBe(true);
   }
-  const trailing = ["Start dictation", "Send message"];
+  const trailing = [turnControl];
   // The toolbar wraps only when its full sequence of compacted controls cannot fit.
   const rows = geometry.fit.includes("wrap")
     ? [
@@ -278,7 +281,8 @@ async function expectComposerControlsLaidOut(page: Page) {
     page.getByRole("button", { name: "Harness" }),
     page.getByLabel("Model", { exact: true }),
     page.getByRole("combobox", { name: "Message agent" }),
-    page.getByRole("button", { name: "Send message" }),
+    // An idle empty composer shows the mic as its one turn control.
+    page.getByRole("button", { name: "Start dictation", exact: true }),
   ];
   const boxes: ComposerControlBox[] = [];
   for (const control of controls) {
@@ -338,7 +342,8 @@ async function expectArtifactConstrainedComposer(
     expectedLabels[1]!,
   );
   await expectComposerControlsLaidOut(page);
-  await expectComposerToolbarLaidOut(form);
+  // An empty draft shows the mic, never Send (#471).
+  await expectComposerToolbarLaidOut(form, "Start dictation");
   const options = await openComposerOptions(page);
   await expect(
     options.getByRole("menuitemradio", {
@@ -481,7 +486,7 @@ test.describe("ED02 picker visual states", () => {
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Sage can't start this harness\./,
+      name: /Unavailable Codex.*can't start yet\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
@@ -640,7 +645,9 @@ test.describe("ED02 picker visual states", () => {
   });
 
   test("captures the compact narrow composer picker", async ({ page }) => {
-    await page.setViewportSize({ width: 720, height: 560 });
+    // 660px sits inside the access tier (about 620-690px with the mic as the
+    // one turn control): narrower than every label, wider than harness icon.
+    await page.setViewportSize({ width: 660, height: 560 });
     const workbench = await openScenario(
       page,
       "agent-composer-narrow",
@@ -805,7 +812,8 @@ test.describe("V2-4 session mode picker", () => {
     const openInput = page.getByRole("menuitemradio", {
       name: "Review changes",
     });
-    const openListbox = page.getByRole("group", { name: "Session mode" });
+    // Session modes sit in the shared "Model and access" options section.
+    const openListbox = page.getByRole("group", { name: "Model and access" });
     await expect(openListbox.getByRole("menuitemradio")).toHaveCount(2);
     // Rows show the advertised description beside the name (Codex ref 34).
     await expect(openListbox.getByRole("menuitemradio").nth(0)).toHaveText(
@@ -833,7 +841,7 @@ test.describe("V2-4 session mode picker", () => {
     await expectOpenPickerContained(
       page,
       narrowTrigger,
-      page.getByRole("group", { name: "Session mode" }),
+      page.getByRole("group", { name: "Model and access" }),
     );
     await expectNoViewportOverflow(page);
     await settleTranscriptAtEnd(page);
@@ -850,7 +858,7 @@ test.describe("V2-4 session mode picker", () => {
     );
     await openComposerOptions(page);
     const forcedState = await page
-      .getByRole("group", { name: "Session mode" })
+      .getByRole("group", { name: "Model and access" })
       .getByRole("menuitemradio", { name: "Review changes" })
       .evaluate((option) => ({
         background: getComputedStyle(option).backgroundColor,
@@ -1259,8 +1267,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         await expect
           .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
           .toBeLessThanOrEqual(280);
-        for (const pane of await panes.all()) {
-          await expectComposerToolbarLaidOut(pane.locator("form.composer"));
+        // The source chat's draft is empty, so it shows the mic (#471); the
+        // side chat opens carrying the selected phrase, so it shows Send.
+        for (const [index, turnControl] of [
+          [0, "Start dictation"],
+          [1, "Send message"],
+        ] as const) {
+          const pane = panes.nth(index);
+          await expectComposerToolbarLaidOut(
+            pane.locator("form.composer"),
+            turnControl,
+          );
           await expect(
             pane.getByRole("combobox", { name: "Message agent" }),
           ).toBeVisible();

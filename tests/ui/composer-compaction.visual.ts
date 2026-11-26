@@ -210,17 +210,16 @@ for (const width of [1888, 720, 480]) {
                 ),
               ),
             ),
-            // Controls lead the row from the Add button (when offered); the
-            // mic (when offered) and send trail it.
+            // Controls lead the row from the Add button (when offered); the one
+            // turn control (the mic while the composer is idle and empty, else
+            // Send or Stop) trails it.
             order: (() => {
               const box = (selector: string) =>
                 toolbar.querySelector(selector)?.getBoundingClientRect();
-              const send = box(".send-button")!;
-              const mic = box(".composer__mic");
+              const turn = box(".send-button, .composer__mic")!;
               const plus = box(".composer__plus");
               return (
-                boxes.every((other) => other.right <= send.right) &&
-                (mic === undefined || mic.right <= send.left) &&
+                boxes.every((other) => other.right <= turn.right) &&
                 (plus === undefined ||
                   boxes.every((other) => other.left >= plus.left))
               );

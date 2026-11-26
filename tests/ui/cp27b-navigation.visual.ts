@@ -82,7 +82,7 @@ async function expectComposerControls(page: Page) {
       }),
       composer.getByRole("button", { name: "Harness", exact: true }),
       composer.getByRole("button", { name: "Model", exact: true }),
-      composer.locator(".composer__mic"),
+      // The draft has text, so Send is the composer's one turn control.
       composer.locator(".send-button"),
     ];
     const rectangles = [];
