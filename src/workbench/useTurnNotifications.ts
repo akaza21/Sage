@@ -25,11 +25,12 @@ export function useNotificationVisibility(
 export function useNotificationNavigation(enterAgent: () => void) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    // A click during a project switch waits in the rail's held-open slot.
+    // A click during a project switch waits in the rail's held-open slot,
+    // loaded with the lazy rail chunk.
     const navigation = listenNotificationNavigation(
       nativeNotificationPort,
       async ({ projectId, chatId }) =>
-        (await import("./heldRailChatOpen")).openNotificationChat(
+        (await import("./ProjectChatNavigation")).openNotificationChat(
           projectId,
           chatId,
           enterAgent,
