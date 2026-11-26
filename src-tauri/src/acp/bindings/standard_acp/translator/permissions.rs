@@ -15,6 +15,7 @@ use super::decode::{
 };
 #[cfg(test)]
 use super::decode_frame;
+use super::permission_text::{pending_file_action, with_text_content};
 use super::{AdapterEvent, StandardAcpTranslator, TranslationError};
 use crate::acp::bindings::command_summary::{CommandSummaryError, sanitize_command_summary};
 
@@ -82,7 +83,7 @@ impl StandardAcpTranslator {
         let command = permission_command(tool)?;
         let relabel = self.adopt_permission_label(tool_call_id.as_str(), tool);
         let restated = self.adopt_permission_input(tool_call_id.as_str(), command.as_ref());
-        let summary = self.permission_summary(tool_call_id.as_str(), command)?;
+        let summary = self.permission_summary(tool_call_id.as_str(), category, tool, command)?;
         let offered_option_kinds = offered_option_kinds(params)?;
         self.tools.insert(
             tool_call_id.as_str().to_owned(),
@@ -278,6 +279,8 @@ impl StandardAcpTranslator {
     fn permission_summary(
         &self,
         tool_call_id: &str,
+        category: ToolCategory,
+        tool: &Map<String, Value>,
         command: Option<SafeText<65536>>,
     ) -> Result<SafeText<65536>, TranslationError> {
         if let Some(command) = command {
@@ -285,7 +288,15 @@ impl StandardAcpTranslator {
         }
         let summary = match self.tool_labels.get(tool_call_id) {
             Some(named) if !self.generic_permission_label(named.as_str()) => {
-                SafeText::new("permissionSummary", named.as_str())?
+                let named = named.as_str();
+                let shown = match category {
+                    ToolCategory::SwitchMode => with_text_content(named, tool),
+                    ToolCategory::Edit | ToolCategory::Delete => {
+                        pending_file_action(named).unwrap_or_else(|| named.to_owned())
+                    }
+                    _ => named.to_owned(),
+                };
+                SafeText::new("permissionSummary", shown)?
             }
             _ => SafeText::new(
                 "permissionSummary",

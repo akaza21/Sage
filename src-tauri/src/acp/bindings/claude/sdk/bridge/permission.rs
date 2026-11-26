@@ -28,7 +28,8 @@ const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
     ),
 ];
 const DECLINED: &str = "The user declined this tool use.";
-const KEEP_PLANNING: &str = "The user chose to keep planning.";
+const KEEP_PLANNING: &str =
+    "The user chose to keep planning. Stop and wait for the user to say what to change.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 const NO_TURN: &str = "No turn has started yet, so no one can approve this now.";
 /// Questions beyond what a Sage card shows; declining with this reason makes
@@ -258,11 +259,10 @@ impl SdkBridge {
                 }),
                 None => deny(DECLINED),
             },
-            // Declining a plan stops the turn so the user can say what to
-            // change, rather than Claude guessing and asking again.
-            None if plan_exit => json!({
-                "behavior": "deny", "message": KEEP_PLANNING, "interrupt": true,
-            }),
+            // Declining a plan asks Claude to stop and wait for the user to
+            // say what to change. An interrupt instead makes Claude Code end
+            // the turn with an error result, which reads as a failed turn.
+            None if plan_exit => deny(KEEP_PLANNING),
             None => deny(DECLINED),
         }
     }
