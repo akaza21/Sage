@@ -4,7 +4,7 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { FileRewindPreview, useFileRewindPreview } from "../FileRewindPreview";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
-import { backgroundProcesses } from "./acpTurnState";
+import { isBackgroundProcess } from "./acpTurnState";
 
 const STATE_LABEL = {
   running: "Running",
@@ -17,7 +17,8 @@ const STATE_LABEL = {
 // outlives its turn. A running background subagent joins them while it can be
 // stopped; Subagents lists it too, without a Stop. Hooks, retries and
 // compaction show in their Turn instead.
-const backgroundTasks = backgroundProcesses;
+const backgroundTasks = (surface: unknown) =>
+  decodeSessionSurface(surface)?.activities.filter(isBackgroundProcess) ?? [];
 
 function SessionStatus({
   status,

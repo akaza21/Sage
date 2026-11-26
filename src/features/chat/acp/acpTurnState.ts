@@ -6,7 +6,6 @@ import type {
   SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
-import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
 
 export function turnBindingId(page: AcpChatPage, turn: TurnProjection) {
@@ -139,19 +138,26 @@ export function chronologicalTurnItems(
     );
 }
 
-/** Background tasks, and running subagents that can still be stopped: what Resources lists. */
-export const backgroundProcesses = (surface: unknown) =>
-  decodeSessionSurface(surface)?.activities.filter(
-    ({ kind, state, stoppable }) =>
-      kind === "backgroundTask" ||
-      (kind === "subagent" && state === "running" && stoppable),
-  ) ?? [];
+/** A background task, or a running subagent that can still be stopped: what Resources lists. */
+export const isBackgroundProcess = (row: {
+  kind?: unknown;
+  state?: unknown;
+  stoppable?: unknown;
+}) =>
+  row.kind === "backgroundTask" ||
+  (row.kind === "subagent" && row.state === "running" && !!row.stoppable);
 
-/** The session still runs background work after its turn settled. */
-export const backgroundWorkRunning = (page: AcpChatPage) =>
-  backgroundProcesses(page.sessionSurface).some(
-    ({ state }) => state === "running",
+/** The session still runs background work. Busy only: Resources decodes the rows it shows. */
+export const backgroundWorkRunning = (page: AcpChatPage) => {
+  const rows = (page.sessionSurface as { activities?: unknown } | undefined)
+    ?.activities;
+  return (
+    Array.isArray(rows) &&
+    (rows as ({ state?: unknown } | null)[]).some(
+      (row) => row?.state === "running" && isBackgroundProcess(row),
+    )
   );
+};
 
 /** A chat is busy while a turn is unsettled or background work still runs. */
 export const chatBusy = (page: AcpChatPage) =>
