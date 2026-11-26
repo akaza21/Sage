@@ -6,7 +6,7 @@ import {
   waitForAnimations,
 } from "./shared/visualBrowserPrimitives";
 
-test("keyboard focus follows the effort control through overflow and back", async ({
+test("keyboard focus stays on the model chip while the row compacts and expands", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
@@ -19,42 +19,24 @@ test("keyboard focus follows the effort control through overflow and back", asyn
   });
   const composer = page.locator("form.composer").first();
   await settledComposerFit(composer);
-  const trigger = composer.getByRole("button", {
-    name: "Thinking level: Medium",
-  });
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  await expect(model.locator(".composer__model-effort")).toHaveText("Medium");
   await composer.getByRole("combobox", { name: "Message agent" }).focus();
   for (
     let index = 0;
     index < 10 &&
-    !(await trigger.evaluate((node) => node === document.activeElement));
+    !(await model.evaluate((node) => node === document.activeElement));
     index++
   )
     await page.keyboard.press("Tab");
-  await expect(trigger).toBeFocused();
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(model).toBeFocused();
   await composer.evaluate((element) => (element.style.width = "220px"));
-  expect(await settledComposerFit(composer)).toContain("effort-menu");
-  const more = composer.getByRole("button", { name: "Composer options" });
-  await expect(more).toBeFocused();
-  await expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(await settledComposerFit(composer)).toContain("model");
+  await expect(model).toBeFocused();
+  await expect(model).toHaveAttribute("aria-expanded", "false");
   await composer.evaluate((element) => (element.style.width = "560px"));
-  await settledComposerFit(composer);
-  await expect(trigger).toBeFocused();
-  // Once the user leaves the stand-in, a later resize must not steal focus.
-  await composer.evaluate((element) => (element.style.width = "220px"));
-  await settledComposerFit(composer);
-  await expect(more).toBeFocused();
-  await page.keyboard.press("Tab");
-  const next = await page.evaluate(() =>
-    document.activeElement?.getAttribute("aria-label"),
-  );
-  await composer.evaluate((element) => (element.style.width = "560px"));
-  await settledComposerFit(composer);
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.getAttribute("aria-label"),
-    ),
-  ).toBe(next);
+  expect(await settledComposerFit(composer)).not.toContain("model");
+  await expect(model).toBeFocused();
 });
 
 test("dense fitting unmounts the usage meter and restores current usage on expansion", async ({
@@ -94,7 +76,7 @@ test("dense fitting unmounts the usage meter and restores current usage on expan
 });
 
 for (const width of [1888, 720]) {
-  test(`effort stays attached to its trigger across resize at ${width}px`, async ({
+  test(`effort stays attached to the model chip across resize at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 1096 });
@@ -108,10 +90,14 @@ for (const width of [1888, 720]) {
     const composer = page.locator("form.composer").first();
     await settledComposerFit(composer);
     const trigger = composer.getByRole("button", {
-      name: "Thinking level: Medium",
+      name: "Model",
+      exact: true,
     });
     await trigger.click();
-    const panel = page.getByRole("dialog", { name: "Thinking level" });
+    const panel = page.getByRole("dialog", { name: "Select model" });
+    await expect(
+      panel.getByRole("slider", { name: "Thinking level" }),
+    ).toHaveAttribute("aria-valuetext", "Medium");
     for (const next of [width, width - 100, width]) {
       await page.setViewportSize({ width: next, height: 1096 });
       await expect(panel).toBeVisible();
@@ -139,7 +125,7 @@ for (const width of [1888, 720]) {
   });
 }
 
-test("Composer options keeps fitting and unmounts overflowed controls", async ({
+test("Composer options never takes the thinking level as the row compacts", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
@@ -152,42 +138,24 @@ test("Composer options keeps fitting and unmounts overflowed controls", async ({
   });
   const composer = page.locator("form.composer").first();
   await composer.evaluate((element) => (element.style.width = "220px"));
-  expect(await settledComposerFit(composer)).toContain("effort-menu");
-  await expect(
-    composer.getByRole("button", { name: /^Thinking level:/ }),
-  ).toHaveCount(0);
+  expect(await settledComposerFit(composer)).toContain("effort");
   const more = composer.getByRole("button", { name: "Composer options" });
   await more.click();
   const menu = page.getByRole("menu", { name: "Composer options menu" });
-  await expect(
-    menu.getByRole("menuitem", { name: "Thinking level" }),
-  ).toBeVisible();
-  await composer.evaluate((element) => (element.style.width = "560px"));
-  expect(await settledComposerFit(composer)).not.toContain("effort-menu");
-  await expect(
-    composer.getByRole("button", { name: "Thinking level: Medium" }),
-  ).toBeVisible();
+  await expect(menu).toBeVisible();
   await expect(
     menu.getByRole("menuitem", { name: "Thinking level" }),
   ).toHaveCount(0);
-  await composer.evaluate((element) => (element.style.width = "220px"));
-  expect(await settledComposerFit(composer)).toContain("effort-menu");
-  await expect(
-    menu.getByRole("menuitem", { name: "Thinking level" }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(
-    composer.getByRole("button", { name: /^Thinking level:/ }),
-  ).toHaveCount(0);
-  await more.click();
-  await menu.getByRole("menuitem", { name: "Thinking level" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Thinking level" }),
-  ).toBeVisible();
-  await expect(composer.locator("button.composer__effort-picker")).toHaveCount(
-    0,
-  );
   await page.keyboard.press("Escape");
   await expect(more).toBeFocused();
+  // At the narrowest fit the level stays one click away, in the model popover.
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  await model.click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Select model" })
+      .getByRole("slider", { name: "Thinking level" }),
+  ).toHaveAttribute("aria-valuetext", "Medium");
+  await page.keyboard.press("Escape");
+  await expect(model).toBeFocused();
 });

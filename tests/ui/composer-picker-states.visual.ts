@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   openScenario,
@@ -64,25 +64,16 @@ test("an unavailable harness's reason reads in full inside the menu", async ({
   expect(menu.x + menu.width).toBeLessThanOrEqual(1280);
 });
 
-test("thinking level waiting for a session is a disabled picker like Model", async ({
+test("a chat waiting for a session shows no thinking level on the model chip", async ({
   page,
 }) => {
   await openScenario(page, "agent-single", "agent");
   await closeChatSessions(page);
   const composer = page.locator("form.composer").first();
-  const effort = composer.getByRole("button", {
-    name: "Thinking level",
-    exact: true,
-  });
-  await expect(effort).toBeDisabled();
-  await expect(effort).toHaveAccessibleDescription(/.+/);
-  await expect(effort).toHaveAttribute("title", /.+/);
-  await expect(effort.locator(".composer__effort-chevron")).toBeVisible();
   const model = composer.getByRole("button", { name: "Model", exact: true });
-  const treatment = (control: Locator) =>
-    control.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return [style.height, style.fontSize, style.fontWeight];
-    });
-  expect(await treatment(effort)).toEqual(await treatment(model));
+  await expect(model).toBeVisible();
+  await expect(model.locator(".composer__model-effort")).toHaveCount(0);
+  await expect(
+    composer.getByRole("button", { name: /^Thinking level/ }),
+  ).toHaveCount(0);
 });

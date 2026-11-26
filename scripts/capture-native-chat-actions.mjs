@@ -7,9 +7,14 @@ import { paneSelector, ownedPaneNodes } from "./capture-native-chat-pane.mjs";
 /** CP-30c chat-wide edit summary above the composer. */
 export const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
 export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
-/** The effort trigger is named "Thinking level: <level>" (ComposerEffortControl). */
+/**
+ * The thinking level is changed in the Model chip's "Select model" dialog
+ * (ComposerModelControls); the chip shows the level it holds.
+ */
 export const EFFORT_TRIGGER =
-  'button[aria-haspopup="dialog"][aria-label^="Thinking level: "]';
+  'button[aria-label="Model"][aria-haspopup="dialog"]';
+/** The level the chip shows once the harness advertises levels. */
+export const EFFORT_LEVEL = EFFORT_TRIGGER + " .composer__model-effort";
 /** `chatId` also admits that Chat's owned artifact pane (Subagents, Diff). */
 function singleEnabledControl(selector, chatId) {
   if (chatId !== null && !/^[A-Za-z0-9:_-]{1,128}$/u.test(chatId))
