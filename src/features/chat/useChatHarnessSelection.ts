@@ -13,6 +13,7 @@ import type { AcpChatPage } from "../../domain/acp";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
+import { endedSessionStates } from "./acp/acpTurnState";
 import { harnessAvailability } from "./harnessAvailability";
 import {
   useInheritedComposerModel,
@@ -138,7 +139,7 @@ export function useChatHarnessSelection(chatId?: string): {
       (candidate) =>
         candidate.id === page.currentSessionId &&
         !candidate.legacy &&
-        !["closed", "failed", "incompatible"].includes(candidate.state),
+        !endedSessionStates.includes(candidate.state),
     ) ??
     (!page?.currentSessionId
       ? page?.sessions.filter((candidate) => !candidate.legacy).at(-1)

@@ -18,7 +18,7 @@ import type { ResourceRef } from "../../domain/workbench";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
-import { liveTurnStates } from "./acp/acpTurnState";
+import { endedSessionStates, liveTurnStates } from "./acp/acpTurnState";
 import {
   SESSION_PROMPT_REFUSAL,
   composerDisabledReason,
@@ -117,7 +117,7 @@ export function useChatSurfaceModel({
     );
     const sessionHarnessId =
       session?.runtimeEpoch &&
-      !["closed", "failed", "incompatible"].includes(session.state)
+      !endedSessionStates.includes(session.state)
         ? (harnesses.find(
             (harness) =>
               harness.transport === "acp" &&
