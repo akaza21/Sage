@@ -547,7 +547,11 @@ describe("ToolActivityRollup", () => {
     ["completed", "Ran commands", "Ran tests"],
     ["inProgress", "Running a command", "Running tests"],
     ["pending", "Running a command", "Running tests"],
-    ["waitingForApproval", "Running a command", "Running tests"],
+    [
+      "waitingForApproval",
+      "Awaiting approval to run a command",
+      "Awaiting approval to run tests",
+    ],
     ["failed", "Ran commands", "Ran tests"],
     ["cancelled", "Ran commands", "Ran tests"],
     ["declined", "Ran commands", "Ran tests"],
@@ -666,13 +670,17 @@ describe("ToolActivityRollup", () => {
     ] as const)(
       "names the live %s command and keeps the state in the row",
       (toolState, rowState) => {
+        const verb =
+          toolState === "waitingForApproval"
+            ? "Awaiting approval to run"
+            : "Running";
         const count =
           toolState === "inProgress" ||
           toolState === "pending" ||
           toolState === "waitingForApproval"
             ? commandActivity === "declaredTest"
-              ? "Running tests"
-              : "Running a command"
+              ? `${verb} tests`
+              : `${verb} a command`
             : settled;
         const completed = tool("completed", "execute", [], commandActivity);
         const unsettled = {
@@ -721,7 +729,7 @@ describe("ToolActivityRollup", () => {
     ["inProgress", "Running"],
     ["completed", "Ran"],
     ["pending", "Running"],
-    ["waitingForApproval", "Running"],
+    ["waitingForApproval", "Awaiting approval to run"],
     ["failed", "Ran"],
     ["cancelled", "Ran"],
     ["declined", "Ran"],
