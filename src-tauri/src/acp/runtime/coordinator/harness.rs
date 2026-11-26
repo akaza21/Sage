@@ -8,9 +8,10 @@ use super::{prepare::prepare_failure, *};
 impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     /// Opens the Turn a harness started on its own in the tree's session,
     /// running in the harness session `mode`, which must be the one the
-    /// chat's access allows now. It takes the tree's one Turn slot like a
-    /// prompt does, so a prompt sent meanwhile is refused, and it is running
-    /// from the start.
+    /// chat's access allows now. A Turn running under an access opens while
+    /// the chat's access is that one, or when it runs read-only. It takes the
+    /// tree's one Turn slot like a prompt does, so a prompt sent meanwhile is
+    /// refused, and it is running from the start.
     pub(crate) async fn open_harness_turn(
         &self,
         tree: &TreeLease,
@@ -19,8 +20,10 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     ) -> Result<ActiveDispatch, Box<PrepareFailure>> {
         let owner = tree.owner();
         use crate::acp::bindings::adapter::HarnessTurnAuthority;
+        use sage_acp_protocol::access_mode::SessionAccessMode;
         if mode.is_none()
             || matches!(mode, Some(HarnessTurnAuthority::SessionMode(mode)) if self.authority.harness_turn_mode(owner) != Some(mode))
+            || matches!(mode, Some(HarnessTurnAuthority::Access(access)) if access != SessionAccessMode::ReadOnly && self.authority.harness_turn_access(owner) != Some(access))
         {
             return Err(prepare_failure(CoordinatorError::Intent));
         }
@@ -75,6 +78,50 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
             }));
         }
         Ok(dispatch)
+    }
+}
+
+impl<A: ProjectIntentAuthority> SendCoordinator<A> {
+    /// Tells `owner`'s chat that its session stopped because the harness
+    /// keeps running a Turn Sage refused and cannot decline. It needs no
+    /// Turn, so it also covers a refusal before the session's first one.
+    pub(crate) async fn notice_refused_harness_turn(
+        &self,
+        owner: &sage_acp_protocol::scheduler::RuntimeOwner,
+        now_millis: i64,
+    ) -> Result<(), CoordinatorError> {
+        let notice = crate::acp::runtime::adapter_pump::refused_turn_notice()
+            .map_err(|_| CoordinatorError::JournalProtocol)?;
+        let mutation = StoreMutation::SessionNotice(crate::acp::store::SessionNoticeCommand {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            notice,
+            now_millis,
+        });
+        let commit = self
+            .journal
+            .enqueue_one(
+                JournalLane::Control,
+                mutation,
+                super::deadline(now_millis, 5_000),
+            )?
+            .committed()
+            .await?;
+        match commit.results.as_slice() {
+            [StoreMutationResult::Notice(revision)] if *revision == ProjectionRevision::ZERO => {
+                Ok(())
+            }
+            [StoreMutationResult::Notice(revision)] => publish(
+                &self.publisher,
+                &owner.project_id,
+                &owner.chat_id,
+                &owner.session_id,
+                *revision,
+            ),
+            _ => Err(CoordinatorError::JournalProtocol),
+        }
     }
 }
 

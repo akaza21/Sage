@@ -37,7 +37,6 @@ mod turn_prompt;
 mod turn_starts;
 mod turns;
 
-use crate::acp::goal::GoalState;
 pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
@@ -190,6 +189,7 @@ pub(crate) struct CodexAdapter {
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
     action_handoff: Option<action_handoff::ActionHandoff>,
+    native_turn: action_handoff::NativeTurn,
     deferred_interrupt: bool,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
@@ -208,7 +208,7 @@ pub(crate) struct CodexAdapter {
     bound_child_threads: Vec<SafeText<512>>,
     unknown_child_notification_reported: bool,
     permission_requests: Vec<PermissionRequestEntry>,
-    goal_state: GoalState,
+    goal_state: crate::acp::goal::GoalState,
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
     goal_mutation_fence: Option<(u64, u64)>,

@@ -6,7 +6,7 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use sage_acp_protocol::{
-    contract::{EntityRevision, RequiredText},
+    contract::{EntityRevision, ProjectionRevision, RequiredText},
     intent::{
         ExternalId,
         session_event::{
@@ -50,6 +50,48 @@ pub(super) fn apply_in(
         )?,
         _ => false,
     };
+    let session_owner = [project, chat, session];
+    fold_in(
+        transaction,
+        session_owner,
+        owner.runtime_epoch.get(),
+        projection,
+        command,
+        recorded,
+    )
+}
+
+/// Folds a notice no Turn owns into the session's row: the caller has
+/// verified that `runtime_epoch` is the session's live one.
+pub(super) fn notice_in(
+    transaction: &Transaction<'_>,
+    [project, chat, session]: [&str; 3],
+    runtime_epoch: u64,
+    command: &SessionEventCommand,
+) -> Result<Option<ProjectionRevision>, StoreError> {
+    if !matches!(command.event, SessionScopedEvent::Notice(_)) {
+        return Err(StoreError::BatchShape);
+    }
+    let projection = facts::next_projection_revision(transaction, project, chat)?;
+    let applied = fold_in(
+        transaction,
+        [project, chat, session],
+        runtime_epoch,
+        projection,
+        command,
+        false,
+    )?;
+    Ok(applied.then_some(projection))
+}
+
+fn fold_in(
+    transaction: &Transaction<'_>,
+    [project, chat, session]: [&str; 3],
+    runtime_epoch: u64,
+    projection: ProjectionRevision,
+    command: &SessionEventCommand,
+    recorded: bool,
+) -> Result<bool, StoreError> {
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
@@ -76,7 +118,7 @@ pub(super) fn apply_in(
             ),
         };
     }
-    let change = match surface.apply(owner.runtime_epoch.get(), &event) {
+    let change = match surface.apply(runtime_epoch, &event) {
         Some(change) => change,
         None if recorded => {
             facts::publish_send_neutral_projection(

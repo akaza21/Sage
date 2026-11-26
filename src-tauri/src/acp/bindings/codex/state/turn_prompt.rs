@@ -71,6 +71,7 @@ impl CodexAdapter {
         if self.turn_start_correlations.has_pending()
             || self.active_turn_id.is_some()
             || self.provisional_turn.is_some()
+            || self.has_announced_native_turn()
         {
             return Err(AdapterError::TurnAlreadyActive);
         }
@@ -101,6 +102,9 @@ impl CodexAdapter {
             _ => request,
         };
         let request = self.reserve(request)?;
+        if prompt.action.is_none() {
+            self.ask_thread_access(id, access_mode);
+        }
         self.turn_start_correlations
             .register(id, client_message_id.clone());
         Ok(request)

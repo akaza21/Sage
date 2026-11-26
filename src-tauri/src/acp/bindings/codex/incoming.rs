@@ -206,6 +206,8 @@ pub(crate) enum IncomingEvent {
 pub(crate) enum IngressDisposition {
     Events(Vec<IncomingEvent>),
     IgnoredLate,
+    /// Codex started a Turn on its own; the session identity announces it.
+    HarnessTurnStarted(ScopedExternalId),
     /// Raw reasoning text: validated for identity and deliberately never
     /// projected.
     DroppedRawReasoning,

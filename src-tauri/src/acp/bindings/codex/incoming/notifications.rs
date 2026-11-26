@@ -198,6 +198,11 @@ pub(super) fn notification<M: ResourceMapper>(
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
             let turn_id = started_turn_id(turn, |root| adapter.root_names_turn(root))?;
+            match adapter.announce_native_turn(turn_id) {
+                Ok(Some(session)) => return Ok(IngressDisposition::HarnessTurnStarted(session)),
+                Ok(None) => {}
+                Err(error) => return Err(turn_started_rejection(adapter, error)),
+            }
             let (id, binding) = match adapter.observe_turn_started(turn_id) {
                 Ok(value) => value,
                 Err(error) => return Err(turn_started_rejection(adapter, error)),

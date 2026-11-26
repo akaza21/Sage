@@ -210,6 +210,11 @@ impl TurnStartCorrelations {
             .any(|entry| matches!(entry.state, CorrelationState::Pending))
     }
 
+    /// Whether a Sage request already started or ended `turn_id`.
+    pub(super) fn knows(&self, turn_id: &ExternalId) -> bool {
+        self.known_turn(turn_id).is_some()
+    }
+
     pub(super) fn is_pending(&self, request_id: u64) -> bool {
         self.entries.iter().any(|entry| {
             entry.request_id == request_id && matches!(entry.state, CorrelationState::Pending)

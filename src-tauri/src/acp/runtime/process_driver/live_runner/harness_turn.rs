@@ -158,8 +158,20 @@ where
                     .parts
                     .decline_started_turn(&mut parts.transport)
                     .is_err()
-                    || parts.accept_idle_stdout_chunk(&[]).is_err()
                 {
+                    // The harness keeps running the refused Turn: say why the
+                    // session stops before it does, as the turn pump does.
+                    let now_millis = context.clock.now_millis();
+                    if let Err(error) = context
+                        .coordinator
+                        .notice_refused_harness_turn(&context.owner, now_millis)
+                        .await
+                    {
+                        tracing::warn!(?error, "ACP live runner could not record a refused Turn");
+                    }
+                    return Err(failed(FirstTurnWorkerState::Idle(parts)));
+                }
+                if parts.accept_idle_stdout_chunk(&[]).is_err() {
                     return Err(failed(FirstTurnWorkerState::Idle(parts)));
                 }
                 return Ok((FirstTurnWorkerState::Idle(parts), None));
@@ -240,6 +252,8 @@ where
 /// user undid or no longer runs, the session's history or Turn slot is
 /// full, or Sage is switching branches in the Project's repository. The run
 /// is declined and the session stays.
+// Other failures (a stale scheduler token, a missing lease) are teardown
+// races: the runtime is already going away, so they recover without a notice.
 fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
     failure.recovery.is_none()
         && matches!(

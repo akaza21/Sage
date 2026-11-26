@@ -230,3 +230,147 @@ fn a_started_turn_is_not_bound_while_a_setting_changes() {
         assert!(parts.bind_harness_turn(next_turn()).is_ok());
     });
 }
+
+/// A Turn Codex starts on its own after the last one ended, which Sage
+/// refuses (here: the chat's access changed since). Codex cannot decline it,
+/// so the session stops, but the chat is told why before anything else the
+/// refused Turn sends is read, and no prompt binds to it meanwhile.
+#[test]
+fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_closed() {
+    use crate::acp::bindings::adapter::HarnessTurnAuthority;
+    use sage_acp_protocol::access_mode::SessionAccessMode;
+    // Recorded order when a `turn/start` meets a Turn Codex is starting:
+    // `turn/started` first, then the reply naming that same Turn.
+    const RACED: &str = "01a210c8-5f47-7bb3-a068-4d11d6174741";
+    let line = |value: serde_json::Value| codex_line(value);
+    let started = |id: &str| {
+        line(
+            serde_json::json!({"method":"turn/started","params":{"threadId":"thread-1",
+            "turn":{"id":id,"rootTurnId":id,"items":[],"itemsView":"notLoaded",
+            "status":"inProgress","error":null}}}),
+        )
+    };
+    let ended = |id: &str, status: &str| {
+        line(
+            serde_json::json!({"method":"turn/completed","params":{"threadId":"thread-1",
+            "turn":{"id":id,"status":status}}}),
+        )
+    };
+    runtime().block_on(async {
+        let mut codex = ready_codex();
+        let prompt = codex
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Write the fix").unwrap(),
+                client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                access_mode: SessionAccessMode::WorkspaceWrite,
+            })
+            .unwrap();
+        let prompt_id = codex_request_id(&prompt);
+        codex
+            .resolve_egress(prompt.into_token(), EgressResolution::Queued)
+            .unwrap();
+        let (mut pump, shared) = codex_pump(codex);
+        for frame in [
+            started(RACED),
+            line(
+                serde_json::json!({"id":prompt_id,"result":{"turn":{"id":RACED,
+                "rootTurnId":RACED,"items":[],"itemsView":"notLoaded",
+                "status":"inProgress","error":null}}}),
+            ),
+            ended(RACED, "completed"),
+        ] {
+            pump.push_stdout_chunk(&frame, 2).await.unwrap();
+        }
+        let parts = pump
+            .try_into_completed_parts()
+            .ok()
+            .expect("the prompt owns the raced Turn");
+
+        // A prompt Codex refuses changes nothing the thread keeps.
+        let next = ActiveTurnIntent {
+            turn_id: turn("two"),
+            external_turn_id: None,
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        };
+        let mut pump = parts
+            .bind_turn(next.clone())
+            .ok()
+            .expect("a prompt may follow");
+        pump.queue_prompt(
+            Prompt::new("prompt", "Look only").unwrap(),
+            &next.client_message_id,
+            SessionAccessMode::ReadOnly,
+        )
+        .unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        let refused =
+            serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"].clone();
+        pump.push_stdout_chunk(
+            &line(serde_json::json!({"id":refused,"error":{"code":-32600,"message":"rejected"}})),
+            3,
+        )
+        .await
+        .unwrap();
+        pump.push_stdout_chunk(&started("native-1"), 4)
+            .await
+            .unwrap();
+        assert!(pump.next_turn_started());
+        let mut parts = pump
+            .try_into_completed_parts()
+            .ok()
+            .expect("the failed prompt ends");
+        assert!(parts.turn_started());
+        assert_eq!(
+            parts.harness_turn_authority(),
+            Some(HarnessTurnAuthority::Access(
+                SessionAccessMode::WorkspaceWrite
+            ))
+        );
+
+        let notices = |shared: &Shared| {
+            shared
+                .0
+                .lock()
+                .unwrap()
+                .durable_batches
+                .iter()
+                .flatten()
+                .filter(|event| matches!(
+                    event,
+                    DurableAdapterEvent::Session {
+                        event: sage_acp_protocol::intent::session_event::SessionScopedEvent::Notice(notice),
+                        ..
+                    } if notice.level == sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error
+                ))
+                .count()
+        };
+        let mut transport = CaptureTransport(Vec::new());
+        assert!(
+            parts.decline_started_turn(5, &mut transport).await.is_err(),
+            "the runtime fails closed"
+        );
+        assert!(transport.0.is_empty(), "nothing is written for the refused Turn");
+        assert_eq!(notices(&shared), 1, "the chat is told why the session stops");
+        // Until the runtime is gone, no prompt binds to the refused Turn, and
+        // a request the refused Turn sends adds no second, silent failure.
+        let Err(refused) = parts.bind_turn(next_turn()) else {
+            panic!("a prompt bound to the refused Turn");
+        };
+        let (mut parts, _) = *refused;
+        let approval = parts
+            .accept_idle_stdout_chunk(
+                &line(serde_json::json!({"id":90,"method":"item/commandExecution/requestApproval",
+                    "params":{"threadId":"thread-1","turnId":"native-1","itemId":"cmd-1",
+                    "command":"rm -rf /","cwd":"C:\\repo"}})),
+                6,
+                &mut transport,
+            )
+            .await;
+        assert!(matches!(approval, Err(AdapterPumpError::Intent)), "{approval:?}");
+        assert_eq!(notices(&shared), 1);
+    });
+}

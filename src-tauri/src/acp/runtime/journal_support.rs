@@ -169,6 +169,13 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
         }
         StoreMutation::AdapterInboundBatch(command) => command.retained_bytes(),
         StoreMutation::RecoverAfterRestart { .. } => 0,
+        StoreMutation::SessionNotice(command) => {
+            session_command_bytes(
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+            ) + command.notice.text.as_str().len()
+        }
         StoreMutation::RecoverRuntimeAfterZero(command) => {
             let reason = &command.terminal_reason;
             session_command_bytes(

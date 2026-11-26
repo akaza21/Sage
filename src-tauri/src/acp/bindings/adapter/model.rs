@@ -6,6 +6,9 @@ pub(crate) enum HarnessTurnAuthority {
     SessionMode(&'static str),
     /// Only user questions; adoption grants no model or tool authority.
     Questions,
+    /// Runs under this access, which the harness keeps from the last prompt
+    /// Sage sent; it opens only while the chat allows that access.
+    Access(sage_acp_protocol::access_mode::SessionAccessMode),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

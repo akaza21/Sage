@@ -28,6 +28,13 @@ impl ProjectIntentAuthority for Authority {
     fn harness_turn_mode(&self, _: &RuntimeOwner) -> Option<&'static str> {
         Some("default")
     }
+
+    fn harness_turn_access(
+        &self,
+        _: &RuntimeOwner,
+    ) -> Option<sage_acp_protocol::access_mode::SessionAccessMode> {
+        Some(sage_acp_protocol::access_mode::SessionAccessMode::Ask)
+    }
 }
 
 struct FakeStore {
@@ -605,9 +612,20 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
                 runtime_epoch: command().runtime_epoch,
             })
             .unwrap();
-        for mode in [Some("bypassPermissions"), None] {
+        use crate::acp::bindings::adapter::HarnessTurnAuthority;
+        use sage_acp_protocol::access_mode::SessionAccessMode;
+        // The chat allows Ask: a Turn the harness keeps running under a
+        // broader or different access is refused.
+        for mode in [
+            Some(HarnessTurnAuthority::SessionMode("bypassPermissions")),
+            Some(HarnessTurnAuthority::Access(
+                SessionAccessMode::WorkspaceWrite,
+            )),
+            Some(HarnessTurnAuthority::Access(SessionAccessMode::FullAccess)),
+            None,
+        ] {
             assert!(matches!(
-                coordinator.open_harness_turn(&tree, mode.map(crate::acp::bindings::adapter::HarnessTurnAuthority::SessionMode), 1).await,
+                coordinator.open_harness_turn(&tree, mode, 1).await,
                 Err(failure) if matches!(failure.error, CoordinatorError::Intent)
             ));
         }

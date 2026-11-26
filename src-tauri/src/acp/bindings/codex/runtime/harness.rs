@@ -2,13 +2,13 @@ use super::*;
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterOptionalEgress,
-        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, HarnessTurnAuthority,
+        ResourceMapper,
     },
-    runtime::later_permission::resolve_later_permission,
     transport::{Frame, OutboundFrame},
 };
 use sage_acp_protocol::{
-    intent::ExternalId, lifecycle::ServerRequestState, permissions::PermissionDecision,
+    contract::RequiredText, intent::ExternalId, lifecycle::ServerRequestState,
 };
 
 use super::super::{request::RequestKind, state::CodexAdapter};
@@ -315,29 +315,7 @@ impl HarnessAdapter for CodexRuntime {
             AdapterCommand::ResolvePermission {
                 request_id,
                 decision,
-            } => {
-                let pending = self
-                    .inner
-                    .resolve_pending_permission(request_id.as_str(), &decision)
-                    .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
-                match pending {
-                    Some((_, bytes, _)) if decision != PermissionDecision::Ask => {
-                        let frame =
-                            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
-                        resolve_later_permission(
-                            &request_id,
-                            &decision,
-                            Some(AdapterEgress::new(
-                                frame,
-                                EgressToken::protocol_notification(),
-                            )),
-                        )
-                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
-                        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
-                    }
-                    _ => Err(AdapterRuntimeError::Operation),
-                }
-            }
+            } => self.resolve_later_permission(&request_id, &decision),
         };
         if let Ok(egress) = result.as_ref() {
             tracing::info!(
@@ -378,6 +356,16 @@ impl HarnessAdapter for CodexRuntime {
     }
     fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
         self.held.next_batch()
+    }
+    fn adopt_turn(
+        &mut self,
+        client_message_id: RequiredText<512>,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.adopt_native_turn(client_message_id)
+    }
+    fn harness_turn_authority(&self) -> Option<HarnessTurnAuthority> {
+        self.native_turn_authority()
     }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.cancelled_permission_request() {
@@ -422,6 +410,7 @@ impl HarnessAdapter for CodexRuntime {
 
 mod browser_failure;
 mod command_method;
+mod native_turn;
 mod permission_egress;
 mod request_egress;
 use command_method::command_method;

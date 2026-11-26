@@ -183,7 +183,7 @@ impl AppState {
         acp.set_harness_turn_access(std::sync::Arc::new(move |owner| {
             use tauri::Manager;
             let state = access_app.try_state::<AppState>()?;
-            crate::commands::acp::session_access::harness_turn_mode(&state, owner)
+            crate::commands::acp::session_access::harness_turn_grant(&state, owner)
         }));
         acp.set_commands_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;

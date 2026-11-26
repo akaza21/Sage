@@ -1,16 +1,16 @@
-//! The harness session mode a Turn the harness starts on its own may run
-//! in: the one its chat's access choice maps to now. A chat's access lives
-//! in the app's settings, so the app supplies the rule; until it does, no
-//! such Turn opens.
+//! The access a Turn the harness starts on its own may run under: its
+//! chat's access choice now, with the harness session mode that maps to
+//! when the binding has one. A chat's access lives in the app's settings,
+//! so the app supplies the rule; until it does, no such Turn opens.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use sage_acp_protocol::scheduler::RuntimeOwner;
+use sage_acp_protocol::{access_mode::SessionAccessMode, scheduler::RuntimeOwner};
 
 use super::AcpService;
 
 pub(crate) type HarnessTurnAccess =
-    Arc<dyn Fn(&RuntimeOwner) -> Option<&'static str> + Send + Sync>;
+    Arc<dyn Fn(&RuntimeOwner) -> Option<(SessionAccessMode, Option<&'static str>)> + Send + Sync>;
 
 #[derive(Default)]
 pub(crate) struct HarnessAccessSlot(Mutex<Option<HarnessTurnAccess>>);

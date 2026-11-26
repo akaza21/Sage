@@ -35,6 +35,14 @@ pub(crate) trait ProjectIntentAuthority: Send + Sync {
     ) -> Option<&'static str> {
         None
     }
+    /// The access a prompt in `owner`'s chat runs under now. A Turn the
+    /// harness starts on its own under another access opens only read-only.
+    fn harness_turn_access(
+        &self,
+        _owner: &sage_acp_protocol::scheduler::RuntimeOwner,
+    ) -> Option<sage_acp_protocol::access_mode::SessionAccessMode> {
+        None
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

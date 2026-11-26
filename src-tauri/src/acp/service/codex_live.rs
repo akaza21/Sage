@@ -100,7 +100,17 @@ impl ProjectIntentAuthority for DatabaseAuthority {
     }
 
     fn harness_turn_mode(&self, owner: &RuntimeOwner) -> Option<&'static str> {
-        self.1.as_ref().and_then(|access| access(owner))
+        self.1.as_ref().and_then(|access| access(owner)?.1)
+    }
+
+    fn harness_turn_access(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Option<sage_acp_protocol::access_mode::SessionAccessMode> {
+        self.1
+            .as_ref()
+            .and_then(|access| access(owner))
+            .map(|grant| grant.0)
     }
 }
 fn hex_digest(bytes: &[u8; 32]) -> String {

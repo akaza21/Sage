@@ -43,6 +43,7 @@ mod hook_and_progress_events;
 mod mcp_tests;
 mod model_choice;
 mod model_identity;
+mod native_turn_tests;
 #[cfg(feature = "acp-fixture")]
 mod notice_journey_tests;
 mod notice_tests;

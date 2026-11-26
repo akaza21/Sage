@@ -8,7 +8,8 @@ use crate::acp::{
     transcript_quote::Prompt,
 };
 use sage_acp_protocol::contract::{
-    ClientIntentId, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageTurnId,
+    ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
+    SageAgentSessionId, SageTurnId,
 };
 
 #[test]
@@ -135,6 +136,62 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
         fixture.pending(),
         Some(("turn-2".into(), UndoneThread::Cut))
     );
+
+    // The harness keeps running the Turn it was refused, so its session stops;
+    // the chat is told why on the same epoch, rewind and all, once.
+    let notice = |epoch: u64| crate::acp::store::SessionNoticeCommand {
+        project_id: command.project_id.clone(),
+        chat_id: command.chat_id.clone(),
+        session_id: command.session_id.clone(),
+        runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
+        notice: sage_acp_protocol::intent::session_event::SessionNotice {
+            identity: None,
+            level: sage_acp_protocol::intent::session_event::SessionNoticeLevel::Error,
+            diagnostic: false,
+            text: sage_acp_protocol::contract::RequiredText::new(
+                "text",
+                "The agent started a turn this chat cannot run, so the session was stopped.",
+            )
+            .unwrap(),
+            source: None,
+        },
+        now_millis: 61,
+    };
+    let record = |command| {
+        crate::acp::store::session_notice::record_session_notice(
+            &mut fixture.database.connection(),
+            &command,
+        )
+    };
+    let epoch = command.runtime_epoch.get();
+    assert_ne!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
+    assert_eq!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
+    let surface: String = fixture
+        .database
+        .connection()
+        .query_row(
+            "SELECT surface_json FROM acp_session_surfaces WHERE session_id='session-a'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(surface.matches("The agent started a turn").count(), 1);
+    assert!(matches!(
+        record(notice(epoch + 1)),
+        Err(StoreError::Conflict { .. })
+    ));
+    fixture
+        .database
+        .connection()
+        .execute(
+            "UPDATE session_runtime_epochs SET state='exited',terminal_at=62 WHERE session_id='session-a' AND state='running'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(
+        record(notice(epoch)),
+        Err(StoreError::Conflict { .. })
+    ));
 }
 
 #[test]
