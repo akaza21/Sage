@@ -51,7 +51,10 @@ struct Ids(HashMap<String, usize>);
 impl Ids {
     fn name(&mut self, value: &Value) -> Value {
         let next = self.0.len() + 1;
-        json!(format!("#{}", self.0.entry(value.to_string()).or_insert(next)))
+        json!(format!(
+            "#{}",
+            self.0.entry(value.to_string()).or_insert(next)
+        ))
     }
 
     fn prune(&mut self, value: &mut Value) {

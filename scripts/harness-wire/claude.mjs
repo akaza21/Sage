@@ -41,13 +41,28 @@ export function launch({ cwd, env, model }) {
 // Every scenario runs on a config home seeded with the sign-in alone, so no
 // plugin, skill, agent, setting or connector of the capturing account is
 // recorded; claude.ai connectors are switched off for the same reason.
-export const CONFIG = { env: "CLAUDE_CONFIG_DIR", from: [".claude"], files: [".credentials.json"] };
+export const CONFIG = {
+  env: "CLAUDE_CONFIG_DIR",
+  from: [".claude"],
+  files: [".credentials.json"],
+};
 
-export async function run(scenario, { cwd, env, emptyHome, configHome, image, model }) {
-  const scenarioEnv = { ...env, CLAUDE_CONFIG_DIR: configHome, ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
+export async function run(
+  scenario,
+  { cwd, env, emptyHome, configHome, image, model },
+) {
+  const scenarioEnv = {
+    ...env,
+    CLAUDE_CONFIG_DIR: configHome,
+    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+  };
   if (scenario === "auth-fail") {
     scenarioEnv.CLAUDE_CONFIG_DIR = emptyHome;
-    for (const key of ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) {
+    for (const key of [
+      "ANTHROPIC_API_KEY",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "ANTHROPIC_AUTH_TOKEN",
+    ]) {
       delete scenarioEnv[key];
     }
   }
@@ -76,21 +91,35 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image, mo
         : { behavior: "allow", updatedInput: request.input ?? {} };
       decisions.push(deny ? "deny" : "allow");
       wire.send(
-        { type: "control_response", response: { subtype: "success", request_id: frame.request_id, response } },
+        {
+          type: "control_response",
+          response: {
+            subtype: "success",
+            request_id: frame.request_id,
+            response,
+          },
+        },
         { command: "permission", decision: deny ? "deny" : "allow" },
       );
       return;
     }
     wire.send({
       type: "control_response",
-      response: { subtype: "error", request_id: frame.request_id, error: "unsupported" },
+      response: {
+        subtype: "error",
+        request_id: frame.request_id,
+        error: "unsupported",
+      },
     });
   };
   const result = (frame) => frame.type === "result";
   const prompt = async (text, { images = [], step = {} } = {}) => {
     const content = [{ type: "text", text }];
     for (const data of images) {
-      content.push({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data },
+      });
     }
     wire.send(
       {
@@ -106,11 +135,18 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image, mo
   let outcome = "completed";
   try {
     const init = control(
-      { subtype: "initialize", perTaskStopAffordance: true, forwardSubagentText: true },
+      {
+        subtype: "initialize",
+        perTaskStopAffordance: true,
+        forwardSubagentText: true,
+      },
       { command: "initialize" },
     );
     await wire.until(answered(init), { serve, timeoutMs: 120000 });
-    const settings = control({ subtype: "get_settings" }, { command: "session" });
+    const settings = control(
+      { subtype: "get_settings" },
+      { command: "session" },
+    );
     await wire.until(answered(settings), { serve, timeoutMs: 60000 });
     switch (scenario) {
       case "commands":
@@ -120,7 +156,10 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image, mo
         break;
       case "plan-approve":
       case "plan-decline": {
-        const mode = control({ subtype: "set_permission_mode", mode: "plan" }, { command: "mode", mode: "plan" });
+        const mode = control(
+          { subtype: "set_permission_mode", mode: "plan" },
+          { command: "mode", mode: "plan" },
+        );
         await wire.until(answered(mode), { serve });
         await prompt(PROMPTS.plan, { step: { mode: "plan" } });
         break;
@@ -134,6 +173,13 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image, mo
   } catch (error) {
     outcome = `error: ${error.message}`;
   }
-  await wire.close(scenario === "shell" || scenario === "subagent" ? 8000 : 1500);
-  return { wire, outcome, decisions, args: spec.args.filter((arg) => !/^[0-9a-f-]{36}$/.test(arg)) };
+  await wire.close(
+    scenario === "shell" || scenario === "subagent" ? 8000 : 1500,
+  );
+  return {
+    wire,
+    outcome,
+    decisions,
+    args: spec.args.filter((arg) => !/^[0-9a-f-]{36}$/.test(arg)),
+  };
 }

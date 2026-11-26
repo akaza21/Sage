@@ -94,7 +94,9 @@ export class Wire {
         if (done(frame)) return frame;
       }
       if (this.exit) {
-        throw new Error(`harness exited ${JSON.stringify(this.exit)} before the wait ended`);
+        throw new Error(
+          `harness exited ${JSON.stringify(this.exit)} before the wait ended`,
+        );
       }
       const left = deadline - Date.now();
       if (left <= 0) throw new Error(`timed out after ${timeoutMs}ms`);
@@ -121,10 +123,15 @@ export class Wire {
       if (this.exit) resolve();
       else this.child.once("exit", resolve);
     });
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5000))]);
+    await Promise.race([
+      exited,
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
     if (!this.exit) {
       if (process.platform === "win32") {
-        spawn("taskkill", ["/pid", String(this.child.pid), "/t", "/f"], { windowsHide: true });
+        spawn("taskkill", ["/pid", String(this.child.pid), "/t", "/f"], {
+          windowsHide: true,
+        });
       } else {
         this.child.kill("SIGKILL");
       }

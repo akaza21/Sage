@@ -62,7 +62,10 @@ function dedupe(records, dir) {
           direction: record.direction,
           ms: record.ms,
           ref: "commands.jsonl",
-          sha256: createHash("sha256").update(stored).digest("hex").slice(0, 16),
+          sha256: createHash("sha256")
+            .update(stored)
+            .digest("hex")
+            .slice(0, 16),
         })
       : line;
   });
@@ -73,20 +76,39 @@ function key(record) {
 }
 
 function readTranscriptLines(file) {
-  return fs.readFileSync(file, "utf8").split("\n").filter((line) => line.trim());
+  return fs
+    .readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim());
 }
 
 function scratchRepo(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
   const repo = path.join(dir, "repo");
   fs.mkdirSync(path.join(repo, "src"), { recursive: true });
-  fs.writeFileSync(path.join(repo, "README.md"), "# Wire capture scratch repo\n\nA disposable repository.\n");
-  fs.writeFileSync(path.join(repo, "src", "greet.js"), "export function greet(name) {\n  return 'hello ' + name;\n}\n");
+  fs.writeFileSync(
+    path.join(repo, "README.md"),
+    "# Wire capture scratch repo\n\nA disposable repository.\n",
+  );
+  fs.writeFileSync(
+    path.join(repo, "src", "greet.js"),
+    "export function greet(name) {\n  return 'hello ' + name;\n}\n",
+  );
   const git = (...args) =>
-    execFileSync("git", ["-c", "user.name=Capture", "-c", "user.email=capture@example.invalid", ...args], {
-      cwd: repo,
-      windowsHide: true,
-    });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Capture",
+        "-c",
+        "user.email=capture@example.invalid",
+        ...args,
+      ],
+      {
+        cwd: repo,
+        windowsHide: true,
+      },
+    );
   git("init", "-q");
   git("add", ".");
   git("commit", "-q", "-m", "initial");
@@ -100,7 +122,8 @@ function seedConfig(configHome, config) {
   fs.mkdirSync(configHome, { recursive: true });
   for (const name of config.files) {
     const source = path.join(os.homedir(), ...config.from, name);
-    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(configHome, name));
+    if (fs.existsSync(source))
+      fs.copyFileSync(source, path.join(configHome, name));
   }
 }
 
@@ -109,7 +132,9 @@ function seedConfig(configHome, config) {
 function resanitize(out, harnesses, work) {
   for (const harness of harnesses) {
     const dir = path.join(out, harness);
-    for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".jsonl"))) {
+    for (const file of fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith(".jsonl"))) {
       const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
       const sanitizer = makeSanitizer({
         roots: [
@@ -119,11 +144,18 @@ function resanitize(out, harnesses, work) {
           [work, "work"],
         ],
       });
-      const records = readTranscriptLines(path.join(dir, file)).map((line) => JSON.parse(line));
-      const body = sanitizer.records(records).map((record) => JSON.stringify(record));
+      const records = readTranscriptLines(path.join(dir, file)).map((line) =>
+        JSON.parse(line),
+      );
+      const body = sanitizer
+        .records(records)
+        .map((record) => JSON.stringify(record));
       fs.writeFileSync(path.join(dir, file), `${body.join("\n")}\n`);
     }
-    fs.writeFileSync(path.join(dir, "shape.json"), `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`);
+    fs.writeFileSync(
+      path.join(dir, "shape.json"),
+      `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,
+    );
   }
 }
 
@@ -131,12 +163,11 @@ async function main() {
   const out = option("out");
   if (!out) throw new Error("--out <dir> is required");
   const harnesses = option("harness", "claude,codex,pi").split(",");
-  const only = option("scenario", "")
-    .split(",")
-    .filter(Boolean);
+  const only = option("scenario", "").split(",").filter(Boolean);
   const model = option("model", undefined);
   const work = option("work", path.join(os.tmpdir(), "sage-wire-capture"));
-  if (process.argv.includes("--resanitize")) return resanitize(out, harnesses, work);
+  if (process.argv.includes("--resanitize"))
+    return resanitize(out, harnesses, work);
   const image = await twoColourPng();
   let failures = 0;
   for (const harness of harnesses) {
@@ -151,16 +182,30 @@ async function main() {
     const sanitizeVersion = makeSanitizer({ roots: [[work, "work"]] });
     meta.version = sanitizeVersion.text(version(harness));
     meta.gaps = driver.GAPS ?? {};
-    const scenarios = driver.SCENARIOS.filter((name) => !only.length || only.includes(name));
+    const scenarios = driver.SCENARIOS.filter(
+      (name) => !only.length || only.includes(name),
+    );
     for (const scenario of scenarios) {
       const scratch = path.join(work, `${harness}-${scenario}`);
       const { repo, emptyHome, configHome } = scratchRepo(scratch);
       seedConfig(configHome, driver.CONFIG);
       process.stdout.write(`${harness}/${scenario} ... `);
-      const result = await driver.run(scenario, { cwd: repo, env: process.env, emptyHome, configHome, image, model });
+      const result = await driver.run(scenario, {
+        cwd: repo,
+        env: process.env,
+        emptyHome,
+        configHome,
+        image,
+        model,
+      });
       fs.rmSync(configHome, { recursive: true, force: true });
       const sanitizer = makeSanitizer({
-        roots: [[repo, "repo"], [emptyHome, "empty-home"], [configHome, "config"], [work, "work"]],
+        roots: [
+          [repo, "repo"],
+          [emptyHome, "empty-home"],
+          [configHome, "config"],
+          [work, "work"],
+        ],
       });
       if (result.gap) {
         meta.gaps[scenario] = sanitizer.text(result.gap);
@@ -170,7 +215,10 @@ async function main() {
         continue;
       }
       const records = sanitizer.records(result.wire.records);
-      const lines = scenario === "commands" ? records.map((r) => JSON.stringify(r)) : dedupe(records, dir);
+      const lines =
+        scenario === "commands"
+          ? records.map((r) => JSON.stringify(r))
+          : dedupe(records, dir);
       const body = `${lines.join("\n")}\n`;
       const bytes = Buffer.byteLength(body);
       if (bytes > MAX_TRANSCRIPT_BYTES) {
@@ -188,10 +236,15 @@ async function main() {
         exit: result.wire.exit,
         stderrTail: sanitizer.text(result.wire.stderr.slice(-600)),
       };
-      process.stdout.write(`${result.outcome} (${result.wire.records.length} frames, ${bytes} bytes)\n`);
+      process.stdout.write(
+        `${result.outcome} (${result.wire.records.length} frames, ${bytes} bytes)\n`,
+      );
     }
     fs.writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
-    fs.writeFileSync(path.join(dir, "shape.json"), `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`);
+    fs.writeFileSync(
+      path.join(dir, "shape.json"),
+      `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,
+    );
   }
   if (failures) throw new Error(`${failures} scenarios were not written`);
 }

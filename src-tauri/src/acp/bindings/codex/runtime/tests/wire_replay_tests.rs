@@ -36,7 +36,12 @@ fn every_recorded_codex_transcript_projects_as_committed() {
             }
         }
         let mut runtime = fixture_runtime();
-        let replay = Replay::run(&mut runtime, "session-codex-runtime", &records, &FixtureMapper);
+        let replay = Replay::run(
+            &mut runtime,
+            "session-codex-runtime",
+            &records,
+            &FixtureMapper,
+        );
         wire_replay::assert_summary("codex", scenario, &replay.summary(&runtime));
     }
 }

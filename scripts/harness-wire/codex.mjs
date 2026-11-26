@@ -5,7 +5,14 @@ import fs from "node:fs";
 import { PROMPTS } from "./prompts.mjs";
 import { Wire } from "./wire.mjs";
 
-export const SCENARIOS = ["commands", "shell", "edit", "image", "subagent", "auth-fail"];
+export const SCENARIOS = [
+  "commands",
+  "shell",
+  "edit",
+  "image",
+  "subagent",
+  "auth-fail",
+];
 export const GAPS = {
   "plan-approve": "Sage's Codex binding admits no plan access mode",
   "plan-decline": "Sage's Codex binding admits no plan access mode",
@@ -13,17 +20,36 @@ export const GAPS = {
 
 const ASK = { approval: "on-request", sandbox: "readOnly" };
 // Sage names itself with its crate version, which Codex echoes in userAgent.
-const SAGE_VERSION = /^version = "([^"]+)"/m.exec(fs.readFileSync(new URL("../../src-tauri/Cargo.toml", import.meta.url), "utf8"))?.[1] ?? "0.0.0";
+const SAGE_VERSION =
+  /^version = "([^"]+)"/m.exec(
+    fs.readFileSync(
+      new URL("../../src-tauri/Cargo.toml", import.meta.url),
+      "utf8",
+    ),
+  )?.[1] ?? "0.0.0";
 
 export function launch({ cwd, env }) {
-  return { command: "codex", args: ["app-server"], cwd, env, shell: process.platform === "win32" };
+  return {
+    command: "codex",
+    args: ["app-server"],
+    cwd,
+    env,
+    shell: process.platform === "win32",
+  };
 }
 
 // Every scenario runs on a Codex home seeded with the sign-in alone, as
 // Sage runs Codex on a managed home, so no plugin or setting is recorded.
-export const CONFIG = { env: "CODEX_HOME", from: [".codex"], files: ["auth.json"] };
+export const CONFIG = {
+  env: "CODEX_HOME",
+  from: [".codex"],
+  files: ["auth.json"],
+};
 
-export async function run(scenario, { cwd, env, emptyHome, configHome, image }) {
+export async function run(
+  scenario,
+  { cwd, env, emptyHome, configHome, image },
+) {
   const scenarioEnv = { ...env, CODEX_HOME: configHome };
   if (scenario === "auth-fail") {
     scenarioEnv.CODEX_HOME = emptyHome;
@@ -44,10 +70,16 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
     if (frame.id === undefined || !frame.method) return;
     if (/requestApproval$/.test(frame.method)) {
       decisions.push("accept");
-      wire.send({ id: frame.id, result: { decision: "accept" } }, { command: "permission", decision: "allow" });
+      wire.send(
+        { id: frame.id, result: { decision: "accept" } },
+        { command: "permission", decision: "allow" },
+      );
       return;
     }
-    wire.send({ id: frame.id, error: { code: -32601, message: "unsupported" } });
+    wire.send({
+      id: frame.id,
+      error: { code: -32601, message: "unsupported" },
+    });
   };
   let thread = null;
   const turn = async (text, input) => {
@@ -74,7 +106,10 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
         clientInfo: { name: "sage", title: "Sage", version: SAGE_VERSION },
         capabilities: {
           experimentalApi: true,
-          optOutNotificationMethods: ["turn/diff/updated", "item/fileChange/outputDelta"],
+          optOutNotificationMethods: [
+            "turn/diff/updated",
+            "item/fileChange/outputDelta",
+          ],
         },
       },
       { command: "initialize" },
@@ -83,10 +118,19 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
     wire.send({ method: "initialized" });
     const start = request(
       "thread/start",
-      { model: null, cwd, approvalPolicy: "never", sandbox: "read-only", ephemeral: false },
+      {
+        model: null,
+        cwd,
+        approvalPolicy: "never",
+        sandbox: "read-only",
+        ephemeral: false,
+      },
       { command: "session" },
     );
-    const started = await wire.until(answered(start), { serve, timeoutMs: 120000 });
+    const started = await wire.until(answered(start), {
+      serve,
+      timeoutMs: 120000,
+    });
     thread = started.result?.thread?.id ?? null;
     if (!thread) throw new Error("thread/start returned no thread");
     const text = (value) => [{ type: "text", text: value, text_elements: [] }];

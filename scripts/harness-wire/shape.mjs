@@ -39,7 +39,11 @@ export function frameKind(frame, sent) {
   if (frame.$nonJson !== undefined) return "$nonJson";
   if (text(frame.method)) {
     const item = frame.params?.item?.type;
-    return [frame.id !== undefined ? "request" : "notify", frame.method, text(item)]
+    return [
+      frame.id !== undefined ? "request" : "notify",
+      frame.method,
+      text(item),
+    ]
       .filter(Boolean)
       .join(":");
   }
@@ -47,12 +51,21 @@ export function frameKind(frame, sent) {
     return `${frame.error ? "error" : "result"}:${sent.get(String(frame.id)) ?? "?"}`;
   }
   const parts = [frame.type, frame.subtype];
-  if (frame.type === "response") parts.push(text(frame.command) ?? sent.get(String(frame.id)));
+  if (frame.type === "response")
+    parts.push(text(frame.command) ?? sent.get(String(frame.id)));
   if (frame.type === "control_request") parts.push(frame.request?.subtype);
   if (frame.type === "control_response") {
-    parts.push(frame.response?.subtype, sent.get(String(frame.response?.request_id)));
+    parts.push(
+      frame.response?.subtype,
+      sent.get(String(frame.response?.request_id)),
+    );
   }
-  if (frame.event) parts.push(frame.event.type, frame.event.delta?.type, frame.event.content_block?.type);
+  if (frame.event)
+    parts.push(
+      frame.event.type,
+      frame.event.delta?.type,
+      frame.event.content_block?.type,
+    );
   if (frame.assistantMessageEvent) parts.push(frame.assistantMessageEvent.type);
   return parts.filter((part) => typeof part === "string" && part).join("/");
 }
@@ -71,12 +84,17 @@ function fields(value, prefix, depth, out) {
 }
 
 function commandNames(value, out) {
-  if (Array.isArray(value)) return value.forEach((entry) => commandNames(entry, out));
+  if (Array.isArray(value))
+    return value.forEach((entry) => commandNames(entry, out));
   if (!value || typeof value !== "object") return;
   for (const [key, entry] of Object.entries(value)) {
-    if (["commands", "slash_commands", "skills"].includes(key) && Array.isArray(entry)) {
+    if (
+      ["commands", "slash_commands", "skills"].includes(key) &&
+      Array.isArray(entry)
+    ) {
       for (const command of entry) {
-        const name = typeof command === "string" ? command : text(command?.name);
+        const name =
+          typeof command === "string" ? command : text(command?.name);
         if (name) out.add(`${key}:${name}`);
       }
     }
@@ -84,7 +102,10 @@ function commandNames(value, out) {
   }
 }
 
-export function shapeOfRecords(records, shape = { kinds: {}, commands: new Set() }) {
+export function shapeOfRecords(
+  records,
+  shape = { kinds: {}, commands: new Set() },
+) {
   const sent = new Map();
   for (const { direction, frame } of records) {
     if (direction === "out") {
@@ -113,16 +134,25 @@ export function readTranscript(file) {
     const record = JSON.parse(line);
     if (!record.ref) return record;
     const stored = lines(record.ref).find((candidate) =>
-      createHash("sha256").update(candidate).digest("hex").startsWith(record.sha256),
+      createHash("sha256")
+        .update(candidate)
+        .digest("hex")
+        .startsWith(record.sha256),
     );
-    if (!stored) throw new Error(`${file}: no line of ${record.ref} has digest ${record.sha256}`);
+    if (!stored)
+      throw new Error(
+        `${file}: no line of ${record.ref} has digest ${record.sha256}`,
+      );
     return { ...record, frame: JSON.parse(stored).frame };
   });
 }
 
 export function shapeOfHarness(dir) {
   const shape = { kinds: {}, commands: new Set() };
-  for (const name of fs.readdirSync(dir).filter((entry) => entry.endsWith(".jsonl")).sort()) {
+  for (const name of fs
+    .readdirSync(dir)
+    .filter((entry) => entry.endsWith(".jsonl"))
+    .sort()) {
     shapeOfRecords(readTranscript(path.join(dir, name)), shape);
   }
   const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
@@ -140,11 +170,14 @@ export function shapeOfHarness(dir) {
 // Every difference between two shapes, as report lines.
 export function diffShapes(before, after) {
   const lines = [];
-  if (before.version !== after.version) lines.push(`version: ${before.version} -> ${after.version}`);
+  if (before.version !== after.version)
+    lines.push(`version: ${before.version} -> ${after.version}`);
   const old = new Set(before.commands);
   const now = new Set(after.commands);
-  for (const command of old) if (!now.has(command)) lines.push(`removed command ${command}`);
-  for (const command of now) if (!old.has(command)) lines.push(`added command ${command}`);
+  for (const command of old)
+    if (!now.has(command)) lines.push(`removed command ${command}`);
+  for (const command of now)
+    if (!old.has(command)) lines.push(`added command ${command}`);
   for (const kind of Object.keys(before.kinds)) {
     if (!(kind in after.kinds)) lines.push(`removed event ${kind}`);
   }
@@ -155,8 +188,10 @@ export function diffShapes(before, after) {
     }
     const was = new Set(before.kinds[kind]);
     const is = new Set(list);
-    for (const field of was) if (!is.has(field)) lines.push(`removed field ${kind} ${field}`);
-    for (const field of is) if (!was.has(field)) lines.push(`added field ${kind} ${field}`);
+    for (const field of was)
+      if (!is.has(field)) lines.push(`removed field ${kind} ${field}`);
+    for (const field of is)
+      if (!was.has(field)) lines.push(`added field ${kind} ${field}`);
   }
   return lines;
 }
@@ -166,11 +201,23 @@ export function diffTiming(before, after) {
   const lines = [];
   for (const [scenario, now] of Object.entries(after.scenarios ?? {})) {
     const was = before.scenarios?.[scenario]?.firstFrameMs;
-    if (typeof was === "number" && typeof now.firstFrameMs === "number" && now.firstFrameMs > was * 2 && now.firstFrameMs - was > 2000) {
-      lines.push(`slower start ${scenario}: first frame ${was}ms -> ${now.firstFrameMs}ms`);
+    if (
+      typeof was === "number" &&
+      typeof now.firstFrameMs === "number" &&
+      now.firstFrameMs > was * 2 &&
+      now.firstFrameMs - was > 2000
+    ) {
+      lines.push(
+        `slower start ${scenario}: first frame ${was}ms -> ${now.firstFrameMs}ms`,
+      );
     }
-    if (before.scenarios?.[scenario] && before.scenarios[scenario].outcome !== now.outcome) {
-      lines.push(`outcome ${scenario}: ${before.scenarios[scenario].outcome} -> ${now.outcome}`);
+    if (
+      before.scenarios?.[scenario] &&
+      before.scenarios[scenario].outcome !== now.outcome
+    ) {
+      lines.push(
+        `outcome ${scenario}: ${before.scenarios[scenario].outcome} -> ${now.outcome}`,
+      );
     }
   }
   return lines;
@@ -179,7 +226,11 @@ export function diffTiming(before, after) {
 function harnessDirs(root) {
   return fs
     .readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(root, entry.name, "meta.json")))
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        fs.existsSync(path.join(root, entry.name, "meta.json")),
+    )
     .map((entry) => entry.name)
     .sort();
 }
@@ -189,12 +240,17 @@ function main() {
   if (mode === "--write") {
     for (const harness of harnessDirs(first)) {
       const dir = path.join(first, harness);
-      fs.writeFileSync(path.join(dir, "shape.json"), `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`);
+      fs.writeFileSync(
+        path.join(dir, "shape.json"),
+        `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,
+      );
     }
     return;
   }
   if (mode !== "--diff" || !second) {
-    console.error("usage: shape.mjs --diff <before> <after> | --write <corpus>");
+    console.error(
+      "usage: shape.mjs --diff <before> <after> | --write <corpus>",
+    );
     process.exit(2);
   }
   let changed = 0;
@@ -205,16 +261,22 @@ function main() {
       changed += 1;
       continue;
     }
-    const meta = (dir) => JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
+    const meta = (dir) =>
+      JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
     const lines = [
-      ...diffShapes(shapeOfHarness(was), shapeOfHarness(path.join(second, harness))),
+      ...diffShapes(
+        shapeOfHarness(was),
+        shapeOfHarness(path.join(second, harness)),
+      ),
       ...diffTiming(meta(was), meta(path.join(second, harness))),
     ];
     for (const line of lines) console.log(`${harness}: ${line}`);
     changed += lines.length;
   }
   if (changed) {
-    console.log(`${changed} drift entries; triage each before admitting the recapture.`);
+    console.log(
+      `${changed} drift entries; triage each before admitting the recapture.`,
+    );
     process.exit(1);
   }
   console.log("no drift");

@@ -13,18 +13,36 @@ export const GAPS = {
 };
 
 export function launch({ cwd, env }) {
-  return { command: "pi", args: ["--mode", "rpc"], cwd, env, shell: process.platform === "win32" };
+  return {
+    command: "pi",
+    args: ["--mode", "rpc"],
+    cwd,
+    env,
+    shell: process.platform === "win32",
+  };
 }
 
 // Every scenario runs on an agent dir seeded with the sign-in alone, so no
 // extension, skill or setting of the capturing account is recorded.
-export const CONFIG = { env: "PI_CODING_AGENT_DIR", from: [".pi", "agent"], files: ["auth.json"] };
+export const CONFIG = {
+  env: "PI_CODING_AGENT_DIR",
+  from: [".pi", "agent"],
+  files: ["auth.json"],
+};
 
-export async function run(scenario, { cwd, env, emptyHome, configHome, image }) {
+export async function run(
+  scenario,
+  { cwd, env, emptyHome, configHome, image },
+) {
   const scenarioEnv = { ...env, PI_CODING_AGENT_DIR: configHome };
   if (scenario === "auth-fail") {
     scenarioEnv.PI_CODING_AGENT_DIR = emptyHome;
-    for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"]) {
+    for (const key of [
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GEMINI_API_KEY",
+      "OPENROUTER_API_KEY",
+    ]) {
       delete scenarioEnv[key];
     }
   }
@@ -37,12 +55,17 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
     wire.send({ ...fields, type, id }, step);
     return id;
   };
-  const answered = (id) => (frame) => frame.type === "response" && frame.id === id;
+  const answered = (id) => (frame) =>
+    frame.type === "response" && frame.id === id;
   const serve = (frame) => {
     if (frame.type !== "extension_ui_request" || !frame.id) return;
     // Dialogs need an answer; fire-and-forget notices do not.
     if (["select", "confirm", "input", "editor"].includes(frame.method)) {
-      wire.send({ type: "extension_ui_response", id: frame.id, cancelled: true });
+      wire.send({
+        type: "extension_ui_response",
+        id: frame.id,
+        cancelled: true,
+      });
     }
   };
   const prompt = async (text, images = []) => {
@@ -55,7 +78,8 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
     if (reply.success === false) {
       // A host with no provider signed in cannot record a turn: say so rather
       // than commit a refusal under the scenario's name.
-      if (scenario !== "auth-fail") gap = `the prompt was refused: ${String(reply.error).split("\n")[0]}`;
+      if (scenario !== "auth-fail")
+        gap = `the prompt was refused: ${String(reply.error).split("\n")[0]}`;
       return reply;
     }
     return wire.until((frame) => frame.type === "agent_end", { serve });
@@ -76,7 +100,9 @@ export async function run(scenario, { cwd, env, emptyHome, configHome, image }) 
       case "commands":
         break;
       case "image":
-        await prompt(PROMPTS.image, [{ type: "image", data: image, mimeType: "image/png" }]);
+        await prompt(PROMPTS.image, [
+          { type: "image", data: image, mimeType: "image/png" },
+        ]);
         break;
       case "auth-fail":
         await prompt(PROMPTS.hello);

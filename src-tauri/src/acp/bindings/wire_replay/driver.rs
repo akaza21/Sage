@@ -124,20 +124,17 @@ impl Replay {
                 _ => None,
             })
             .collect();
-        let request = self
-            .events
-            .iter()
-            .find_map(|event| match event {
-                AdapterEvent::PermissionRequest {
-                    external_request_id,
-                    ..
-                } if !settled.contains(external_request_id.as_str())
-                    && !self.answered.contains(external_request_id.as_str()) =>
-                {
-                    Some(external_request_id.as_str().to_owned())
-                }
-                _ => None,
-            })?;
+        let request = self.events.iter().find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } if !settled.contains(external_request_id.as_str())
+                && !self.answered.contains(external_request_id.as_str()) =>
+            {
+                Some(external_request_id.as_str().to_owned())
+            }
+            _ => None,
+        })?;
         self.answered.insert(request.clone());
         Some(AdapterCommand::ResolvePermission {
             request_id: sage_acp_protocol::contract::SageServerRequestId::parse(&request)
@@ -224,7 +221,9 @@ impl Replay {
                         self.written(adapter, egress);
                         // The pump reports a written answer delivered: a Turn
                         // that only waited on it may end.
-                        if answer && let Some(batch) = adapter.answers_delivered(resources).transpose() {
+                        if answer
+                            && let Some(batch) = adapter.answers_delivered(resources).transpose()
+                        {
                             self.batches(adapter, batch);
                         }
                     }
@@ -297,7 +296,8 @@ impl Replay {
         if started {
             self.turns += 1;
             let id = format!("replay-harness-turn-{}", self.turns);
-            let result = adapter.adopt_turn(RequiredText::new("client", id).expect("id"), resources);
+            let result =
+                adapter.adopt_turn(RequiredText::new("client", id).expect("id"), resources);
             self.batches(adapter, result);
         }
         if idle {
