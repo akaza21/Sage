@@ -18,6 +18,7 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import { MenuPopover } from "../ui/MenuPopover";
+import { NoticePart } from "../features/chat/lazyParts";
 import {
   liveAgent,
   projectRecentAgents,
@@ -32,13 +33,6 @@ import "./agent-resources.css";
 const AgentTaskSubagentSummary = lazy(() =>
   loadSubagentSurface().then((module) => ({
     default: module.AgentTaskSubagentSummary,
-  })),
-);
-
-// Stop shares the transcript's session controls, loaded with them.
-const BackgroundProcesses = lazy(() =>
-  import("../features/chat/ConversationActions").then((module) => ({
-    default: module.BackgroundProcesses,
   })),
 );
 
@@ -221,12 +215,13 @@ export function AgentResourcesPopover({
       <section aria-label="Background processes">
         <strong>Background processes</strong>
         {validPage && page?.sessionSurface ? (
-          <Suspense>
-            <BackgroundProcesses
-              surface={page.sessionSurface}
-              chatId={chatId}
-            />
-          </Suspense>
+          // Stop shares the transcript's session controls, loaded with them.
+          <NoticePart
+            part="ConversationView"
+            view="BackgroundProcesses"
+            surface={page.sessionSurface}
+            chatId={chatId}
+          />
         ) : (
           <p>No background processes reported.</p>
         )}
