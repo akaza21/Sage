@@ -576,17 +576,21 @@ it.each(["unchanged", "modified"] as const)(
         elapsedMs: 1,
       },
     });
-    render(<SourceControlView />);
+    const { container } = render(<SourceControlView />);
+    // Plain selectors and a scoped ByRole: an unscoped ByRole computes
+    // styles and accessible names for all ~1,200 row buttons (~2 s in jsdom).
     expect(
-      screen.getAllByRole("button", { name: /^Open diff for/ }),
+      container.querySelectorAll('button[aria-label^="Open diff for "]'),
     ).toHaveLength(300);
     expect(screen.getByText("Change list capped at 300 files.")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Stage All Changes" }),
+      within(
+        container.querySelector<HTMLElement>(".source-root__actions")!,
+      ).getByRole("button", { name: "Stage All Changes" }),
     ).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: "Stage changes" }),
-    ).not.toBeInTheDocument();
+      container.querySelector('button[aria-label="Stage changes"]'),
+    ).toBeNull();
   },
 );
 
