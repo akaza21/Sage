@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { CuratedBindingId, CuratedModelId } from "../../domain/acp";
 import type {
@@ -18,6 +18,7 @@ export default function ChatQueueExecution({
   projectTransitioning,
   canPrompt,
   useNativeAcp,
+  signInHoldTurnId = null,
   observedOrder,
   submit,
   updateQueuedPrompt,
@@ -34,6 +35,8 @@ export default function ChatQueueExecution({
   projectTransitioning: boolean;
   canPrompt: boolean;
   useNativeAcp: boolean;
+  /** The latest turn failed for sign-in; hold until the harness is ready again. */
+  signInHoldTurnId?: string | null;
   observedOrder: ChatTurnOrder | null;
   submit: (
     text: string,
@@ -49,6 +52,12 @@ export default function ChatQueueExecution({
     barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
   ) => void;
 }) {
+  const [released, setReleased] = useState<string | null>(null);
+  const wasReady = useRef(canPrompt);
+  useEffect(() => {
+    if (canPrompt && !wasReady.current) setReleased(signInHoldTurnId);
+    wasReady.current = canPrompt;
+  }, [canPrompt, signInHoldTurnId]);
   useEffect(() => {
     if (queuedTurnBarrier !== null) {
       if (
@@ -80,7 +89,8 @@ export default function ChatQueueExecution({
       actionBusy ||
       projectTransitioning ||
       !canPrompt ||
-      !useNativeAcp
+      !useNativeAcp ||
+      (signInHoldTurnId !== null && released !== signInHoldTurnId)
     )
       return;
     updateQueuedPrompt(next.id, "sending");
@@ -117,6 +127,8 @@ export default function ChatQueueExecution({
     queuedPrompts,
     queuedTurnBarrier,
     observedOrder,
+    released,
+    signInHoldTurnId,
     setQueuedTurnBarrier,
     submit,
     updateQueuedPrompt,

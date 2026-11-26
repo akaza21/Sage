@@ -46,6 +46,7 @@ export default function ChatQueueRuntime({
       acpActions: actions,
       sendPrompt: unusedSend,
     });
+  const last = page?.turns.at(-1);
   return (
     <Execution
       {...queue}
@@ -56,6 +57,11 @@ export default function ChatQueueRuntime({
       projectTransitioning={projectTransitioning}
       canPrompt={canPrompt}
       useNativeAcp={useNativeAcp}
+      signInHoldTurnId={
+        last?.state === "failed" && last.terminalReason?.kind === "authRequired"
+          ? last.id
+          : null
+      }
       submit={actions.submit}
     />
   );
