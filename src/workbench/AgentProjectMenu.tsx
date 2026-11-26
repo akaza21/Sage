@@ -1,17 +1,21 @@
 import { useId, useRef, useState } from "react";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { MoreHorizontal } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
 
 export function AgentProjectMenu({
+  projectId,
   name,
   onCreateChat,
   onOpenProject,
 }: {
+  projectId: string;
   name: string;
   onCreateChat: () => void;
   onOpenProject: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const complete = (action: () => void) => {
@@ -56,14 +60,18 @@ export function AgentProjectMenu({
         >
           Open project
         </button>
+        <button
+          className="menu-item"
+          type="button"
+          role="menuitem"
+          onClick={() => complete(() => setRemoving(true))}
+        >
+          Remove project…
+        </button>
         {[
           [
             "Rename project",
             "Project renaming is not supported by the native project registry.",
-          ],
-          [
-            "Remove project",
-            "Project removal is not supported by the native project registry.",
           ],
           [
             "Reveal project",
@@ -83,6 +91,20 @@ export function AgentProjectMenu({
           </button>
         ))}
       </MenuPopover>
+      {removing ? (
+        <ConfirmDialog
+          title={`Remove ${name}?`}
+          description="This project and all of its chats, archived ones included, will be permanently deleted from Sage. Files in the project folder are not touched. This can't be undone."
+          confirmLabel="Remove project"
+          onCancel={() => setRemoving(false)}
+          onConfirm={() => {
+            setRemoving(false);
+            void import("../app/chatArchiveActions").then((actions) =>
+              actions.cleanUpProjectData("remove_project", projectId),
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }

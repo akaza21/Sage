@@ -152,6 +152,7 @@ function ProjectEntry({
           <div className="project-entry__actions">
             <ProjectMenuPart
               part="AgentProjectMenu"
+              projectId={group.id}
               name={group.name}
               onCreateChat={() => void createChat(group.id)}
               onOpenProject={() => void switchProject(group.id)}

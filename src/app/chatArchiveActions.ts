@@ -5,6 +5,8 @@ import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
 } from "../domain/workbench";
+import type { ProjectTransitionResult } from "../domain/project";
+import { invokeNative } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ChatActionReport, ChatRowAction } from "./chatArchiveSlice";
 import {
@@ -15,7 +17,7 @@ import {
   type ProjectionOutcome,
 } from "./chatTransitions";
 import { currentProjectLayout } from "./projectProjection";
-import type { WorkbenchState } from "./store";
+import { useWorkbenchStore, type WorkbenchState } from "./store";
 
 type Creator = StateCreator<WorkbenchState, [], [], unknown>;
 type Set = Parameters<Creator>[0];
@@ -323,4 +325,30 @@ export function createChatArchiveActions(set: Set, get: Get) {
         ),
     });
   }
+}
+
+/**
+ * Bulk cleanup in one native transition: `delete_archived_chats` deletes a
+ * Project's archived Chats, `remove_project` the Project with all its Chats.
+ * Permanent; callers confirm first.
+ */
+export async function cleanUpProjectData(
+  command: "delete_archived_chats" | "remove_project",
+  projectId: string,
+) {
+  const { setState: set, getState: get } = useWorkbenchStore;
+  if (get().projectTransitioning) return false;
+  set({ projectTransitioning: true, error: null });
+  const expectedTransitionEpoch = get().nativeTransitionEpoch;
+  return commitIdentityChatResult({
+    set,
+    get,
+    ...createChatTransitionContext(set, get),
+    failedMessage: "native cleanup did not commit",
+    invoke: () =>
+      invokeNative<ProjectTransitionResult>(command, {
+        projectId,
+        expectedTransitionEpoch,
+      }),
+  });
 }

@@ -1,8 +1,20 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import ArchivedChatList from "./ArchivedChatList";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async () => {
+    throw new Error("refused");
+  }),
+}));
 
 const initialState = useWorkbenchStore.getState();
 
@@ -105,4 +117,30 @@ it("returns focus to Restore after dismissing a refused restore", () => {
   expect(
     screen.getByRole("button", { name: "Restore chat Research" }),
   ).toHaveFocus();
+});
+
+it("deletes every archived chat of the project in one confirmed native cleanup", async () => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  useWorkbenchStore.setState({ nativeTransitionEpoch: 3 });
+  render(
+    <ArchivedChatList
+      projectId="project-a"
+      chats={[
+        { id: "chat:old", title: "Chat: Research" },
+        { id: "chat:other", title: "Chat: Notes" },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete all archived" }));
+  expect(screen.getByRole("dialog")).toHaveTextContent(
+    "Delete 2 archived chats?",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Delete all" }));
+  await waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("delete_archived_chats", {
+      projectId: "project-a",
+      expectedTransitionEpoch: 3,
+    }),
+  );
 });
