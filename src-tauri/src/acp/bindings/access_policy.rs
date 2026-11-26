@@ -525,7 +525,7 @@ mod tests {
         );
         assert_eq!(
             effective_mode("claude-agent-acp", "1", None, true),
-            Some(Ask)
+            Some(Auto)
         );
     }
 
