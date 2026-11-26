@@ -84,8 +84,8 @@ export function safeChatStatus(value: unknown): AcpChatStatus | null {
       updatedAt,
       createdAt,
       terminalAt,
-      ...(turn.signIn === true && { signIn: true }),
-      ...(turn.background === true && { background: true }),
+      signIn: turn.signIn === true || undefined,
+      background: turn.background === true || undefined,
     };
   }
   return {

@@ -44,13 +44,15 @@ export function ChatTranscriptTurnSummary({
     return () => window.clearInterval(timer);
   }, [settled, turn.id]);
   const verb = terminal ? "Worked" : "Working";
-  const duration = settled
-    ? terminal
-      ? (formatDuration(verb, turn.createdAt, turn.terminalAt) ?? verb)
-      : "Working in the background"
+  const duration = background
+    ? "Working in the background"
     : turn.state === "waitingApproval" || turn.state === "waitingUser"
       ? turnStateLabels[turn.state]
-      : (formatDuration(verb, turn.createdAt, nowMs) ?? verb);
+      : (formatDuration(
+          verb,
+          turn.createdAt,
+          terminal ? turn.terminalAt : nowMs,
+        ) ?? verb);
 
   if (terminal && !hasActivities) {
     if (!turn.items.some(isAssistantText)) return null;

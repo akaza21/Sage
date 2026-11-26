@@ -191,7 +191,7 @@ export const Turn = memo(
             {renderTurnPrompts(promptItems, turn, interactive)}
             <ChatTranscriptTurnSummary
               turn={turn}
-              background={background}
+              background={background && terminal}
               runningHeading={!isSideChatId(page.chatId)}
               steered={workingItems
                 .filter((item) => item.kind === "userPrompt")
