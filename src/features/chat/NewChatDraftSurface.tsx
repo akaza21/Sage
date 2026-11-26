@@ -44,7 +44,6 @@ export function NewChatDraftSurface({
     updateNewChatDraft: update,
     selectDraftHarness: chooseHarness,
     selectDraftModel: chooseModel,
-    retryHarnessDiscovery,
   } = useWorkbenchStore.getState();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
@@ -112,19 +111,6 @@ export function NewChatDraftSurface({
             Reload chats
           </button>
         ) : null}
-      </>
-    ) : available && discoveryError ? (
-      // A harness that did not list its models in time is asked again.
-      <>
-        {discoveryError}
-        <button
-          type="button"
-          className="button button--compact"
-          disabled={transitioning}
-          onClick={() => void retryHarnessDiscovery()}
-        >
-          Retry
-        </button>
       </>
     ) : null;
   return (
