@@ -119,7 +119,7 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
       chat("running", { items: [textItem()], sessionActivities: hooks }),
     ),
   );
-  const list = screen.getByRole("list", { name: "Hooks" });
+  const list = screen.getByRole("list", { name: "Turn activity" });
   const rows = within(list).getAllByRole("listitem");
   expect(rows.map((row) => row.getAttribute("data-activity-state"))).toEqual([
     "completed",
@@ -150,10 +150,10 @@ it("keeps hook rows in a settled Turn behind its Worked disclosure", () => {
     ),
   );
   const worked = screen.getByRole("button", { name: "Worked for 6s" });
-  expect(screen.queryByRole("list", { name: "Hooks" })).toBeNull();
+  expect(screen.queryByRole("list", { name: "Turn activity" })).toBeNull();
   fireEvent.click(worked);
   expect(worked).toHaveAttribute("aria-expanded", "true");
-  const list = screen.getByRole("list", { name: "Hooks" });
+  const list = screen.getByRole("list", { name: "Turn activity" });
   expect(
     within(list).getByText("Synthetic lint hook exited with status 1"),
   ).toBeVisible();

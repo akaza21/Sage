@@ -20,7 +20,7 @@ export function TurnSessionActivities({
   if (activities.length === 0) return null;
   return (
     <WorkRow>
-      <ul className="acp-session-activities" aria-label="Hooks">
+      <ul className="acp-session-activities" aria-label="Turn activity">
         {activities.map((activity, index) => {
           const running = activity.state === "running";
           const Icon =

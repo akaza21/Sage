@@ -3,7 +3,10 @@ export {
   InheritedHistory,
   ImportedHistoryView,
 } from "./ForkHistory";
-export { SessionSurfacePanel } from "./acp/SessionSurfacePanel";
+export {
+  BackgroundProcesses,
+  SessionSurfacePanel,
+} from "./acp/SessionSurfacePanel";
 export { AnswerMoreActions } from "./ForkChat";
 
 import type { ComponentProps } from "react";

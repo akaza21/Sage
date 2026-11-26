@@ -675,11 +675,14 @@ fn claude_codes_status_messages_become_notices_and_activities() {
     assert!(notice.text.as_str().contains("9000 to 1200"));
 
     let task = bridge.inbound(json!({"type":"system","subtype":"task_started","task_id":"b1","description":"Run the test suite"})).unwrap();
-    assert_eq!(state(&task), ("task".into(), SessionActivityState::Running));
+    assert_eq!(
+        state(&task),
+        ("backgroundTask".into(), SessionActivityState::Running)
+    );
     let finished = bridge.inbound(json!({"type":"system","subtype":"task_notification","task_id":"b1","status":"completed","output_file":"/tmp/x","summary":"All tests passed"})).unwrap();
     assert_eq!(
         state(&finished),
-        ("task".into(), SessionActivityState::Completed)
+        ("backgroundTask".into(), SessionActivityState::Completed)
     );
 
     let limit = bridge.inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.91}})).unwrap();
@@ -699,6 +702,56 @@ fn claude_codes_status_messages_become_notices_and_activities() {
     assert_eq!(
         state(&ended),
         ("retry".into(), SessionActivityState::Completed)
+    );
+}
+
+#[test]
+fn only_tasks_running_in_the_background_become_activities() {
+    use sage_acp_protocol::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let mut feed = |frame: Value| bridge.inbound(frame).unwrap().session;
+    // Claude Code 2.1.330 reports a longer foreground command as a task too.
+    let started = feed(
+        json!({"type":"system","subtype":"task_started","task_id":"f1","tool_use_id":"toolu_f",
+        "description":"Run the build","task_type":"local_bash","is_backgrounded":false}),
+    );
+    let ended = feed(
+        json!({"type":"system","subtype":"task_notification","task_id":"f1","tool_use_id":"toolu_f",
+        "status":"completed","output_file":"","summary":"Build passed"}),
+    );
+    assert!(started.is_empty() && ended.is_empty(), "{started:?} {ended:?}");
+
+    let background = feed(
+        json!({"type":"system","subtype":"task_started","task_id":"b2","tool_use_id":"toolu_b",
+        "description":"Serve the docs","task_type":"local_bash","is_backgrounded":true}),
+    );
+    let [SessionScopedEvent::Activity(row)] = &background[..] else {
+        panic!("{background:?}")
+    };
+    assert_eq!(
+        (row.kind.as_str(), row.label.as_str(), row.state, row.stoppable),
+        (
+            "backgroundTask",
+            "Serve the docs",
+            SessionActivityState::Running,
+            true
+        )
+    );
+
+    // Ctrl+B moves a running foreground command to the background.
+    feed(
+        json!({"type":"system","subtype":"task_started","task_id":"f2","tool_use_id":"toolu_g",
+        "description":"Watch the tests","is_backgrounded":false}),
+    );
+    let moved =
+        feed(json!({"type":"system","subtype":"task_updated","task_id":"f2","patch":{"is_backgrounded":true}}));
+    let [SessionScopedEvent::Activity(row)] = &moved[..] else {
+        panic!("{moved:?}")
+    };
+    assert_eq!(
+        (row.label.as_str(), row.state),
+        ("Watch the tests", SessionActivityState::Running)
     );
 }
 

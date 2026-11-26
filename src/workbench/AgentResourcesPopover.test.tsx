@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { seedSnapshotOwner, snapshotRef } from "../app/agentDiff.fixture";
 import { useWorkbenchStore } from "../app/store";
@@ -279,4 +285,50 @@ it("lists historical browser sources without rebinding them to the current sessi
     screen.queryByRole("button", { name: /source example.com/i }),
   ).toBeNull();
   expect(activateTab).not.toHaveBeenCalled();
+});
+
+it("lists the session's background tasks under Background processes", async () => {
+  const projection = seedSnapshotOwner();
+  const { page, scope } = projection.getState();
+  if (!page || !scope) throw new Error("Missing page");
+  const row = (key: string, label: string, state: string) => ({
+    key: key.repeat(24),
+    kind: "backgroundTask",
+    label,
+    state,
+    progress: null,
+    stoppable: true,
+  });
+  projection.getState().applyAuthoritativePage(scope, {
+    ...page,
+    projectionRevision: "2" as AcpChatPage["projectionRevision"],
+    sessionSurface: {
+      activities: [
+        row("a", "Serve the docs", "running"),
+        row("b", "Run the build", "completed"),
+      ],
+    },
+  });
+  render(
+    <AgentTaskHeader
+      tab={{
+        id: page.chatId,
+        kind: "chat",
+        title: "Chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      }}
+      chatCount={1}
+      snapshot={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  const processes = await screen.findByRole("region", {
+    name: "Background processes",
+  });
+  expect(await within(processes).findByText("Serve the docs")).toBeVisible();
+  expect(within(processes).getByText("Run the build")).toBeVisible();
+  expect(within(processes).getAllByRole("button", { name: "Stop" })).toHaveLength(1);
+  expect(within(processes).queryByText(/No background processes/)).toBeNull();
 });

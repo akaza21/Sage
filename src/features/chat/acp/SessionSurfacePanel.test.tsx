@@ -47,7 +47,7 @@ it("decodes only a bounded, well-formed surface", () => {
   expect(decodeSessionSurface({ activities: "x" })).toBeUndefined();
 });
 
-it("stops a running activity by its key", () => {
+it("summarises background tasks on one line and stops a running one", () => {
   render(
     <SessionSurfacePanel
       chatId="chat-a"
@@ -55,7 +55,7 @@ it("stops a running activity by its key", () => {
         activities: [
           {
             key: KEY,
-            kind: "task",
+            kind: "backgroundTask",
             label: "Dev server",
             state: "running",
             progress: null,
@@ -63,8 +63,16 @@ it("stops a running activity by its key", () => {
           },
           {
             key: KEY.replace("0", "f"),
-            kind: "task",
+            kind: "backgroundTask",
             label: "Lint",
+            state: "completed",
+            progress: null,
+            stoppable: true,
+          },
+          {
+            key: KEY.replace("0", "e"),
+            kind: "hook",
+            label: "Hook format (PostToolUse)",
             state: "completed",
             progress: null,
             stoppable: false,
@@ -73,6 +81,13 @@ it("stops a running activity by its key", () => {
       }}
     />,
   );
+  expect(screen.queryByText("Dev server")).toBeNull();
+  expect(screen.queryByText(/Hook format/)).toBeNull();
+  // No task header here (a side chat or Editor), so the list opens in place.
+  fireEvent.click(
+    screen.getByRole("button", { name: "2 background tasks · 1 running" }),
+  );
+  expect(screen.getByText("Lint")).toBeVisible();
   const stops = screen.getAllByRole("button", { name: "Stop" });
   expect(stops).toHaveLength(1);
   fireEvent.click(stops[0]);
