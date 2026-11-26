@@ -100,7 +100,11 @@ export function toolItemLabel(
   switch (presentation.kind) {
     case "execute": {
       const command = toolCommandLine(item);
-      const verb = live ? "Running" : "Ran";
+      const verb = !live
+        ? "Ran"
+        : item.toolState === "waitingForApproval"
+          ? "Awaiting approval to run"
+          : "Running";
       return tests
         ? `${verb} tests${command ? ` · ${command}` : ""}`
         : `${verb} ${command ?? "a command"}`;

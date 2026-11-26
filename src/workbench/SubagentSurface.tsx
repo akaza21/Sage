@@ -3,10 +3,7 @@ import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
 import { AnswerActions } from "../features/chat/AnswerActions";
-import {
-  formatWorkedDuration,
-  formatWorkingDuration,
-} from "../features/chat/transcriptSummary";
+import { formatDuration } from "../features/chat/transcriptSummary";
 import type { ChildTranscript } from "../services/acpChildTranscript";
 import { ArrowLeft } from "../ui/leanIcons";
 import { liveAgent, projectRecentAgents } from "./agentArtifactTabPresentation";
@@ -165,8 +162,8 @@ function SubagentChild({
       : null;
   const duration = time
     ? live
-      ? formatWorkingDuration(time.startedAt, Math.max(now, time.startedAt))
-      : formatWorkedDuration(time.startedAt, time.updatedAt)
+      ? formatDuration("Working", time.startedAt, Math.max(now, time.startedAt))
+      : formatDuration("Worked", time.startedAt, time.updatedAt)
     : null;
   const spawn = good?.spawnModel;
   const model = spawn

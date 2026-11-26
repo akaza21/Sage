@@ -631,3 +631,65 @@ it("blocks legacy submit truthfully while preserving visible attachments", () =>
   result.current.submit({ preventDefault: vi.fn() } as unknown as FormEvent);
   expect(sendPrompt).toHaveBeenCalledOnce();
 });
+
+it("queues behind a live turn waiting on a tool instead of telling the user to wait beside Stop", () => {
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { "binding-a": "readOnly" },
+  });
+  currentNonterminalTurn.mockReturnValue({
+    state: "waitingTool",
+  } as TurnProjection);
+  const queuePrompt = vi.fn(async () => true);
+  const { result } = renderHook(() =>
+    useChatSurfaceModel({
+      harnesses: [
+        {
+          id: "harness-a",
+          name: "Harness A",
+          transport: "acp",
+          bindingId: "binding-a",
+          installState: "available",
+          source: "builtIn",
+          accessModes: [
+            {
+              id: "readOnly",
+              label: "Read-only",
+              description: "Read workspace files.",
+              fallback: true,
+            },
+          ],
+        },
+      ],
+      selectedHarnessId: "harness-a",
+      selectedModelId: null,
+      page,
+      discoveryPhase: "ready",
+      composerText: "Next draft",
+      attachedContext: [],
+      sending: false,
+      chatError: null,
+      projectTransitioning: false,
+      focused: true,
+      acpActions: {
+        busy: false,
+        error: null,
+        cancellableTurnId: "turn-a" as TurnProjection["id"],
+        submit: vi.fn(),
+        cancel: vi.fn(),
+        close: vi.fn(),
+        end: vi.fn(),
+      },
+      sendPrompt: vi.fn(),
+      queuePrompt,
+    }),
+  );
+  currentNonterminalTurn.mockReset();
+  currentNonterminalTurn.mockReturnValue(null);
+  expect(result.current.queueAvailable).toBe(true);
+  expect(result.current.disabledReason).toBeNull();
+  act(() =>
+    result.current.submit({ preventDefault: vi.fn() } as unknown as FormEvent),
+  );
+  expect(queuePrompt).toHaveBeenCalledOnce();
+});
