@@ -110,6 +110,9 @@ pub enum HarnessUnavailableReason {
     CapabilityProjectionUnavailable,
     NoNativeAcpEndpoint,
     AcpProbeUncharacterised,
+    /// A Chat names a harness binding this build does not register; the
+    /// entry keeps that Chat's display identity and is not a harness here.
+    BindingMissing,
 }
 
 /// Brand identity is curated install metadata, never inferred from a name.

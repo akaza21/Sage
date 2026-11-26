@@ -126,10 +126,8 @@ function safeLocation(location: FileChangeProjection["resource"]): boolean {
         canonicalRelativePath(location.displayResource.relativePath) &&
         utf8ByteLength(location.displayResource.relativePath) <=
           MAX_UNAVAILABLE_LABEL_BYTES &&
-        !Array.from(location.displayResource.relativePath).some((character) => {
-          const code = character.charCodeAt(0);
-          return code < 32 || code === 127;
-        })))
+        // eslint-disable-next-line no-control-regex -- rejects control characters
+        !/[\0-\x1f\x7f]/.test(location.displayResource.relativePath)))
   );
 }
 
@@ -229,11 +227,15 @@ function newerItem(current: AcpItem, candidate: AcpItem): AcpItem | null {
 export function agentEditSummaryChangeKey(
   change: FileChangeProjection,
 ): string {
+  const resource = projectChangeResource(change);
+  return resource ? `resource:${resourceKey(resource)}` : "unavailable";
+}
+
+/** The project file a change names; none when it lies outside the project's roots. */
+export function projectChangeResource(change: FileChangeProjection) {
   return change.resource.kind === "resource"
-    ? `resource:${resourceKey(change.resource.resource)}`
-    : change.resource.displayResource
-      ? `resource:${resourceKey(change.resource.displayResource)}`
-      : `unavailable:${change.resource.reason}:${change.resource.label}`;
+    ? change.resource.resource
+    : change.resource.displayResource;
 }
 
 export function projectAgentEditSummary(
@@ -309,6 +311,8 @@ export function projectAgentEditSummary(
         rejectedUnsafeOrStale = true;
         continue;
       }
+      // A change that names no project file is not a project change.
+      if (!projectChangeResource(change)) continue;
       const key = agentEditSummaryChangeKey(change);
       const diffRef =
         change.pairState === "available" &&

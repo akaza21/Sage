@@ -333,6 +333,23 @@
   white-space: nowrap;
 }
 
+/* A harness-written description, though menu rows keep labels on one line:
+   two lines, then an ellipsis. The full text stays in the title and the
+   row's accessible description, and a keyboard-focused row shows all of it. */
+.menu-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.menu-item:focus-visible > .menu-description {
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+
 /* Forced colors paint no hover fill, so a row under the pointer keeps the
    Highlight of its keyboard focus or selection. */
 @media (forced-colors: none) {

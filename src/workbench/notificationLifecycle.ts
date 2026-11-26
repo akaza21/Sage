@@ -51,35 +51,23 @@ export function observeNotificationVisibility(
 
 export function listenNotificationNavigation(
   port: NotificationPort,
-  ready: () => boolean,
   open: (chat: NotificationChat) => Promise<void>,
   onError: () => void,
 ) {
   let disposed = false;
   let running = false;
-  let retained: NotificationChat | null = null;
   let pending = true;
   let unlisten: (() => void) | undefined;
   const wake = () => {
     pending = true;
-    if (disposed || running || !ready()) return;
+    if (disposed || running) return;
     running = true;
     void (async () => {
       try {
-        while (!disposed && pending && ready()) {
+        while (!disposed && pending) {
           pending = false;
-          retained ??= await port.takeChat();
-          if (disposed) {
-            retained = null;
-            break;
-          }
-          if (!ready()) {
-            pending = true;
-            break;
-          }
-          const chat = retained;
-          retained = null;
-          if (chat) await open(chat);
+          const chat = await port.takeChat();
+          if (chat && !disposed) await open(chat);
         }
       } catch {
         if (!disposed) onError();
@@ -101,10 +89,8 @@ export function listenNotificationNavigation(
       if (!disposed) onError();
     });
   return {
-    wake,
     dispose() {
       disposed = true;
-      retained = null;
       unlisten?.();
     },
   };

@@ -28,6 +28,7 @@ import { AcpChatPresentation } from "./AcpChatPresentation";
 import { AcpChatProjection as Projection } from "./AcpChatProjection";
 import { page, textItem } from "./acpProjection.fixture";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
+import { projectTaskResources } from "../../../workbench/taskResourceProjection";
 import createdFileEvent from "./createdFileEvent.fixture.json";
 
 function AcpChatProjection(props: ComponentProps<typeof Projection>) {
@@ -277,10 +278,7 @@ describe("AcpChatProjection", () => {
       name: "Files edited in this chat",
     });
     fireEvent.click(within(card).getByRole("button", { name: /file changed/ }));
-    expect(
-      within(card).getByText(createdFileEvent.expected.summary),
-    ).toBeVisible();
-    expect(within(card).getByText("new.ts")).toBeVisible();
+    expect(within(card).getByRole("listitem")).toHaveTextContent(/^new.ts$/);
     expect(within(card).queryByText(/Path does not exist/)).toBeNull();
   });
 
@@ -1814,69 +1812,56 @@ describe("AcpChatProjection", () => {
     expect(within(summary).queryByText("stale")).toBeNull();
   });
 
-  it("keeps unavailable and wholly stale edit records noninteractive", async () => {
+  it("leaves files outside the project's roots out of the changed-file card", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
-    const unavailable = editItem("unavailable", 1, "root-a", "unavailable");
-    if (unavailable.kind === "fileChangeDiff") {
-      unavailable.payload = {
-        changes: [
-          {
-            resource: {
-              kind: "unavailable",
-              reason: "foreign",
-              label: "Path is outside this Project",
+    const outside = (
+      id: string,
+      ordinal: number,
+      reason: string,
+      label: string,
+    ) => {
+      const item = editItem(id, ordinal, "root-a", id);
+      if (item.kind === "fileChangeDiff")
+        item.payload = {
+          changes: [
+            {
+              resource: { kind: "unavailable", reason, label } as never,
+              operation: "created",
+              originalResource: null,
+              summary: "Created file",
+              additions: 7,
+              deletions: 0,
             },
-            operation: "unknown",
-            originalResource: null,
-            summary: "No safe Project resource",
-            additions: null,
-            deletions: null,
-          },
-        ],
-        truncated: false,
-      };
-    }
-    const stale = editItem("stale-only", 2, "root-a", "stale", {
-      chatId: "chat-other" as never,
-    });
-    edited.turns[0].items = [unavailable, stale];
-    const openResource = vi.fn();
-    const { rerender } = await renderProjection(
-      <AcpChatProjection page={edited} active onOpenResource={openResource} />,
-    );
+          ],
+          truncated: false,
+        };
+      return item;
+    };
+    edited.turns[0].items = [
+      editItem("project", 1, "root-a", "Edited main.ts", {}, 1, 0),
+      outside("plan", 2, "missing", "Path does not exist"),
+      outside("home", 3, "foreign", "Path is outside the active project roots"),
+    ];
+    await renderProjection(<AcpChatProjection page={edited} active />);
 
     const summary = screen.getByRole("region", {
       name: "Files edited in this chat",
     });
-    const disclosure = within(summary).getByRole("button", {
-      name: /Showing 1 changed file/,
-    });
-    expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    expect(summary).toHaveClass("acp-file-changes--collapsed");
-    expect(within(summary).queryByRole("list")).toBeNull();
-    fireEvent.click(disclosure);
-    expect(
-      within(summary).getByText(/outside this Project/i),
-    ).toBeInTheDocument();
-
-    const refreshed = structuredClone(edited);
-    refreshed.turns[0].items = [stale];
-    refreshed.turns[0].revision = "2" as never;
-    rerender(
-      <AcpChatProjection
-        page={refreshed}
-        active
-        onOpenResource={openResource}
-      />,
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /^1 file changed/ }),
     );
+    expect(within(summary).getAllByRole("listitem")).toHaveLength(1);
     expect(
-      screen.queryByRole("region", { name: "Files edited in this chat" }),
+      within(summary).queryByText(/unavailable|does not exist|outside/i),
     ).toBeNull();
-    expect(openResource).not.toHaveBeenCalled();
+    expect(within(summary).queryByText(/incomplete|not shown/i)).toBeNull();
+    // The resources panel counts the same changes, even once the chat has no live session.
+    edited.currentSessionId = null as never;
+    expect(projectTaskResources(edited, edited.chatId).changesCount).toBe(1);
   });
 
-  it("opens the known deleted file as a working diff while leaving unidentified deletions unavailable", async () => {
+  it("opens the known deleted file as a working diff on one line", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     const deleted = editItem("deleted", 1, "root-a", "deleted");
@@ -1895,7 +1880,7 @@ describe("AcpChatProjection", () => {
             },
             operation: "deleted",
             originalResource: null,
-            summary: "Deleted file",
+            summary: "Deleted cp8-pane-probe.md",
             additions: null,
             deletions: null,
           },
@@ -1903,27 +1888,7 @@ describe("AcpChatProjection", () => {
         truncated: false,
       };
     }
-    const legacy = editItem("legacy-deleted", 2, "root-a", "legacy-deleted");
-    if (legacy.kind === "fileChangeDiff") {
-      legacy.payload = {
-        changes: [
-          {
-            resource: {
-              kind: "unavailable",
-              reason: "missing",
-              label: "Path does not exist",
-            },
-            operation: "deleted",
-            originalResource: null,
-            summary: "Earlier deletion",
-            additions: null,
-            deletions: null,
-          },
-        ],
-        truncated: false,
-      };
-    }
-    edited.turns[0].items = [deleted, legacy];
+    edited.turns[0].items = [deleted];
     const openResource = vi.fn();
     await renderProjection(
       <AcpChatProjection page={edited} active onOpenResource={openResource} />,
@@ -1933,20 +1898,25 @@ describe("AcpChatProjection", () => {
       name: "Files edited in this chat",
     });
     fireEvent.click(
-      within(summary).getByRole("button", { name: /2 files changed/ }),
+      within(summary).getByRole("button", { name: /1 file changed/ }),
     );
-    expect(
-      within(summary).getByText("cp8-pane-probe.md · Deleted"),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByText("Path does not exist · unavailable"),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByRole("button", {
-        name: "Open diff cp8-pane-probe.md",
-      }),
-    ).toHaveAttribute("title", "Open current working-tree changes against Git");
-    expect(openResource).not.toHaveBeenCalled();
+    const row = within(summary).getByRole("listitem");
+    expect(row).toHaveTextContent(/^cp8-pane-probe\.md.*deleted$/);
+    expect(within(row).queryByText(/Deleted cp8-pane-probe/)).toBeNull();
+    const action = within(row).getByRole("button", {
+      name: /^Open diff .*cp8-pane-probe\.md$/,
+    });
+    expect(action).toHaveAttribute(
+      "title",
+      "Open current working-tree changes against Git",
+    );
+    fireEvent.click(action);
+    expect(openResource).toHaveBeenCalledWith(
+      { rootId: "root-a", relativePath: "cp8-pane-probe.md" },
+      "workingTreeDiff",
+      expect.anything(),
+      undefined,
+    );
   });
 
   it("navigates real nested activity items without removing their controls from Tab order", () => {
