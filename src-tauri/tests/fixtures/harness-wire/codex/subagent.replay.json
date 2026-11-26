@@ -1,0 +1,43 @@
+{
+  "commands": [
+    "compact",
+    "review",
+    "status",
+    "mcp"
+  ],
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [],
+  "sageOnly": [
+    "skills/list"
+  ],
+  "rows": [
+    "Initialized {}",
+    "IgnoredLate",
+    "SessionReady {\"loaded\":false}",
+    "IgnoredLate x3",
+    "Turn {\"state\":\"sending\"}",
+    "IgnoredLate x2",
+    "Turn {\"state\":\"running\"}",
+    "IgnoredLate x3",
+    "ChildThreadItem {\"lifecycle\":\"started\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"started\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}}}",
+    "IgnoredLate x2",
+    "ChildThreadItem {\"lifecycle\":\"completed\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"started\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}}}",
+    "IgnoredLate x2",
+    "Usage {\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17061,\"outputTokens\":30,\"contextWindow\":475000}}}",
+    "IgnoredLate x2",
+    "Item {\"lifecycle\":\"started\",\"tool_state\":null,\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"wait\",\"message\":null,\"receiverLabels\":[],\"operation\":\"wait\",\"agentKey\":null,\"agentKeys\":[],\"agentStates\":[]}}}",
+    "IgnoredLate",
+    "ChildLiveItem {\"role\":\"assistant\",\"lifecycle\":\"started\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{}}}",
+    "IgnoredLate x2",
+    "ChildLiveItem {\"role\":\"assistant\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{}}}",
+    "IgnoredLate x2",
+    "ChildThreadItem {\"lifecycle\":\"started\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"completed\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}}}",
+    "IgnoredLate",
+    "ChildTurnStatus {\"status\":\"completed\"}",
+    "ChildThreadItem {\"lifecycle\":\"completed\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"completed\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}}}",
+    "Item {\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"wait\",\"message\":null,\"receiverLabels\":[],\"operation\":\"wait\",\"agentKey\":null,\"agentKeys\":[],\"agentStates\":[]}}}",
+    "Usage {\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17112,\"outputTokens\":21,\"contextWindow\":475000}}}",
+    "IgnoredLate"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "commands": [
+    "compact",
+    "review",
+    "status",
+    "mcp"
+  ],
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [],
+  "sageOnly": [
+    "skills/list"
+  ],
+  "rows": [
+    "Initialized {}",
+    "IgnoredLate",
+    "SessionReady {\"loaded\":false}",
+    "IgnoredLate x3",
+    "Turn {\"state\":\"sending\"}",
+    "IgnoredLate",
+    "Turn {\"state\":\"running\"}",
+    "IgnoredLate x2",
+    "Item {\"lifecycle\":\"started\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{}}}",
+    "Item {\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{}}} x4",
+    "IgnoredLate",
+    "Item {\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{}}}",
+    "Usage {\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17049,\"outputTokens\":8,\"contextWindow\":475000}}}",
+    "IgnoredLate x3",
+    "Turn {\"state\":\"completed\"}"
+  ]
+}

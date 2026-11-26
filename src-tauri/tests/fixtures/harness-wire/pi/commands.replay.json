@@ -1,0 +1,22 @@
+{
+  "commands": [
+    "session",
+    "compact",
+    "mcp",
+    "llama"
+  ],
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [
+    "get_available_models"
+  ],
+  "sageOnly": [
+    "get_available_models"
+  ],
+  "rows": [
+    "Initialized {}",
+    "Models {\"models\":[],\"next_cursor\":null}",
+    "SessionReady {\"loaded\":false}",
+    "Absorbed"
+  ]
+}

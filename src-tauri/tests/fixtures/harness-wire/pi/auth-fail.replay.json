@@ -1,0 +1,25 @@
+{
+  "commands": [
+    "session",
+    "compact",
+    "mcp",
+    "llama"
+  ],
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [
+    "get_available_models"
+  ],
+  "sageOnly": [
+    "get_available_models",
+    "get_commands"
+  ],
+  "rows": [
+    "Initialized {}",
+    "Models {\"models\":[],\"next_cursor\":null}",
+    "SessionReady {\"loaded\":false}",
+    "Absorbed",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"command_failed\",\"message\":\"Pi RPC command failed\",\"retryable\":false}}",
+    "Turn {\"state\":\"failed\"}"
+  ]
+}

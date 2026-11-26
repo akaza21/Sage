@@ -1,0 +1,37 @@
+{
+  "commands": [
+    "compact",
+    "review",
+    "status",
+    "mcp"
+  ],
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [],
+  "sageOnly": [
+    "skills/list"
+  ],
+  "rows": [
+    "Initialized {}",
+    "IgnoredLate",
+    "SessionReady {\"loaded\":false}",
+    "IgnoredLate x2",
+    "Turn {\"state\":\"sending\"}",
+    "IgnoredLate",
+    "Turn {\"state\":\"running\"}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 2/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 3/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 4/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 5/5\",\"retryable\":true}}",
+    "Session {\"event\":{\"kind\":\"notice\",\"level\":\"warning\",\"diagnostic\":false,\"source\":\"codex\"}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 1/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 2/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 3/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 4/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 5/5\",\"retryable\":true}}",
+    "IgnoredLate",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"unexpected status 401 Unauthorized: Missing bear…\",\"retryable\":false}}",
+    "IgnoredLate",
+    "Turn {\"state\":\"failed\"}"
+  ]
+}
