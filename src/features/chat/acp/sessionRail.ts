@@ -43,7 +43,7 @@ export function sessionRailGitLabel(branch: string | null | undefined): string {
 }
 
 /** What a chat's latest turn waits on the user for. */
-export type RailAttention = "approval" | "input" | "signIn";
+export type RailAttention = "approval" | "input";
 
 /** The pill of a chat waiting on the user; a mounted chat's own approval counts. */
 export function sessionRailPill(mounted: boolean, attention?: RailAttention) {
@@ -56,9 +56,9 @@ export function sessionRailPill(mounted: boolean, attention?: RailAttention) {
 
 export function sessionRailStatusLabel(
   status: SessionStatus | undefined,
-  attention?: RailAttention,
+  awaitingApproval = false,
 ): string {
-  if (status === "failed" && attention === "signIn") return "Sign in";
+  if (awaitingApproval) return "Awaiting approval";
   switch (status) {
     case "working":
       return "Working…";

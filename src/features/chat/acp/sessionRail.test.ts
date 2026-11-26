@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   sessionRailGitLabel,
   sessionRailLive,
-  sessionRailPill,
   sessionRailRelativeTime,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
@@ -17,9 +16,9 @@ describe("sessionRailStatusLabel", () => {
   });
 
   it("names a chat waiting on a permission Awaiting approval", () => {
-    expect(sessionRailPill(false, "approval")).toBe("Awaiting approval");
-    expect(sessionRailPill(true)).toBe("Awaiting approval");
-    expect(sessionRailPill(false)).toBe("");
+    expect(sessionRailStatusLabel("waiting", true)).toBe("Awaiting approval");
+    expect(sessionRailStatusLabel("working", true)).toBe("Awaiting approval");
+    expect(sessionRailStatusLabel("waiting", false)).toBe("Waiting");
     expect(sessionRailStatusLabel("failed")).toBe("Failed");
     expect(sessionRailStatusLabel("idle")).toBe("");
     expect(sessionRailStatusLabel(undefined)).toBe("");

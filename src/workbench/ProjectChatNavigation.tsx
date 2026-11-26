@@ -200,11 +200,7 @@ export function ProjectChatNavigation({
             readThrough: readMarks.get(tab.id),
           });
         const attention = interactions.attention.get(tab.id);
-        const trailingState = agentRailTrailingState({
-          status,
-          unread,
-          attention,
-        });
+        const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
           projectTransitioning ||

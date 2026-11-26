@@ -11,7 +11,6 @@ import {
 } from "./agentRailInteractions";
 import { sessionRailPill } from "../features/chat/acp/sessionRail";
 import {
-  agentRailTrailingState,
   compareAgentRailViewChats,
 } from "./agentRailStatusView";
 import {
@@ -162,30 +161,6 @@ function mirrorLatest(latestTurn: AcpChatStatus["latestTurn"]) {
   );
   return useWorkbenchStore.getState().tabs[0];
 }
-
-it("keeps a settled turn working while its background work runs", () => {
-  seed();
-  const running = mirrorLatest({ ...settled, background: true });
-  expect(running.status).toBe("working");
-  // Not Done or Unread until the background work ends.
-  expect(running.finishedAt).toBeUndefined();
-  expect(mirrorLatest(settled)).toMatchObject({
-    status: "complete",
-    finishedAt: 5,
-  });
-});
-
-it("labels a sign-in failure Sign in, not Failed", () => {
-  seed();
-  const { result } = renderHook(() => useAgentRailInteractions());
-  const tab = mirrorLatest({ ...settled, state: "failed", signIn: true });
-  const attention = result.current.attention.get("chat-1");
-  expect(
-    agentRailTrailingState({ status: tab.status, unread: false, attention }),
-  ).toEqual({ kind: "failed", label: "Sign in" });
-  mirrorLatest({ ...settled, state: "failed" });
-  expect(result.current.attention.get("chat-1")).toBeUndefined();
-});
 
 it("keeps a question's Needs input pill without a mounted chat", () => {
   seed();
