@@ -102,7 +102,9 @@ pub(crate) async fn end_acp_session_inner(
     // needing recovery; ending it drives that recovery, which leaves a
     // session the next send starts again.
     if session.state == sage_acp_protocol::lifecycle::SessionState::Starting
-        && state.acp.chat_holds_recovery(&request.project_id, &request.chat_id)
+        && state
+            .acp
+            .chat_holds_recovery(&request.project_id, &request.chat_id)
     {
         super::super::start_recovery::drive(state, &request.project_id, &request.chat_id)
             .await
