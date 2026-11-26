@@ -21,6 +21,7 @@ mod questions;
 mod runs;
 mod steer;
 mod subagents;
+mod tasks;
 mod usage;
 
 pub(super) use usage::UsageReply;
@@ -155,6 +156,7 @@ pub(super) struct SdkBridge {
     streamed: VecDeque<String>,
     retrying: bool,
     compacting: bool,
+    tasks: tasks::Tasks,
     /// Mid-turn messages Claude Code has not yet taken up.
     steers: Vec<String>,
     /// The prompt Sage wrote, by its `uuid`, until Claude Code reports a
@@ -223,6 +225,7 @@ impl SdkBridge {
             streamed: VecDeque::new(),
             retrying: false,
             compacting: false,
+            tasks: tasks::Tasks::default(),
             steers: Vec::new(),
             waiting_prompt: None,
             requeuable: None,

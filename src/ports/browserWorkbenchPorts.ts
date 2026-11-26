@@ -171,7 +171,8 @@ const repository: RepositoryPort = {
     browserDesktop.renameGitLocalBranch(request, expectedTransitionEpoch),
 };
 
-const chat: ChatPort = {
+// cleanUp is fixture-only; the native app invokes its Tauri commands.
+const chat: ChatPort & { cleanUp: typeof browserDesktop.cleanUp } = {
   setChatProject: (...args) => browserDesktop.setChatProject(...args),
   createChat: (
     currentLayout: ProjectLayoutRequest | null,
@@ -201,6 +202,7 @@ const chat: ChatPort = {
   ) => browserDesktop.restoreChat(request, expectedTransitionEpoch),
   deleteChat: (request: ChatDeleteRequest, expectedTransitionEpoch: number) =>
     browserDesktop.deleteChat(request, expectedTransitionEpoch),
+  cleanUp: browserDesktop.cleanUp,
   moveChat: (request: MoveChatRequest, expectedTransitionEpoch: number) =>
     browserDesktop.moveChat(request, expectedTransitionEpoch),
   pinChat: (request: PinChatRequest, expectedTransitionEpoch: number) =>

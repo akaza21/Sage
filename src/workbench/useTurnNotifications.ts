@@ -34,6 +34,10 @@ export function useNotificationNavigation(enterAgent: () => void) {
           error: "The notification chat could not be opened.",
         });
     };
+    // A failed open or switch keeps its own error.
+    const unreported = () => {
+      if (!useWorkbenchStore.getState().error) failed();
+    };
     // A click during a project switch waits in the held-open slot, loaded
     // through the lazy rail entry so it adds no core chunk. A
     // chat deleted meanwhile is still handed to land, which reports it.
@@ -43,14 +47,11 @@ export function useNotificationNavigation(enterAgent: () => void) {
         await openNotifiedChat(projectId, chatId).catch(() => {});
         const current = useWorkbenchStore.getState();
         if (current.project?.id !== projectId || current.activeTabId !== chatId)
-          return failed();
+          return unreported();
         useAgentSettingsState.getState().close();
         enterAgent();
       },
-      // A failed switch keeps its own error.
-      refused: () => {
-        if (!useWorkbenchStore.getState().error) failed();
-      },
+      refused: unreported,
     };
     const navigation = listenNotificationNavigation(
       nativeNotificationPort,

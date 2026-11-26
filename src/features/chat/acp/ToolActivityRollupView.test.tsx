@@ -1511,6 +1511,11 @@ describe("ToolActivityRollup", () => {
     [["imageView", "imageView"], "Viewed images"],
     [["webSearch"], "Web run"],
     [["search", "read"], "Explored files, read a file"],
+    [
+      ["read", "edit", "think", "switchMode"],
+      "Read a file, edited a file, used tools",
+    ],
+    [["other", "read", "think"], "Used tools, read a file"],
   ] as const)("words a finished %j group as %s", (kinds, expected) => {
     const items = kinds.map((kind, index) => {
       const item = tool(

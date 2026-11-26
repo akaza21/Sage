@@ -119,8 +119,11 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
       chat("running", { items: [textItem()], sessionActivities: hooks }),
     ),
   );
-  const list = screen.getByRole("list", { name: "Hooks" });
+  const list = document.querySelector<HTMLElement>(
+    "ul.acp-session-activities",
+  )!;
   const rows = within(list).getAllByRole("listitem");
+  // The state styles the row: a failed one shows in the danger colour.
   expect(rows.map((row) => row.getAttribute("data-activity-state"))).toEqual([
     "completed",
     "failed",
@@ -150,16 +153,18 @@ it("keeps hook rows in a settled Turn behind its Worked disclosure", () => {
     ),
   );
   const worked = screen.getByRole("button", { name: "Worked for 6s" });
-  expect(screen.queryByRole("list", { name: "Hooks" })).toBeNull();
+  expect(document.querySelector("ul.acp-session-activities")).toBeNull();
   fireEvent.click(worked);
   expect(worked).toHaveAttribute("aria-expanded", "true");
-  const list = screen.getByRole("list", { name: "Hooks" });
+  const list = document.querySelector<HTMLElement>(
+    "ul.acp-session-activities",
+  )!;
   expect(
     within(list).getByText("Synthetic lint hook exited with status 1"),
   ).toBeVisible();
   expect(
     within(list)
       .getAllByRole("listitem")
-      .map((row) => row.getAttribute("data-activity-state")),
-  ).toEqual(["completed", "failed", "cancelled"]);
+      .map((row) => row.textContent?.match(/, (\w+)/)?.[1]),
+  ).toEqual(["Completed", "Failed", "Cancelled"]);
 });

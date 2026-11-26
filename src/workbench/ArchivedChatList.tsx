@@ -22,8 +22,13 @@ export default function ArchivedChatList({
   chats: ArchivedChatSummary[];
 }) {
   const [open, setOpen] = useState(false);
-  const [deleting, setDeleting] = useState<ArchivedChatSummary | null>(null);
+  const [deleting, setDeleting] = useState<ArchivedChatSummary | "all" | null>(
+    null,
+  );
   const deleteChat = useWorkbenchStore((state) => state.deleteChat);
+  const transitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
   const listId = `archived-chat-list-${projectId}`;
   return (
     <div className="archived-chats">
@@ -57,9 +62,30 @@ export default function ArchivedChatList({
               onDelete={() => setDeleting(chat)}
             />
           ))}
+          <button
+            className="archived-chats__disclosure"
+            type="button"
+            disabled={transitioning}
+            onClick={() => setDeleting("all")}
+          >
+            Delete all archived
+          </button>
         </div>
       ) : null}
-      {deleting ? (
+      {deleting === "all" ? (
+        <ConfirmDialog
+          title="Delete all archived chats?"
+          description="These chats and their history will be permanently deleted from Sage. This can't be undone."
+          confirmLabel="Delete all"
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            setDeleting(null);
+            void import("../app/chatArchiveActions").then((actions) =>
+              actions.cleanUpProjectData("delete_archived_chats", projectId),
+            );
+          }}
+        />
+      ) : deleting ? (
         <ConfirmDialog
           title={`Delete ${chatDisplayTitle(deleting.title)}?`}
           description="This chat and its history will be permanently deleted from Sage. This can't be undone."

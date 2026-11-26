@@ -95,6 +95,12 @@ fn a_run_claude_code_starts_on_its_own_opens_a_turn_that_its_result_ends() {
     let mut bridge = initialized();
     finish_prompted_turn(&mut bridge);
 
+    bridge
+        .inbound(
+            json!({"type":"system","subtype":"task_started","task_id":"a1",
+            "description":"Write bg.txt","is_backgrounded":true}),
+        )
+        .unwrap();
     let notified = bridge
         .inbound(
             json!({"type":"system","subtype":"task_notification","task_id":"a1",
@@ -103,7 +109,20 @@ fn a_run_claude_code_starts_on_its_own_opens_a_turn_that_its_result_ends() {
         .unwrap();
     assert!(!notified.started, "the notice alone opens no turn");
 
-    assert!(bridge.inbound(run_start()).unwrap().started);
+    // The turn says why it opened with no message of the user's.
+    let run = bridge.inbound(run_start()).unwrap();
+    assert!(run.started);
+    let labels: Vec<_> = run
+        .session
+        .iter()
+        .filter_map(|event| match event {
+            sage_acp_protocol::intent::session_event::SessionScopedEvent::Activity(row) => {
+                Some(row.label.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["Background task finished: Write bg.txt"]);
     bridge.adopt(json!(4)).unwrap();
 
     bridge
@@ -963,4 +982,34 @@ fn a_stop_keeps_its_interrupt_until_there_is_room_to_send_it() {
         .inbound(success(&withdrawals[0], json!({"cancelled":true})))
         .unwrap();
     assert_eq!(freed.replies[0]["request"]["subtype"], "interrupt");
+}
+
+#[test]
+fn a_stopped_background_task_does_not_explain_the_next_run_as_finished() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    bridge
+        .inbound(
+            json!({"type":"system","subtype":"task_started","task_id":"b1",
+        "description":"Serve the docs","is_backgrounded":true}),
+        )
+        .unwrap();
+    bridge
+        .inbound(
+            json!({"type":"system","subtype":"task_notification","task_id":"b1",
+        "status":"stopped","output_file":"","summary":"Stopped"}),
+        )
+        .unwrap();
+    let run = bridge.inbound(run_start()).unwrap();
+    let labels: Vec<_> = run
+        .session
+        .iter()
+        .filter_map(|event| match event {
+            sage_acp_protocol::intent::session_event::SessionScopedEvent::Activity(row) => {
+                Some(row.label.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["Claude Code started this turn on its own"]);
 }
