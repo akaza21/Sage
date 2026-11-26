@@ -97,11 +97,10 @@ export default function ChatQueueExecution({
       return;
     updateQueuedPrompt(next.id, "sending");
     const afterOrder =
-      knownTurnOrder && observedOrder
-        ? laterTurnOrder(observedOrder, knownTurnOrder)
-          ? observedOrder
-          : knownTurnOrder
-        : (knownTurnOrder ?? observedOrder);
+      observedOrder &&
+      (!knownTurnOrder || laterTurnOrder(observedOrder, knownTurnOrder))
+        ? observedOrder
+        : knownTurnOrder;
     void submit(
       next.text,
       next.attachedContext,
