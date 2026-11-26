@@ -342,7 +342,7 @@
       {
         "entry": "src/app/fileRenameActions.ts",
         "maxGzipBytes": 1581,
-        "reason": "File and folder rename with its projection and intent checks; loads with the first rename. Measured 1580 B (110 B of headroom moved to AgentProjectMenu)."
+        "reason": "File and folder rename with its projection and intent checks; loads with the first rename. Measured 1580 B; 110 B moved to AgentProjectMenu."
       },
       {
         "entry": "src/features/chat/ComposerQueuedPrompts.tsx",
@@ -357,7 +357,7 @@
       {
         "entry": "src/workbench/AgentProjectMenu.tsx",
         "maxGzipBytes": 730,
-        "reason": "Project menu surface isolated from the rail's static closure; rendered only in Agent mode. Includes the in-place Remove project confirmation and its lazy cleanup call (+110 B moved from fileRenameActions)."
+        "reason": "Project menu surface isolated from the rail's static closure; rendered only in Agent mode. With the in-place Remove project confirm (+110 B moved from fileRenameActions)."
       },
       {
         "entry": "src/workbench/ProjectChatActionPopover.tsx",

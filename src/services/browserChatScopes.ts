@@ -347,7 +347,7 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
       return commit();
     },
     /** Mirrors `delete_archived_chats` and `remove_project`. */
-    cleanUp(command: string, project: string, epoch: number) {
+    async cleanUp(command: string, project: string, epoch: number) {
       admit(epoch);
       rememberBrowserScope(snapshot);
       const scope = scopes.get(project);

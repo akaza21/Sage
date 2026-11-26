@@ -284,6 +284,15 @@ export interface ChatPort {
     request: ChatDeleteRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /**
+   * Browser fixture only: bulk cleanup. The native app invokes
+   * `delete_archived_chats` and `remove_project` directly.
+   */
+  cleanUp?(
+    command: "delete_archived_chats" | "remove_project",
+    projectId: string,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
   moveChat(
     request: MoveChatRequest,
     expectedTransitionEpoch: number,

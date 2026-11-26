@@ -6,7 +6,7 @@ import type {
   ProjectLayoutRequest,
 } from "../domain/workbench";
 import type { ProjectTransitionResult } from "../domain/project";
-import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
+import { invokeNative } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ChatActionReport, ChatRowAction } from "./chatArchiveSlice";
 import {
@@ -347,18 +347,14 @@ export async function cleanUpProjectData(
     ...createChatTransitionContext(set, get),
     failedMessage: "native cleanup did not commit",
     invoke: async () => {
-      // The browser fixture is development-only; production builds drop it.
-      const result =
-        !import.meta.env.DEV || isTauriRuntime()
-          ? await invokeNative<ProjectTransitionResult>(command, {
-              projectId,
-              expectedTransitionEpoch,
-            })
-          : (await import("../services/browserDesktop")).browserDesktop.cleanUp(
-              command,
-              projectId,
-              expectedTransitionEpoch,
-            );
+      // Only the browser fixture's port carries cleanUp.
+      const fixture = getWorkbenchPorts().chat.cleanUp;
+      const result = fixture
+        ? await fixture(command, projectId, expectedTransitionEpoch)
+        : await invokeNative<ProjectTransitionResult>(command, {
+            projectId,
+            expectedTransitionEpoch,
+          });
       // A cleanup that stopped part way still commits what it removed.
       if (result.committed) stopped = result.recoveryError;
       return result;
