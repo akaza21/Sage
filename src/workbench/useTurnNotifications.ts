@@ -47,8 +47,6 @@ export function useNotificationNavigation(enterAgent: () => void) {
         useAgentSettingsState.getState().close();
         enterAgent();
       },
-      admit: ({ archived }: { archived: boolean }, wasArchived: boolean) =>
-        !archived || wasArchived,
       // A failed switch keeps its own error.
       refused: () => {
         if (!useWorkbenchStore.getState().error) failed();

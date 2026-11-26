@@ -6,8 +6,11 @@ import { useWorkbenchStore } from "../app/store";
 /** One caller's chat open: how to open, and whether a held one still applies. */
 export interface ChatOpen {
   open: (projectId: string, chatId: string) => Promise<void>;
-  /** Whether a held open still applies once the transition settles. */
-  admit: (now: ChatPlacement, wasArchived: boolean) => boolean;
+  /**
+   * Whether a held open still applies once the transition settles. By default
+   * only a chat archived during the hold is dropped; the open reports the rest.
+   */
+  admit?: (now: ChatPlacement, wasArchived: boolean) => boolean;
   /** Reports a held open refused by a failed transition or by `admit`. */
   refused?: () => void;
 }
@@ -43,6 +46,9 @@ export function cancelHeldRailChat() {
   document.removeEventListener("click", cancelOnOtherClick, true);
 }
 
+const keepUnlessNewlyArchived = (now: ChatPlacement, wasArchived: boolean) =>
+  !now.archived || wasArchived;
+
 function replayHeld() {
   const state = useWorkbenchStore.getState();
   if (!held || inFlight > 0 || state.projectTransitioning) return;
@@ -54,7 +60,10 @@ function replayHeld() {
   if (
     state.error ||
     state.phase !== "ready" ||
-    !request.admit(chatPlacement(state, projectId, chatId), archived)
+    !(request.admit ?? keepUnlessNewlyArchived)(
+      chatPlacement(state, projectId, chatId),
+      archived,
+    )
   )
     request.refused?.();
   else void openChatWhenSettled(projectId, chatId, request);
