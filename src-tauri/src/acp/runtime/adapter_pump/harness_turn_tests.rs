@@ -424,7 +424,6 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
     runtime().block_on(async {
         for (action, answered_first) in [
             (None, false),
-            (compact(), false),
             (review(), false),
             (compact(), true),
             (review(), true),

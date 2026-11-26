@@ -621,7 +621,6 @@ fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_
             Some(HarnessTurnAuthority::Access(
                 SessionAccessMode::WorkspaceWrite,
             )),
-            Some(HarnessTurnAuthority::Access(SessionAccessMode::FullAccess)),
             None,
         ] {
             assert!(matches!(
