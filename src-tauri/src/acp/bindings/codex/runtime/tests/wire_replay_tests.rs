@@ -22,13 +22,16 @@ fn every_recorded_codex_transcript_projects_as_committed() {
             if let Some(home) = record.frame.pointer_mut("/result/codexHome") {
                 *home = json!(MANAGED_CODEX_HOME);
             }
+            // It also echoes the client version, which is this build's.
             if let Some(agent) = record.frame.pointer_mut("/result/userAgent")
                 && let Some((product, rest)) = agent.as_str().and_then(|text| text.split_once('/'))
                 && let Some((_, details)) = rest.split_once(' ')
+                && let Some((platform, _)) = details.rsplit_once(" (")
             {
                 *agent = json!(format!(
-                    "{product}/{} {details}",
-                    sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION
+                    "{product}/{} {platform} (sage; {})",
+                    sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+                    env!("CARGO_PKG_VERSION")
                 ));
             }
         }

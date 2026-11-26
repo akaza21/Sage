@@ -1,6 +1,7 @@
 // Codex app-server JSON-RPC, with the initialize and turn policy Sage sends
 // (src-tauri/src/acp/bindings/codex/request.rs and turn_policy.rs). Sage's
 // Codex binding has no plan access mode, so plan scenarios are a declared gap.
+import fs from "node:fs";
 import { PROMPTS } from "./prompts.mjs";
 import { Wire } from "./wire.mjs";
 
@@ -11,6 +12,8 @@ export const GAPS = {
 };
 
 const ASK = { approval: "on-request", sandbox: "readOnly" };
+// Sage names itself with its crate version, which Codex echoes in userAgent.
+const SAGE_VERSION = /^version = "([^"]+)"/m.exec(fs.readFileSync(new URL("../../src-tauri/Cargo.toml", import.meta.url), "utf8"))?.[1] ?? "0.0.0";
 
 export function launch({ cwd, env }) {
   return { command: "codex", args: ["app-server"], cwd, env, shell: process.platform === "win32" };
@@ -64,7 +67,7 @@ export async function run(scenario, { cwd, env, emptyHome, image }) {
     const init = request(
       "initialize",
       {
-        clientInfo: { name: "sage", title: "Sage", version: "0.0.0" },
+        clientInfo: { name: "sage", title: "Sage", version: SAGE_VERSION },
         capabilities: {
           experimentalApi: true,
           optOutNotificationMethods: ["turn/diff/updated", "item/fileChange/outputDelta"],
