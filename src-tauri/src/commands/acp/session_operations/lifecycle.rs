@@ -101,13 +101,15 @@ pub(crate) async fn end_acp_session_inner(
     // A session still starting under an open epoch is a start that ended
     // needing recovery; ending it drives that recovery, which leaves a
     // session the next send starts again.
-    if session.state == sage_acp_protocol::lifecycle::SessionState::Starting {
+    if session.state == sage_acp_protocol::lifecycle::SessionState::Starting
+        && state.acp.chat_holds_recovery(&request.project_id, &request.chat_id)
+    {
         super::super::start_recovery::drive(state, &request.project_id, &request.chat_id)
             .await
             .map_err(|release| AcpIpcError::RecoveryRequired {
                 message: sage_acp_protocol::contract::SafeText::new(
                     "message",
-                    release.message("starting").as_str(),
+                    release.message("ending").as_str(),
                 )
                 .unwrap_or_else(|_| safe_message("The agent is still shutting down.")),
             })?;

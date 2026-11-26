@@ -15,7 +15,8 @@ use crate::state::AppState;
 /// scanned or torn down usually settles within one or two.
 const ATTEMPTS: usize = 6;
 
-/// Drives the chat's retained start recovery; `Err` keeps the last reason
+/// Drives the chat's retained start recovery, and nothing else: a chat that
+/// holds none is left as it is. `Err` keeps the last reason
 /// it did not settle.
 pub(crate) async fn drive(
     state: &AppState,
@@ -26,7 +27,9 @@ pub(crate) async fn drive(
     for _ in 0..ATTEMPTS {
         outcome = state
             .acp
-            .release_chat_runtime_until(project, chat, explicit_close_deadline(), || true)
+            .release_chat_runtime_until(project, chat, explicit_close_deadline(), || {
+                state.acp.chat_holds_recovery(project, chat)
+            })
             .await;
         match outcome {
             Err(ChatRuntimeRelease::Unsettled | ChatRuntimeRelease::LaneBusy) => {}

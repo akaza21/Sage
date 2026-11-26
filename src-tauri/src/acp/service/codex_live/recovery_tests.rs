@@ -138,6 +138,7 @@ fn releasing_the_chat_completes_a_retained_start_and_leaves_it_sendable() {
                 .clone()
         };
         assert_eq!(stuck(&service).next_runtime_epoch, None);
+        assert!(service.chat_holds_recovery(&owner.project_id, &owner.chat_id));
 
         service
             .release_chat_runtime_until(
@@ -150,6 +151,7 @@ fn releasing_the_chat_completes_a_retained_start_and_leaves_it_sendable() {
             .unwrap();
 
         assert!(lane.codex_recovery.lock().unwrap().is_none());
+        assert!(!service.chat_holds_recovery(&owner.project_id, &owner.chat_id));
         let session = stuck(&service);
         assert_eq!(
             session.state,
