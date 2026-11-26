@@ -8,16 +8,17 @@ export interface ChatOpen {
   open: (projectId: string, chatId: string) => Promise<void>;
   /**
    * Whether a held open still applies once the transition settles. By default
-   * only a chat archived during the hold is dropped; the open reports the rest.
+   * only a chat known live at the click and archived during the hold is
+   * dropped; the open reports the rest.
    */
-  admit?: (now: ChatPlacement, wasArchived: boolean) => boolean;
+  admit?: (now: ChatPlacement, wasLive: boolean) => boolean;
   /** Reports a held open refused by a failed transition or by `admit`. */
   refused?: () => void;
 }
 type HeldChat = {
   projectId: string;
   chatId: string;
-  archived: boolean;
+  live: boolean;
   request: ChatOpen;
 };
 
@@ -46,13 +47,13 @@ export function cancelHeldRailChat() {
   document.removeEventListener("click", cancelOnOtherClick, true);
 }
 
-const keepUnlessNewlyArchived = (now: ChatPlacement, wasArchived: boolean) =>
-  !now.archived || wasArchived;
+const keepUnlessNewlyArchived = (now: ChatPlacement, wasLive: boolean) =>
+  !now.archived || !wasLive;
 
 function replayHeld() {
   const state = useWorkbenchStore.getState();
   if (!held || inFlight > 0 || state.projectTransitioning) return;
-  const { projectId, chatId, archived, request } = held;
+  const { projectId, chatId, live, request } = held;
   // Clear before opening so a refused replay cannot loop.
   cancelHeldRailChat();
   // A failed transition keeps its error; a replay would start another and
@@ -62,7 +63,7 @@ function replayHeld() {
     state.phase !== "ready" ||
     !(request.admit ?? keepUnlessNewlyArchived)(
       chatPlacement(state, projectId, chatId),
-      archived,
+      live,
     )
   )
     request.refused?.();
@@ -76,14 +77,18 @@ export async function openChatWhenSettled(
 ) {
   const state = useWorkbenchStore.getState();
   if (state.projectTransitioning) {
-    const { archived } = chatPlacement(state, projectId, chatId);
-    held = { projectId, chatId, archived, request };
+    // Rails list bounded sets of live and archived chats, so only a listed
+    // live chat is known not to be archived already.
+    const { attached, archived } = chatPlacement(state, projectId, chatId);
+    held = { projectId, chatId, live: attached && !archived, request };
     document.addEventListener("click", cancelOnOtherClick, true);
     if (!watching) {
       watching = true;
       useWorkbenchStore.subscribe((next, previous) => {
+        // A failed switch sets its error only after its recovery settles the
+        // transition, so the replay waits for that task's microtasks to run.
         if (previous.projectTransitioning && !next.projectTransitioning)
-          queueMicrotask(replayHeld);
+          setTimeout(replayHeld);
       });
     }
     return;

@@ -335,3 +335,113 @@ it("opens a held notification for a chat the truncated rail does not list", asyn
   held.release();
   await opened(second.project, second.chat.id);
 });
+
+/** Sets what the rail lists for a project folder outside the current one. */
+function listFolder(row: Row, railChats: AgentRailChat[], archived: boolean) {
+  useWorkbenchStore.setState((state) => ({
+    unscopedChats: state.unscopedChats.map((item) =>
+      item.id === row.project
+        ? {
+            ...item,
+            railChats,
+            railArchived: archived
+              ? [{ id: row.chat.id, title: row.chat.title }]
+              : [],
+          }
+        : item,
+    ),
+  }));
+}
+
+it("restores a held notification chat archived before the click but past the capped rail lists", async () => {
+  await store().switchProject(second.project);
+  expect(await store().archiveChat(second.chat.id)).toBe(true);
+  await store().switchProject(real.project);
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  // Both bounded lists leave out this older archived chat.
+  listFolder(second, [], false);
+  await notify(second);
+  // The settling projection lists it as archived.
+  listFolder(second, [], true);
+  held.release();
+  await opened(second.project, second.chat.id);
+});
+
+it("drops a held notification chat archived during the hold with the generic error", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  listFolder(second, [], true);
+  held.release();
+  await vi.waitFor(() =>
+    expect(store().error).toBe("The notification chat could not be opened."),
+  );
+  await idle();
+  expect(store().project?.id).toBe(first.project);
+});
+
+it("keeps a failed switch's error over a held notification", async () => {
+  let fail!: () => void;
+  const failing = new Promise<void>((resolve) => (fail = resolve));
+  const switches = vi
+    .spyOn(getWorkbenchPorts().project, "switchProject")
+    .mockImplementationOnce(async () => {
+      await failing;
+      throw new Error("Switch failed");
+    });
+  await desktopRail([first, second]);
+  void store().switchProject(first.project);
+  await vi.waitFor(() => expect(switches).toHaveBeenCalledTimes(1));
+  await notify(second);
+  fail();
+  await vi.waitFor(() => expect(store().error).toBe("Switch failed"));
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: real.project },
+    error: "Switch failed",
+  });
+  expect(switches).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the error of a failed notification open", async () => {
+  vi.spyOn(getWorkbenchPorts().project, "switchProject").mockRejectedValueOnce(
+    new Error("Switch failed"),
+  );
+  await desktopRail([first, second]);
+  await notify(second);
+  await vi.waitFor(() => expect(store().error).toBe("Switch failed"));
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: real.project },
+    error: "Switch failed",
+  });
+});
+
+it("drops a held notification once the notification listener unmounts", async () => {
+  const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
+  native.tauri = true;
+  const view = render(
+    <>
+      <Rail rows={[first, second]} />
+      <Notifications />
+    </>,
+  );
+  await idle();
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  view.rerender(<Rail rows={[first, second]} />);
+  held.release();
+  await opened(first.project, first.chat.id);
+  await idle();
+  expect(store()).toMatchObject({ project: { id: first.project }, error: null });
+  expect(
+    switches.mock.calls.map(([request]) => request.targetProjectId),
+  ).toEqual([first.project]);
+});
