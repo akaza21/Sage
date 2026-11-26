@@ -151,7 +151,10 @@ fn releasing_the_chat_completes_a_retained_start_and_leaves_it_sendable() {
 
         assert!(lane.codex_recovery.lock().unwrap().is_none());
         let session = stuck(&service);
-        assert_eq!(session.state, sage_acp_protocol::lifecycle::SessionState::Created);
+        assert_eq!(
+            session.state,
+            sage_acp_protocol::lifecycle::SessionState::Created
+        );
         assert_eq!(
             session.next_runtime_epoch,
             Some(RuntimeEpoch::new(owner.runtime_epoch.get() + 1).unwrap())
