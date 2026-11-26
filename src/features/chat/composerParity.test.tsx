@@ -29,6 +29,7 @@ async function loadStyle(path: string) {
 }
 
 it("keeps Add descriptions on a secondary line without uppercasing its heading", async () => {
+  await loadStyle("src/styles/shared-controls.css");
   await loadStyle("src/styles/harness-picker.css");
   render(
     <ComposerAddActions
