@@ -316,7 +316,10 @@ export function projectAgentEditSummary(
         rejectedUnsafeOrStale = true;
         continue;
       }
-      if (change.resource.kind === "unavailable" && !projectChangeResource(change)) {
+      if (
+        change.resource.kind === "unavailable" &&
+        !projectChangeResource(change)
+      ) {
         // Outside the roots is not a project change; an unmappable path inside them is disclosed.
         rejectedUnsafeOrStale ||= !["foreign", "missing"].includes(
           change.resource.reason,

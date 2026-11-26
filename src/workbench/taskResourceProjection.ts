@@ -48,11 +48,8 @@ export function projectTaskResources(
   for (const turn of recentResourceTurns(page)) {
     for (const change of projectAgentEditSummary(page, turn).changes) {
       const changedResource = projectChangeResource(change);
-      if (
-        turn.sessionId === page.currentSessionId &&
-        changedResource &&
-        changes.size < MAX_RESOURCE_ENTRIES
-      )
+      // Counts what the chat's changed-file card shows: every session's project changes.
+      if (changedResource && changes.size < MAX_RESOURCE_ENTRIES)
         changes.add(resourceKey(changedResource));
       if (change.operation !== "created" || change.resource.kind !== "resource")
         continue;

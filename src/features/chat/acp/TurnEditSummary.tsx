@@ -200,9 +200,8 @@ function EditSummary({
                 ) : (
                   chip
                 )}
-                {["created", "deleted", "renamed"].includes(
-                  change.operation,
-                ) ? (
+                {change.operation === "deleted" ||
+                change.operation === "renamed" ? (
                   <span className="acp-change-operation">
                     {change.operation}
                   </span>

@@ -278,10 +278,7 @@ describe("AcpChatProjection", () => {
       name: "Files edited in this chat",
     });
     fireEvent.click(within(card).getByRole("button", { name: /file changed/ }));
-    expect(
-      within(card).getByText(createdFileEvent.expected.operation),
-    ).toBeVisible();
-    expect(within(card).getByText("new.ts")).toBeVisible();
+    expect(within(card).getByRole("listitem")).toHaveTextContent(/^new.ts$/);
     expect(within(card).queryByText(/Path does not exist/)).toBeNull();
   });
 
@@ -1818,7 +1815,12 @@ describe("AcpChatProjection", () => {
   it("leaves files outside the project's roots out of the changed-file card", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
-    const outside = (id: string, ordinal: number, reason: string, label: string) => {
+    const outside = (
+      id: string,
+      ordinal: number,
+      reason: string,
+      label: string,
+    ) => {
       const item = editItem(id, ordinal, "root-a", id);
       if (item.kind === "fileChangeDiff")
         item.payload = {
@@ -1850,10 +1852,12 @@ describe("AcpChatProjection", () => {
       within(summary).getByRole("button", { name: /^1 file changed/ }),
     );
     expect(within(summary).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(summary).queryByText(/unavailable|does not exist|outside/i)).toBeNull();
+    expect(
+      within(summary).queryByText(/unavailable|does not exist|outside/i),
+    ).toBeNull();
     expect(within(summary).queryByText(/incomplete|not shown/i)).toBeNull();
-    // The chat resources panel counts the same project changes.
-    edited.currentSessionId = "session-1" as never;
+    // The resources panel counts the same changes, even once the chat has no live session.
+    edited.currentSessionId = null as never;
     expect(projectTaskResources(edited, edited.chatId).changesCount).toBe(1);
   });
 
