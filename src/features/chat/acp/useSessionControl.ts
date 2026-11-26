@@ -66,12 +66,3 @@ export function useSessionControl(boundChatId?: string | null) {
   );
   return { status, run };
 }
-
-/**
- * Drives the chat's start that ended needing recovery to completion. Success
- * shows in the projection: the session becomes one the next send starts.
- */
-export function recoverStart(chatId?: string | null) {
-  const request = sessionRequest(chatId, { kind: "recoverStart" } as const);
-  if (request) void controlAcpSession(request).catch(() => undefined);
-}

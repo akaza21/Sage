@@ -361,10 +361,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             ? { onRetry: acpLoadFailure.retry }
             : sessionPromptUnavailable && selectedSession?.state === "starting"
               ? {
-                  onRetry: () =>
-                    void import("./acp/useSessionControl").then((control) =>
-                      control.recoverStart(chatId),
-                    ),
+                  // Ending a start that never finished drives its recovery;
+                  // the session is then one the next send starts again.
+                  onRetry: endSession,
                   message: "The agent did not finish starting.",
                 }
               : null
