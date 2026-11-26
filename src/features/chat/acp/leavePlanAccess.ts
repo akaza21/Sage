@@ -17,8 +17,12 @@ export async function leavePlanAccess(
         ? "acceptEdits"
         : null;
   if (!next) return;
-  const { chooseChatAccess, loadChatAccess, useChatAccessStore } =
-    await import("../../../app/sessionAccessActions");
+  // A chunk that fails to load leaves the access as it was.
+  const access = await import("../../../app/sessionAccessActions").catch(
+    () => null,
+  );
+  if (!access) return;
+  const { chooseChatAccess, loadChatAccess, useChatAccessStore } = access;
   if (!(sessionId in useChatAccessStore.getState().modes))
     await loadChatAccess(sessionId);
   if (useChatAccessStore.getState().modes[sessionId] !== "plan") return;

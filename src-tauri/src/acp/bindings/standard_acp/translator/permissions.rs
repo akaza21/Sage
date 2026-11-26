@@ -296,7 +296,9 @@ impl StandardAcpTranslator {
                     }
                     _ => named.to_owned(),
                 };
-                SafeText::new("permissionSummary", shown)?
+                // Text the card cannot hold (a NUL in a plan) leaves the label.
+                SafeText::new("permissionSummary", shown)
+                    .or_else(|_| SafeText::new("permissionSummary", named))?
             }
             _ => SafeText::new(
                 "permissionSummary",

@@ -32,21 +32,20 @@ fn card(runtime: &mut ClaudeSdkRuntime, name: &str, input: Value) -> (String, St
             "subtype":"can_use_tool","tool_name":name,"display_name":name,"input":input,
             "tool_use_id":"t1","requires_user_interaction":true}}),
     );
-    let request = events.iter().find_map(|event| match event {
-        AdapterEvent::PermissionRequest {
-            external_request_id,
-            ..
-        } => Some(external_request_id.as_str().to_owned()),
-        _ => None,
-    });
-    let summary = events.iter().find_map(|event| match event {
-        AdapterEvent::Item {
-            payload: NormalizedPayload::PermissionRequest { summary, .. },
-            ..
-        } => Some(summary.as_str().to_owned()),
-        _ => None,
-    });
-    (request.expect("card"), summary.expect("summary"))
+    events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                payload: NormalizedPayload::PermissionRequest { summary, .. },
+                ..
+            } => Some((
+                external_request_id.as_str().to_owned(),
+                summary.as_str().to_owned(),
+            )),
+            _ => None,
+        })
+        .expect("card")
 }
 
 fn plan_input() -> Value {
