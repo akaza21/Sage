@@ -109,7 +109,7 @@ pub(crate) async fn end_acp_session_inner(
                     "message",
                     release.message("starting").as_str(),
                 )
-                    .unwrap_or_else(|_| safe_message("The agent is still shutting down.")),
+                .unwrap_or_else(|_| safe_message("The agent is still shutting down.")),
             })?;
         return mutation_response(state, request.project_id, request.chat_id);
     }
