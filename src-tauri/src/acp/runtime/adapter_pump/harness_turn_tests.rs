@@ -380,16 +380,16 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
 /// taken into that Turn, which keeps workspace-write and wrote to the
 /// workspace. The `turn/started` that arrives before Codex answers the
 /// prompt is refused, so the prompt never runs under the wider access.
-/// A `/compact` or `/review` raced the same way gets the goal Turn's
-/// `turn/started` before its answer, so it is refused too. A compact
-/// answered first binds its own `turn/started`, whatever the thread's
-/// access. An answered review runs its reviewer under the thread's access
-/// (Codex recorded workspace-write for it), so a read-only chat's review is
-/// refused at its `turn/started`, and a workspace-write chat's review runs
-/// and leaves the thread's access as it was. Its frames are the recorded
-/// shape: the answer names the review Turn with no root, its `turn/started`
-/// names a new Turn rooted at the answer, and its items and end name the
-/// answer's Turn.
+/// A `/compact` raced the same way gets the goal Turn's `turn/started`
+/// before its answer, so it is refused too. A compact answered first binds
+/// its own `turn/started`, whatever the thread's access. A review runs its
+/// reviewer under the thread's access (Codex recorded workspace-write for
+/// it), so a read-only chat's review is refused before its Turn is
+/// prepared: no `review/start` is written and the session runs on, and a
+/// workspace-write chat's review runs and leaves the thread's access as it
+/// was. Its frames are the recorded shape: the answer names the review Turn
+/// with no root, its `turn/started` names a new Turn rooted at the answer,
+/// and its items and end name the answer's Turn.
 #[test]
 fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
     use crate::acp::bindings::adapter::{AdapterRuntimeError, HarnessTurnAuthority};
@@ -433,9 +433,8 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
         let read_only = SessionAccessMode::ReadOnly;
         for (action, answered_first, access) in [
             (None, false, read_only),
-            (review(), false, read_only),
+            (compact(), false, read_only),
             (compact(), true, read_only),
-            (review(), true, read_only),
             (review(), true, SessionAccessMode::WorkspaceWrite),
         ] {
             let is_review = matches!(action, Some(SessionAction::Review { .. }));
@@ -466,6 +465,17 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 .ok()
                 .expect("the workspace-write prompt ends");
 
+            let prompt = joined(action);
+            if is_review {
+                assert_eq!(
+                    parts.validate_command_prompt(&prompt, read_only),
+                    Err(crate::acp::runtime::HostError::PromptRefused(
+                        crate::acp::runtime::REVIEW_ACCESS_REFUSED
+                    )),
+                    "a read-only chat's review is refused before its Turn is prepared"
+                );
+            }
+            parts.validate_command_prompt(&prompt, access).unwrap();
             let next = ActiveTurnIntent {
                 turn_id: turn("two"),
                 external_turn_id: None,
@@ -475,7 +485,7 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 .bind_turn(next.clone())
                 .ok()
                 .expect("a prompt may follow");
-            pump.queue_prompt(joined(action), &next.client_message_id, access)
+            pump.queue_prompt(prompt, &next.client_message_id, access)
                 .unwrap();
             let mut transport = CaptureTransport(Vec::new());
             assert_eq!(
@@ -491,7 +501,7 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                             AdapterRuntimeError::HarnessTurnRefused
                         ))
                     ),
-                    "review={is_review}: {refused:?}"
+                    "{refused:?}"
                 );
                 continue;
             }
@@ -525,22 +535,7 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
             let message = codex_line(serde_json::json!({"method":"item/completed","params":{
                 "threadId":"thread-1","turnId":REVIEW,"item":{"id":"review-message",
                 "type":"agentMessage","text":"nothing to review"}}}));
-            pump.push_stdout_chunk(&answer, 3).await.unwrap();
-            let reviewer = pump.push_stdout_chunk(&nested(REVIEWER, REVIEW), 3).await;
-            if access == read_only {
-                assert!(
-                    matches!(
-                        reviewer,
-                        Err(AdapterPumpError::Adapter(
-                            AdapterRuntimeError::HarnessTurnRefused
-                        ))
-                    ),
-                    "{reviewer:?}"
-                );
-                continue;
-            }
-            reviewer.unwrap();
-            for frame in [message, completed(REVIEW)] {
+            for frame in [answer, nested(REVIEWER, REVIEW), message, completed(REVIEW)] {
                 pump.push_stdout_chunk(&frame, 3).await.unwrap();
             }
             assert!(

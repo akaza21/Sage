@@ -28,6 +28,43 @@ fn one_problem_keeps_its_highest_severity_without_merging_different_problems() {
     assert_eq!(surface.notices[1].text.as_str(), "Tools unavailable.");
 }
 
+#[test]
+fn a_usage_window_keeps_only_its_latest_report_and_never_stores_a_bare_all_clear() {
+    let parse = |level: &str, used: u8| {
+        serde_json::from_str::<SessionScopedEvent>(&format!(
+            r#"{{"kind":"notice","identity":"usage-limit:five_hour","level":"{level}","text":"Claude 5-hour limit.","source":"claude code","usageLimit":{{"provider":"Claude","usedPercent":{used},"windowMinutes":300,"resetsAt":1795600000}}}}"#
+        ))
+        .unwrap()
+    };
+    let mut surface = SessionSurface::default();
+    assert_eq!(surface.apply(1, &parse("info", 10)), None);
+    assert!(surface.notices.is_empty());
+    surface.apply(1, &parse("error", 100));
+    surface.apply(1, &parse("warning", 80));
+    assert_eq!(surface.notices.len(), 1);
+    assert_eq!(surface.notices[0].level, SessionNoticeLevel::Warning);
+    assert_eq!(
+        surface.notices[0]
+            .usage_limit
+            .as_ref()
+            .unwrap()
+            .used_percent,
+        Some(80)
+    );
+    surface.apply(1, &parse("info", 5));
+    assert_eq!(surface.notices.len(), 1);
+    assert_eq!(surface.notices[0].level, SessionNoticeLevel::Info);
+    assert_eq!(surface.apply(1, &parse("info", 9)), None);
+    assert_eq!(
+        surface.notices[0]
+            .usage_limit
+            .as_ref()
+            .unwrap()
+            .used_percent,
+        Some(5)
+    );
+}
+
 fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionScopedEvent {
     SessionScopedEvent::Activity(super::fixtures::activity(id, state, progress))
 }

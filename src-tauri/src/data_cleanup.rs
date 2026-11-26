@@ -25,6 +25,27 @@ pub(crate) enum CleanupScope {
     Archived,
     /// Every Chat, and then the Project itself.
     Project,
+    /// Chats last changed before this Unix-millisecond cutoff, except
+    /// pinned ones, ones running a Turn, and ones with a newer fork.
+    Stale(i64),
+}
+
+/// The SQL condition on `chats c` that selects a scope. `Stale` inlines an
+/// integer, never text.
+pub(crate) fn scope_condition(scope: CleanupScope) -> String {
+    match scope {
+        CleanupScope::Archived => ARCHIVED.into(),
+        CleanupScope::Project => "1".into(),
+        CleanupScope::Stale(cutoff) => format!(
+            "c.updated_at<{cutoff}
+             AND NOT EXISTS(SELECT 1 FROM turns u WHERE u.project_id=c.project_id AND u.chat_id=c.id AND u.terminal_at IS NULL)
+             AND NOT EXISTS(SELECT 1 FROM workbench_tabs w WHERE w.project_id=c.project_id AND w.id=c.id AND w.pinned=1)
+             AND NOT EXISTS(SELECT 1 FROM chat_lineage l JOIN chats k
+                              ON k.project_id=l.child_project_id AND k.id=l.child_chat_id
+                            WHERE l.parent_project_id=c.project_id AND l.parent_chat_id=c.id
+                              AND k.updated_at>={cutoff})"
+        ),
+    }
 }
 
 const ARCHIVED: &str = "NOT EXISTS(SELECT 1 FROM chat_tabs t WHERE t.chat_id=c.id)
@@ -63,11 +84,7 @@ impl DataCleanupStore for Database {
     }
 
     fn still_in_scope(&self, project: &str, chat: &str, scope: CleanupScope) -> bool {
-        let archived = if scope == CleanupScope::Archived {
-            ARCHIVED
-        } else {
-            "1"
-        };
+        let archived = scope_condition(scope);
         self.connection()
             .query_row(
                 &format!(
@@ -108,12 +125,16 @@ impl DataCleanupStore for Database {
             }
             if scope == CleanupScope::Project {
                 forget_project(self, project)?;
-            } else if !chat_page(&self.connection(), project, scope, false, 1)?.is_empty() {
+            } else if scope == CleanupScope::Archived
+                && !chat_page(&self.connection(), project, scope, false, 1)?.is_empty()
+            {
                 // Only Chats with an attached fork remain.
                 return Err(AppError::InvalidRequest(
                     "Archived chats with open forks were kept; delete the forks first".into(),
                 ));
             }
+            // A stale Chat whose old fork is kept (pinned, say) stays too:
+            // it is still in use through that fork.
             Ok(())
         })()
         .err();
@@ -133,11 +154,7 @@ fn chat_page(
     leaves_only: bool,
     limit: i64,
 ) -> AppResult<Vec<String>> {
-    let archived = if scope == CleanupScope::Archived {
-        ARCHIVED
-    } else {
-        "1"
-    };
+    let archived = scope_condition(scope);
     let leaves = if leaves_only {
         "NOT EXISTS(SELECT 1 FROM chat_lineage l
            WHERE l.parent_project_id=c.project_id AND l.parent_chat_id=c.id)"
@@ -195,11 +212,7 @@ fn admit_project(
             "A move to Trash in this Project is still being recovered; try again".into(),
         ));
     }
-    let archived = if scope == CleanupScope::Archived {
-        ARCHIVED
-    } else {
-        "1"
-    };
+    let archived = scope_condition(scope);
     let (running, unsettled): (bool, bool) = connection
         .query_row(
             &format!(
@@ -214,8 +227,12 @@ fn admit_project(
         )
         .db()?;
     let refusal = match (scope, running, settled && unsettled) {
-        (CleanupScope::Archived, true, _) => ChatRuntimeRelease::TurnRunning.message("deleting"),
-        (CleanupScope::Archived, _, true) => ChatRuntimeRelease::Unsettled.message("deleting"),
+        (CleanupScope::Archived | CleanupScope::Stale(_), true, _) => {
+            ChatRuntimeRelease::TurnRunning.message("deleting")
+        }
+        (CleanupScope::Archived | CleanupScope::Stale(_), _, true) => {
+            ChatRuntimeRelease::Unsettled.message("deleting")
+        }
         (CleanupScope::Project, true, _) => {
             "Stop the running turns in this Project before removing it".into()
         }
@@ -234,11 +251,7 @@ fn admit_chat(
     chat: &str,
     scope: CleanupScope,
 ) -> AppResult<()> {
-    let archived = if scope == CleanupScope::Archived {
-        ARCHIVED
-    } else {
-        "1"
-    };
+    let archived = scope_condition(scope);
     let admitted: bool = connection
         .query_row(
             &format!(

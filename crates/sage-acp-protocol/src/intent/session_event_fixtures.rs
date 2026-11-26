@@ -2,6 +2,7 @@ use super::*;
 
 pub fn notice(level: SessionNoticeLevel, text: &str) -> SessionScopedEvent {
     SessionScopedEvent::Notice(SessionNotice {
+        usage_limit: None,
         identity: None,
         diagnostic: false,
         level,

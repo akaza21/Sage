@@ -76,6 +76,10 @@ pub(crate) enum HostError {
     GoalMutationRejected,
     #[error("the harness requires sign-in before it can continue")]
     SignInRequired,
+    /// The binding refused the prompt before its Turn was prepared, with
+    /// the reason the chat is shown; nothing was sent.
+    #[error("{0}")]
+    PromptRefused(&'static str),
     #[error("prompt delivery may have written bytes and cannot be replayed")]
     DeliveryUnknown,
     #[error("the one permitted zero-byte prompt retry is exhausted")]
@@ -92,6 +96,17 @@ pub(crate) enum HostError {
     SteerOutcomeUnknown,
     #[error("the runtime host is closed")]
     Closed,
+}
+
+impl HostError {
+    /// The prompt was refused before its Turn was prepared, so it never
+    /// started and the host stays idle.
+    pub(crate) fn refused_before_prepare(&self) -> bool {
+        matches!(
+            self,
+            Self::Capacity | Self::Intent | Self::RepositoryBusy(_) | Self::PromptRefused(_)
+        )
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]

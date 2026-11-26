@@ -15,6 +15,7 @@ mod controls;
 pub(super) use controls::message_uuid;
 mod goal;
 mod inbound;
+mod limits;
 mod notices;
 mod outbound;
 mod permission;

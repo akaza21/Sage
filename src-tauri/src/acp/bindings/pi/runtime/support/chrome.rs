@@ -70,6 +70,7 @@ impl PiRuntime {
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         Ok(
             self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                usage_limit: None,
                 identity: identity
                     .map(|identity| text("noticeIdentity", identity))
                     .transpose()?,

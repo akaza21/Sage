@@ -128,6 +128,13 @@ impl HarnessAdapter for NativeRuntime {
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.0.available_commands()
     }
+    fn prompt_refusal(
+        &self,
+        prompt: &crate::acp::transcript_quote::Prompt,
+        access: sage_acp_protocol::access_mode::SessionAccessMode,
+    ) -> Option<&'static str> {
+        self.0.prompt_refusal(prompt, access)
+    }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.discover_catalog()
     }

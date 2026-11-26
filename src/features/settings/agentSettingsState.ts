@@ -7,7 +7,8 @@ export type AgentSettingsPage =
   | "Chats"
   | "Browser"
   | "Passwords"
-  | "Archived chats";
+  | "Archived chats"
+  | "Data";
 
 // What had focus when Settings opened. Settings hides the Agent workspace
 // before its own lazy surface mounts, so only `open` can still see it. A weak

@@ -293,6 +293,15 @@ pub(crate) trait HarnessAdapter {
     fn refusal_detail(&self) -> Option<RefusalDetail> {
         None
     }
+    /// Why `prompt`, asked under `access`, must not be sent: checked before
+    /// its Turn is prepared, so the chat is told and the session runs on.
+    fn prompt_refusal(
+        &self,
+        _prompt: &crate::acp::transcript_quote::Prompt,
+        _access: sage_acp_protocol::access_mode::SessionAccessMode,
+    ) -> Option<&'static str> {
+        None
+    }
     fn config_pending(&self) -> bool {
         false
     }

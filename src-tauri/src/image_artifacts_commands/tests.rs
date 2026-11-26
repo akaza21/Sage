@@ -393,7 +393,7 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
 }
 
 #[test]
-fn reconciliation_removes_owned_orphans_and_rejects_live_corruption() {
+fn reconciliation_removes_owned_orphans_and_counts_live_corruption() {
     use sage_images::{full_path, reconcile_image_artifacts, thumb_path};
     use std::fs;
 
@@ -413,10 +413,14 @@ fn reconciliation_removes_owned_orphans_and_rejects_live_corruption() {
         .unwrap();
     let orphan = full_path(&root, &uuid::Uuid::new_v4().to_string());
     fs::write(&orphan, b"orphan").unwrap();
-    reconcile_image_artifacts(&connection, &root).unwrap();
+    assert_eq!(reconcile_image_artifacts(&connection, &root).unwrap(), 0);
     assert!(!orphan.exists());
     fs::write(full_path(&root, &image.artifact_id), b"tampered").unwrap();
-    assert!(reconcile_image_artifacts(&connection, &root).is_err());
+    let late_orphan = full_path(&root, &uuid::Uuid::new_v4().to_string());
+    fs::write(&late_orphan, b"orphan").unwrap();
+    // Corruption is counted, not fatal; the sweep still runs past it.
+    assert_eq!(reconcile_image_artifacts(&connection, &root).unwrap(), 1);
+    assert!(!late_orphan.exists());
     fs::remove_file(full_path(&root, &image.artifact_id)).unwrap();
     fs::remove_file(thumb_path(&root, &image.artifact_id)).unwrap();
     fs::remove_dir(&root).unwrap();
