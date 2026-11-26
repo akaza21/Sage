@@ -97,36 +97,35 @@ export function NewChatDraftSurface({
     harnessDiscoveryPhase: discoveryPhase,
     models,
   });
-  const errorNotice =
-    draft.error || unconfirmed ? (
-      <>
-        {draft.error ??
-          "Chat creation is unconfirmed. Reload chats before trying again."}
-        {unconfirmed ? (
-          <button
-            type="button"
-            className="button button--compact"
-            disabled={transitioning || !!pendingFirstSend}
-            onClick={() => void reload()}
-          >
-            Reload chats
-          </button>
-        ) : null}
-      </>
-    ) : available && discoveryError ? (
-      // A harness that did not list its models in time is asked again.
-      <>
-        {discoveryError}
+  // The draft's own problem, else a harness that did not list its models in
+  // time, which Retry asks again; each with its one recovery action.
+  const [problem, action]: [string | null, [string, () => unknown, boolean]?] =
+    draft.error || unconfirmed
+      ? [
+          draft.error ??
+            "Chat creation is unconfirmed. Reload chats before trying again.",
+          unconfirmed
+            ? ["Reload chats", reload, transitioning || !!pendingFirstSend]
+            : undefined,
+        ]
+      : available && discoveryError
+        ? [discoveryError, ["Retry", retryHarnessDiscovery, transitioning]]
+        : [null];
+  const errorNotice = problem && (
+    <>
+      {problem}
+      {action ? (
         <button
           type="button"
           className="button button--compact"
-          disabled={transitioning}
-          onClick={() => void retryHarnessDiscovery()}
+          disabled={action[2]}
+          onClick={() => void action[1]()}
         >
-          Retry
+          {action[0]}
         </button>
-      </>
-    ) : null;
+      ) : null}
+    </>
+  );
   return (
     <div
       className="agent-chat-center surface surface--card"
