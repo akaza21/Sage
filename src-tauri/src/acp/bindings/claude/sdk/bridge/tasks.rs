@@ -92,7 +92,14 @@ impl SdkBridge {
             self.tasks.ended = Some(label.clone());
         }
         let id = format!("{TASK_PREFIX}{id}");
-        activity(inbound, &id, BACKGROUND_TASK, &label, state, progress.as_deref());
+        activity(
+            inbound,
+            &id,
+            BACKGROUND_TASK,
+            &label,
+            state,
+            progress.as_deref(),
+        );
     }
 
     /// A run starts. One Claude Code started on its own, with no message of

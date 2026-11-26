@@ -720,7 +720,10 @@ fn only_tasks_running_in_the_background_become_activities() {
         json!({"type":"system","subtype":"task_notification","task_id":"f1","tool_use_id":"toolu_f",
         "status":"completed","output_file":"","summary":"Build passed"}),
     );
-    assert!(started.is_empty() && ended.is_empty(), "{started:?} {ended:?}");
+    assert!(
+        started.is_empty() && ended.is_empty(),
+        "{started:?} {ended:?}"
+    );
 
     let background = feed(
         json!({"type":"system","subtype":"task_started","task_id":"b2","tool_use_id":"toolu_b",
@@ -730,7 +733,12 @@ fn only_tasks_running_in_the_background_become_activities() {
         panic!("{background:?}")
     };
     assert_eq!(
-        (row.kind.as_str(), row.label.as_str(), row.state, row.stoppable),
+        (
+            row.kind.as_str(),
+            row.label.as_str(),
+            row.state,
+            row.stoppable
+        ),
         (
             "backgroundTask",
             "Serve the docs",
@@ -744,8 +752,9 @@ fn only_tasks_running_in_the_background_become_activities() {
         json!({"type":"system","subtype":"task_started","task_id":"f2","tool_use_id":"toolu_g",
         "description":"Watch the tests","is_backgrounded":false}),
     );
-    let moved =
-        feed(json!({"type":"system","subtype":"task_updated","task_id":"f2","patch":{"is_backgrounded":true}}));
+    let moved = feed(
+        json!({"type":"system","subtype":"task_updated","task_id":"f2","patch":{"is_backgrounded":true}}),
+    );
     let [SessionScopedEvent::Activity(row)] = &moved[..] else {
         panic!("{moved:?}")
     };

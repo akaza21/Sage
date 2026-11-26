@@ -329,6 +329,8 @@ it("lists the session's background tasks under Background processes", async () =
   });
   expect(await within(processes).findByText("Serve the docs")).toBeVisible();
   expect(within(processes).getByText("Run the build")).toBeVisible();
-  expect(within(processes).getAllByRole("button", { name: "Stop" })).toHaveLength(1);
+  expect(
+    within(processes).getAllByRole("button", { name: "Stop" }),
+  ).toHaveLength(1);
   expect(within(processes).queryByText(/No background processes/)).toBeNull();
 });

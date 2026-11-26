@@ -222,7 +222,10 @@ export function AgentResourcesPopover({
         <strong>Background processes</strong>
         {validPage && page?.sessionSurface ? (
           <Suspense>
-            <BackgroundProcesses surface={page.sessionSurface} chatId={chatId} />
+            <BackgroundProcesses
+              surface={page.sessionSurface}
+              chatId={chatId}
+            />
           </Suspense>
         ) : (
           <p>No background processes reported.</p>
