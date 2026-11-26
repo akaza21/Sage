@@ -20,6 +20,9 @@ import { shapeOfHarness } from "./shape.mjs";
 import { twoColourPng } from "./wire.mjs";
 
 export const MAX_TRANSCRIPT_BYTES = 96 * 1024;
+// A frame over this size that commands.jsonl already holds verbatim (the
+// session handshake every scenario repeats) is stored as a reference to it.
+const DEDUPE_BYTES = 1024;
 const DRIVERS = { claude, codex, pi };
 const VERSION_COMMANDS = { claude: "claude", codex: "codex", pi: "pi" };
 
@@ -42,6 +45,27 @@ function version(harness) {
   } catch (error) {
     return `unknown (${error.message.split("\n")[0]})`;
   }
+}
+
+function dedupe(records, dir) {
+  const file = path.join(dir, "commands.jsonl");
+  const base = fs.existsSync(file) ? readTranscriptLines(file) : [];
+  const index = new Map(base.map((line, at) => [key(JSON.parse(line)), at]));
+  return records.map((record) => {
+    const line = JSON.stringify(record);
+    const at = index.get(key(record));
+    return line.length > DEDUPE_BYTES && at !== undefined
+      ? JSON.stringify({ direction: record.direction, ms: record.ms, ref: `commands.jsonl#${at}` })
+      : line;
+  });
+}
+
+function key(record) {
+  return JSON.stringify([record.direction, record.frame]);
+}
+
+function readTranscriptLines(file) {
+  return fs.readFileSync(file, "utf8").split("\n").filter((line) => line.trim());
 }
 
 function scratchRepo(dir) {
@@ -73,6 +97,7 @@ async function main() {
   const model = option("model", undefined);
   const work = option("work", path.join(os.tmpdir(), "sage-wire-capture"));
   const image = await twoColourPng();
+  let failures = 0;
   for (const harness of harnesses) {
     const driver = DRIVERS[harness];
     if (!driver) throw new Error(`unknown harness ${harness}`);
@@ -92,13 +117,16 @@ async function main() {
       process.stdout.write(`${harness}/${scenario} ... `);
       const result = await driver.run(scenario, { cwd: repo, env: process.env, emptyHome, image, model });
       const sanitizer = makeSanitizer({ roots: [[repo, "repo"], [emptyHome, "empty-home"], [work, "work"]] });
-      const lines = result.wire.records.map((record) => JSON.stringify(sanitizer.record(record)));
+      const records = result.wire.records.map((record) => sanitizer.record(record));
+      const lines = scenario === "commands" ? records.map((r) => JSON.stringify(r)) : dedupe(records, dir);
       const body = `${lines.join("\n")}\n`;
       const bytes = Buffer.byteLength(body);
       if (bytes > MAX_TRANSCRIPT_BYTES) {
-        throw new Error(`${harness}/${scenario} is ${bytes} bytes, over ${MAX_TRANSCRIPT_BYTES}`);
+        result.outcome = `oversize: ${bytes} bytes, not written`;
+        failures += 1;
+      } else {
+        fs.writeFileSync(path.join(dir, `${scenario}.jsonl`), body);
       }
-      fs.writeFileSync(path.join(dir, `${scenario}.jsonl`), body);
       meta.args = result.args.map((arg) => sanitizer.text(arg));
       meta.scenarios[scenario] = {
         outcome: sanitizer.text(result.outcome),
@@ -113,6 +141,7 @@ async function main() {
     fs.writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
     fs.writeFileSync(path.join(dir, "shape.json"), `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`);
   }
+  if (failures) throw new Error(`${failures} scenarios were not written`);
 }
 
 main().catch((error) => {

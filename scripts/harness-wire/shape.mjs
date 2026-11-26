@@ -100,12 +100,20 @@ export function shapeOfRecords(records, shape = { kinds: {}, commands: new Set()
   return shape;
 }
 
+// Records, with each `{ ref: "commands.jsonl#<line>" }` replaced by the frame
+// that line holds.
 export function readTranscript(file) {
-  return fs
-    .readFileSync(file, "utf8")
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line));
+  const lines = (name) =>
+    fs
+      .readFileSync(path.join(path.dirname(file), name), "utf8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line));
+  return lines(path.basename(file)).map((record) => {
+    if (!record.ref) return record;
+    const [name, at] = record.ref.split("#");
+    return { ...record, frame: lines(name)[Number(at)].frame };
+  });
 }
 
 export function shapeOfHarness(dir) {
