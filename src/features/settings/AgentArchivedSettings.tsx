@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
 import { Notice } from "../../ui/Notice";
+import { AgentDataSettings } from "./AgentDataSettings";
 import { SettingsRow } from "./SettingsRow";
 
 const PRIVATE = "scope:private";
@@ -161,4 +162,9 @@ export function AgentArchivedSettings() {
       {message ? <p role="status">{message}</p> : null}
     </>
   );
+}
+
+/** The lazy entry for Settings > Archived chats and Settings > Data. */
+export default function ArchivedOrDataPage({ page }: { page: string }) {
+  return page === "Data" ? <AgentDataSettings /> : <AgentArchivedSettings />;
 }

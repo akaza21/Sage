@@ -594,7 +594,7 @@
         "entry": "src/features/chat/ConversationActions.tsx",
         "maxGzipBytes": 5150,
         "maxCssGzipBytes": 1250,
-        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo, fork history, background tasks. JS 4957 B; 600 B to SessionNoticeStrip, 750 B from QuickOpen (T11d, BG-TASKS); 250 B CSS to AgentSettings."
+        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo, fork history, background tasks. JS 4957 B; 600 B to SessionNoticeStrip; from QuickOpen 300 B T11d, 450 B BG-TASKS; 250 B CSS to AgentSettings."
       }
     ],
     "windowsInstallerMb": 45,

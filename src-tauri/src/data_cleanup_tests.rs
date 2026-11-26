@@ -306,3 +306,6 @@ fn an_archived_chat_with_an_open_fork_is_kept_and_reported() {
     );
     fixture.finish();
 }
+
+#[path = "data_cleanup_stale_tests.rs"]
+mod stale;

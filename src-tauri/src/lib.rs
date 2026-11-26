@@ -30,6 +30,7 @@ mod commands;
 mod console_window_fixture;
 mod data_cleanup;
 mod data_cleanup_commands;
+mod data_cleanup_stale;
 mod database;
 #[cfg(all(feature = "browser-bridge", debug_assertions))]
 mod dev_bridge;
