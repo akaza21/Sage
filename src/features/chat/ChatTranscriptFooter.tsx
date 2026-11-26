@@ -8,10 +8,7 @@ import { terminalTurnStates, turnStateLabels } from "./acp/statusSemantics";
 import { WorkedTurnTerminal } from "./acp/WorkedTurnTerminal";
 import { AnswerActions } from "./AnswerActions";
 import "./chat-transcript-work.css";
-import {
-  formatWorkedDuration,
-  formatWorkingDuration,
-} from "./transcriptSummary";
+import { formatDuration } from "./transcriptSummary";
 
 const isAssistantText = (
   item: AcpItem,
@@ -42,11 +39,15 @@ export function ChatTranscriptTurnSummary({
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [terminal, turn.id]);
-  const duration = terminal
-    ? (formatWorkedDuration(turn.createdAt, turn.terminalAt) ?? "Worked")
-    : turn.state === "waitingApproval" || turn.state === "waitingUser"
+  const verb = terminal ? "Worked" : "Working";
+  const duration =
+    turn.state === "waitingApproval" || turn.state === "waitingUser"
       ? turnStateLabels[turn.state]
-      : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
+      : (formatDuration(
+          verb,
+          turn.createdAt,
+          terminal ? turn.terminalAt : nowMs,
+        ) ?? verb);
 
   if (terminal && !hasActivities) {
     if (!turn.items.some(isAssistantText)) return null;

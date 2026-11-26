@@ -4357,9 +4357,7 @@ describe("ChatSurface ACP resource integration", () => {
     openComposerModel();
     expect(screen.getByLabelText("Model")).toBeDisabled();
     expect(
-      screen.queryByText(
-        "Wait for the active turn to finish, or cancel it when available.",
-      ),
+      screen.queryByText("Wait for the active turn to finish."),
     ).toBeNull();
     expect(
       screen.queryByText("Select a ready harness to load models."),
