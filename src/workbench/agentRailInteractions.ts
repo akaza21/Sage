@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 /** What a chat's latest turn waits on the user for. */
-export type RailAttention = "waitingApproval" | "waitingUser";
+export type RailAttention = "approval" | "input";
 
 interface ArchiveUndo {
   projectId: string;
@@ -62,8 +62,8 @@ export function setAgentRailArchiveUndo(
 export function setAgentRailAttention(chatId: string, kind?: RailAttention) {
   if (state.attention.get(chatId) === kind) return;
   const attention = new Map(state.attention);
-  if (!kind) attention.delete(chatId);
-  else {
+  attention.delete(chatId);
+  if (kind) {
     if (attention.size >= MAX_INTERACTION_CHATS)
       attention.delete(attention.keys().next().value!);
     attention.set(chatId, kind);

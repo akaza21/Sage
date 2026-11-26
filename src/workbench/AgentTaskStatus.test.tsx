@@ -41,7 +41,7 @@ it("uses the rail's parent status while a side chat runs", () => {
 });
 
 it("uses the rail's approval status before the turn reports waiting", () => {
-  setAgentRailAttention("chat-1", "waitingApproval");
+  setAgentRailAttention("chat-1", "approval");
   render(
     <AgentTaskStatus
       chatId="chat-1"

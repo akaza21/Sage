@@ -34,7 +34,7 @@ it("admits the newest approvals at capacity and prunes closed chats", () => {
   const hook = renderHook(useAgentRailInteractions);
   act(() => {
     for (let index = 0; index < 65; index++)
-      setAgentRailAttention(`chat-${index}`, "waitingApproval");
+      setAgentRailAttention(`chat-${index}`, "approval");
   });
   expect(hook.result.current.attention.size).toBe(64);
   expect(hook.result.current.attention.has("chat-64")).toBe(true);
