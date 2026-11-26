@@ -37,13 +37,6 @@ export function promptAttachmentItems(
   );
 }
 
-/** States in which a session can no longer run: a composer selects none of them. */
-export const endedSessionStates: readonly AgentSessionProjection["state"][] = [
-  "closed",
-  "failed",
-  "incompatible",
-];
-
 /** States in which a turn is live: it can be cancelled and a new prompt can queue behind it. */
 export const liveTurnStates: ReadonlySet<TurnProjection["state"]> = new Set<
   TurnProjection["state"]
