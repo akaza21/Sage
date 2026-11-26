@@ -112,26 +112,31 @@ pub(crate) async fn clean_up(
         expected_transition_epoch,
         "project changed before the requested cleanup",
         move |database| {
+            // A Project that refuses is reported and the rest still go.
             let mut deleted = 0;
+            let mut first_refusal = None;
             for project in &projects {
-                let outcome = match database.clean_up(project, scope) {
-                    Ok(outcome) => outcome,
-                    // Nothing went yet: the whole cleanup is refused.
-                    Err(error) if deleted == 0 => return Err(error),
-                    Err(error) => CleanupOutcome {
+                let outcome = database
+                    .clean_up(project, scope)
+                    .unwrap_or_else(|error| CleanupOutcome {
                         deleted: 0,
                         refusal: Some(error),
-                    },
-                };
+                    });
                 deleted += outcome.deleted;
-                if let Some(error) = outcome.refusal {
-                    *stopped.lock().unwrap_or_else(PoisonError::into_inner) =
-                        Some(error.public_message());
-                    break;
+                if first_refusal.is_none() {
+                    first_refusal = outcome.refusal;
                 }
             }
             tracing::info!(deleted, ?scope, "old data cleaned up");
-            Ok(())
+            match first_refusal {
+                // Nothing went: the whole cleanup is refused.
+                Some(error) if deleted == 0 => Err(error),
+                refusal => {
+                    *stopped.lock().unwrap_or_else(PoisonError::into_inner) =
+                        refusal.map(|error| error.public_message());
+                    Ok(())
+                }
+            }
         },
     )
     .await;

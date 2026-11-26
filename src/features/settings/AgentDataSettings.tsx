@@ -50,13 +50,14 @@ export function AgentDataSettings() {
     run(async () => {
       setConfirm(null);
       const actions = await import("../../app/chatArchiveActions");
-      const done = await actions.cleanUpProjectData("delete_stale_chats", {
-        cutoff,
-      });
+      const { committed, stopped } = await actions.cleanUpProjectData(
+        "delete_stale_chats",
+        { cutoff },
+      );
       // A cleanup that stopped part way reports why beside what it removed.
-      const stopped = useWorkbenchStore.getState().error;
       if (stopped) setError(stopped);
-      else if (done) setMessage("Old chats deleted.");
+      else if (committed) setMessage("Old chats deleted.");
+      else setError(useWorkbenchStore.getState().error ?? "Nothing deleted.");
     });
 
   return (

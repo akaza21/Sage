@@ -38,6 +38,9 @@ fn stale_cleanup_deletes_only_old_idle_unpinned_chats_in_every_project() {
     let (live, _) = with_history(database, project);
     running(database, &live);
     let fresh = new_chat(database, project);
+    // An old Chat whose fork is in use stays with it.
+    let (parent, _) = with_history(database, project);
+    let newer_fork = fork(database, project, &parent);
     std::fs::create_dir_all(root.join("b")).unwrap();
     let other = database.create_project_with_chat(&root.join("b")).unwrap();
     let other_chat: String = database
@@ -48,7 +51,7 @@ fn stale_cleanup_deletes_only_old_idle_unpinned_chats_in_every_project() {
             |row| row.get(0),
         )
         .unwrap();
-    for chat in [&pinned, &old, &live, &other_chat] {
+    for chat in [&pinned, &old, &live, &other_chat, &parent] {
         database.connection().execute(OLD, [chat]).unwrap();
     }
     let now = sage_core::time::now_millis();
@@ -68,6 +71,7 @@ fn stale_cleanup_deletes_only_old_idle_unpinned_chats_in_every_project() {
     let exists = |chat: &str| count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", chat);
     assert_eq!((exists(&old), exists(&other_chat)), (0, 0));
     assert_eq!((exists(&live), exists(&pinned), exists(&fresh)), (1, 1, 1));
+    assert_eq!((exists(&parent), exists(&newer_fork)), (1, 1));
     // The emptied Project stays; only `remove_project` removes a Project.
     assert_eq!(
         count(

@@ -369,5 +369,5 @@ export async function cleanUpProjectData(
     },
   });
   if (stopped) set({ error: stopped });
-  return committed;
+  return { committed, stopped: stopped as string | null };
 }

@@ -26,7 +26,7 @@ pub(crate) enum CleanupScope {
     /// Every Chat, and then the Project itself.
     Project,
     /// Chats last changed before this Unix-millisecond cutoff, except
-    /// pinned ones and ones running a Turn.
+    /// pinned ones, ones running a Turn, and ones with a newer fork.
     Stale(i64),
 }
 
@@ -39,7 +39,11 @@ pub(crate) fn scope_condition(scope: CleanupScope) -> String {
         CleanupScope::Stale(cutoff) => format!(
             "c.updated_at<{cutoff}
              AND NOT EXISTS(SELECT 1 FROM turns u WHERE u.project_id=c.project_id AND u.chat_id=c.id AND u.terminal_at IS NULL)
-             AND NOT EXISTS(SELECT 1 FROM workbench_tabs w WHERE w.project_id=c.project_id AND w.id=c.id AND w.pinned=1)"
+             AND NOT EXISTS(SELECT 1 FROM workbench_tabs w WHERE w.project_id=c.project_id AND w.id=c.id AND w.pinned=1)
+             AND NOT EXISTS(SELECT 1 FROM chat_lineage l JOIN chats k
+                              ON k.project_id=l.child_project_id AND k.id=l.child_chat_id
+                            WHERE l.parent_project_id=c.project_id AND l.parent_chat_id=c.id
+                              AND k.updated_at>={cutoff})"
         ),
     }
 }
@@ -121,13 +125,16 @@ impl DataCleanupStore for Database {
             }
             if scope == CleanupScope::Project {
                 forget_project(self, project)?;
-            } else if !chat_page(&self.connection(), project, scope, false, 1)?.is_empty() {
-                // Only Chats with a fork outside the scope remain.
-                return Err(AppError::InvalidRequest(match scope {
-                    CleanupScope::Stale(_) => "Old chats with newer forks were kept".into(),
-                    _ => "Archived chats with open forks were kept; delete the forks first".into(),
-                }));
+            } else if scope == CleanupScope::Archived
+                && !chat_page(&self.connection(), project, scope, false, 1)?.is_empty()
+            {
+                // Only Chats with an attached fork remain.
+                return Err(AppError::InvalidRequest(
+                    "Archived chats with open forks were kept; delete the forks first".into(),
+                ));
             }
+            // A stale Chat whose old fork is kept (pinned, say) stays too:
+            // it is still in use through that fork.
             Ok(())
         })()
         .err();
