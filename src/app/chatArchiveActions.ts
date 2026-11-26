@@ -338,7 +338,7 @@ export async function cleanUpProjectData(
   target: string | { cutoff: number },
 ) {
   const { setState: set, getState: get } = useWorkbenchStore;
-  if (get().projectTransitioning) return false;
+  if (get().projectTransitioning) return { committed: false, stopped: null };
   set({ projectTransitioning: true, error: null });
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
   let stopped: string | null = null;

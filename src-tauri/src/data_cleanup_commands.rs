@@ -116,12 +116,13 @@ pub(crate) async fn clean_up(
             let mut deleted = 0;
             let mut first_refusal = None;
             for project in &projects {
-                let outcome = database
-                    .clean_up(project, scope)
-                    .unwrap_or_else(|error| CleanupOutcome {
-                        deleted: 0,
-                        refusal: Some(error),
-                    });
+                let outcome =
+                    database
+                        .clean_up(project, scope)
+                        .unwrap_or_else(|error| CleanupOutcome {
+                            deleted: 0,
+                            refusal: Some(error),
+                        });
                 deleted += outcome.deleted;
                 if first_refusal.is_none() {
                     first_refusal = outcome.refusal;
