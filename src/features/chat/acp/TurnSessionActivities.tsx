@@ -30,7 +30,6 @@ export function TurnSessionActivities({
             <li
               key={`${index}:${activity.label}`}
               className="acp-activity-row acp-session-activity"
-              data-activity-kind={activity.kind}
               data-activity-state={activity.state}
             >
               {Icon ? (
