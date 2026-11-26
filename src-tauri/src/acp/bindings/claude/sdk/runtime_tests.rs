@@ -5,6 +5,8 @@ use super::*;
 mod plan;
 #[path = "runtime_refresh_tests.rs"]
 mod refresh;
+#[path = "wire_replay_tests.rs"]
+mod wire_replay;
 use crate::acp::{transcript_quote::Prompt, transport::FrameReader};
 use sage_acp_protocol::{
     contract::RequiredText,
@@ -43,6 +45,10 @@ fn frame(value: Value) -> Frame {
 }
 
 fn runtime() -> ClaudeSdkRuntime {
+    runtime_at("/w")
+}
+
+fn runtime_at(native_root: &str) -> ClaudeSdkRuntime {
     let mut runtime = ClaudeSdkRuntime {
         session: ClaudeRuntime::for_session(
             [7; 32],
@@ -64,7 +70,7 @@ fn runtime() -> ClaudeSdkRuntime {
         epoch: RuntimeEpoch::new(1).unwrap(),
     };
     runtime.bind_activation(&ActivationMode::New {
-        native_root: "/w".into(),
+        native_root: native_root.into(),
         model: None,
     });
     runtime

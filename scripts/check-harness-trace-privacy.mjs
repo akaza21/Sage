@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -23,7 +23,7 @@ function fixtureFiles(directory) {
     const file = join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...fixtureFiles(file));
-    } else if (entry.name === "frames.jsonl" || entry.name.endsWith(".json")) {
+    } else if (entry.name.endsWith(".jsonl") || entry.name.endsWith(".json")) {
       files.push(file);
     }
   }
@@ -34,7 +34,11 @@ function pointerPart(key) {
   return String(key).replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
-function isPermittedWindowsPath(value) {
+function isPermittedWindowsPath(raw) {
+  // The fixture root also appears with forward slashes and, inside JSON a
+  // string carries (a streamed tool input, a projected row), with doubled
+  // backslashes.
+  const value = raw.replace(/\\\\/gu, "\\").replace(/\//gu, "\\");
   if (!permittedWindowsRoot.test(value)) {
     return false;
   }
@@ -51,8 +55,28 @@ function hasDisallowedPath(value) {
   return posixAbsolutePath.test(value);
 }
 
+// JSON text a string carries (a streamed tool input), parsed, so its values
+// are read as values rather than through a second layer of escapes.
+function nestedJson(value) {
+  const text = value.trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function inspect(value, pointer, failures) {
   if (typeof value === "string") {
+    const nested = nestedJson(value);
+    if (nested !== undefined) {
+      inspect(nested, pointer, failures);
+      return;
+    }
     if (hasDisallowedPath(value)) {
       failures.push(pointer || "/");
     }
@@ -99,8 +123,13 @@ export function privacyFailuresForFixtures(directory, workspaceRoot = root) {
   return failures;
 }
 
+// Real wire transcripts recorded by scripts/harness-wire/capture.mjs.
+const wireRoot = join(root, "src-tauri", "tests", "fixtures", "harness-wire");
+
 function main() {
-  const failures = privacyFailuresForFixtures(tracesRoot);
+  const failures = [tracesRoot, wireRoot].flatMap((directory) =>
+    existsSync(directory) ? privacyFailuresForFixtures(directory) : [],
+  );
   if (failures.length > 0) {
     console.error(
       `Harness trace privacy check found ${failures.length} disallowed path value(s):`,
