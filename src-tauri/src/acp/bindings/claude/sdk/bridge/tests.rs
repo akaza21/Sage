@@ -711,17 +711,23 @@ fn a_tasks_last_report_ends_it_and_one_for_an_unknown_task_is_ignored() {
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
     let unknown = bridge
-        .inbound(json!({"type":"system","subtype":"task_notification","task_id":"gone",
-            "status":"completed","output_file":"","summary":"Done"}))
+        .inbound(
+            json!({"type":"system","subtype":"task_notification","task_id":"gone",
+            "status":"completed","output_file":"","summary":"Done"}),
+        )
         .unwrap();
     assert!(unknown.session.is_empty(), "{:?}", unknown.session);
     bridge
-        .inbound(json!({"type":"system","subtype":"task_started","task_id":"b1",
-            "description":"Serve the docs","is_backgrounded":true}))
+        .inbound(
+            json!({"type":"system","subtype":"task_started","task_id":"b1",
+            "description":"Serve the docs","is_backgrounded":true}),
+        )
         .unwrap();
     let ended = bridge
-        .inbound(json!({"type":"system","subtype":"task_notification","task_id":"b1",
-            "output_file":"","summary":"Exited"}))
+        .inbound(
+            json!({"type":"system","subtype":"task_notification","task_id":"b1",
+            "output_file":"","summary":"Exited"}),
+        )
         .unwrap();
     let [SessionScopedEvent::Activity(row)] = &ended.session[..] else {
         panic!("{:?}", ended.session)
