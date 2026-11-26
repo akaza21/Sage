@@ -1,5 +1,7 @@
 pub(crate) mod acp;
 
+use std::time::Duration;
+
 use tauri::State;
 
 use crate::session_events::SessionEventStore;
@@ -49,7 +51,8 @@ pub async fn list_harness_models(
         definition.and_then(|definition| serde_json::to_value(definition.access_modes).ok())
     };
     let before = access(&state.harnesses);
-    let models = list_harness_models_async(&state.harnesses, &harness_id).await;
+    let models =
+        list_harness_models_async(&state.harnesses, &harness_id, MODEL_LISTING_DEADLINE).await;
     if access(&state.harnesses) != before {
         use tauri::Emitter;
         let _ = app.emit(
@@ -62,23 +65,41 @@ pub async fn list_harness_models(
 
 trait HarnessModelLookup: Clone + Send + Sync + 'static {
     fn list_models(&self, harness_id: &str) -> Result<Vec<ModelOption>, String>;
+    /// The name the WebView shows for the harness, for an error about it.
+    fn harness_name(&self, harness_id: &str) -> String;
 }
 
 impl HarnessModelLookup for HarnessCatalog {
     fn list_models(&self, harness_id: &str) -> Result<Vec<ModelOption>, String> {
         list_harness_models_inner(self, harness_id)
     }
+
+    fn harness_name(&self, harness_id: &str) -> String {
+        self.definitions()
+            .into_iter()
+            .find(|definition| definition.id == harness_id)
+            .map_or_else(|| harness_id.to_owned(), |definition| definition.name)
+    }
 }
+
+/// Above a probe's own bound plus one probe queued ahead of it. A lookup
+/// that outlasts it still ends in an error the composer offers Retry on,
+/// never in a listing that stays "Loading…".
+const MODEL_LISTING_DEADLINE: Duration = Duration::from_secs(45);
 
 async fn list_harness_models_async(
     lookup: &impl HarnessModelLookup,
     harness_id: &str,
+    deadline: Duration,
 ) -> Result<Vec<ModelOption>, String> {
+    let name = lookup.harness_name(harness_id);
     let lookup = lookup.clone();
     let harness_id = harness_id.to_owned();
-    tauri::async_runtime::spawn_blocking(move || lookup.list_models(&harness_id))
-        .await
-        .map_err(|error| error.to_string())?
+    let listing = tauri::async_runtime::spawn_blocking(move || lookup.list_models(&harness_id));
+    match tokio::time::timeout(deadline, listing).await {
+        Ok(joined) => joined.map_err(|error| error.to_string())?,
+        Err(_) => Err(models_unlisted_message(&name)),
+    }
 }
 
 fn list_harness_models_inner(
@@ -176,7 +197,7 @@ mod model_lookup_tests {
 
     #[tokio::test]
     async fn model_lookup_returns_the_two_simulator_models() {
-        let actual = list_harness_models_async(&HarnessCatalog::default(), "sage-simulator")
+        let actual = list_harness_models_async(&HarnessCatalog::default(), "sage-simulator", MODEL_LISTING_DEADLINE)
             .await
             .unwrap();
         assert_eq!(
@@ -189,14 +210,14 @@ mod model_lookup_tests {
     async fn model_lookup_distinguishes_unknown_harness_from_no_account_models() {
         let harnesses = HarnessCatalog::default();
         assert_eq!(
-            list_harness_models_async(&harnesses, "missing-harness")
+            list_harness_models_async(&harnesses, "missing-harness", MODEL_LISTING_DEADLINE)
                 .await
                 .unwrap_err(),
             "unknown harness: missing-harness"
         );
         assert_eq!(
             serde_json::to_value(
-                list_harness_models_async(&harnesses, "codex")
+                list_harness_models_async(&harnesses, "codex", MODEL_LISTING_DEADLINE)
                     .await
                     .unwrap()
             )
@@ -222,6 +243,28 @@ mod model_lookup_tests {
                 .unwrap();
             list_harness_models_inner(&self.harnesses, harness_id)
         }
+
+        fn harness_name(&self, harness_id: &str) -> String {
+            self.harnesses.harness_name(harness_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_lookup_that_never_answers_ends_in_an_error_naming_the_harness() {
+        let (entered_tx, _entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        let lookup = HeldLookup {
+            harnesses: HarnessCatalog::default(),
+            entered: entered_tx,
+            release: Arc::new(Mutex::new(release_rx)),
+        };
+        let started = std::time::Instant::now();
+        let listed =
+            list_harness_models_async(&lookup, "sage-simulator", Duration::from_millis(200)).await;
+        let _ = release_tx.send(());
+        let name = lookup.harness_name("sage-simulator");
+        assert_eq!(listed.unwrap_err(), models_unlisted_message(&name));
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
@@ -246,7 +289,7 @@ mod model_lookup_tests {
                         tokio::task::yield_now().await;
                         progress_tx.send(()).unwrap();
                     });
-                    let models = list_harness_models_async(&lookup, "sage-simulator").await;
+                    let models = list_harness_models_async(&lookup, "sage-simulator", MODEL_LISTING_DEADLINE).await;
                     unrelated.await.unwrap();
                     models
                 })
