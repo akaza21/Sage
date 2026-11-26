@@ -117,6 +117,13 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Launch is part of an activation's window: verifying, scanning and loading
+/// a large harness build on its first start after an update, or on a loaded
+/// machine, can take most of a request's deadline, which then left too little
+/// for the harness's own start. A launch that took longer than an instant
+/// moves both deadlines on by the time it took, up to this bound.
+const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(30);
+
 pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
     let cleanup = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
     let reserve = Duration::from_millis(
@@ -129,6 +136,17 @@ pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
     (operation > Instant::now())
         .then_some((operation, cleanup))
         .ok_or(CodexSessionError::Capacity)
+}
+
+/// The activation's deadlines once its launch took `launched_in`: a fast
+/// launch keeps them, a slow one moves them on by its length, at most
+/// [`LAUNCH_ALLOWANCE`].
+fn after_launch(
+    (operation, cleanup): (Instant, Instant),
+    launched_in: Duration,
+) -> (Instant, Instant) {
+    let late = launched_in.min(LAUNCH_ALLOWANCE);
+    (operation + late, cleanup + late)
 }
 
 fn observe_runner(
@@ -244,5 +262,29 @@ fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
         }
         crate::acp::runtime::HostError::SignInRequired => CodexSessionError::SignInRequired,
         _ => CodexSessionError::Recovery,
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn a_launch_moves_the_deadlines_on_by_its_length_up_to_the_allowance() {
+        let before = deadlines().unwrap();
+        let (operation, cleanup) = before;
+        // A fast launch keeps the deadlines a harness start had before.
+        assert_eq!(after_launch(before, Duration::ZERO), before);
+        // A slow one gets its own time back, so the harness keeps its start window.
+        let slow = Duration::from_secs(12);
+        assert_eq!(
+            after_launch(before, slow),
+            (operation + slow, cleanup + slow)
+        );
+        // An overlong launch is bounded by the allowance.
+        assert_eq!(
+            after_launch(before, Duration::from_secs(600)),
+            (operation + LAUNCH_ALLOWANCE, cleanup + LAUNCH_ALLOWANCE)
+        );
     }
 }

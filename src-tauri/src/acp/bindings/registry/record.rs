@@ -120,6 +120,18 @@ impl BindingRecord {
         }
     }
 
+    /// Whether the binding probes its build for models and the latest probe
+    /// listed none, so an empty listing is a failure rather than a build
+    /// without models.
+    pub(crate) fn launch_models_unlisted(&self) -> bool {
+        match &self.admission {
+            Admission::ClaudeSdk(registration) => registration
+                .admitted()
+                .is_some_and(|binding| crate::acp::bindings::claude::sdk::listing_failed(&binding)),
+            _ => false,
+        }
+    }
+
     #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
