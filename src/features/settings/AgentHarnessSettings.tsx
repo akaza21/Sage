@@ -122,9 +122,7 @@ export function AgentHarnessSettings({
             role="group"
             aria-label={group.label}
           >
-            <p className="harness-group__label" aria-hidden="true">
-              {group.label}
-            </p>
+            <p aria-hidden="true">{group.label}</p>
             {group.cards.map(({ harness, status, note }) => (
               <HarnessCard
                 key={harness.id}

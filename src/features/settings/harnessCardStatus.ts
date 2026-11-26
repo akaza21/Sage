@@ -3,11 +3,7 @@ import type { HarnessSignInState } from "../harness/harnessSignIn";
 import type { HarnessDiscoveryPhase as Phase } from "../../app/harnessSlice";
 
 export type HarnessBadge =
-  | "ready"
-  | "available"
-  | "signInNeeded"
-  | "unavailable"
-  | "notInstalled";
+  "ready" | "available" | "signInNeeded" | "unavailable" | "notInstalled";
 
 export const HARNESS_BADGE_LABEL: Record<HarnessBadge, string> = {
   ready: "Ready",
@@ -16,7 +12,6 @@ export const HARNESS_BADGE_LABEL: Record<HarnessBadge, string> = {
   unavailable: "Unavailable",
   notInstalled: "Not installed",
 };
-
 
 export interface HarnessCardStatus {
   badge: HarnessBadge;

@@ -281,55 +281,31 @@
   display: none;
 }
 
-/* Settings › Harnesses: one bordered card per harness, grouped by status. */
+/* Settings › Harnesses: a bordered card per harness, grouped by status. */
 .harness-group {
   display: grid;
   gap: var(--space-2);
 }
 
-.harness-group__label {
+.harness-group > p,
+.harness-card summary {
   margin: var(--space-2) 0 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-  font-weight: 600;
-}
-
-.harness-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-raised);
 }
 
 .harness-card[data-selected] {
   border-color: var(--border-strong);
 }
 
-.harness-card[data-status="unavailable"],
-.harness-card[data-status="notInstalled"] {
-  opacity: 0.72;
-}
-
-.harness-card__header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-}
-
-.harness-card__mark {
-  display: grid;
+.harness-card .harness-icon {
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
   flex-shrink: 0;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--surface-active);
-  font-weight: 600;
 }
 
-.harness-card__identity {
+.harness-card__copy {
   flex: 1;
-  min-width: 0;
 }
 
 .harness-card__title {
@@ -339,64 +315,34 @@
   gap: var(--space-2);
 }
 
-.harness-card__title h3 {
+.harness-card h3 {
   margin: 0;
   font-size: var(--font-size-md);
 }
 
-.harness-card__version {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.harness-card__summary {
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  overflow-wrap: anywhere;
-}
-
 .harness-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 1px var(--space-2);
+  padding: 0 var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   font-size: var(--font-size-xs);
 }
 
-.harness-badge__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-circle);
-  background: var(--text-muted);
+.harness-badge[data-status="ready"]::before,
+.harness-badge[data-status="signInNeeded"]::before {
+  content: "● ";
+  color: var(--success);
 }
 
-.harness-badge[data-status="ready"] .harness-badge__dot {
-  background: var(--success);
+.harness-badge[data-status="signInNeeded"]::before {
+  color: var(--warning);
 }
 
-.harness-badge[data-status="signInNeeded"] .harness-badge__dot {
-  background: var(--warning);
-}
-
-.harness-card__details {
+.harness-card details {
+  padding-bottom: var(--space-2);
   border-top: 1px solid var(--border);
 }
 
-.harness-card__details > summary {
-  padding: var(--space-2) var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  cursor: pointer;
-}
-
-.harness-card__body {
-  padding: 0 var(--space-4) var(--space-3);
-  font-size: var(--font-size-sm);
-}
-
-.harness-card__body > p {
-  margin: var(--space-2) 0 0;
+.harness-card[data-status="unavailable"],
+.harness-card[data-status="notInstalled"] {
+  opacity: 0.72;
 }

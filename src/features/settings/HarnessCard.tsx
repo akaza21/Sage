@@ -1,7 +1,11 @@
 import { useId } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
+import { PickerLogo } from "../../ui/PickerLogo";
 import HarnessAccountDetails from "./HarnessAccountDetails";
-import { HARNESS_BADGE_LABEL, type HarnessCardStatus } from "./harnessCardStatus";
+import {
+  HARNESS_BADGE_LABEL,
+  type HarnessCardStatus,
+} from "./harnessCardStatus";
 
 /** One harness: a header row to scan, and its details below. */
 export function HarnessCard({
@@ -25,33 +29,33 @@ export function HarnessCard({
   const headingId = useId();
   const runnable =
     status.badge !== "unavailable" && status.badge !== "notInstalled";
+  const { version, update } = harness;
   return (
     <section
-      className="harness-card"
+      className="agent-settings__card harness-card"
       data-status={status.badge}
       data-selected={selected || undefined}
       aria-labelledby={headingId}
     >
-      <div className="harness-card__header">
-        <span className="harness-card__mark" aria-hidden="true">
-          {harness.name.charAt(0).toUpperCase()}
-        </span>
-        <div className="harness-card__identity">
+      <div className="agent-settings__row">
+        {/* Curated brand metadata picks the mark; others get the generic one. */}
+        <PickerLogo icon={harness.brand ?? "generic"} />
+        <div className="agent-settings__copy harness-card__copy">
           <div className="harness-card__title">
             <h3 id={headingId}>{harness.name}</h3>
-            {harness.version ? (
-              <code className="harness-card__version">
-                {/^\d/.test(harness.version)
-                  ? `v${harness.version}`
-                  : harness.version}
-              </code>
+            {version ? (
+              <code>{/^\d/.test(version) ? `v${version}` : version}</code>
             ) : null}
             <span className="harness-badge" data-status={status.badge}>
-              <span className="harness-badge__dot" aria-hidden="true" />
               {HARNESS_BADGE_LABEL[status.badge]}
             </span>
+            {update ? (
+              <span className="harness-badge">
+                Update {update.latestVersion}
+              </span>
+            ) : null}
           </div>
-          <p className="harness-card__summary">
+          <p>
             {note ? `${note}. ` : ""}
             {status.summary}
           </p>
@@ -67,21 +71,18 @@ export function HarnessCard({
           </button>
         ) : null}
       </div>
-      {harness.version || runnable ? (
+      {version || runnable ? (
         <details
-          className="harness-card__details"
           open={(selected && runnable) || status.badge === "signInNeeded"}
         >
           <summary>Details</summary>
-          <div className="harness-card__body">
-            <HarnessAccountDetails
-              harness={harness}
-              selected={selected}
-              available={runnable}
-              showSignInHint={status.showSignInHint}
-              disabled={detailsDisabled}
-            />
-          </div>
+          <HarnessAccountDetails
+            harness={harness}
+            selected={selected}
+            available={runnable}
+            showSignInHint={status.showSignInHint}
+            disabled={detailsDisabled}
+          />
         </details>
       ) : null}
     </section>

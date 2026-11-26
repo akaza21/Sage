@@ -17,7 +17,11 @@ export type HarnessUnavailableReason =
   | "versionTooOld"
   | "bindingMissing";
 
-const unavailableMessages: Record<HarnessUnavailableReason, string> = {
+// A missing binding names no harness on this computer; it keeps the fallback.
+const unavailableMessages: Record<
+  Exclude<HarnessUnavailableReason, "bindingMissing">,
+  string
+> = {
   admissionIncomplete: "is still being checked.",
   adapterAbsent: "isn't set up for Sage yet.",
   adapterVersionUnreadable: "has a version Sage can't read.",
@@ -31,7 +35,6 @@ const unavailableMessages: Record<HarnessUnavailableReason, string> = {
   observationOnly: "can't be verified on this computer.",
   platformUnsupported: "isn't supported on this computer.",
   versionTooOld: "needs an update for Sage.",
-  bindingMissing: "isn't available in this build.",
 };
 
 export function harnessUnavailableReason(
@@ -40,7 +43,7 @@ export function harnessUnavailableReason(
 ): string {
   const message =
     reason && Object.hasOwn(unavailableMessages, reason)
-      ? unavailableMessages[reason]
+      ? unavailableMessages[reason as keyof typeof unavailableMessages]
       : "can't start yet.";
   return `${name} ${message}`;
 }

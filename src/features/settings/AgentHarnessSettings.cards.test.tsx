@@ -15,11 +15,11 @@ import {
 } from "../harness/harnessSignIn";
 import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { useAgentSettingsState } from "./agentSettingsState";
+import type * as AcpDesktopModule from "../../services/acpDesktop";
 
 const claude = vi.hoisted(() => ({ loggedIn: true, at: 100 }));
 vi.mock("../../services/acpDesktop", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../services/acpDesktop")>();
+  const actual = await importOriginal<typeof AcpDesktopModule>();
   return {
     acpDesktop: {
       ...actual.acpDesktop,
@@ -91,7 +91,10 @@ beforeEach(() => {
         bindingId: "gone",
         unavailableReason: "bindingMissing",
       },
-      available("pi", "Pi"),
+      available("pi", "Pi", {
+        brand: "pi",
+        update: { latestVersion: "1.1.0", command: "npm i -g pi" },
+      }),
     ],
   });
 });
@@ -112,13 +115,18 @@ it("gives each harness its own headed card with a text badge, runnable ones firs
   const pi = await card("Pi");
   expect(within(pi).getByText("Available")).toBeVisible();
   expect(within(pi).getByText("v1.0.0")).toBeVisible();
+  expect(within(pi).getByText("Update 1.1.0")).toBeVisible();
+  expect(pi.querySelector('[data-harness-icon="pi"]')).not.toBeNull();
   expect(
     within(pi).getByRole("button", { name: "Select and check" }),
   ).toBeVisible();
   const blocked = await card("Blocked");
   expect(within(blocked).getByText("Unavailable")).toBeVisible();
-  expect(within(blocked).getByText("Blocked needs Node.js installed.")).toBeVisible();
+  expect(
+    within(blocked).getByText("Blocked needs Node.js installed."),
+  ).toBeVisible();
   expect(within(blocked).queryByRole("button")).toBeNull();
+  expect(blocked.querySelector('[data-harness-icon="generic"]')).not.toBeNull();
   const missing = await card("Missing");
   expect(within(missing).getByText("Not installed")).toBeVisible();
   expect(
@@ -127,7 +135,10 @@ it("gives each harness its own headed card with a text badge, runnable ones firs
       .map((heading) => heading.textContent),
   ).toEqual(["Pi", "Blocked", "Missing"]);
   expect(
-    screen.getAllByRole("group").map((group) => group.getAttribute("aria-label")),
+    screen
+      .getAllByRole("group")
+      .map((group) => group.getAttribute("aria-label"))
+      .filter(Boolean),
   ).toEqual([
     "Available harnesses",
     "Unavailable harnesses",
@@ -178,7 +189,9 @@ it("marks a signed-out harness as needing sign-in and opens its login hint", asy
 it("keeps a non-selected harness's details collapsed until asked", async () => {
   useWorkbenchStore.setState({
     harnesses: [
-      available("pi", "Pi", { signIn: { command: "pi", hint: "Then run /login." } }),
+      available("pi", "Pi", {
+        signIn: { command: "pi", hint: "Then run /login." },
+      }),
     ],
   });
   render(<AgentSettingsSurface />);
