@@ -45,7 +45,7 @@ it("removes a project natively only after the permanent removal is confirmed", a
 
   fireEvent.click(remove);
   expect(screen.getByRole("menu")).toHaveAccessibleDescription(
-    /^Delete Old and all its chats from Sage?/,
+    /^Delete Old and its chats from Sage?/,
   );
   expect(screen.getByRole("menuitem", { name: "Cancel" })).toHaveFocus();
   fireEvent.click(screen.getByRole("menuitem", { name: "Cancel" }));

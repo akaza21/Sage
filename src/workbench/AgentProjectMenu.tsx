@@ -65,8 +65,7 @@ export function AgentProjectMenu({
         {confirming ? (
           <>
             <p className="menu-item" id={`${menuId}-note`}>
-              Delete {name} and all its chats from Sage? Its folder stays on
-              disk. This can't be undone.
+              Delete {name} and its chats from Sage? Files stay on disk.
             </p>
             <Item label="Cancel" onClick={() => complete(() => {})} />
             <Item
