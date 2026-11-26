@@ -107,6 +107,17 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
             break;
         }
     }
+    // A cut title ends at its last whole sentence when one fits, so it never
+    // stops mid-phrase after a complete first sentence.
+    if truncated
+        && let Some(end) = [". ", "? ", "! "]
+            .iter()
+            .filter_map(|boundary| title.rfind(boundary))
+            .max()
+            .filter(|&end| title[..end].split_whitespace().nth(1).is_some())
+    {
+        title.truncate(end);
+    }
     let mut title = title.trim_end_matches(trailing_punctuation);
     while truncated
         && let Some(last) = title.split_whitespace().next_back()
@@ -233,6 +244,22 @@ mod tests {
         assert_eq!(
             prompt_title(&"e\u{301}".repeat(30)),
             Some(format!("Chat: {}", "e\u{301}".repeat(25)))
+        );
+        assert_eq!(
+            prompt_title("Work in this repository. Use your tools to run commands"),
+            Some("Chat: Work in this repository".into())
+        );
+        assert_eq!(
+            prompt_title("Why does login fail? Check the session store and logs"),
+            Some("Chat: Why does login fail".into())
+        );
+        assert_eq!(
+            prompt_title("Hi. Please fix the sidebar crash when it reloads"),
+            Some("Chat: Hi. Please fix the sidebar crash".into())
+        );
+        assert_eq!(
+            prompt_title("Fix login. Then add tests"),
+            Some("Chat: Fix login. Then add tests".into())
         );
         assert_eq!(prompt_title(&format!("{}Fix Sage", " ".repeat(4096))), None);
         assert_eq!(

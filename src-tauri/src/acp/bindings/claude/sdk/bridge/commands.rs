@@ -13,9 +13,30 @@ pub(super) fn commands(reply: &Value) -> Value {
     fn name(row: &Value) -> Option<&str> {
         row.get("name").and_then(Value::as_str)
     }
+    // Claude Code keeps a retired command in its catalog with a "(removed)"
+    // description; a name whose running row is retired is not offered.
+    let mut running = std::collections::HashMap::<&str, &Value>::new();
+    for row in rows {
+        if let Some(this) = name(row) {
+            running
+                .entry(this)
+                .and_modify(|first| {
+                    if !builtin(first) && builtin(row) {
+                        *first = row;
+                    }
+                })
+                .or_insert(row);
+        }
+    }
+    let retired = |this: &str| {
+        running
+            .get(this)
+            .and_then(|row| row.get("description").and_then(Value::as_str))
+            .is_some_and(|description| description.starts_with("(removed)"))
+    };
     rows.iter()
         .filter_map(|command| {
-            let this = name(command)?;
+            let this = name(command).filter(|this| !retired(this))?;
             let hint = command.get("argumentHint").and_then(Value::as_str).filter(|hint| !hint.is_empty());
             let mut entry = json!({
                 "name": this,

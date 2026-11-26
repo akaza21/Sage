@@ -88,8 +88,10 @@
   }
 }
 
+/* Out of the layout until the chip is hovered or focused, so the hidden
+   button never leaves a gap after the project name. */
 .project-scope__clear {
-  display: inline-flex;
+  display: none;
   flex: none;
   align-items: center;
   justify-content: center;
@@ -100,11 +102,10 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
-  visibility: hidden;
 }
 .project-scope:hover .project-scope__clear,
 .project-scope:focus-within .project-scope__clear {
-  visibility: visible;
+  display: inline-flex;
 }
 .project-scope__clear:focus-visible {
   outline: var(--focus-ring);
