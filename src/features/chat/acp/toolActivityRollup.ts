@@ -57,7 +57,8 @@ const clauses: Partial<Record<ToolKind, readonly string[]>> = {
   search: ["explored files", "explored files"],
   fetch: ["fetched a page", "fetched pages"],
 };
-const TOOL_CLAUSE = ["used a tool", "used tools"];
+const TOOL_CLAUSE = ["used a tool", "used tools"] as const;
+
 function itemFile(presentation: ToolPresentation): string | null {
   const location =
     "resources" in presentation ? presentation.resources[0] : undefined;

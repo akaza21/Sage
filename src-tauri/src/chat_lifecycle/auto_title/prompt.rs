@@ -107,29 +107,8 @@ pub(in crate::chat_lifecycle) fn prompt_title(text: &str) -> Option<String> {
             break;
         }
     }
-    // A cut title ends at its last whole sentence of three or more words, so
-    // it never stops mid-phrase after a complete request. A period after a
-    // short or dotted token ("vs.", "e.g.") is not a sentence end.
-    let cut = title
-        .match_indices(' ')
-        .filter_map(|(space, _)| {
-            let sentence = &title[..space];
-            let kept = sentence.strip_suffix(['.', '?', '!'])?;
-            let token = kept.split_whitespace().next_back()?;
-            let abbreviation = sentence.ends_with('.')
-                && (token.contains('.') || token.chars().count() <= 2);
-            (!abbreviation && kept.split_whitespace().nth(2).is_some())
-                .then_some(kept.len())
-        })
-        .next_back()
-        .filter(|_| truncated);
-    if let Some(end) = cut {
-        title.truncate(end);
-    }
-    let sentence = cut.is_some();
     let mut title = title.trim_end_matches(trailing_punctuation);
     while truncated
-        && !sentence
         && let Some(last) = title.split_whitespace().next_back()
         && CONNECTORS
             .iter()
@@ -254,34 +233,6 @@ mod tests {
         assert_eq!(
             prompt_title(&"e\u{301}".repeat(30)),
             Some(format!("Chat: {}", "e\u{301}".repeat(25)))
-        );
-        assert_eq!(
-            prompt_title("Work in this repository. Use your tools to run commands"),
-            Some("Chat: Work in this repository".into())
-        );
-        assert_eq!(
-            prompt_title("Why does login fail? Check the session store and logs"),
-            Some("Chat: Why does login fail".into())
-        );
-        assert_eq!(
-            prompt_title("Hi. Please fix the sidebar crash when it reloads"),
-            Some("Chat: Hi. Please fix the sidebar crash".into())
-        );
-        assert_eq!(
-            prompt_title("Hey Claude. Fix the login redirect bug today"),
-            Some("Chat: Hey Claude. Fix the login redirect".into())
-        );
-        assert_eq!(
-            prompt_title("Compare Vite vs. webpack and e.g. rollup configs"),
-            Some("Chat: Compare Vite vs. webpack and e.g".into())
-        );
-        assert_eq!(
-            prompt_title("What is this for? Explain the module layout"),
-            Some("Chat: What is this for".into())
-        );
-        assert_eq!(
-            prompt_title("Fix login. Then add tests"),
-            Some("Chat: Fix login. Then add tests".into())
         );
         assert_eq!(prompt_title(&format!("{}Fix Sage", " ".repeat(4096))), None);
         assert_eq!(

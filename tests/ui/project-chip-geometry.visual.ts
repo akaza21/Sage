@@ -43,9 +43,12 @@ for (const scoped of [false, true]) {
         ],
       });
     }, scoped);
-    const trigger = page
-      .getByRole("group", { name: "Chat location" })
-      .getByRole("button", {
+    const location = page.getByRole("group", { name: "Chat location" });
+    // The branch chip appears once the scoped project reads as a repository.
+    await expect(
+      location.getByRole("button", { name: /^Switch branch in / }),
+    ).toHaveCount(scoped ? 1 : 0);
+    const trigger = location.getByRole("button", {
         name: scoped ? "Project: Sage" : "Choose project",
         exact: true,
       });
@@ -462,10 +465,13 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
           return [box.width, box.height];
         });
       const chips = [...tab.children].map((chip) =>
-        chip.getBoundingClientRect(),
+        (
+          chip.querySelector(".project-scope__picker") ?? chip
+        ).getBoundingClientRect(),
       );
       return {
-        // The idle project chip keeps no room for its hidden clear button.
+        // Measured from the project trigger: the idle chip keeps no room for
+        // its hidden clear button.
         gaps: chips
           .slice(1)
           .map((chip, index) => Math.round(chip.left - chips[index]!.right)),
