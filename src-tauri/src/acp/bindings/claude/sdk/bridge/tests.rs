@@ -371,7 +371,7 @@ fn a_sign_in_failure_ends_the_turn_with_the_auth_required_error() {
     let result = bridge.inbound(json!({"type":"result","subtype":"success","is_error":true,"result":"Not logged in","usage":{}})).unwrap();
     assert_eq!(
         result.acp[0]["error"],
-        json!({"code":-32000,"message":"Authentication required"})
+        json!({"code":-32000,"message":"Authentication required","data":"Not logged in"})
     );
 }
 

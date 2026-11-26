@@ -176,6 +176,23 @@ async function openOptions() {
   }
 }
 
+// The thinking level shows on the Model button and is changed in its popover.
+const modelButton = () => screen.getByRole("button", { name: "Model" });
+const shownEffort = () =>
+  modelButton().querySelector(".composer__model-effort")?.textContent ?? null;
+async function findEffort(level: string) {
+  await waitFor(() => expect(shownEffort()).toBe(level));
+}
+async function openModelPopover() {
+  fireEvent.click(modelButton());
+  const dialog = await screen.findByRole("dialog", { name: "Select model" });
+  // The list is lazy; the level section can stand alone without models.
+  await waitFor(() =>
+    expect(dialog.querySelector("[role=listbox], input")).not.toBeNull(),
+  );
+  return dialog;
+}
+
 it("waits for session confirmation before labeling the active model", () => {
   useWorkbenchStore.setState({
     selectedHarnessId: "access-test",
@@ -233,19 +250,15 @@ it("shows harness, unconfirmed model, effort availability and access before a fi
     "Model",
   );
   expect(screen.getByRole("button", { name: "Access options" })).toBeVisible();
-  const effort = screen.getByRole("button", { name: "Thinking level" });
-  expect(effort).toBeDisabled();
-  expect(effort).toHaveAccessibleDescription(
-    "Available when the harness advertises effort controls for this session.",
-  );
+  expect(shownEffort()).toBeNull();
+  await openModelPopover();
+  expect(screen.queryByRole("slider")).toBeNull();
   rerenderControls({
     sessionHarnessId: "access-test",
     sessionConfig: confirmedModelConfig(),
   });
-  expect(
-    screen.getByRole("button", { name: "Thinking level: High" }),
-  ).toBeEnabled();
-  expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+  expect(shownEffort()).toBe("High");
+  expect(await screen.findByRole("slider")).toBeEnabled();
 });
 
 it("holds a thinking level chosen before the first session for the listed model", async () => {
@@ -268,18 +281,13 @@ it("holds a thinking level chosen before the first session for the listed model"
     accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
     onSetSessionConfigOption,
   });
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Thinking level: Default" }),
-  );
+  await findEffort("Default");
+  await openModelPopover();
   const slider = await screen.findByRole("slider");
   fireEvent.pointerDown(slider, { pointerId: 1 });
   fireEvent.change(slider, { target: { value: "2" } });
   fireEvent.pointerUp(slider, { pointerId: 1 });
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Thinking level: High" }),
-    ).toBeEnabled(),
-  );
+  await findEffort("High");
   expect(useChatEffortDraft.getState().draft).toEqual({
     chatId: "chat-draft",
     bindingId: "fixture",
@@ -292,7 +300,8 @@ it("holds a thinking level chosen before the first session for the listed model"
     selectedModelId: "haiku",
     accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
   });
-  expect(screen.getByRole("button", { name: "Thinking level" })).toBeDisabled();
+  expect(shownEffort()).toBeNull();
+  expect(screen.queryByRole("slider")).toBeNull();
   useChatEffortDraft.setState({ draft: null });
 });
 
@@ -331,13 +340,10 @@ function renderListedCodexChat() {
 it("lists a restored chat's harness models and thinking levels when the workbench selected another harness", async () => {
   vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([gptX]);
   renderListedCodexChat();
-  expect(
-    await screen.findByRole("button", { name: "Thinking level: Default" }),
-  ).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
-  expect(
-    await screen.findByRole("option", { name: /GPT-X/ }),
-  ).toBeInTheDocument();
+  await findEffort("Default");
+  await openModelPopover();
+  expect(screen.getByRole("option", { name: /GPT-X/ })).toBeInTheDocument();
+  expect(screen.getByRole("slider")).toBeEnabled();
   expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toEqual([
     gptX,
   ]);
@@ -368,13 +374,9 @@ it("keeps models listed before an account change out and lists the new account's
     accessTarget: { bindingId: "codex-app-server", draftChatId: "chat-draft" },
   });
 
-  expect(
-    await screen.findByRole("button", { name: "Thinking level: Default" }),
-  ).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
-  expect(
-    await screen.findByRole("option", { name: /GPT-Y/ }),
-  ).toBeInTheDocument();
+  await findEffort("Default");
+  await openModelPopover();
+  expect(screen.getByRole("option", { name: /GPT-Y/ })).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: /GPT-X/ })).toBeNull();
 });
 
@@ -423,7 +425,7 @@ it("lists a restored chat's models for the account signed in from the composer o
     },
   });
   const view = renderListedCodexChat();
-  await screen.findByRole("button", { name: "Thinking level: Default" });
+  await findEffort("Default");
 
   await act(() => useWorkbenchStore.getState().selectHarness("codex"));
   act(() => useWorkbenchStore.getState().requestHarnessSignIn());
@@ -451,15 +453,13 @@ it("asks a harness that listed nothing once more after its backoff", async () =>
     .mockResolvedValue([gptX]);
   renderListedCodexChat();
   await act(async () => undefined);
-  expect(
-    screen.getByRole("button", { name: /^Thinking level/ }),
-  ).toBeDisabled();
+  expect(modelButton()).toBeDisabled();
+  expect(shownEffort()).toBeNull();
 
   await act(async () => vi.advanceTimersByTime(60_000));
 
-  expect(
-    await screen.findByRole("button", { name: "Thinking level: Default" }),
-  ).toBeEnabled();
+  await findEffort("Default");
+  expect(modelButton()).toBeEnabled();
 });
 
 it("shows a held thinking level the model no longer lists as held, not as Default", async () => {
@@ -488,9 +488,9 @@ it("shows a held thinking level the model no longer lists as held, not as Defaul
     accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
   });
   // The start refuses that level, so the composer must not show Default.
-  expect(
-    await screen.findByRole("button", { name: "Thinking level: High" }),
-  ).toBeEnabled();
+  await findEffort("High");
+  await openModelPopover();
+  expect(screen.getByRole("slider")).toHaveAttribute("aria-valuetext", "High");
   useChatEffortDraft.setState({ draft: null });
 });
 
@@ -622,9 +622,8 @@ describe("last confirmed model label", () => {
       }));
       const props = { sessionConfig: config, canPrompt: false };
       const view = renderControls({ ...props, turnBusy: true });
-      expect(
-        screen.getByRole("button", { name: "Thinking level: High" }),
-      ).toBeDisabled();
+      expect(shownEffort()).toBe("High");
+      expect(modelButton()).toBeDisabled();
       act(() =>
         useWorkbenchStore.setState({
           models: Array.from({ length: count }, (_, index) => ({
@@ -634,17 +633,13 @@ describe("last confirmed model label", () => {
         }),
       );
       view.rerenderControls({ ...props, turnBusy: false });
-      const effort = screen.getByRole("button", {
-        name: "Thinking level: High",
-      });
-      expect(effort).toBeEnabled();
-      fireEvent.click(effort);
-      expect(await screen.findByRole("slider")).toBeEnabled();
-      fireEvent.keyDown(
-        screen.getByRole("dialog", { name: "Thinking level" }),
-        { key: "Escape" },
+      const dialog = await openModelPopover();
+      expect(await screen.findByRole("slider")).toHaveAttribute(
+        "aria-disabled",
+        "false",
       );
-      expect(effort).toHaveFocus();
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      expect(modelButton()).toHaveFocus();
     },
   );
   it("shows Pi's wire-confirmed model and effort after interrupt without inventing a reset default", async () => {
@@ -653,9 +648,7 @@ describe("last confirmed model label", () => {
     expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
-    expect(
-      screen.queryByRole("button", { description: "Select effort" }),
-    ).toBeNull();
+    expect(shownEffort()).toBeNull();
     const sessionConfig = decodeSessionConfig({
       sageAgentSessionId: "session-1",
       runtimeEpoch: "1",
@@ -694,22 +687,14 @@ describe("last confirmed model label", () => {
       turnBusy: true,
       onSetSessionConfigOption,
     });
-    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
-      /^Synthetic replay$/,
-    );
-    expect(
-      screen.getByRole("button", { name: "Thinking level: Medium" }),
-    ).toBeDisabled();
+    expect(modelButton()).toHaveTextContent(/^Synthetic replayMedium$/);
+    expect(modelButton()).toBeDisabled();
     view.rerenderControls({
       sessionConfig,
       turnBusy: false,
       onSetSessionConfigOption,
     });
-    const effort = screen.getByRole("button", {
-      name: "Thinking level: Medium",
-    });
-    expect(effort).toBeEnabled();
-    fireEvent.click(effort);
+    await openModelPopover();
     expect(await screen.findByRole("slider")).toHaveAttribute(
       "aria-valuetext",
       "Medium",
@@ -742,9 +727,8 @@ describe("last confirmed model label", () => {
     expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Synthetic replay$/,
     );
-    expect(
-      screen.queryByRole("button", { description: "Select effort" }),
-    ).toBeNull();
+    expect(shownEffort()).toBeNull();
+    await openModelPopover();
     expect(screen.queryByRole("slider")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
   });
@@ -779,9 +763,7 @@ describe("last confirmed model label", () => {
         ],
       };
       const view = renderControls({ sessionConfig: config });
-      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
-        /^Confirmed session model$/,
-      );
+      expect(modelButton()).toHaveTextContent(/^Confirmed session modelHigh$/);
       fireEvent.click(screen.getByRole("button", { name: "Harness" }));
       const row = screen.getByRole("option", { name: `${name} — available` });
       expect(row).toHaveTextContent(`${name}Confirmed session model High`);
@@ -790,36 +772,24 @@ describe("last confirmed model label", () => {
       ).toHaveTextContent("Confirmed session model High");
       fireEvent.keyDown(row, { key: "Escape" });
       view.rerenderControls({ sessionConfig: config, turnBusy: true });
-      expect(
-        screen.getByRole("button", { name: "Thinking level: High" }),
-      ).toBeDisabled();
+      expect(shownEffort()).toBe("High");
+      expect(modelButton()).toBeDisabled();
       view.rerenderControls({ sessionConfig: config, turnBusy: false });
-      const effort = screen.getByRole("button", {
-        name: "Thinking level: High",
-      });
-      expect(effort).toBeEnabled();
-      fireEvent.click(effort);
-      expect(
-        await screen.findByRole("button", { name: "Reset effort" }),
-      ).toBeVisible();
-      expect(
-        await screen.findByRole("button", { name: "Reset effort" }),
-      ).toBeEnabled();
+      await openModelPopover();
+      const reset = await screen.findByRole("button", { name: "Reset effort" });
+      expect(reset).toBeVisible();
+      expect(reset).toBeEnabled();
     },
   );
 
-  it("shows effort once when a separate effort control is available", async () => {
+  it("shows effort once, on the model chip", async () => {
     renderControls({ sessionConfig: confirmedModelConfig() });
-    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
-      /^Confirmed session model$/,
-    );
+    expect(modelButton()).toHaveTextContent(/^Confirmed session modelHigh$/);
     expect(screen.getAllByText("High", { exact: true })).toHaveLength(1);
-    expect(
-      screen.getByRole("button", { description: "Select effort" }),
-    ).toHaveTextContent("High");
+    expect(shownEffort()).toBe("High");
   });
 
-  it("keeps effort and the project reachable through Add when the toolbar cannot fit them", async () => {
+  it("keeps the project reachable through Add and effort in the model popover when the toolbar cannot fit them", async () => {
     useWorkbenchStore.setState({
       project: { id: "a", name: "A", roots: [] },
       projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
@@ -871,69 +841,23 @@ describe("last confirmed model label", () => {
     expect(projects).toBeVisible();
     fireEvent.keyDown(projects, { key: "Escape" });
     expect(project).toHaveFocus();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Thinking level" }));
     expect(
-      screen.getByRole("dialog", { name: "Thinking level" }),
-    ).toBeVisible();
+      screen.queryByRole("menuitem", { name: "Thinking level" }),
+    ).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toHaveFocus();
+    const dialog = await openModelPopover();
     expect(await screen.findByRole("slider")).toHaveAttribute(
       "aria-valuetext",
       "High",
     );
-    expect(screen.queryByRole("menu")).toBeNull();
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Thinking level" }), {
-      key: "Escape",
-    });
-    expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(modelButton()).toHaveFocus();
     view.unmount();
     host.remove();
   });
-
-  it.each([false, true])(
-    "keeps keyboard focus when an overflow control returns beside a disabled=%s fixed action",
-    async (disabled) => {
-      useWorkbenchStore.setState({
-        projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
-        chatUiById: { peer: { sending: disabled } } as never,
-      });
-      let width = 0;
-      vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
-        function (this: Element) {
-          return [this.getBoundingClientRect()] as unknown as DOMRectList;
-        },
-      );
-      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
-        function (this: Element) {
-          return DOMRect.fromRect({
-            width: this.classList.contains("composer__controls") ? width : 28,
-          });
-        },
-      );
-      const props = {
-        sessionConfig: confirmedModelConfig(),
-        projectName: "A",
-      };
-      const view = renderControls(props);
-      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-      const thinking = await screen.findByRole("menuitem", {
-        name: "Thinking level",
-      });
-      thinking.focus();
-      width = 1000;
-      view.rerenderControls({ ...props, modeError: "Updated session status" });
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("menuitem", { name: "Thinking level" }),
-        ).toBeNull(),
-      );
-      expect(
-        screen.getByRole("button", { name: "Thinking level: High" }),
-      ).toHaveFocus();
-      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-      expect(screen.queryByRole("menu")).toBeNull();
-    },
-  );
 
   it("does not subtitle a draft catalog selection as a confirmed model", async () => {
     useWorkbenchStore.setState({
@@ -1020,9 +944,7 @@ describe("last confirmed model label", () => {
         }),
         onSetSessionConfigOption,
       });
-      fireEvent.click(
-        screen.getByRole("button", { description: "Select effort" }),
-      );
+      await openModelPopover();
       const slider = await screen.findByRole("slider");
       expect(slider).toHaveAttribute("aria-valuetext", "Medium");
       fireEvent.keyDown(slider, { key: "End" });
@@ -1039,9 +961,7 @@ describe("last confirmed model label", () => {
       if (categorized) config.configOptions[1].category = "thought_level";
       else config.configOptions[1].id = "thought_level";
       renderControls({ sessionConfig: config });
-      fireEvent.click(
-        screen.getByRole("button", { description: "Select effort" }),
-      );
+      await openModelPopover();
       expect(await screen.findByRole("slider")).toHaveAttribute(
         "aria-valuetext",
         "High",
@@ -1068,12 +988,11 @@ describe("last confirmed model label", () => {
       sessionConfig,
     });
     const trigger = screen.getByLabelText("Model", { exact: true });
-    expect(trigger).toHaveTextContent(/^actual High$/);
+    expect(trigger).toHaveTextContent(/^actualHigh$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
     expect(trigger).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { description: "Select effort" }),
-    ).toBeNull();
+    await openModelPopover();
+    expect(screen.queryByRole("slider")).toBeNull();
   });
 
   it("waits for the harness model identity after a catalog request", async () => {
@@ -1162,7 +1081,7 @@ describe("last confirmed model label", () => {
     };
     renderControls({ sessionConfig });
     const trigger = screen.getByLabelText("Model", { exact: true });
-    expect(trigger).toHaveTextContent(/^session-model$/);
+    expect(trigger).toHaveTextContent(/^session-modelHigh$/);
     expect(trigger).toHaveAccessibleDescription("session-model High");
     fireEvent.click(trigger);
     expect(
@@ -1238,7 +1157,7 @@ describe("last confirmed model label", () => {
     );
   });
 
-  it("lists a sole confirmed model as selected without a catalog and keeps effort and its model link", async () => {
+  it("lists a sole confirmed model as selected without a catalog beside its editable effort", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "access-test",
       models: [],
@@ -1267,7 +1186,7 @@ describe("last confirmed model label", () => {
     const onSetSessionConfigOption = vi.fn();
     renderControls({ sessionConfig, onSelectModel, onSetSessionConfigOption });
     const trigger = screen.getByLabelText("Model", { exact: true });
-    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+    expect(trigger).toHaveTextContent(/^GPT-6 AstraHigh$/);
     expect(trigger).toBeEnabled();
     fireEvent.click(trigger);
     const listbox = await screen.findByRole("listbox", {
@@ -1276,19 +1195,13 @@ describe("last confirmed model label", () => {
     const option = within(listbox).getByRole("option");
     expect(option).toHaveAccessibleName("GPT-6 Astra");
     expect(option).toHaveAttribute("aria-selected", "true");
+    expect(
+      await screen.findByRole("slider", { name: "Thinking level" }),
+    ).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(option);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(trigger).toHaveFocus();
-    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
-    const effort = screen.getByRole("button", {
-      name: "Thinking level: High",
-    });
-    expect(effort).toBeEnabled();
-    fireEvent.click(effort);
-    expect(await screen.findByRole("slider")).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Select model: GPT-6 Astra" }),
-    ).toBeVisible();
+    expect(trigger).toHaveTextContent(/^GPT-6 AstraHigh$/);
     expect(onSelectModel).not.toHaveBeenCalled();
     expect(onSetSessionConfigOption).not.toHaveBeenCalled();
   });
@@ -1361,14 +1274,16 @@ describe("last confirmed model label", () => {
     expect(onSelectModel).not.toHaveBeenCalled();
     expect(onSetSessionConfigOption).not.toHaveBeenCalled();
     expect(trigger).toBeEnabled();
-    expect(trigger).toHaveTextContent(/^Actual model$/);
-    expect(
-      screen.getByRole("button", { name: "Thinking level: High" }),
-    ).toBeEnabled();
+    expect(trigger).toHaveTextContent(/^Actual modelHigh$/);
+    await openModelPopover();
+    expect(await screen.findByRole("slider")).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
   });
   it.each(["before a first turn", "after choosing another catalog model"])(
-    "shows effort as unavailable until the selected model's session advertises levels, %s",
-    (order) => {
+    "keeps effort out of the model popover until the selected model's session advertises levels, %s",
+    async (order) => {
       useWorkbenchStore.setState({
         selectedHarnessId: "access-test",
         models: [
@@ -1383,25 +1298,21 @@ describe("last confirmed model label", () => {
         sessionModelId: firstTurn ? null : "old",
         sessionConfig: firstTurn ? null : confirmedModelConfig(),
       });
-      const unavailable = screen.getByRole("button", {
-        name: "Thinking level",
-      });
-      expect(unavailable).toBeDisabled();
-      expect(unavailable).toHaveAccessibleDescription(
-        "Available when the harness advertises effort controls for this session.",
-      );
+      expect(shownEffort()).toBeNull();
+      await openModelPopover();
+      expect(
+        screen.queryByRole("group", { name: "Thinking level" }),
+      ).toBeNull();
       view.rerenderControls({
         selectedModelId: "new",
         sessionHarnessId: "access-test",
         sessionModelId: "new",
         sessionConfig: confirmedModelConfig(),
       });
+      expect(shownEffort()).toBe("High");
       expect(
-        screen.getByRole("button", { name: "Thinking level: High" }),
-      ).toBeEnabled();
-      expect(
-        screen.queryByRole("button", { name: "Thinking level" }),
-      ).toBeNull();
+        await screen.findByRole("slider", { name: "Thinking level" }),
+      ).toHaveAttribute("aria-valuetext", "High");
     },
   );
 
@@ -1430,9 +1341,8 @@ describe("last confirmed model label", () => {
       expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         "Confirmed session model",
       );
-      expect(
-        screen.getByRole("button", { description: "Select effort" }),
-      ).toBeDisabled();
+      expect(shownEffort()).toBe("High");
+      expect(modelButton()).toBeDisabled();
       view.rerenderControls({
         ...selection,
         sessionHarnessId: null,
@@ -1449,9 +1359,7 @@ describe("last confirmed model label", () => {
       expect(
         screen.queryByRole("listbox", { name: "Select model" }),
       ).toBeNull();
-      expect(
-        screen.queryByRole("button", { description: "Select effort" }),
-      ).toBeNull();
+      expect(screen.queryByRole("slider")).toBeNull();
     },
   );
 
@@ -1676,7 +1584,10 @@ describe("composer permission mode picker", () => {
       });
       expect(renders).toHaveBeenCalledTimes(40);
       renders.mockClear();
-      const first = within(listbox).getByText("Advertised model 1");
+      // Keys reach the dialog's list from the focused option itself.
+      const first = within(listbox).getByRole("option", {
+        name: "Advertised model 1",
+      });
       fireEvent.keyDown(first, { key: "End" });
       expect(
         within(listbox).getByText("Advertised model 40").closest("button"),
@@ -1959,7 +1870,7 @@ describe("composer permission mode picker", () => {
     expect(screen.queryByText("Ask each time")).toBeNull();
   });
 
-  it("shows separate model and thinking controls with access beside them", async () => {
+  it("shows the model with its thinking level and access beside it", async () => {
     const sessionConfig = decodeSessionConfig({
       sageAgentSessionId: "session-1",
       runtimeEpoch: "1",
@@ -1993,9 +1904,7 @@ describe("composer permission mode picker", () => {
     expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       "Claude Opus 5.5",
     );
-    expect(
-      screen.getByRole("button", { description: "Select effort" }),
-    ).toHaveTextContent("High");
+    expect(shownEffort()).toBe("High");
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
@@ -2008,7 +1917,7 @@ describe("composer permission mode picker", () => {
     ).toBeVisible();
   });
 
-  it("sets the selected session model and thinking through their own pickers", async () => {
+  it("sets the selected session model and thinking through the model popover", async () => {
     const sessionConfig = decodeSessionConfig({
       sageAgentSessionId: "session-1",
       runtimeEpoch: "1",
@@ -2055,9 +1964,7 @@ describe("composer permission mode picker", () => {
       value: "sonnet",
     });
     expect(onSelectModel).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { description: "Select effort" }),
-    );
+    await openModelPopover();
     fireEvent.keyDown(
       await screen.findByRole("slider", { name: "Thinking level" }),
       {
@@ -2396,18 +2303,18 @@ describe("composer permission mode picker", () => {
       selectedModelId: "astra",
       onSelectModel,
     });
-    expect(screen.getByText("1M context")).toBeVisible();
+    expect(screen.queryByText("1M context")).toBeNull();
     const trigger = screen.getByLabelText("Model", { exact: true });
-    fireEvent.click(trigger);
-    const list = await screen.findByRole("listbox", { name: "Select model" });
-    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
-    expect(trigger).toHaveAttribute("aria-controls", list.id);
+    const dialog = await openModelPopover();
+    const list = screen.getByRole("listbox", { name: "Select model" });
+    expect(dialog).toContainElement(screen.getByText("1M context"));
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger).toHaveAttribute("aria-controls", dialog.id);
     const title = screen.getByText("Select model");
     expect(title).toBeVisible();
     expect(list).not.toContainElement(title);
     expect(list).toHaveAttribute("aria-labelledby", title.id);
     expect(list).not.toHaveAttribute("aria-label");
-    expect(list.closest(".menu-popover")).not.toHaveAttribute("aria-label");
     expect(Array.from(list.children)).toEqual(screen.getAllByRole("option"));
     expect(
       screen.queryByRole("combobox", { name: "Search models" }),
@@ -2586,9 +2493,7 @@ describe("composer permission mode picker", () => {
     ).toBeVisible();
     expect(screen.queryByText("Old Model")).toBeNull();
     expect(screen.queryByText("High")).toBeNull();
-    expect(
-      screen.queryByRole("button", { description: "Select effort" }),
-    ).toBeNull();
+    expect(screen.queryByRole("slider")).toBeNull();
   });
 
   it("replaces the hard-coded chip with the live persisted mode", async () => {

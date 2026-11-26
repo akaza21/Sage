@@ -37,7 +37,10 @@ export function promptAttachmentItems(
   );
 }
 
-const cancellableStates = new Set<TurnProjection["state"]>([
+/** States in which a turn is live: it can be cancelled and a new prompt can queue behind it. */
+export const liveTurnStates: ReadonlySet<TurnProjection["state"]> = new Set<
+  TurnProjection["state"]
+>([
   "sending",
   "running",
   "waitingModel",
@@ -94,7 +97,7 @@ export function cancellableTurnId(page: AcpChatPage): SageTurnId | null {
     (turn) =>
       turn.sessionId === session.id &&
       turn.runtimeEpoch === session.runtimeEpoch &&
-      cancellableStates.has(turn.state),
+      liveTurnStates.has(turn.state),
   );
   return active.length === 1 ? active[0].id : null;
 }

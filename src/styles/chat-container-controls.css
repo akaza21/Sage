@@ -2,16 +2,6 @@
   display: none;
 }
 
-.composer__effort-icon {
-  display: none;
-}
-
-.composer__access-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .composer__access-label > svg {
   flex: none;
 }
@@ -37,12 +27,9 @@
   white-space: nowrap;
 }
 
-.composer
-  [data-fit~="placeholder"]
-  .composer__effort-picker:not([aria-controls]),
-.composer [data-fit~="access"] .composer__access-label,
-.composer [data-fit~="harness"] .composer__harness,
-.composer [data-fit~="effort"] .composer__effort-picker,
+/* Access and harness show as their icons; their names stay accessible. */
+.composer .composer__access-label,
+.composer .composer__harness,
 .composer [data-fit~="model"] .composer__model-trigger {
   width: var(--composer-icon-target);
   min-width: var(--composer-icon-target);
@@ -51,42 +38,41 @@
   padding: 0;
 }
 
+.composer .composer__access-text,
 .composer
-  [data-fit~="placeholder"]
-  .composer__effort-picker:not([aria-controls])
-  :is(.composer__effort-label, .composer__effort-chevron),
-.composer [data-fit~="capacity"] .composer__capacity,
-.composer [data-fit~="access"] .composer__access-text,
-.composer
-  [data-fit~="harness"]
   .composer__harness
   :is(.searchable-picker__trigger-label, .searchable-picker__chevron),
-.composer
-  [data-fit~="effort"]
-  .composer__effort-picker
-  :is(.composer__effort-label, .composer__effort-chevron),
 .composer [data-fit~="effort"] .composer__model-effort,
 .composer
   [data-fit~="model"]
   .composer__model-trigger
-  :is(.composer__model-label, svg:last-child),
-.composer [data-fit~="effort-menu"] .composer__effort-picker {
+  :is(.composer__model-label, svg:last-child) {
   display: none;
 }
 
-.composer
-  [data-fit~="placeholder"]
-  .composer__effort-picker:not([aria-controls])
-  .composer__effort-icon,
-.composer [data-fit~="effort"] .composer__effort-icon,
 .composer [data-fit~="model"] .composer__model-icon {
   display: block;
 }
 
-.composer [data-fit~="harness"] .composer__harness .searchable-picker__trigger {
+.composer .composer__harness .searchable-picker__trigger {
   min-width: var(--composer-icon-target);
   justify-content: center;
   padding: 0;
+}
+
+/* Harness, model and thinking level read as one chip. */
+.composer__selector {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.composer__selector:hover {
+  background: var(--color-surface-hover);
+}
+
+.composer__selector .composer__model-group {
+  margin-left: 0;
 }
 
 /* The model name takes the room the other controls leave and truncates no
@@ -96,7 +82,7 @@
    replaces the name with its icon, the trigger keeps the icon target. */
 .composer
   [data-fit~="model-shrink"]:not([data-fit~="model"])
-  > .composer__model-group {
+  :is(.composer__selector, .composer__model-group) {
   flex: 1 1 0;
 }
 

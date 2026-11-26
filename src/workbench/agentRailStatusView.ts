@@ -1,5 +1,8 @@
 import type { AgentRailChat, SessionStatus } from "../domain/workbench";
-import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
+import {
+  sessionRailLive,
+  sessionRailStatusLabel,
+} from "../features/chat/acp/sessionRail";
 
 export const AGENT_RAIL_ORGANIZE_MODES = ["project", "list"] as const;
 export type AgentRailOrganizeMode = (typeof AGENT_RAIL_ORGANIZE_MODES)[number];
@@ -19,14 +22,9 @@ export function agentRailTrailingState(input: {
   status?: SessionStatus;
   unread: boolean;
 }): AgentRailTrailingState | null {
-  if (
-    input.status === "failed" ||
-    input.status === "waiting" ||
-    input.status === "working" ||
-    input.status === "recovering"
-  ) {
+  if (input.status === "failed" || sessionRailLive(input.status)) {
     return {
-      kind: input.status,
+      kind: input.status as AgentRailTrailingStateKind,
       label: sessionRailStatusLabel(input.status),
     };
   }

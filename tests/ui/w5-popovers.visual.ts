@@ -165,7 +165,7 @@ for (const width of [1888, 720, 480]) {
           profile.effort,
         );
       else
-        await expect(composer.locator(".composer__effort-picker")).toHaveCount(
+        await expect(composer.locator(".composer__model-effort")).toHaveCount(
           0,
         );
       const add = composer.getByRole("button", {
@@ -173,48 +173,41 @@ for (const width of [1888, 720, 480]) {
         exact: true,
       });
       if (width === 480) await expectCompactComposerTargets(composer);
-      const compactEffort = await composer.evaluate(
-        (element) => element.clientWidth <= 320,
-      );
-      // The effort control takes toolbar room, so it may have folded into
-      // the Add menu since the options pass above.
+      // The level lives in the model popover at every width, never in Add.
       await add.click();
       await expect(
         page.getByRole("menuitem", { name: "Thinking level" }),
-      ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
+      ).toHaveCount(0);
       await expect(
         page.getByRole("menuitem", { name: "Work in a project", exact: true }),
       ).toHaveCount(hasProjects ? 1 : 0);
       await page.keyboard.press("Escape");
       for (const [name, selector] of [
-        ...(profile.effort && !compactEffort
-          ? [
-              [
-                `Thinking level: ${profile.effort.currentValue === "medium" ? "Medium" : "High"}`,
-                ".composer__effort-menu",
-              ],
-            ]
-          : []),
         ["Model", ".composer__model-menu"],
         ["Harness", ".composer__harness-menu"],
       ]) {
         const trigger = composer.getByRole("button", { name, exact: true });
         // Without an advertised access mode the composer is blocked
         // (CP-29d), so the model picker stays disabled rather than inventing one.
-        if (name === "Model" && profile.access.length === 0) {
+        if (
+          name === "Model" &&
+          profile.access.length === 0 &&
+          !profile.effort
+        ) {
           await expect(trigger).toBeDisabled();
           continue;
         }
         await trigger.click();
         await contained(page.locator(selector), trigger, pane);
-        if (selector === ".composer__effort-menu") {
+        if (name === "Model" && profile.effort) {
           await expect(page.locator(".composer-effort__level")).toHaveText(
-            profile.effort!.currentValue === "medium" ? "Medium" : "High",
+            profile.effort.currentValue === "medium" ? "Medium" : "High",
           );
           const reset = page.getByRole("button", { name: "Reset effort" });
-          if (profile.effort?.defaultValue) await expect(reset).toBeVisible();
+          if (profile.effort.defaultValue) await expect(reset).toBeVisible();
           else await expect(reset).toHaveCount(0);
-        } else await subtleSelection(page.locator(selector));
+        }
+        await subtleSelection(page.locator(selector));
         await page.keyboard.press("Escape");
         await expect(trigger).toBeFocused();
       }

@@ -39,9 +39,7 @@ it("cancels a cold model import without stealing focus and unmounts a closed men
           triggerRef={triggerRef}
           panelId="models"
           open={open}
-          effortOpen={false}
           onToggle={() => setOpen(!open)}
-          onToggleEffort={() => {}}
           onDismiss={() => setOpen(false)}
           choices={[
             { id: "actual", name: "Actual model" },

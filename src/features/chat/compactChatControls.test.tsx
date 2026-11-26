@@ -119,9 +119,7 @@ describe("Compact chat controls", () => {
         triggerRef={createRef()}
         panelId="models"
         open={false}
-        effortOpen={false}
         onToggle={() => {}}
-        onToggleEffort={() => {}}
         onDismiss={() => {}}
         choices={[
           { id: "model", name: "Advertised long model" },

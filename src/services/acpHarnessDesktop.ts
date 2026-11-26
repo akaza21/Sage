@@ -17,7 +17,8 @@ export interface HarnessSignInCommand {
 // Evidence outlives lazy UI initialization without retaining pages or errors.
 type SignInEvidence = readonly [
   evidenceAt: number,
-  state: "signedIn" | "signedOut" | "unavailable",
+  // A refused turn is a reason to read the account again, not a sign-out.
+  state: "signedIn" | "signedOut" | "unavailable" | "refused",
 ];
 export const harnessSignInEvidence = new Map<string, SignInEvidence>();
 export function rememberSignInEvidence(
@@ -48,7 +49,7 @@ export const harnessSignInFailures: {
 } = {
   command({ bindingId, busy, error }: HarnessSignInCommand) {
     if (busy && error?.failure.kind === "signInRequired")
-      rememberSignInEvidence(bindingId, error.failure.terminalAt, "signedOut");
+      rememberSignInEvidence(bindingId, error.failure.terminalAt, "refused");
   },
   page(page: AcpChatPage) {
     for (const turn of page.turns)
@@ -60,7 +61,7 @@ export const harnessSignInFailures: {
           page.sessions.find((session) => session.id === turn.sessionId)
             ?.bindingId,
           turn.terminalAt,
-          "signedOut",
+          "refused",
         );
   },
 };

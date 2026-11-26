@@ -248,26 +248,6 @@ export function composerNativeRows(
       plan ? <Lightbulb size={14} aria-hidden="true" /> : null,
     );
   }
-  // This action switches the toolbar's active popover itself.
-  if (props.onOpenEffort)
-    add(
-      "effort",
-      "modelAndAccess",
-      "Thinking level",
-      <button
-        type="button"
-        role="menuitem"
-        className="menu-item"
-        disabled={disabled}
-        tabIndex={-1}
-        onClick={props.onOpenEffort}
-        data-overflow-control="effort"
-      >
-        Thinking level
-      </button>,
-      undefined,
-      "effortPicker",
-    );
   for (const option of sessionConfigControls(sessionConfig, "other")) {
     if (option.type === "boolean") {
       choiceRow(

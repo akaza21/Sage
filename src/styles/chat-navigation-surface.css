@@ -158,9 +158,14 @@
   white-space: nowrap;
 }
 
+/* The pill yields to the title; the row spinner still marks approval. */
 .rail-pill--approval {
+  min-width: 0;
+  flex-shrink: 1000;
+  overflow: hidden;
   color: var(--rail-approval-text);
   background: var(--rail-approval-fill);
+  text-overflow: ellipsis;
 }
 
 .project-chat__title-label {

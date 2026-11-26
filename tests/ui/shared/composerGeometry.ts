@@ -79,7 +79,6 @@ export async function expectCompactComposerTargets(
         ".composer__access-label",
         ".composer__harness button.searchable-picker__trigger",
         ".composer__model-trigger",
-        ".composer__effort-picker",
         ".composer__mic",
         ".send-button",
       ].join(","),
@@ -130,16 +129,13 @@ export async function expectCompactComposerTargets(
 /**
  * Toolbar labels from lowest to highest priority. A label may compact only
  * after every lower-priority label that is present has compacted. The
- * context meter beside the send action goes right after the disabled effort
- * placeholder.
+ * context meter beside the send action goes first, then the thinking level
+ * on the model chip, then the model name. Access and harness are icons at
+ * every width, so they hold no label here.
  */
 export const COMPOSER_LABEL_PRIORITY = [
-  ".composer__effort-picker:not([aria-controls]) .composer__effort-label",
   ".composer__context-slot",
-  ".composer__capacity",
-  ".composer__effort-picker[data-overflow-control] .composer__effort-label",
-  ".composer__access-text",
-  ".composer__harness .searchable-picker__trigger-label",
+  ".composer__model-effort",
   ".composer__model-label",
 ];
 
@@ -184,7 +180,7 @@ export async function sweepComposerToolbar(
           const box = label?.getBoundingClientRect();
           const shown = Boolean(box && box.width > 0);
           const host = label?.closest(
-            "button, .composer__model-trigger, .composer__capacity, .composer__context-slot, label",
+            "button, .composer__model-trigger, .composer__context-slot, label",
           );
           const hostBox = host?.getBoundingClientRect();
           return {

@@ -61,6 +61,12 @@ export function ChatModelPicker({
     });
     return grouped;
   }, [models]);
+  // The list is one tab stop, on the selected model, so Tab from it moves on
+  // to the thinking level below.
+  const visible = models.slice(0, MAX_VISIBLE_MODELS);
+  const tabStop = visible.some((model) => model.id === selectedId)
+    ? selectedId
+    : visible[0]?.id;
   return (
     <>
       <p id={`${id}-title`} className="composer-model-picker__title">
@@ -80,6 +86,7 @@ export function ChatModelPicker({
               candidate={candidate}
               active={false}
               selected={candidate.id === selectedId}
+              tabIndex={candidate.id === tabStop ? 0 : -1}
               showSelectedCheck
               disabled={disabled}
               onSelect={onSelect}

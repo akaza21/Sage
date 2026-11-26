@@ -1,4 +1,4 @@
-import { useWorkbenchStore } from "../../app/store";
+import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatQueueState } from "./useChatQueueState";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
@@ -15,15 +15,13 @@ export default function ChatQueueRuntime({
   const { page, selectedHarnessId, selectedModelId, discoveryPhase } =
     useChatHarnessSelection(chatId);
   const queue = useChatQueueState(chatId, page);
+  const owned = (state: WorkbenchState) =>
+    state.chatUiById[chatId ?? state.activeTabId ?? ""];
   const queuedTurnBarrier = useWorkbenchStore(
-    (state) =>
-      state.chatUiById[chatId ?? state.activeTabId ?? ""]?.queuedTurnBarrier ??
-      null,
+    (state) => owned(state)?.queuedTurnBarrier ?? null,
   );
   const knownTurnOrder = useWorkbenchStore(
-    (state) =>
-      state.chatUiById[chatId ?? state.activeTabId ?? ""]?.knownTurnOrder ??
-      null,
+    (state) => owned(state)?.knownTurnOrder ?? null,
   );
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const projectTransitioning = useWorkbenchStore(
@@ -56,6 +54,7 @@ export default function ChatQueueRuntime({
       projectTransitioning={projectTransitioning}
       canPrompt={canPrompt}
       useNativeAcp={useNativeAcp}
+      page={page}
       submit={actions.submit}
     />
   );

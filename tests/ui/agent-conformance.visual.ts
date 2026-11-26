@@ -918,19 +918,21 @@ test.describe("Agent Panel V1 conformance — composer", () => {
         await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
       fixtures.installVisualComposerEffortFixture();
     });
+    // The model chip shows the level and opens it with the model list.
     const thinking = composer(page).getByRole("button", {
-      name: "Thinking level: Medium",
+      name: "Model",
       exact: true,
     });
     await expect(thinking).toBeVisible();
     await expect(thinking).toBeEnabled();
-    await expect(thinking).toHaveText("Medium");
+    await expect(thinking.locator(".composer__model-effort")).toHaveText(
+      "Medium",
+    );
     await thinking.click();
-    const input = page.getByRole("slider", {
-      name: "Thinking level",
-      exact: true,
-    });
-    await expect(input).toBeFocused();
+    const input = page
+      .getByRole("dialog", { name: "Select model" })
+      .getByRole("slider", { name: "Thinking level", exact: true });
+    await expect(input).toBeVisible();
     await expect(input).toHaveAttribute("min", "0");
     await expect(input).toHaveAttribute("max", "2");
     await expect(input).toHaveAttribute("aria-valuetext", "Medium");
@@ -1138,11 +1140,15 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
     page,
   }) => {
-    // The idle composer's one turn control (the mic) leaves the meter room at
-    // 460px; 424px is the narrow lane that still has to drop it.
+    // The decluttered row (icon-only access and harness, one model chip)
+    // leaves the meter room in the narrowest agent lane, so the composer
+    // itself is narrowed until the row has to drop it.
     await page.setViewportSize({ width: 424, height: 900 });
     await openScenario(page, "agent-composer-context-known", "agent");
     await settleChatProjections(page);
+    await composer(page).evaluate((element) => {
+      (element as HTMLElement).style.width = "200px";
+    });
     await expect(
       composer(page).getByLabel("Composer context", { exact: true }),
     ).toHaveCount(0);
@@ -1150,6 +1156,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "data-fit",
       /(^| )context( |$)/,
     );
+    await composer(page).evaluate((element) => {
+      (element as HTMLElement).style.width = "";
+    });
     await page.setViewportSize({ width: 1888, height: 900 });
     await expect(
       composer(page).getByLabel("Composer context", { exact: true }),

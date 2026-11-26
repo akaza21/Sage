@@ -16,22 +16,14 @@ export function turnHasActivities(
   );
 }
 
-export function formatWorkedDuration(
+/** "Worked for 3m 12s" once settled, "Working for 3s" while live. */
+export function formatDuration(
+  verb: "Worked" | "Working",
   startedAt: number,
-  finishedAt: number | null,
+  endedAt: number | null,
 ): string | null {
-  const seconds = elapsedSecondsBetween(startedAt, finishedAt);
+  const seconds = elapsedSecondsBetween(startedAt, endedAt);
   return seconds === null
     ? null
-    : `Worked for ${formatElapsedSeconds(seconds)}`;
-}
-
-export function formatWorkingDuration(
-  startedAt: number,
-  nowAt: number,
-): string | null {
-  const seconds = elapsedSecondsBetween(startedAt, nowAt);
-  return seconds === null
-    ? null
-    : `Working for ${formatElapsedSeconds(seconds)}`;
+    : `${verb} for ${formatElapsedSeconds(seconds)}`;
 }

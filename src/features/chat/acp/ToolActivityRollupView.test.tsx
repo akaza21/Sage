@@ -547,7 +547,11 @@ describe("ToolActivityRollup", () => {
     ["completed", "Ran commands", "Ran tests"],
     ["inProgress", "Running a command", "Running tests"],
     ["pending", "Running a command", "Running tests"],
-    ["waitingForApproval", "Running a command", "Running tests"],
+    [
+      "waitingForApproval",
+      "Awaiting approval to run a command",
+      "Awaiting approval to run tests",
+    ],
     ["failed", "Ran commands", "Ran tests"],
     ["cancelled", "Ran commands", "Ran tests"],
     ["declined", "Ran commands", "Ran tests"],
@@ -558,10 +562,10 @@ describe("ToolActivityRollup", () => {
         { ...tool("command-1", "execute"), toolState },
         { ...tool("command-2", "execute"), toolState },
       ];
-      const live = ordinary.startsWith("Running");
+      const live = !ordinary.startsWith("Ran");
       expect(toolRollupLabel("execute", items)).toBe(ordinary);
       expect(toolRollupLabel("execute", items, "declaredTest")).toBe(
-        live ? "Running tests" : "Ran tests · 2 commands",
+        live ? declaredSingleton : "Ran tests · 2 commands",
       );
       expect(toolRollupLabel("execute", items, "ordinary", true)).toBe(
         "Ran commands",
@@ -666,13 +670,17 @@ describe("ToolActivityRollup", () => {
     ] as const)(
       "names the live %s command and keeps the state in the row",
       (toolState, rowState) => {
+        const verb =
+          toolState === "waitingForApproval"
+            ? "Awaiting approval to run"
+            : "Running";
         const count =
           toolState === "inProgress" ||
           toolState === "pending" ||
           toolState === "waitingForApproval"
             ? commandActivity === "declaredTest"
-              ? "Running tests"
-              : "Running a command"
+              ? `${verb} tests`
+              : `${verb} a command`
             : settled;
         const completed = tool("completed", "execute", [], commandActivity);
         const unsettled = {
@@ -721,7 +729,7 @@ describe("ToolActivityRollup", () => {
     ["inProgress", "Running"],
     ["completed", "Ran"],
     ["pending", "Running"],
-    ["waitingForApproval", "Running"],
+    ["waitingForApproval", "Awaiting approval to run"],
     ["failed", "Ran"],
     ["cancelled", "Ran"],
     ["declined", "Ran"],
@@ -769,7 +777,7 @@ describe("ToolActivityRollup", () => {
         summary.querySelector(".acp-tool-rollup__label"),
       ).toHaveTextContent(`${action} npm run check`);
       expect(Boolean(summary.querySelector(".acp-live-shimmer"))).toBe(
-        action === "Running",
+        action !== "Ran",
       );
       expect(summary.querySelector(".acp-state")).toBeNull();
       expect(screen.queryByLabelText("Command line")).toBeNull();
