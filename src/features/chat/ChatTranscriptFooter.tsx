@@ -74,11 +74,15 @@ export function ChatTranscriptTurnSummary({
     ) : null;
 
   if (!terminal) {
-    const thinking = hasActivities || background ? null : (
-      <p className="acp-thought acp-live-shimmer" data-activity-kind="thought">
-        Thinking
-      </p>
-    );
+    const thinking =
+      hasActivities || background ? null : (
+        <p
+          className="acp-thought acp-live-shimmer"
+          data-activity-kind="thought"
+        >
+          Thinking
+        </p>
+      );
     if (!runningHeading && thinking) return thinking;
     return (
       <div className="chat-transcript-work chat-transcript-work--running">

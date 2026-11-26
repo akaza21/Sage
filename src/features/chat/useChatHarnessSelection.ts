@@ -182,12 +182,12 @@ export function useChatHarnessSelection(chatId?: string): {
     !(evidence?.[1] === "signedIn" && evidence[0] > (refused.terminalAt ?? 0))
       ? "signInRequired"
       : sessionHarnessId &&
-    sessionHarnessId === selectedHarnessId &&
-    sessionModelId === selectedModelId
-      ? "ready"
-      : chatId !== undefined && globalModels === null
+          sessionHarnessId === selectedHarnessId &&
+          sessionModelId === selectedModelId
         ? "ready"
-        : harnessDiscoveryPhase;
+        : chatId !== undefined && globalModels === null
+          ? "ready"
+          : harnessDiscoveryPhase;
   useLayoutEffect(() => {
     // Materialize pre-session defaults through the same owned chat selection
     // as a draft's explicit pick, so rendering and native start agree.

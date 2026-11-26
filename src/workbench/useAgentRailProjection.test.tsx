@@ -191,7 +191,7 @@ it("keeps a question's Needs input pill without a mounted chat", () => {
   seed();
   const { result } = renderHook(() => useAgentRailInteractions());
   mirrorLatest({ ...settled, state: "waitingUser", terminalAt: null });
-  expect(
-    sessionRailPill(false, result.current.attention.get("chat-1")),
-  ).toBe("Needs input");
+  expect(sessionRailPill(false, result.current.attention.get("chat-1"))).toBe(
+    "Needs input",
+  );
 });
