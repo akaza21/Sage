@@ -28,7 +28,9 @@ export function HarnessCard({
 }) {
   const headingId = useId();
   const runnable =
-    status.badge !== "unavailable" && status.badge !== "notInstalled";
+    status.badge === "ready" ||
+    status.badge === "available" ||
+    status.badge === "signInNeeded";
   const { version, update } = harness;
   return (
     <section

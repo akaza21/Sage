@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,6 +18,7 @@ import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { useAgentSettingsState } from "./agentSettingsState";
 import type * as AcpDesktopModule from "../../services/acpDesktop";
 
+vi.mock("../../ports/desktopRuntime", () => ({ isTauriRuntime: () => true }));
 const claude = vi.hoisted(() => ({ loggedIn: true, at: 100 }));
 vi.mock("../../services/acpDesktop", async (importOriginal) => {
   const actual = await importOriginal<typeof AcpDesktopModule>();
@@ -132,6 +134,7 @@ it("gives each harness its own headed card with a text badge, runnable ones firs
   expect(
     screen
       .getAllByRole("heading", { level: 3 })
+      .filter((heading) => heading.closest("section[aria-labelledby]"))
       .map((heading) => heading.textContent),
   ).toEqual(["Pi", "Blocked", "Missing"]);
   expect(
@@ -204,4 +207,40 @@ it("keeps a non-selected harness's details collapsed until asked", async () => {
   expect(hint).not.toBeVisible();
   fireEvent.click(within(pi).getByText("Details"));
   expect(hint).toBeVisible();
+});
+
+it("rechecks a signed-out probe when the window regains focus", async () => {
+  useWorkbenchStore.setState({
+    harnesses: [available("cli", "CLI agent", { signIn: cliSignIn })],
+  });
+  claude.loggedIn = false;
+  await refreshHarnessSignIn("cli");
+  render(<AgentSettingsSurface />);
+  const cli = await card("CLI agent");
+  expect(within(cli).getByText("Not signed in.")).toBeVisible();
+  // Let the mount-time recheck settle before the user signs in elsewhere.
+  await act(async () => {});
+  claude.loggedIn = true;
+  fireEvent.focus(window);
+  expect(await within(cli).findByText("Signed in.")).toBeVisible();
+  expect(within(cli).getByText("Ready")).toBeVisible();
+});
+
+it("says a harness is still being detected instead of calling it unavailable", async () => {
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...base,
+        id: "d",
+        name: "Detecting one",
+        installState: "detecting",
+        bindingId: null,
+      },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  const detecting = await card("Detecting one");
+  expect(within(detecting).getByText("Checking")).toBeVisible();
+  expect(within(detecting).queryByText("Unavailable")).toBeNull();
+  expect(within(detecting).queryByRole("button")).toBeNull();
 });

@@ -35,9 +35,15 @@ export function AgentHarnessSettings({
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
   useSyncExternalStore(subscribeHarnessSignIn, harnessSignInRevision);
+  // A new inventory (Refresh discovery) or window focus rechecks a signed-out
+  // probe at once, so a terminal sign-in shows without waiting for the TTL.
   useEffect(() => {
-    if (isTauriRuntime())
-      ensureHarnessSignInChecked(harnesses.slice(0, 32).map(({ id }) => id));
+    if (!isTauriRuntime()) return;
+    const ids = harnesses.slice(0, 32).map(({ id }) => id);
+    const recheck = () => ensureHarnessSignInChecked(ids, true);
+    recheck();
+    window.addEventListener("focus", recheck);
+    return () => window.removeEventListener("focus", recheck);
   }, [harnesses]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);

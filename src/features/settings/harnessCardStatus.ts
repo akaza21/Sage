@@ -3,10 +3,16 @@ import type { HarnessSignInState } from "../harness/harnessSignIn";
 import type { HarnessDiscoveryPhase as Phase } from "../../app/harnessSlice";
 
 export type HarnessBadge =
-  "ready" | "available" | "signInNeeded" | "unavailable" | "notInstalled";
+  | "ready"
+  | "checking"
+  | "available"
+  | "signInNeeded"
+  | "unavailable"
+  | "notInstalled";
 
 export const HARNESS_BADGE_LABEL: Record<HarnessBadge, string> = {
   ready: "Ready",
+  checking: "Checking",
   available: "Available",
   signInNeeded: "Sign-in needed",
   unavailable: "Unavailable",
@@ -48,7 +54,12 @@ export function harnessCardStatus({
     };
   if (disabledReason)
     return {
-      badge: "unavailable",
+      // Detection or an install in progress is not a fault: say so, undimmed.
+      badge:
+        harness.installState === "detecting" ||
+        harness.installState === "installing"
+          ? "checking"
+          : "unavailable",
       summary: disabledReason,
       showSignInHint: false,
     };
@@ -112,6 +123,7 @@ function probeSignIn(probe: HarnessSignInState): {
 
 const GROUP_ORDER: Record<HarnessBadge, number> = {
   ready: 0,
+  checking: 1,
   available: 0,
   signInNeeded: 0,
   unavailable: 1,
