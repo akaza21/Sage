@@ -111,7 +111,9 @@ export function PermissionPrompt({
     approvalHold.at = Date.now();
     setSent([item.id, true]);
     void resolveApproval(item, decision).then(
-      () => switchMode && leavePlanAccess(item.sessionId, decision),
+      () => {
+        if (switchMode) void leavePlanAccess(item.sessionId, decision);
+      },
       () => setSent([item.id, false]),
     );
   };

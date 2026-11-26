@@ -19,9 +19,9 @@ type PermissionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
 const PLAN = "# Plan\n\n- Edit greet.js\n- Run it";
 
-function planCard(): PermissionItem {
+function planCard(id = "plan-card"): PermissionItem {
   return {
-    id: "plan-card",
+    id,
     projectId: "project-1",
     chatId: "chat-1",
     sessionId: "session-1",
@@ -103,7 +103,7 @@ describe("PermissionPrompt plan approval", () => {
     cleanup();
     useChatAccessStore.setState({ modes: {}, error: null });
     access.get.mockResolvedValue("plan");
-    render(<PermissionPrompt items={[{ ...planCard(), id: "plan-2" }]} />);
+    render(<PermissionPrompt items={[planCard("plan-2")]} />);
     fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(access.set).not.toHaveBeenCalled();
