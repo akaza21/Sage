@@ -50,6 +50,16 @@ export function SessionStrip({
   );
 }
 
+export function SessionSurface({ page }: { page: AcpChatPage }) {
+  return (
+    <ConversationView
+      view="SessionSurfacePanel"
+      surface={page.sessionSurface}
+      chatId={page.chatId}
+    />
+  );
+}
+
 interface Dismissed {
   session: string;
   versions: readonly string[];

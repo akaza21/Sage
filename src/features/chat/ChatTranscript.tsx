@@ -247,12 +247,7 @@ export function ChatTranscript({
                 {page.sessionSurface ? (
                   // After the turns: Undo and background tasks belong to the
                   // latest one, not above the first prompt.
-                  <NoticePart
-                    part="ConversationView"
-                    view="SessionSurfacePanel"
-                    surface={page.sessionSurface}
-                    chatId={page.chatId}
-                  />
+                  <NoticePart part="SessionSurface" page={page} />
                 ) : null}
               </>
             ) : (
