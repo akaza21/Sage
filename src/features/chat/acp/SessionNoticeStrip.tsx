@@ -46,13 +46,6 @@ export function SessionStrip({
           notices={page.sessionNotices}
         />
       ) : null}
-      {page.sessionSurface ? (
-        <ConversationView
-          view="SessionSurfacePanel"
-          surface={page.sessionSurface}
-          chatId={page.chatId}
-        />
-      ) : null}
     </>
   );
 }

@@ -206,9 +206,7 @@ export function ChatTranscript({
               historyNotice
             ) : useNativeAcp && page ? (
               <>
-                {page.forkedFrom ||
-                page.sessionNotices?.length ||
-                page.sessionSurface ? (
+                {page.forkedFrom || page.sessionNotices?.length ? (
                   <NoticePart
                     part="SessionStrip"
                     page={page}
@@ -246,6 +244,16 @@ export function ChatTranscript({
                     ) : undefined
                   }
                 />
+                {page.sessionSurface ? (
+                  // After the turns: Undo and background tasks belong to the
+                  // latest one, not above the first prompt.
+                  <NoticePart
+                    part="ConversationView"
+                    view="SessionSurfacePanel"
+                    surface={page.sessionSurface}
+                    chatId={page.chatId}
+                  />
+                ) : null}
               </>
             ) : (
               <LegacyTranscriptPart

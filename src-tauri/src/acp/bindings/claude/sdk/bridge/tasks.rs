@@ -22,6 +22,10 @@ const ID_BYTES: usize = 256;
 pub(super) struct Tasks {
     /// By task id: whether it runs in the background, and its description.
     seen: VecDeque<(String, bool, Option<String>)>,
+    /// The latest background task to end since Claude Code last ran.
+    ended: Option<String>,
+    /// Runs Claude Code started on its own, numbering their rows.
+    own_runs: u64,
 }
 
 impl Tasks {
@@ -84,7 +88,27 @@ impl SdkBridge {
                     .and_then(Value::as_str)
                     .map(str::to_owned)
             });
+        if state.is_terminal() {
+            self.tasks.ended = Some(label.clone());
+        }
         let id = format!("{TASK_PREFIX}{id}");
         activity(inbound, &id, BACKGROUND_TASK, &label, state, progress.as_deref());
+    }
+
+    /// A run starts. One Claude Code started on its own, with no message of
+    /// the user's, says why in its turn: usually a background task ended.
+    pub(super) fn run_started(&mut self, own: bool, inbound: &mut Inbound) {
+        let ended = self.tasks.ended.take();
+        if !own {
+            return;
+        }
+        self.tasks.own_runs += 1;
+        let label = match ended {
+            Some(task) => format!("Background task finished: {task}"),
+            None => "Claude Code started this turn on its own".to_owned(),
+        };
+        let id = format!("run:{}", self.tasks.own_runs);
+        let state = SessionActivityState::Completed;
+        activity(inbound, &id, "harnessRun", &label, state, None);
     }
 }

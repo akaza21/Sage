@@ -18,8 +18,6 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import { MenuPopover } from "../ui/MenuPopover";
-import { lazyParts } from "../features/chat/lazyParts";
-import type * as ConversationChunk from "../features/chat/ConversationActions";
 import {
   liveAgent,
   projectRecentAgents,
@@ -38,8 +36,10 @@ const AgentTaskSubagentSummary = lazy(() =>
 );
 
 // Stop shares the transcript's session controls, loaded with them.
-const ConversationPart = lazyParts<typeof ConversationChunk>(
-  () => import("../features/chat/ConversationActions"),
+const BackgroundProcesses = lazy(() =>
+  import("../features/chat/ConversationActions").then((module) => ({
+    default: module.BackgroundProcesses,
+  })),
 );
 
 export function AgentResourcesPopover({
@@ -221,11 +221,9 @@ export function AgentResourcesPopover({
       <section aria-label="Background processes">
         <strong>Background processes</strong>
         {validPage && page?.sessionSurface ? (
-          <ConversationPart
-            part="BackgroundProcesses"
-            surface={page.sessionSurface}
-            chatId={chatId}
-          />
+          <Suspense>
+            <BackgroundProcesses surface={page.sessionSurface} chatId={chatId} />
+          </Suspense>
         ) : (
           <p>No background processes reported.</p>
         )}
