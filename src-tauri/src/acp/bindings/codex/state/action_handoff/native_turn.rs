@@ -40,9 +40,11 @@
 //! prompted under workspace-write the reviewer ran under workspace-write
 //! even when the request carried a read-only policy. So a review that rule
 //! would refuse is refused before its Turn is prepared, and `review/start`
-//! is never sent. The outcome is already known then: no `turn/start` is
-//! unanswered, so the thread's access cannot change before the review is
-//! answered. For the same reason a raced `turn/started` is never refused
+//! is never sent. The outcome is already known then, so the thread's access
+//! cannot change before the review is answered: `prompt_with_settings`
+//! refuses while a `turn/start` is pending, and the reusable path fences
+//! stdout between the check and the write (the first-turn path has no
+//! fence, but no `turn/start` precedes it). For the same reason a raced `turn/started` is never refused
 //! against a sent review; that refusal still guards prompts and compacts.
 //!
 //! Two limits remain. A goal `turn/started` that arrives after a compact's

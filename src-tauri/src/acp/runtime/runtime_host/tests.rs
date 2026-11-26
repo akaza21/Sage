@@ -1900,9 +1900,13 @@ fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
         HostError::Capacity,
         HostError::RepositoryBusy(crate::repository_mutation_guard::RepositoryPause::ChangingFiles),
         HostError::RepositoryBusy(crate::repository_mutation_guard::RepositoryPause::UntilRestart),
+        // What a harness adapter's `prompt_refusal` turns into for this prompt.
+        HostError::PromptRefused("This prompt was not started; ask again once it can run."),
     ] {
-        let host =
-            RuntimeHost::start(FakeEngine::new([]).with_prepare_error(error.clone())).unwrap();
+        let engine =
+            FakeEngine::new([PromptWrite::Complete(turn())]).with_prepare_error(error.clone());
+        let observed = engine.clone();
+        let host = RuntimeHost::start(engine).unwrap();
         let runtime = owner("project-a");
         host.activate(runtime.clone()).unwrap();
         // The chat offers the draft back only on this proof.
@@ -1911,6 +1915,12 @@ fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
             Err(PromptSendError::not_started(error))
         );
         assert_eq!(host.state().unwrap(), HostState::Idle);
+        assert_eq!(observed.events(), ["activate", "preparePrompt"]);
+        // The runtime stays usable: the next prompt is taken and written.
+        assert_eq!(
+            host.send(prompt(&runtime)).unwrap(),
+            HostOutcome::PromptAccepted
+        );
         host.shutdown(RuntimeHost::close_deadline()).unwrap();
     }
 }
