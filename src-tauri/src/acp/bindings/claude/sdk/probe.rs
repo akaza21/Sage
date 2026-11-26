@@ -146,9 +146,10 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value
     if let Some(stdout) = stdout {
         thread::spawn(move || {
             let lines = BufReader::new(stdout.take(PROBE_BYTES)).lines();
+            let mut seen = 0;
             for answer in lines.map_while(Result::ok).filter_map(|line| answer(&line)) {
-                let last = answer.0 == SETTINGS_ID;
-                if sender.send(answer).is_err() || last {
+                seen += 1;
+                if sender.send(answer).is_err() || seen == 2 {
                     break;
                 }
             }
@@ -161,21 +162,38 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value
             .and_then(|()| stdin.flush())
             .is_ok()
     });
-    // Claude Code answers in order; settings that come late or not at all stay unknown.
-    let next = |id: &str, wait| {
-        let (answered, reply) = receiver.recv_timeout(wait).ok()?;
-        (answered == id).then_some(reply).flatten()
-    };
-    let reply = written
-        .then(|| next(REQUEST_ID, PROBE_TIMEOUT))
-        .flatten()
-        .map(|reply| (reply, next(SETTINGS_ID, SETTINGS_TIMEOUT)));
+    let reply = written.then(|| collect(&receiver)).flatten();
     drop(stdin);
     let _ = child.kill();
     thread::spawn(move || {
         let _ = child.wait();
     });
     reply
+}
+
+type Answer = (&'static str, Option<Value>);
+
+/// The `initialize` reply and the settings reply, matched by id in whatever order they come.
+/// Settings that have not come [`SETTINGS_TIMEOUT`] after `initialize` stay unknown.
+fn collect(answers: &mpsc::Receiver<Answer>) -> Option<(Value, Option<Value>)> {
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    let (mut initialized, mut settings) = (None, None);
+    while settings.is_none() || initialized.is_none() {
+        let until = match initialized {
+            Some(_) => deadline.min(Instant::now() + SETTINGS_TIMEOUT),
+            None => deadline,
+        };
+        let Ok((id, reply)) = answers.recv_timeout(until.saturating_duration_since(Instant::now()))
+        else {
+            break;
+        };
+        if id == REQUEST_ID {
+            initialized = Some(reply?);
+        } else {
+            settings = Some(reply);
+        }
+    }
+    initialized.map(|initialized| (initialized, settings.flatten()))
 }
 
 /// An answer to one of the probe's requests: its id, and its reply when it succeeded.
@@ -289,6 +307,25 @@ mod tests {
         assert!(answer(&line("other", "success")).is_none());
         assert!(answer(&json!({"type": "system", "subtype": "init"}).to_string()).is_none());
         assert!(answer("not json").is_none());
+    }
+
+    #[test]
+    fn answers_are_matched_by_id_in_either_order_and_a_refused_initialize_fails() {
+        let collected = |answers: Vec<Answer>| {
+            let (sender, receiver) = mpsc::sync_channel(2);
+            for answer in answers {
+                sender.send(answer).unwrap();
+            }
+            collect(&receiver)
+        };
+        let models = || Some(json!({"models": [{"value": "default"}]}));
+        let settings = || Some(json!({"effective": {}}));
+        let (reply, read) =
+            collected(vec![(SETTINGS_ID, settings()), (REQUEST_ID, models())]).unwrap();
+        assert_eq!((reply, read), (models().unwrap(), settings()));
+        let (reply, read) = collected(vec![(SETTINGS_ID, None), (REQUEST_ID, models())]).unwrap();
+        assert_eq!((reply, read), (models().unwrap(), None));
+        assert!(collected(vec![(REQUEST_ID, None), (SETTINGS_ID, settings())]).is_none());
     }
 
     #[test]

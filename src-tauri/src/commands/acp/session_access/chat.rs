@@ -73,15 +73,14 @@ pub(crate) async fn set_chat_access(
         });
     }
     let session = request.session_id.as_str();
-    let previous = state
-        .settings
-        .chat_access(session)
-        .map_err(|_| access_unreadable())?;
+    // The mode a turn runs under now, the chat's choice or the default it follows.
+    let previous = turn_access_mode(&state, &binding_id, &request.session_id).ok();
     state
         .settings
         .set_chat_access(session, request.mode, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
-    let stepped_down = previous.is_some_and(SessionAccessMode::runs_unasked);
+    let stepped_down =
+        previous.is_some_and(SessionAccessMode::runs_unasked) && previous != Some(request.mode);
     let transition = state.project_transitions.lock().await;
     let Ok(generation) = ProjectGeneration::new(*transition) else {
         return Ok(ChatAccessChange::default());

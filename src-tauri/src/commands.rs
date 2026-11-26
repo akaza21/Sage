@@ -33,12 +33,31 @@ pub fn list_builtin_commands(state: State<'_, AppState>, harness_id: String) -> 
     state.harnesses.draft_builtin_commands(&harness_id)
 }
 
+/// A model probe can also learn the start mode the harness's own settings name, which moves its
+/// default access; the catalog is sent again when that changes what the WebView was told.
 #[tauri::command]
 pub async fn list_harness_models(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     harness_id: String,
 ) -> Result<Vec<ModelOption>, String> {
-    list_harness_models_async(&state.harnesses, &harness_id).await
+    let access = |harnesses: &HarnessCatalog| {
+        let definition = harnesses
+            .definitions()
+            .into_iter()
+            .find(|d| d.id == harness_id);
+        definition.and_then(|definition| serde_json::to_value(definition.access_modes).ok())
+    };
+    let before = access(&state.harnesses);
+    let models = list_harness_models_async(&state.harnesses, &harness_id).await;
+    if access(&state.harnesses) != before {
+        use tauri::Emitter;
+        let _ = app.emit(
+            "harness-discovery-changed-v1",
+            state.harnesses.definitions(),
+        );
+    }
+    models
 }
 
 trait HarnessModelLookup: Clone + Send + Sync + 'static {
