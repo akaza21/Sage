@@ -4,33 +4,15 @@ import {
   controlAcpSession,
   type SessionControlIntent,
 } from "../../../services/acpSessionSurface";
-import { currentContext } from "./useAcpChatActions";
+import { sessionRequest } from "./sessionRequest";
+
+export { sessionRequest };
 
 export type SessionControlStatus =
   | { kind: "idle" }
   | { kind: "pending" }
   | { kind: "done"; message: string }
   | { kind: "failed"; message: string };
-
-/** `control` addressed to the chat's running session, or `null` when none runs. */
-export function sessionRequest<Control>(
-  chatId: string | null | undefined,
-  control: Control,
-) {
-  const context = currentContext(chatId);
-  const session = context?.page.sessions.find(
-    (item) => item.id === context.page.currentSessionId,
-  );
-  return context && session?.runtimeEpoch
-    ? {
-        ...context.scope,
-        projectGeneration: context.commandProjectGeneration,
-        sessionId: session.id,
-        runtimeEpoch: session.runtimeEpoch,
-        control,
-      }
-    : null;
-}
 
 export function useSessionControl(boundChatId?: string | null) {
   const [status, setStatus] = useState<SessionControlStatus>({ kind: "idle" });
@@ -65,13 +47,4 @@ export function useSessionControl(boundChatId?: string | null) {
     [boundChatId],
   );
   return { status, run };
-}
-
-/**
- * Drives the chat's start that ended needing recovery to completion. Success
- * shows in the projection: the session becomes one the next send starts.
- */
-export function recoverStart(chatId?: string | null) {
-  const request = sessionRequest(chatId, { kind: "recoverStart" } as const);
-  if (request) void controlAcpSession(request).catch(() => undefined);
 }

@@ -212,10 +212,14 @@ export function NewChatDraftSurface({
           onSelectHarness={chooseHarness}
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
-          onRetryLoad={
-            available && discoveryError ? () => void retryHarnessDiscovery() : null
+          retryNotice={
+            available && discoveryError
+              ? {
+                  onRetry: () => void retryHarnessDiscovery(),
+                  message: discoveryError,
+                }
+              : null
           }
-          retryMessage={discoveryError ?? undefined}
           disabledReason={
             available
               ? discoveryError

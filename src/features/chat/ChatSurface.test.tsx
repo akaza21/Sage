@@ -84,7 +84,7 @@ vi.mock("./acp", async () => {
 });
 
 const recoverStart = vi.hoisted(() => vi.fn());
-vi.mock("./acp/useSessionControl", async (importOriginal) => ({
+vi.mock("./acp/sessionRequest", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   recoverStart,
 }));

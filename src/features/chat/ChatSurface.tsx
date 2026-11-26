@@ -9,7 +9,7 @@ import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
-import { recoverStart } from "./acp/useSessionControl";
+import { recoverStart } from "./acp/sessionRequest";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
@@ -357,15 +357,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
-        onRetryLoad={
+        retryNotice={
           acpLoadFailure.error
-            ? acpLoadFailure.retry
+            ? { onRetry: acpLoadFailure.retry }
             : sessionPromptUnavailable && selectedSession?.state === "starting"
-              ? () => recoverStart(chatId)
+              ? {
+                  onRetry: () => recoverStart(chatId),
+                  message: "The agent did not finish starting.",
+                }
               : null
-        }
-        retryMessage={
-          acpLoadFailure.error ? undefined : "The agent did not finish starting."
         }
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         newChat={newChat && !isSideChatId(acpPage?.chatId ?? chatId)}
