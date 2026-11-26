@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 
-import { chatPlacement, openNotifiedChat } from "../app/openChat";
+import { chatPlacement } from "../app/openChat";
 import { useWorkbenchStore } from "../app/store";
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
 type Open = (projectId: string, chatId: string) => Promise<void>;
 type HeldChat = {
@@ -51,10 +50,14 @@ function replayHeld() {
   if (state.error || state.phase !== "ready") return;
   const { attached, archived } = chatPlacement(state, projectId, chatId);
   if (archived ? wasArchived : attached)
-    void openWhenSettled(projectId, chatId, open);
+    void openChatWhenSettled(projectId, chatId, open);
 }
 
-async function openWhenSettled(projectId: string, chatId: string, open: Open) {
+export async function openChatWhenSettled(
+  projectId: string,
+  chatId: string,
+  open: Open,
+) {
   const state = useWorkbenchStore.getState();
   if (state.projectTransitioning) {
     const { archived } = chatPlacement(state, projectId, chatId);
@@ -80,28 +83,9 @@ async function openWhenSettled(projectId: string, chatId: string, open: Open) {
 }
 
 export const openRailChat = (projectId: string, chatId: string) =>
-  openWhenSettled(projectId, chatId, (project, chat) =>
+  openChatWhenSettled(projectId, chatId, (project, chat) =>
     useWorkbenchStore.getState().openRailChat(project, chat),
   );
-
-/** Opens a clicked notification's chat in Agent, or reports that it is gone. */
-export const openNotificationChat = (
-  projectId: string,
-  chatId: string,
-  enterAgent: () => void,
-) =>
-  openWhenSettled(projectId, chatId, async (project, chat) => {
-    await openNotifiedChat(project, chat).catch(() => {});
-    const current = useWorkbenchStore.getState();
-    if (current.project?.id !== project || current.activeTabId !== chat) {
-      useWorkbenchStore.setState({
-        error: "The notification chat could not be opened.",
-      });
-      return;
-    }
-    useAgentSettingsState.getState().close();
-    enterAgent();
-  });
 
 /** Drops a held click once no rail is mounted (for example in Editor mode). */
 export function useHeldRailChatScope() {
