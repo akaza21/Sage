@@ -11,12 +11,12 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
   const userStopped = stopped && reason?.kind === "cancelledByUser";
   const label = getTurnStatusLabel(turn);
   const failed = turn.state === "failed";
-  const message = failed
-    ? undefined
-    : turnReasonMessage(turn) ||
-      (reason && !userStopped
-        ? turnTerminalReasonLabels[reason.kind]
-        : undefined);
+  // A failed turn explains itself in its failure card, not in this header.
+  const message =
+    turnReasonMessage(turn) ||
+    (reason && !userStopped
+      ? turnTerminalReasonLabels[reason.kind]
+      : undefined);
   const remediation = reason?.remediation;
   return (
     <header className="acp-turn__header">

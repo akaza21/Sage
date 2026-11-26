@@ -115,8 +115,8 @@
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
-        "maxGzipBytes": 3630,
-        "reason": "Shared composer/account sign-in surfaces, CLI refusal guidance, capability adapters and bounded polling; loads only for visible supported harnesses or an auth refusal."
+        "maxGzipBytes": 2790,
+        "reason": "Composer/account sign-in surfaces, CLI refusal guidance, adapters, bounded polling; loads for visible supported harnesses or an auth refusal. 840 B moved to AgentHarnessSettings."
       },
       {
         "entry": "src/features/harness/HarnessSignInMenu.tsx",
@@ -198,14 +198,14 @@
       },
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
-        "maxGzipBytes": 928,
+        "maxGzipBytes": 980,
         "maxCssGzipBytes": 243,
-        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; JS and CSS load on the first Model request."
+        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; and the thinking-level section slot; JS and CSS load on the first Model request."
       },
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
-        "maxGzipBytes": 1385,
-        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager.",
+        "maxGzipBytes": 1333,
+        "reason": "Advertised thinking-level slider inside the model popover; loads with it while the level label on the model chip remains eager.",
         "maxCssGzipBytes": 180
       },
       {
@@ -237,13 +237,13 @@
       {
         "entry": "src/features/settings/AgentSettingsSurface.tsx",
         "maxGzipBytes": 3915,
-        "maxCssGzipBytes": 1240,
-        "reason": "Agent settings dialog , loaded only by a settings entry; Browser controls load separately. CSS measured 1158 B plus 7%; startup caps unchanged."
+        "maxCssGzipBytes": 1490,
+        "reason": "Agent settings dialog, loaded only by a settings entry; Browser controls load separately. CSS 1234 B on main; 250 B moved from ConversationActions for harness cards."
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 2460,
-        "reason": "Harnesses page: install, versions (T13 installed/runs/latest, unlocks, npm switch) and sign-in per harness, custom agent and account blocks. Loaded only by Settings > Harnesses. Measured 2342 B."
+        "maxGzipBytes": 3300,
+        "reason": "Harnesses page: a card per harness with install, versions, probed sign-in and account blocks; loaded only by Settings > Harnesses. 840 B moved from HarnessSignInStatus."
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",
@@ -593,8 +593,8 @@
       {
         "entry": "src/features/chat/ConversationActions.tsx",
         "maxGzipBytes": 4700,
-        "maxCssGzipBytes": 1500,
-        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo with its file preview, fork history. Measured JS 4625 B; 600 B moved to SessionNoticeStrip, 300 B moved from QuickOpen (T11d)."
+        "maxCssGzipBytes": 1250,
+        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo with its file preview, fork history. Measured JS 4625 B; 250 B CSS moved to AgentSettingsSurface."
       }
     ],
     "windowsInstallerMb": 45,

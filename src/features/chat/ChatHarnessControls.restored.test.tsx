@@ -226,14 +226,14 @@ it("shows a cold chat's stored model and effort as restored, and a pick goes to 
   expect(model).toHaveTextContent("Synthetic replay deep");
   expect(model).toHaveAttribute("data-restored", "true");
   expect(model).toBeEnabled();
-  expect(model.getAttribute("aria-description")).toContain(RESTORED_NOTE);
-  const effort = screen.getByRole("button", {
-    name: "Thinking level: High",
-  });
-  expect(effort).toHaveAttribute("aria-description", RESTORED_NOTE);
-  expect(
-    screen.queryByRole("button", { name: "Thinking level" }),
-  ).not.toBeInTheDocument();
+  // The restored note covers the model and the level it shows.
+  expect(model.querySelector(".composer__model-effort")).toHaveTextContent(
+    /^High$/,
+  );
+  expect(model).toHaveAttribute(
+    "aria-description",
+    `Synthetic replay deep High. ${RESTORED_NOTE}`,
+  );
   fireEvent.click(model);
   fireEvent.click(
     await screen.findByRole("option", { name: /^Synthetic replay$/ }),

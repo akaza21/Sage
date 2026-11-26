@@ -18,6 +18,7 @@ import type { ResourceRef } from "../../domain/workbench";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
+import { liveTurnStates } from "./acp/acpTurnState";
 import {
   SESSION_PROMPT_REFUSAL,
   composerDisabledReason,
@@ -246,7 +247,8 @@ export function useChatSurfaceModel({
       !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
-    activeAcpTurn?.state === "running" &&
+    !!activeAcpTurn &&
+    liveTurnStates.has(activeAcpTurn.state) &&
     canPrompt &&
     !actionBusy &&
     !projectTransitioning &&

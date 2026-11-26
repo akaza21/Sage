@@ -81,7 +81,10 @@ export function TextFieldSuggestions({
           ) : null}
         </span>
         {item.description ? (
-          <span className="text-field-suggestions__description">
+          <span
+            className="text-field-suggestions__description menu-description"
+            title={item.description}
+          >
             {item.description}
           </span>
         ) : null}

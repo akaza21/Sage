@@ -217,7 +217,10 @@ pub(crate) fn auth_refusal_detail(
     profile: &StandardAcpProfile,
     frame: &Value,
 ) -> Option<RefusalDetail> {
-    let message = bounded_text(frame.get("error")?.get("message"));
+    // A harness's own words in `data` say more than the generic message the
+    // refusal is recognised by.
+    let error = frame.get("error")?;
+    let message = bounded_text(error.get("data")).or_else(|| bounded_text(error.get("message")));
     RefusalDetail::new(message.as_deref(), Some(profile.remediation))
 }
 

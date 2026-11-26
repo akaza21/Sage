@@ -6,11 +6,14 @@ export default function HarnessAccountDetails({
   harness,
   selected,
   available,
+  showSignInHint,
   disabled,
 }: {
   harness: HarnessDefinition;
   selected: boolean;
   available: boolean;
+  /** False once the harness reports a signed-in account. */
+  showSignInHint: boolean;
   disabled: boolean;
 }) {
   return (
@@ -19,7 +22,7 @@ export default function HarnessAccountDetails({
         <CodexAccountSettings disabled={disabled} />
       ) : null}
       <HarnessVersionDetails harness={harness} />
-      {harness.signIn && available ? (
+      {harness.signIn && available && showSignInHint ? (
         <p>
           {harness.signIn.command ? (
             <>

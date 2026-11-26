@@ -65,6 +65,7 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
             type="button"
             className={`composer__control-trigger composer__access-label${tone ?? ""}`}
             aria-label="Access options"
+            title={selected?.label}
             aria-describedby={`${id}-scope`}
             aria-haspopup="menu"
             aria-controls={id}
