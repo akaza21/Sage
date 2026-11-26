@@ -55,8 +55,7 @@ export default function ChatQueueExecution({
   // The hold lifts once the harness has been seen not ready and back.
   const notReadyFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!canPrompt || !signInHoldTurnId)
-      notReadyFor.current = signInHoldTurnId;
+    if (!canPrompt || !signInHoldTurnId) notReadyFor.current = signInHoldTurnId;
     if (queuedTurnBarrier !== null) {
       if (
         !observedOrder ||
