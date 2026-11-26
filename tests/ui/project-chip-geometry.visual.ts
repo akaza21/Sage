@@ -49,9 +49,9 @@ for (const scoped of [false, true]) {
       location.getByRole("button", { name: /^Switch branch in / }),
     ).toHaveCount(scoped ? 1 : 0);
     const trigger = location.getByRole("button", {
-        name: scoped ? "Project: Sage" : "Choose project",
-        exact: true,
-      });
+      name: scoped ? "Project: Sage" : "Choose project",
+      exact: true,
+    });
     await trigger.click();
     const menu = page.locator(".searchable-picker__popover--menu");
     const input = menu.getByPlaceholder("Search projects");
