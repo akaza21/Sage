@@ -43,12 +43,15 @@ for (const scoped of [false, true]) {
         ],
       });
     }, scoped);
-    const trigger = page
-      .getByRole("group", { name: "Chat location" })
-      .getByRole("button", {
-        name: scoped ? "Project: Sage" : "Choose project",
-        exact: true,
-      });
+    const location = page.getByRole("group", { name: "Chat location" });
+    // The branch chip appears once the scoped project reads as a repository.
+    await expect(
+      location.getByRole("button", { name: /^Switch branch in / }),
+    ).toHaveCount(scoped ? 1 : 0);
+    const trigger = location.getByRole("button", {
+      name: scoped ? "Project: Sage" : "Choose project",
+      exact: true,
+    });
     await trigger.click();
     const menu = page.locator(".searchable-picker__popover--menu");
     const input = menu.getByPlaceholder("Search projects");
@@ -461,7 +464,17 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
           const box = icon.getBoundingClientRect();
           return [box.width, box.height];
         });
+      const chips = [...tab.children].map((chip) =>
+        (
+          chip.querySelector(".project-scope__picker") ?? chip
+        ).getBoundingClientRect(),
+      );
       return {
+        // Measured from the project trigger: the idle chip keeps no room for
+        // its hidden clear button.
+        gaps: chips
+          .slice(1)
+          .map((chip, index) => Math.round(chip.left - chips[index]!.right)),
         attached: Math.abs(dock.top - strip.bottom) <= 0.5,
         insets: [strip.left - dock.left, dock.right - strip.right],
         height: strip.height,
@@ -475,6 +488,7 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       };
     });
     expect(geometry, `at ${width}px`).toEqual({
+      gaps: [16, 16],
       attached: true,
       insets: [12, 12],
       height: 36,
@@ -490,6 +504,19 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       `composer-location-branch-${width}.png`,
     );
   }
+  // Hovering the project shows its clear button in the gap without moving
+  // the branch chip.
+  const branchLeft = async () => (await branch.boundingBox())!.x;
+  const idleBranch = await branchLeft();
+  await project.hover();
+  const clear = strip.getByRole("button", {
+    name: "Remove project from this chat",
+  });
+  await expect(clear).toBeVisible();
+  expect(await branchLeft()).toBe(idleBranch);
+  const clearBox = (await clear.boundingBox())!;
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(idleBranch);
+  await page.mouse.move(0, 0);
   await expect(project).toHaveCSS("font-size", "13px");
   await project.click();
   const menu = page.locator(".searchable-picker__popover--menu");
