@@ -50,10 +50,6 @@ const RenamePart = lazyParts<typeof RenameChunk>(
 const loadArchivedChatList = () => import("./ArchivedChatList");
 const loadChatRowErrorNotice = () => import("./ChatRowErrorNotice");
 
-// Notification clicks load the held-open slot through this lazy rail entry.
-// eslint-disable-next-line react-refresh/only-export-components
-export { openChatWhenSettled } from "./heldRailChatOpen";
-
 export function ProjectChatNavigation({
   projectId,
   chats,

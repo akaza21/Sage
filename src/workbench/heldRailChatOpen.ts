@@ -1,14 +1,21 @@
 import { useEffect } from "react";
 
-import { chatPlacement } from "../app/openChat";
+import { chatPlacement, type ChatPlacement } from "../app/openChat";
 import { useWorkbenchStore } from "../app/store";
 
-type Open = (projectId: string, chatId: string) => Promise<void>;
+/** One caller's chat open: how to open, and whether a held one still applies. */
+export interface ChatOpen {
+  open: (projectId: string, chatId: string) => Promise<void>;
+  /** Whether a held open still applies once the transition settles. */
+  admit: (now: ChatPlacement, wasArchived: boolean) => boolean;
+  /** Reports a held open refused by a failed transition or by `admit`. */
+  refused?: () => void;
+}
 type HeldChat = {
   projectId: string;
   chatId: string;
   archived: boolean;
-  open: Open;
+  request: ChatOpen;
 };
 
 /**
@@ -39,29 +46,29 @@ export function cancelHeldRailChat() {
 function replayHeld() {
   const state = useWorkbenchStore.getState();
   if (!held || inFlight > 0 || state.projectTransitioning) return;
-  const { projectId, chatId, open } = held;
-  // A chat held while archived (a notification restores it) must still be
-  // archived; any other held chat must still be attached and not archived.
-  const wasArchived = held.archived;
+  const { projectId, chatId, archived, request } = held;
   // Clear before opening so a refused replay cannot loop.
   cancelHeldRailChat();
   // A failed transition keeps its error; a replay would start another and
   // clear it.
-  if (state.error || state.phase !== "ready") return;
-  const { attached, archived } = chatPlacement(state, projectId, chatId);
-  if (archived ? wasArchived : attached)
-    void openChatWhenSettled(projectId, chatId, open);
+  if (
+    state.error ||
+    state.phase !== "ready" ||
+    !request.admit(chatPlacement(state, projectId, chatId), archived)
+  )
+    request.refused?.();
+  else void openChatWhenSettled(projectId, chatId, request);
 }
 
 export async function openChatWhenSettled(
   projectId: string,
   chatId: string,
-  open: Open,
+  request: ChatOpen,
 ) {
   const state = useWorkbenchStore.getState();
   if (state.projectTransitioning) {
     const { archived } = chatPlacement(state, projectId, chatId);
-    held = { projectId, chatId, archived, open };
+    held = { projectId, chatId, archived, request };
     document.addEventListener("click", cancelOnOtherClick, true);
     if (!watching) {
       watching = true;
@@ -75,17 +82,22 @@ export async function openChatWhenSettled(
   cancelHeldRailChat();
   inFlight += 1;
   try {
-    await open(projectId, chatId);
+    await request.open(projectId, chatId);
   } finally {
     inFlight -= 1;
   }
   replayHeld();
 }
 
-export const openRailChat = (projectId: string, chatId: string) =>
-  openChatWhenSettled(projectId, chatId, (project, chat) =>
+// A held rail click applies only to a chat still listed and not archived.
+const railOpen: ChatOpen = {
+  open: (project, chat) =>
     useWorkbenchStore.getState().openRailChat(project, chat),
-  );
+  admit: ({ attached, archived }) => attached && !archived,
+};
+
+export const openRailChat = (projectId: string, chatId: string) =>
+  openChatWhenSettled(projectId, chatId, railOpen);
 
 /** Drops a held click once no rail is mounted (for example in Editor mode). */
 export function useHeldRailChatScope() {

@@ -27,30 +27,45 @@ export function useNotificationVisibility(
 export function useNotificationNavigation(enterAgent: () => void) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    const failed = () =>
-      useWorkbenchStore.setState({
-        error: "The notification chat could not be opened.",
-      });
-    const land = async (projectId: string, chatId: string) => {
-      await openNotifiedChat(projectId, chatId).catch(() => {});
-      const current = useWorkbenchStore.getState();
-      if (current.project?.id !== projectId || current.activeTabId !== chatId)
-        return failed();
-      useAgentSettingsState.getState().close();
-      enterAgent();
+    let disposed = false;
+    const failed = () => {
+      if (!disposed)
+        useWorkbenchStore.setState({
+          error: "The notification chat could not be opened.",
+        });
     };
-    // A click during a project switch waits in the rail's held-open slot,
-    // which loads with the lazy rail chunk.
+    // A click during a project switch waits in the lazy held-open slot. A
+    // chat deleted meanwhile is still handed to land, which reports it.
+    const notified = {
+      open: async (projectId: string, chatId: string) => {
+        if (disposed) return;
+        await openNotifiedChat(projectId, chatId).catch(() => {});
+        const current = useWorkbenchStore.getState();
+        if (current.project?.id !== projectId || current.activeTabId !== chatId)
+          return failed();
+        useAgentSettingsState.getState().close();
+        enterAgent();
+      },
+      admit: ({ archived }: { archived: boolean }, wasArchived: boolean) =>
+        !archived || wasArchived,
+      // A failed switch keeps its own error.
+      refused: () => {
+        if (!useWorkbenchStore.getState().error) failed();
+      },
+    };
     const navigation = listenNotificationNavigation(
       nativeNotificationPort,
       async ({ projectId, chatId }) =>
-        (await import("./ProjectChatNavigation")).openChatWhenSettled(
+        (await import("./heldRailChatOpen")).openChatWhenSettled(
           projectId,
           chatId,
-          land,
+          notified,
         ),
       failed,
     );
-    return () => navigation.dispose();
+    return () => {
+      disposed = true;
+      navigation.dispose();
+    };
   }, [enterAgent]);
 }

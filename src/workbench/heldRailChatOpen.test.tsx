@@ -308,3 +308,30 @@ it("drops a notification clicked during a switch once a project row is clicked",
     switches.mock.calls.map(([request]) => request.targetProjectId),
   ).toEqual([first.project]);
 });
+
+it("opens a notification clicked during a switch once the switch settles", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  expect(store().project?.id).not.toBe(second.project);
+  held.release();
+  await opened(second.project, second.chat.id);
+});
+
+it("opens a held notification for a chat the truncated rail does not list", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  // The rail lists a bounded set of chats; this one fell outside it.
+  useWorkbenchStore.setState((state) => ({
+    unscopedChats: state.unscopedChats.map((item) =>
+      item.id === second.project ? { ...item, railChats: [] } : item,
+    ),
+  }));
+  held.release();
+  await opened(second.project, second.chat.id);
+});
