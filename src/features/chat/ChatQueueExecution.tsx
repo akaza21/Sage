@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { CuratedBindingId, CuratedModelId } from "../../domain/acp";
 import type {
@@ -18,7 +18,7 @@ export default function ChatQueueExecution({
   projectTransitioning,
   canPrompt,
   useNativeAcp,
-  hold = null,
+  hold,
   observedOrder,
   submit,
   updateQueuedPrompt,
@@ -35,8 +35,8 @@ export default function ChatQueueExecution({
   projectTransitioning: boolean;
   canPrompt: boolean;
   useNativeAcp: boolean;
-  /** The latest turn failed for sign-in; hold until the harness is ready again. */
-  hold?: string | null;
+  /** The latest turn failed for sign-in: wait for a newer turn (a retry). */
+  hold?: boolean;
   observedOrder: ChatTurnOrder | null;
   submit: (
     text: string,
@@ -52,10 +52,7 @@ export default function ChatQueueExecution({
     barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
   ) => void;
 }) {
-  // The hold lifts once the harness has been seen not ready and back.
-  const notReadyFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!canPrompt || !hold) notReadyFor.current = hold;
     if (queuedTurnBarrier !== null) {
       if (
         !observedOrder ||
@@ -87,7 +84,7 @@ export default function ChatQueueExecution({
       projectTransitioning ||
       !canPrompt ||
       !useNativeAcp ||
-      notReadyFor.current !== hold
+      hold
     )
       return;
     updateQueuedPrompt(next.id, "sending");
