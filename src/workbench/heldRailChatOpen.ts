@@ -85,10 +85,8 @@ export async function openChatWhenSettled(
     if (!watching) {
       watching = true;
       useWorkbenchStore.subscribe((next, previous) => {
-        // A failed switch sets its error only after its recovery settles the
-        // transition, so the replay waits for that task's microtasks to run.
         if (previous.projectTransitioning && !next.projectTransitioning)
-          setTimeout(replayHeld);
+          queueMicrotask(replayHeld);
       });
     }
     return;

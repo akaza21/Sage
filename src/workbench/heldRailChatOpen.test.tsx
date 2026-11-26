@@ -385,7 +385,7 @@ it("drops a held notification chat archived during the hold with the generic err
   expect(store().project?.id).toBe(first.project);
 });
 
-it("keeps a failed switch's error over a held notification", async () => {
+it("keeps a rail click's failed switch error over a held notification", async () => {
   let fail!: () => void;
   const failing = new Promise<void>((resolve) => (fail = resolve));
   const switches = vi
@@ -394,8 +394,8 @@ it("keeps a failed switch's error over a held notification", async () => {
       await failing;
       throw new Error("Switch failed");
     });
-  await desktopRail([first, second]);
-  void store().switchProject(first.project);
+  const view = await desktopRail([first, second]);
+  click(view, first);
   await vi.waitFor(() => expect(switches).toHaveBeenCalledTimes(1));
   await notify(second);
   fail();
