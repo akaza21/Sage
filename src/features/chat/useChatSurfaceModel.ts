@@ -150,7 +150,7 @@ export function useChatSurfaceModel({
                 : "Ready"));
     return {
       selectedHarness,
-      useNativeAcp: Boolean(useNativeAcp),
+      useNativeAcp,
       bindingId,
       selectedSession,
       sessionHarnessId,
@@ -253,7 +253,7 @@ export function useChatSurfaceModel({
       !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
-    !!activeAcpTurn &&
+    activeAcpTurn &&
     liveTurnStates.has(activeAcpTurn.state) &&
     canPrompt &&
     !actionBusy &&
