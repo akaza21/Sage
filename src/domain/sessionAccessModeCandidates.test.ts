@@ -29,13 +29,13 @@ it("rejects malformed IPC label and description values", () => {
   ).toEqual([]);
 });
 
-it("never offers a mode that needs a confirmation as a default", () => {
+it("never offers Full access as a default, and offers Auto as one", () => {
   const full = {
     id: "fullAccess" as const,
     label: "Full access",
     description: "Everything runs without asking.",
   };
   const auto = { ...full, id: "auto" as const, label: "Auto" };
-  expect(sessionAccessModeCandidates([full, auto])).toEqual([]);
+  expect(sessionAccessModeCandidates([full, auto])).toEqual([auto]);
   expect(sessionAccessModeCandidates([full, auto], true)).toEqual([full, auto]);
 });

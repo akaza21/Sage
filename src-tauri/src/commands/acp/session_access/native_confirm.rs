@@ -1,13 +1,13 @@
 //! The native confirmation of a permissive access mode. The WebView's own
 //! dialog explains the mode, but a script in the WebView could answer it;
-//! this dialog is drawn by the operating system, so granting Auto or Full
+//! this dialog is drawn by the operating system, so granting Full
 //! access always needs a person at the keyboard. It names the project, the
 //! chat and the session (its harness and a short id the WebView cannot
 //! choose), its safe answer is the default, an Allow given faster than a
 //! person reads is refused, and only one such dialog is open at a time.
 
 use crate::state::AppState;
-use sage_acp_protocol::{access_mode::SessionAccessMode, contract::SageAgentSessionId};
+use sage_acp_protocol::contract::SageAgentSessionId;
 use std::sync::{
     Arc, LazyLock,
     atomic::{AtomicBool, Ordering},
@@ -211,19 +211,13 @@ pub(super) fn session_label(state: &AppState, session_id: &SageAgentSessionId) -
     }
 }
 
-pub(super) fn dialog_text(mode: SessionAccessMode, label: &SessionLabel) -> (String, String) {
-    let (name, effect) = match mode {
-        SessionAccessMode::Auto => (
-            "Auto",
-            "Claude's own checks decide which actions run without asking. Sage does not review \
-             them, and there is no filesystem sandbox.",
-        ),
-        _ => (
-            "Full access",
-            "The agent can change or delete files and run commands without asking, with no \
-             filesystem sandbox.",
-        ),
-    };
+/// The dialog for Full access, the one mode that takes a native confirmation.
+pub(super) fn dialog_text(label: &SessionLabel) -> (String, String) {
+    let (name, effect) = (
+        "Full access",
+        "The agent can change or delete files and run commands without asking, with no \
+         filesystem sandbox.",
+    );
     let named = |text: &str, unnamed: &str| {
         let text = sanitised(text);
         if text.is_empty() {

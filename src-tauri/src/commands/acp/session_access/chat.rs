@@ -16,7 +16,7 @@ pub(crate) struct ChatAccessChange {
 
 /// A mode that needs a confirmation must be offered by the bound build; any
 /// other only has to be in the binding's own table, so a chat can always step
-/// down from Full access or Auto, even while its harness is unavailable.
+/// down from Full access, even while its harness is unavailable.
 pub(super) fn carries_mode(
     registry: &crate::acp::bindings::registry::BindingRegistry,
     binding_id: &str,
@@ -27,6 +27,29 @@ pub(super) fn carries_mode(
     } else {
         lists_mode(registry, binding_id, mode)
     }
+}
+
+/// The mode a turn in the chat runs under before a new choice: its own choice or the default it
+/// follows, or its saved choice alone when the default cannot be read.
+pub(super) fn running_mode(
+    state: &AppState,
+    binding_id: &str,
+    session_id: &SageAgentSessionId,
+) -> Option<SessionAccessMode> {
+    turn_access_mode(state, binding_id, session_id)
+        .ok()
+        .or_else(|| {
+            state
+                .settings
+                .chat_access(session_id.as_str())
+                .ok()
+                .flatten()
+        })
+}
+
+/// Leaving a mode that runs actions unasked for another mode stops the running turn.
+pub(super) fn steps_down(running: Option<SessionAccessMode>, chosen: SessionAccessMode) -> bool {
+    running.is_some_and(SessionAccessMode::runs_unasked) && running != Some(chosen)
 }
 
 fn chat_binding(
@@ -73,15 +96,12 @@ pub(crate) async fn set_chat_access(
         });
     }
     let session = request.session_id.as_str();
-    let previous = state
-        .settings
-        .chat_access(session)
-        .map_err(|_| access_unreadable())?;
+    let previous = running_mode(&state, &binding_id, &request.session_id);
     state
         .settings
         .set_chat_access(session, request.mode, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
-    let stepped_down = previous.is_some_and(SessionAccessMode::needs_confirmation);
+    let stepped_down = steps_down(previous, request.mode);
     let transition = state.project_transitions.lock().await;
     let Ok(generation) = ProjectGeneration::new(*transition) else {
         return Ok(ChatAccessChange::default());
@@ -272,7 +292,7 @@ pub(super) async fn grant_confirmed(
         return Err(confirmation_missing());
     }
     let label = native_confirm::session_label(state, &request.session_id);
-    let text = native_confirm::dialog_text(request.mode, &label);
+    let text = native_confirm::dialog_text(&label);
     if let Err(refusal) = native_confirm::ask(gate, dialog, text, timing).await {
         tracing::info!(
             session_id = session,

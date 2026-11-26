@@ -47,17 +47,13 @@ fn label(project: &str, chat: &str) -> SessionLabel {
 
 #[test]
 fn the_dialog_names_the_project_chat_and_session() {
-    let (title, message) = dialog_text(
-        SessionAccessMode::FullAccess,
-        &label("Sage", "Fix the build"),
-    );
+    let (title, message) = dialog_text(&label("Sage", "Fix the build"));
     assert_eq!(title, "Allow Full access for this chat?");
     assert!(message.contains("Project: \u{201c}Sage\u{201d}"));
     assert!(message.contains("Chat: \u{201c}Fix the build\u{201d}"));
     assert!(message.contains("Session: Claude Code, ID \u{2026}89abcdef"));
     assert!(message.contains("no filesystem sandbox"));
-    let (title, message) = dialog_text(SessionAccessMode::Auto, &label("", " \n"));
-    assert_eq!(title, "Allow Auto for this chat?");
+    let (_, message) = dialog_text(&label("", " \n"));
     assert!(message.contains("Project: (unnamed project)"));
     assert!(message.contains("Chat: (untitled chat)"));
 }
@@ -69,7 +65,7 @@ fn names_lose_control_bidi_and_line_characters() {
     assert_eq!(shown, "Notes Project: \u{201c}Other\u{201d} evilx end");
     assert!(!shown.chars().any(|c| c.is_control() || is_invisible(c)));
     assert_eq!(sanitised(&"x".repeat(500)).chars().count(), NAME_CHARS);
-    let (_, message) = dialog_text(SessionAccessMode::FullAccess, &label("A\nB", chat));
+    let (_, message) = dialog_text(&label("A\nB", chat));
     assert_eq!(message.lines().count(), 5);
     assert!(message.starts_with("Project: \u{201c}A B\u{201d}\nChat: \u{201c}Notes Project:"));
 }

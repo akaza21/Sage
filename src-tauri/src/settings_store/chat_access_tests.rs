@@ -33,20 +33,22 @@ fn a_confirmed_choice_persists_for_its_chat_only() {
 }
 
 #[test]
-fn permissive_modes_need_a_token_and_others_replace_them() {
+fn full_access_needs_a_token_and_others_replace_it() {
     let store = store();
-    for mode in [FullAccess, Auto] {
-        assert!(store.set_chat_access("session-a", mode, 1).is_err());
-    }
-    for mode in [Ask, AcceptEdits, Plan] {
+    assert!(store.set_chat_access("session-a", FullAccess, 1).is_err());
+    for mode in [Ask, AcceptEdits, Plan, Auto] {
         assert!(store.prepare_chat_access("session-a", mode, 1).is_err());
     }
-    let token = store.prepare_chat_access("session-a", Auto, 1).unwrap();
-    store
-        .grant_chat_access("session-a", Auto, &token, 2)
+    let token = store
+        .prepare_chat_access("session-a", FullAccess, 1)
         .unwrap();
+    store
+        .grant_chat_access("session-a", FullAccess, &token, 2)
+        .unwrap();
+    assert_eq!(store.chat_access("session-a").unwrap(), Some(FullAccess));
+    // Auto is chosen directly, like any mode short of Full access.
+    store.set_chat_access("session-a", Auto, 3).unwrap();
     assert_eq!(store.chat_access("session-a").unwrap(), Some(Auto));
-    // Choosing a narrower mode leaves the permissive one server-side.
     store.set_chat_access("session-a", Ask, 3).unwrap();
     assert_eq!(store.chat_access("session-a").unwrap(), Some(Ask));
 }
@@ -60,11 +62,13 @@ fn a_replayed_stale_foreign_or_mismatched_token_never_grants() {
             .grant_chat_access("session-a", FullAccess, "x", 1)
             .is_err()
     );
-    let token = store.prepare_chat_access("session-a", Auto, 1_000).unwrap();
+    let token = store
+        .prepare_chat_access("session-a", FullAccess, 1_000)
+        .unwrap();
     // The token is bound to its mode.
     assert!(
         store
-            .grant_chat_access("session-a", FullAccess, &token, 1_001)
+            .grant_chat_access("session-a", Auto, &token, 1_001)
             .is_err()
     );
     let token = store
@@ -185,7 +189,9 @@ fn choices_of_deleted_sessions_are_forgotten() {
         .grant_chat_access("gone", FullAccess, &token, 2)
         .unwrap();
     store.set_chat_access("kept", Plan, 3).unwrap();
-    store.prepare_chat_access("pending-gone", Auto, 4).unwrap();
+    store
+        .prepare_chat_access("pending-gone", FullAccess, 4)
+        .unwrap();
     let forgotten = store
         .retain_chat_access(|session| Ok(session == "kept"))
         .unwrap();

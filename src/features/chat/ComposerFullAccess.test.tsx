@@ -144,14 +144,15 @@ it("confirms Full access with the token issued for this chat and mode", async ()
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
 });
 
-it("confirms Auto too, and says what it lets run", async () => {
+it("chooses Auto directly, with no confirmation", async () => {
   renderControl();
-  const allow = await confirm("Auto", "Allow auto in this chat?", "Allow auto");
-  expect(screen.getByText(/Sage does not review them/)).toBeVisible();
-  fireEvent.click(allow);
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Auto" }));
   await waitFor(() =>
-    expect(port.grant).toHaveBeenCalledWith("session-1", "auto", "token-1"),
+    expect(port.set).toHaveBeenCalledWith("session-1", "auto"),
   );
+  expect(screen.queryByRole("heading", { name: /auto/i })).toBeNull();
+  expect(port.prepare).not.toHaveBeenCalled();
+  expect(port.grant).not.toHaveBeenCalled();
   await waitFor(() => expect(chip()).toHaveTextContent("Auto"));
 });
 

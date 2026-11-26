@@ -21,7 +21,6 @@ import {
 const FULL_ACCESS: SessionAccessMode = "fullAccess";
 
 const WARNING: Partial<Record<SessionAccessMode, string>> = {
-  auto: "Claude's own checks decide which actions run without asking. Sage does not review them, and there is no filesystem sandbox.",
   fullAccess:
     "The agent can change or delete files and run commands without asking, with no filesystem sandbox.",
 };

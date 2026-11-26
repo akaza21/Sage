@@ -17,11 +17,8 @@ export const useChatAccessStore = create<ChatAccessStore>(() => ({
   error: null,
 }));
 const store = useChatAccessStore;
-/** Modes that run actions without asking take a confirmed native token. */
-export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = [
-  "auto",
-  "fullAccess",
-];
+/** Full access runs every action unchecked, so it takes a confirmed native token. */
+export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = ["fullAccess"];
 const MAX_CHAT_MODES = 32;
 
 export function withChatMode(

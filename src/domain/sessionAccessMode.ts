@@ -84,8 +84,8 @@ export function sessionAccessModeCandidates(
         typeof capability.description === "string" &&
         capability.description.trim().length > 0 &&
         capability.description.length <= 512 &&
-        // Modes confirmed per chat are never a default.
-        (liveChat || !["auto", "fullAccess"].includes(capability.id)),
+        // Full access is confirmed per chat and is never a default.
+        (liveChat || capability.id !== "fullAccess"),
     ) ?? []
   );
 }

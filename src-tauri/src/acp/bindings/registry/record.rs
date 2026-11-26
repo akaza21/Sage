@@ -70,6 +70,8 @@ pub(crate) struct BoundBuild {
     pub(crate) reported_version: String,
     pub(crate) characterisation: HarnessCharacterisation,
     pub(crate) account_model_discovery: bool,
+    /// The harness session mode the person's own harness settings start a session in.
+    pub(crate) start_mode: Option<&'static str>,
 }
 
 pub(super) enum AdmittedBinding {
@@ -238,21 +240,25 @@ impl BindingRecord {
                 reported_version: crate::acp::bindings::pi::PI_VERSION.into(),
                 characterisation: HarnessCharacterisation::Characterised,
                 account_model_discovery: false,
+                start_mode: None,
             }),
             Admission::Codex(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
                 account_model_discovery: binding.model_discovery_available().unwrap_or(false),
+                start_mode: None,
             }),
             Admission::Claude(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
                 account_model_discovery: false,
+                start_mode: None,
             }),
             Admission::ClaudeSdk(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
                 account_model_discovery: false,
+                start_mode: crate::acp::bindings::claude::sdk::known_start_mode(&binding),
             }),
             Admission::OpenCode(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
@@ -260,16 +266,19 @@ impl BindingRecord {
                     binding.harness_version(),
                 ),
                 account_model_discovery: false,
+                start_mode: None,
             }),
             Admission::CustomAcp(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: HarnessCharacterisation::Uncharacterised,
                 account_model_discovery: false,
+                start_mode: None,
             }),
             Admission::PiNative(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
                 account_model_discovery: false,
+                start_mode: None,
             }),
         }
     }

@@ -9,10 +9,11 @@ pub(super) fn annotate_binding(
             definition.bound_version = safe_display_version(&bound.reported_version);
             definition.characterisation = Some(bound.characterisation);
             definition.account_model_discovery = bound.account_model_discovery;
-            definition.access_modes = crate::acp::bindings::access_policy::access_modes(
+            definition.access_modes = crate::acp::bindings::access_policy::starting_access_modes(
                 record.access_policy_binding_id(),
                 &bound.reported_version,
                 bound.characterisation.runs_tested_features(),
+                bound.start_mode,
             );
         }
         None => definition.unavailable_reason = record.unavailable_reason(),
