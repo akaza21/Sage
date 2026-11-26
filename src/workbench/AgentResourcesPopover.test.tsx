@@ -5,7 +5,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { seedSnapshotOwner, snapshotRef } from "../app/agentDiff.fixture";
 import { useWorkbenchStore } from "../app/store";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
@@ -285,6 +285,14 @@ it("lists historical browser sources without rebinding them to the current sessi
     screen.queryByRole("button", { name: /source example.com/i }),
   ).toBeNull();
   expect(activateTab).not.toHaveBeenCalled();
+});
+
+// Background processes render through the transcript's lazy notice and
+// conversation chunks; load them once so these tests read content, not the
+// first transform of those modules.
+beforeAll(async () => {
+  await import("../features/chat/acp/SessionNoticeStrip");
+  await import("../features/chat/ConversationActions");
 });
 
 it("lists the session's background tasks under Background processes", async () => {
