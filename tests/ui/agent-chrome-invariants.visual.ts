@@ -458,15 +458,15 @@ test("sets Add menu descriptions under their labels and wraps them in the item",
   await openScenario(page, "agent-session-mode-open", "agent");
   await openComposerOptions(page);
   const actions = page.locator(
-    ".composer__add-action:has(.composer__action-description)",
+    ".composer__add-action:has(.menu-description)",
   );
   await expect(actions.first()).toBeVisible();
   const layouts = await actions.evaluateAll((items) =>
     items.map((item) => {
       const label = item
-        .querySelector(":scope > span:not(.composer__action-description)")!
+        .querySelector(":scope > span:not(.menu-description)")!
         .getBoundingClientRect();
-      const note = item.querySelector(".composer__action-description")!;
+      const note = item.querySelector(".menu-description")!;
       const box = note.getBoundingClientRect();
       const frame = item.getBoundingClientRect();
       return {

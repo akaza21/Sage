@@ -24,7 +24,9 @@ export function composerMenuRow(
       {icon}
       <span>{text}</span>
       {description ? (
-        <span className="composer__action-description">{description}</span>
+        <span className="menu-description" title={description}>
+          {description}
+        </span>
       ) : null}
       {trailing}
     </button>

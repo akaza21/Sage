@@ -329,7 +329,7 @@ for (const width of [1888, 720, 480]) {
       expect(description!.x + description!.width).toBeLessThanOrEqual(
         item.x + item.width,
       );
-      await noClip(page, ".composer__action-description");
+      await noClip(page, ".menu-description");
       await plan.click();
       await trigger.click();
       await expect(plan).toHaveAttribute("aria-checked", "true");

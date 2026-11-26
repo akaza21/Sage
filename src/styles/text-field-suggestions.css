@@ -82,9 +82,3 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
-
-.text-field-suggestions__description {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
