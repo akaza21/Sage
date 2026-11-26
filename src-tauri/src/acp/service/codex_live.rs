@@ -120,12 +120,12 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
 /// Launch is part of an activation's window: verifying, scanning and loading
 /// a large harness build on its first start after an update, or on a loaded
 /// machine, can take most of a request's deadline, which then left too little
-/// for the harness's own start. This bounded allowance covers the launch.
+/// for the harness's own start. A launch that took longer than an instant
+/// moves both deadlines on by the time it took, up to this bound.
 const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(30);
 
 pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
-    let cleanup =
-        Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc) + LAUNCH_ALLOWANCE;
+    let cleanup = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
     let reserve = Duration::from_millis(
         LIMITS.deadlines_ms.tree_termination.saturating_mul(2)
             + LIMITS.deadlines_ms.wal_convergence,
@@ -136,6 +136,17 @@ pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
     (operation > Instant::now())
         .then_some((operation, cleanup))
         .ok_or(CodexSessionError::Capacity)
+}
+
+/// The activation's deadlines once its launch took `launched_in`: a fast
+/// launch keeps them, a slow one moves them on by its length, at most
+/// [`LAUNCH_ALLOWANCE`].
+fn after_launch(
+    (operation, cleanup): (Instant, Instant),
+    launched_in: Duration,
+) -> (Instant, Instant) {
+    let late = launched_in.min(LAUNCH_ALLOWANCE);
+    (operation + late, cleanup + late)
 }
 
 fn observe_runner(
@@ -258,17 +269,22 @@ fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
 mod deadline_tests {
     use super::*;
 
-    /// A launch that uses its whole allowance still leaves the harness the
-    /// start window an activation had before launch was counted against it.
     #[test]
-    fn a_slow_launch_does_not_eat_the_harness_start_window() {
-        let started = Instant::now();
-        let (operation, cleanup) = deadlines().unwrap();
-        let reserve = Duration::from_millis(
-            LIMITS.deadlines_ms.tree_termination * 2 + LIMITS.deadlines_ms.wal_convergence,
+    fn a_launch_moves_the_deadlines_on_by_its_length_up_to_the_allowance() {
+        let before = deadlines().unwrap();
+        let (operation, cleanup) = before;
+        // A fast launch keeps the deadlines a harness start had before.
+        assert_eq!(after_launch(before, Duration::ZERO), before);
+        // A slow one gets its own time back, so the harness keeps its start window.
+        let slow = Duration::from_secs(12);
+        assert_eq!(
+            after_launch(before, slow),
+            (operation + slow, cleanup + slow)
         );
-        let start_window = Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc) - reserve;
-        assert!(operation.saturating_duration_since(started + LAUNCH_ALLOWANCE) >= start_window);
-        assert_eq!(cleanup.saturating_duration_since(operation), reserve);
+        // An overlong launch is bounded by the allowance.
+        assert_eq!(
+            after_launch(before, Duration::from_secs(600)),
+            (operation + LAUNCH_ALLOWANCE, cleanup + LAUNCH_ALLOWANCE)
+        );
     }
 }

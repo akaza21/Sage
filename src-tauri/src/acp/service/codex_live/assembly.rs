@@ -38,7 +38,8 @@ impl Lane<'_> {
                 return Err(CodexSessionError::from_launch_preparation(error));
             }
         };
-        spec.absolute_cleanup_deadline = Some(cleanup_deadline);
+        // The tree's own cap covers the deadlines a slow launch moves on.
+        spec.absolute_cleanup_deadline = Some(cleanup_deadline + super::LAUNCH_ALLOWANCE);
         let gate_prepared = match self.codex_gate.prepare_live() {
             Ok(gate) => gate,
             Err(error) => {
@@ -74,6 +75,7 @@ impl Lane<'_> {
                 }
             }
         };
+        let launch_started = Instant::now();
         let tree = match PlatformSupervisor::launch(&spec, process_lease) {
             Ok(tree) => tree,
             Err(failure) => {
@@ -92,6 +94,10 @@ impl Lane<'_> {
                     .await;
             }
         };
+        let (operation_deadline, cleanup_deadline) = super::after_launch(
+            (operation_deadline, cleanup_deadline),
+            launch_started.elapsed(),
+        );
         let (mut stdin, stdout, control) = tree.into_parts();
         let active = match self.codex_gate.begin(&gate_prepared) {
             Ok(active) => active,

@@ -39,8 +39,10 @@ const PROBE_ARGS: [&str; 3] = [
 enum Probed {
     /// The models, and the permission mode the person's settings start a session in.
     Models(Vec<ModelOption>, Option<&'static str>),
-    /// When it failed, and whether the build answered at all: one that
-    /// answered with no models is not reported as failing to list them.
+    /// When it failed, and whether a started CLI gave no answer in time (or
+    /// refused): only then is the empty listing a failure the person sees.
+    /// A build that could not be started, or answered with no models,
+    /// offers none as before.
     Failed(Instant, bool),
 }
 
@@ -66,19 +68,20 @@ pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOpti
     if let Some(known) = ready() {
         return known;
     }
-    let reply = binding
+    let started = binding
         .revalidate()
         .ok()
         .and(binding.probe_executable())
         .and_then(|executable| run(executable, &launch_environment()));
-    let answered = reply.is_some();
-    let probed = reply
+    let unanswered = matches!(started, Some(None));
+    let probed = started
+        .flatten()
         .map(|(reply, settings)| (model_options(&reply), configured_mode(settings.as_ref())))
         .filter(|(models, _)| !models.is_empty());
     *lock(&PROBED) = Some((
         digest,
         probed.clone().map_or_else(
-            || Probed::Failed(Instant::now(), answered),
+            || Probed::Failed(Instant::now(), unanswered),
             |(models, mode)| Probed::Models(models, mode),
         ),
     ));
@@ -94,12 +97,12 @@ pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<Mod
     }
 }
 
-/// Whether the latest probe of this build got no answer in time (or a refusal), so an empty
-/// listing is a failure to report rather than a build that offers no models.
+/// Whether the latest probe of this build started the CLI and got no answer in time (or a
+/// refusal), so an empty listing is a failure to report rather than a build that offers none.
 pub(crate) fn listing_failed(binding: &AdmittedClaudeSdkBinding) -> bool {
     matches!(
         lock(&PROBED).as_ref(),
-        Some((key, Probed::Failed(_, false))) if *key == binding.binding_digest()
+        Some((key, Probed::Failed(_, true))) if *key == binding.binding_digest()
     )
 }
 
@@ -137,8 +140,12 @@ fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
         .filter(|path| path.is_absolute() && path.is_dir())
 }
 
-/// The `initialize` reply, and the `get_settings` reply when Claude Code gave one.
-fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value, Option<Value>)> {
+/// `None` when the CLI could not be started; otherwise the `initialize` reply, and the
+/// `get_settings` reply when Claude Code gave one, or `None` when it gave no answer in time.
+fn run(
+    executable: &Path,
+    environment: &[(OsString, OsString)],
+) -> Option<Option<(Value, Option<Value>)>> {
     let mut command = Command::new(executable);
     command
         .args(SDK_ARGS)
@@ -183,7 +190,7 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value
     thread::spawn(move || {
         let _ = child.wait();
     });
-    reply
+    Some(reply)
 }
 
 type Answer = (&'static str, Option<Value>);
@@ -455,15 +462,17 @@ mod tests {
         ));
         assert!(models(&binding).is_none());
         assert!(known_models(&binding).is_none());
-        assert!(listing_failed(&binding), "an empty listing is reported");
-        let other = AdmittedClaudeSdkBinding::for_test_with_digest([8; 32]);
-        assert!(!listing_failed(&other), "only for the build that failed");
-        // A build that answered with no models offers none; that is not a failure to list.
+        // Nothing was started (here the build cannot even be read), so there is no
+        // listing failure to report: the harness offers no models, as before.
+        assert!(!listing_failed(&binding));
+        // A started CLI that gave no answer in time is reported, for that build only.
         *lock(&PROBED) = Some((
             binding.binding_digest(),
             Probed::Failed(Instant::now(), true),
         ));
-        assert!(!listing_failed(&binding));
+        assert!(listing_failed(&binding));
+        let other = AdmittedClaudeSdkBinding::for_test_with_digest([8; 32]);
+        assert!(!listing_failed(&other));
     }
 
     #[cfg(unix)]
@@ -490,10 +499,18 @@ mod tests {
             (OsString::from("PATH"), OsString::from("/usr/bin:/bin")),
         ];
         let started = std::time::Instant::now();
-        let (reply, settings) = run(&script, &environment).unwrap();
+        let (reply, settings) = run(&script, &environment).unwrap().unwrap();
         assert_eq!(reply["models"][0]["value"], "default");
         assert!(settings.is_none(), "unanswered settings stay unknown");
         assert!(started.elapsed() < Duration::from_secs(10));
+        // A CLI that starts but never answers is abandoned at the deadline as unanswered;
+        // one that cannot start is told apart from it.
+        let silent = directory.join("silent");
+        sage_test_support::test_executable::write(&silent, "#!/bin/sh\nsleep 60\n").unwrap();
+        std::fs::set_permissions(&silent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(run(&silent, &environment), Some(None));
+        assert!(started.elapsed() < PROBE_TIMEOUT + Duration::from_secs(5));
         assert!(run(&directory.join("missing"), &environment).is_none());
         let _ = std::fs::remove_dir_all(&directory);
     }
