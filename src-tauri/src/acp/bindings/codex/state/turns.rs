@@ -137,6 +137,11 @@ impl CodexAdapter {
             if current != &id {
                 return Err(AdapterError::IdentityConflict);
             }
+            if self.take_refused_review(&id) {
+                return Err(
+                    crate::acp::bindings::codex::incoming::IngressError::TurnAccessRefused.into(),
+                );
+            }
             return Ok((self.scoped_turn(value)?, TurnBinding::Active));
         }
         if self

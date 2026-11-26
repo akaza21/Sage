@@ -32,14 +32,27 @@
 //! interrupts its Turn and runs the action in a Turn of its own. Until the
 //! answer, that `turn/started` would bind to the action, so the same rule
 //! holds against the access the chat had when the action was sent. Once
-//! answered, an action asks nothing: compact answers `{}` before its own
-//! `turn/started`, which must bind, and neither action sets the policy.
+//! answered, a compact asks nothing: it answers `{}` before its own
+//! `turn/started`, which must bind. Neither action sets the policy.
 //!
-//! Two limits remain. An answered action's own Turn runs under
-//! `thread_access` with no check: a read-only chat's `/review` after a
-//! workspace-write prompt runs the reviewer under workspace-write. And a
-//! goal `turn/started` that arrives after a compact's `{}` answer binds to
-//! the compact unchecked, under the same frame-order assumption.
+//! An answered review runs under the thread's access (recorded with
+//! codex-cli 0.167.1): `review/start` takes no policy, and on a thread last
+//! prompted under workspace-write the reviewer ran under workspace-write
+//! even when the request carried a read-only policy. The answer names the
+//! review Turn with no root; its `turn/started` names a new Turn rooted at
+//! the answer, and its items and end name the answer's Turn. So that
+//! `turn/started` is refused by the same rule, against the chat's access
+//! when the review was sent.
+//!
+//! Two limits remain. A goal `turn/started` that arrives after a compact's
+//! `{}` answer binds to the compact unchecked: the compaction's own
+//! `turn/started` and a goal continuation's carry the same fields (a new id
+//! that is its own root, no items), and only the later `contextCompaction`
+//! item tells them apart. With a goal set right after that answer, Codex
+//! ran the compaction first and the goal only after it ended. And a review
+//! raced with Codex's own Turn is answered with a new Turn, not the raced
+//! one, so when the raced `turn/started` is not refused it binds to the
+//! review and the answer stays an identity conflict.
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
@@ -56,6 +69,9 @@ pub(in crate::acp::bindings::codex) struct NativeTurn {
     /// A sent `turn/start` or session action and the chat's access when it
     /// was sent, until Codex answers.
     pending_access: Option<(u64, SessionAccessMode)>,
+    /// The Turn of an answered review whose reviewer would run under wider
+    /// access than the chat's, until its `turn/started` is refused.
+    refused_review: Option<ExternalId>,
 }
 
 impl Default for NativeTurn {
@@ -64,6 +80,7 @@ impl Default for NativeTurn {
             announced: None,
             thread_access: SessionAccessMode::ReadOnly,
             pending_access: None,
+            refused_review: None,
         }
     }
 }
@@ -128,20 +145,43 @@ impl CodexAdapter {
             .is_some_and(|(request_id, asked)| {
                 self.pending_kind(request_id).is_some()
                     && self.turn_start_correlations.is_pending(request_id)
-                    && self.native_turn.thread_access != SessionAccessMode::ReadOnly
-                    && self.native_turn.thread_access != asked
+                    && self.thread_access_overrides(asked)
             })
     }
 
+    /// Whether a Turn under the thread's access runs wider than `asked`.
+    fn thread_access_overrides(&self, asked: SessionAccessMode) -> bool {
+        self.native_turn.thread_access != SessionAccessMode::ReadOnly
+            && self.native_turn.thread_access != asked
+    }
+
+    /// True once, for the `turn/started` of `turn`, a review answered
+    /// under access narrower than the thread's.
+    pub(in crate::acp::bindings::codex::state) fn take_refused_review(
+        &mut self,
+        turn: &ExternalId,
+    ) -> bool {
+        self.native_turn
+            .refused_review
+            .take_if(|review| review == turn)
+            .is_some()
+    }
+
     /// Codex answered `request_id`. A `turn/start` it accepted sets the
-    /// policy later Turns keep; an action leaves the policy as it was.
-    pub(crate) fn accept_thread_access(&mut self, request_id: u64) {
+    /// policy later Turns keep; an action leaves the policy as it was, and a
+    /// review answered as `turn` runs under it.
+    pub(crate) fn accept_thread_access(&mut self, request_id: u64, turn: &str) {
         if let Some((pending, access)) = self.native_turn.pending_access
             && pending == request_id
         {
-            if self.pending_kind(request_id) == Some(RequestKind::TurnStart) {
+            let kind = self.pending_kind(request_id);
+            if kind == Some(RequestKind::TurnStart) {
                 self.native_turn.thread_access = access;
             }
+            self.native_turn.refused_review = (kind == Some(RequestKind::Review)
+                && self.thread_access_overrides(access))
+            .then(|| ExternalId::new("externalTurnId", turn.to_owned()).ok())
+            .flatten();
             self.native_turn.pending_access = None;
         }
     }
