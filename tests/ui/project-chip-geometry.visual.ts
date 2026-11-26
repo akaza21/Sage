@@ -430,12 +430,19 @@ test("each project chip shows its clear button right after the name", async ({
       .openNewChatDraft(useWorkbenchStore.getState().project!.id);
   });
   const home = page.getByRole("region", { name: "New chat", exact: true });
-  for (const chip of [
-    home.locator(".project-scope--caption"),
-    page.getByRole("group", { name: "Chat location" }).locator(".project-scope"),
-  ]) {
+  // The name is the caption text on the home screen and the shrink-wrapped
+  // trigger in the strip.
+  for (const [chip, label] of [
+    [home.locator(".project-scope--caption"), ".project-scope__caption"],
+    [
+      page
+        .getByRole("group", { name: "Chat location" })
+        .locator(".project-scope"),
+      ".project-scope__picker",
+    ],
+  ] as const) {
     await page.mouse.move(0, 0);
-    const name = (await chip.locator(".project-scope__picker").boundingBox())!;
+    const name = (await chip.locator(label).boundingBox())!;
     await chip.hover();
     const clear = chip.getByRole("button", {
       name: "Remove project from this chat",
@@ -445,9 +452,7 @@ test("each project chip shows its clear button right after the name", async ({
     expect(box.x - (name.x + name.width)).toBeGreaterThanOrEqual(0);
     expect(box.x - (name.x + name.width)).toBeLessThanOrEqual(2);
     // Showing the button moves nothing.
-    expect(await chip.locator(".project-scope__picker").boundingBox()).toEqual(
-      name,
-    );
+    expect(await chip.locator(label).boundingBox()).toEqual(name);
     await expect(clear).toHaveAttribute(
       "title",
       "Remove project from this chat",
@@ -458,9 +463,7 @@ test("each project chip shows its clear button right after the name", async ({
     .locator(".project-scope__caption")
     .boundingBox())!;
   expect(
-    Math.abs(
-      caption.x + caption.width / 2 - (heading.x + heading.width / 2),
-    ),
+    Math.abs(caption.x + caption.width / 2 - (heading.x + heading.width / 2)),
   ).toBeLessThanOrEqual(1);
 });
 
