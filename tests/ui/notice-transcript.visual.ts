@@ -37,6 +37,12 @@ for (const [scenario, offender] of [
           .getByRole("group", { name: "Turn failed" })
           .getByRole("button", { name: "Retry" }),
       ).toBeVisible();
+      // The latest failure holds the turn's only Retry, so it never dismisses.
+      await expect(
+        page
+          .getByRole("group", { name: "Turn failed" })
+          .getByRole("button", { name: "Dismiss" }),
+      ).toHaveCount(0);
     }
     if (scenario === "boundary") {
       await expect(
