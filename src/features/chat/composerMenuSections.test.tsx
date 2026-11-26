@@ -219,19 +219,10 @@ it.each([
 it.each([
   {
     sessionless: false,
-    rows: [
-      "files",
-      "images",
-      "project",
-      "goal",
-      "plan",
-      "mode:plan",
-      "effort",
-      "usage",
-    ],
+    rows: ["files", "images", "project", "goal", "plan", "mode:plan", "usage"],
     commands: ["link", "recipe", "tune", "status"],
   },
-  // Fails closed: rows that do not declare needing nothing (effort) and
+  // Fails closed: rows that do not declare needing nothing and
   // every catalog command stay hidden before a session exists; only the
   // draft's curated built-ins show. Files stage in the draft's own native
   // slot.
@@ -264,7 +255,6 @@ it.each([
         onOpenAccess: noop,
       },
       onOpenGoal: noop,
-      onOpenEffort: noop,
       onOpenUsage: noop,
       importable: false,
       onImport: noop,

@@ -3,7 +3,10 @@ import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import type { AgentDiffRef } from "../domain/agentDiff";
 import type { ResourceRef } from "../domain/workbench";
 import { resourceKey } from "../domain/resourceIdentity";
-import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
+import {
+  projectAgentEditSummary,
+  projectChangeResource,
+} from "../features/chat/acp/agentEditSummary";
 import {
   MAX_RECENT_RESOURCE_ITEMS,
   MAX_RESOURCE_ENTRIES,
@@ -44,15 +47,9 @@ export function projectTaskResources(
     return { outputs: [], sources: [], changesCount: 0 };
   for (const turn of recentResourceTurns(page)) {
     for (const change of projectAgentEditSummary(page, turn).changes) {
-      const changedResource =
-        change.resource.kind === "resource"
-          ? change.resource.resource
-          : change.resource.displayResource;
-      if (
-        turn.sessionId === page.currentSessionId &&
-        changedResource &&
-        changes.size < MAX_RESOURCE_ENTRIES
-      )
+      const changedResource = projectChangeResource(change);
+      // Counts what the chat's changed-file card shows: every session's project changes.
+      if (changedResource && changes.size < MAX_RESOURCE_ENTRIES)
         changes.add(resourceKey(changedResource));
       if (change.operation !== "created" || change.resource.kind !== "resource")
         continue;

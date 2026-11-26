@@ -93,20 +93,19 @@ it("states each harness's install state once and puts the sign-in command before
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   expect(
-    await screen.findByText(
-      "Available · 0.9.0. Sign-in status is not exposed by this harness.",
-    ),
+    await screen.findByText("Sign-in status is not exposed by this harness."),
   ).toBeVisible();
+  expect(screen.getByText("v0.9.0")).toBeVisible();
+  fireEvent.click(screen.getByText("Details"));
   expect(
     await screen.findByText(
       (_, node) =>
         node?.textContent === "Run pi in a terminal. Then run /login.",
     ),
   ).toBeVisible();
+  expect(screen.getByText("Not installed")).toBeVisible();
   expect(
-    screen.getByText(
-      "Not installed. Install it, then choose Refresh discovery.",
-    ),
+    screen.getByText("Install it, then choose Refresh discovery."),
   ).toBeVisible();
   expect(screen.queryByText(/missing login/)).toBeNull();
 });

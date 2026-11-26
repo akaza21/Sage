@@ -33,7 +33,6 @@ export type ComposerOptionsProps = ComponentProps<typeof ComposerAddActions> & {
   accessModes?: readonly SessionAccessModeCapability[];
   id: string;
   selectionKey: string;
-  canSelectEffort: boolean;
   focused: boolean;
   onModeRemoved: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -60,7 +59,6 @@ export type ComposerAddActionsProps = {
   goalUnobserved?: boolean;
   harnessName?: string;
   onCompact?: () => void;
-  onOpenEffort?: () => void;
   onOpenUsage?: () => void;
   onOpenMcp?: () => void;
   onOpenExtensions?: () => void;

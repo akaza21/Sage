@@ -345,6 +345,15 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }
 
+/// The message stays the one the shared refusal path recognises; Claude
+/// Code's own words ride along as the error's `data`.
+fn acp_auth_error(id: Value, detail: String) -> Value {
+    // The sign-in refusal code Claude's ACP surface also uses.
+    let mut error = acp_error(id, -32_000, "Authentication required");
+    error["error"]["data"] = Value::String(detail);
+    error
+}
+
 #[cfg(test)]
 mod tests;
 

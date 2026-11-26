@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import {
@@ -16,22 +17,21 @@ export function HarnessTurnFailureDetails({
 }) {
   return (
     <>
-      <pre>
-        {JSON.stringify(
-          {
-            reason: turn.terminalReason,
-            error,
-          },
-          null,
-          2,
-        )}
-      </pre>
+      <details>
+        <summary>Raw</summary>
+        <pre>
+          {JSON.stringify({ reason: turn.terminalReason, error }, null, 2)}
+        </pre>
+      </details>
       {turn.terminalReason?.kind === "authRequired" && page ? (
         <HarnessTurnSignInRecovery page={page} turn={turn} />
       ) : null}
     </>
   );
 }
+
+// Disposable WebView state: the newest 64 refused turns a later sign-in answered.
+const answered: string[] = [];
 
 function HarnessTurnSignInRecovery({
   page,
@@ -43,14 +43,13 @@ function HarnessTurnSignInRecovery({
   const bindingId = page.sessions.find(
     (session) => session.id === turn.sessionId,
   )?.bindingId;
+  const [done, setDone] = useState(() => answered.includes(turn.id));
   const harness = useWorkbenchStore((state) =>
-    state.chatUiById[page.chatId]?.dismissedAuthTurnId === turn.id ||
-    state.chatUiById[page.chatId]?.errorKind === "signInRequired"
+    done || state.chatUiById[page.chatId]?.errorKind === "signInRequired"
       ? undefined
       : state.harnesses.find((entry) => entry.bindingId === bindingId),
   );
   if (!harness) return null;
-  const owner = useWorkbenchStore.getState().captureChatOwnership(page.chatId);
   return (
     <HarnessSignInRecovery
       refusal={
@@ -62,8 +61,8 @@ function HarnessTurnSignInRecovery({
         harnessId: harness.id,
         scope: JSON.stringify([page.projectId, page.chatId, turn.id]),
         onSignedIn: () => {
-          if (owner)
-            useWorkbenchStore.getState().dismissChatAuthTurn(owner, turn.id);
+          if (answered.push(turn.id) > 64) answered.shift();
+          setDone(true);
         },
       }}
     />

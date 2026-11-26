@@ -326,6 +326,12 @@ it.each([
   },
 );
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
+// The thinking level is changed inside the Model popover.
+async function openModelEffort() {
+  fireEvent.click(screen.getByRole("button", { name: "Model" }));
+  await screen.findByRole("dialog", { name: "Select model" });
+  return screen.findByRole("slider", { name: "Thinking level" });
+}
 
 it("silently replaces an inherited unavailable harness in catalog order", async () => {
   const expected = "draft-harness";
@@ -705,7 +711,7 @@ it("labels a session-less existing chat with its default and starts with the mod
   mount();
   await settleLazyModules();
   const model = screen.getByRole("button", { name: "Model" });
-  expect(model).toHaveTextContent(/^Model A$/);
+  expect(model).toHaveTextContent(/^Model ADefault$/);
   expect(model).toBeEnabled();
   fireEvent.click(model);
   fireEvent.click(await screen.findByRole("option", { name: /Model B/ }));
@@ -740,7 +746,7 @@ it("replaces a pre-session label with the harness's confirmed model even when it
   mount();
   await settleLazyModules();
   expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-    /^Model A$/,
+    /^Model ADefault$/,
   );
   fireEvent.change(composer(), {
     target: { value: "Confirm the effective model" },
@@ -789,7 +795,7 @@ it.each(["checking", "idle"] as const)(
     act(() =>
       useWorkbenchStore.setState({ models, harnessDiscoveryPhase: "ready" }),
     );
-    expect(model).toHaveTextContent(/^Model A$/);
+    expect(model).toHaveTextContent(/^Model ADefault$/);
     expect(model).toBeEnabled();
   },
 );
@@ -825,15 +831,9 @@ it("shares a pinned chat's rediscovered default, effort and access after a catal
   expect(model).toHaveTextContent("Loading");
   await act(async () => publish([...models].reverse()));
   await settleLazyModules();
-  await waitFor(() => expect(model).toHaveTextContent(/^Model A$/));
+  await waitFor(() => expect(model).toHaveTextContent(/^Model ADefault$/));
   expect(model).toBeEnabled();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Thinking level: Default/ }),
-  );
-  fireEvent.change(
-    await screen.findByRole("slider", { name: "Thinking level" }),
-    { target: { value: "2" } },
-  );
+  fireEvent.change(await openModelEffort(), { target: { value: "2" } });
   fireEvent.keyDown(screen.getByRole("slider", { name: "Thinking level" }), {
     key: "Escape",
   });
@@ -1583,13 +1583,7 @@ it("keeps draft picker choices separate from the previous chat and its defaults"
   fireEvent.click(
     await screen.findByRole("menuitemradio", { name: "Ask each time" }),
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: /Thinking level/ }),
-  );
-  fireEvent.change(
-    await screen.findByRole("slider", { name: /Thinking level/ }),
-    { target: { value: "2" } },
-  );
+  fireEvent.change(await openModelEffort(), { target: { value: "2" } });
   await settleLazyModules();
   expect(
     screen.getByRole("button", { name: "Access options" }),
@@ -1600,9 +1594,11 @@ it("keeps draft picker choices separate from the previous chat and its defaults"
   });
   expect(useWorkbenchStore.getState().chatUiById[priorId]).toEqual(selection);
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
-  fireEvent.click(screen.getByRole("button", { name: "Model" }));
+  // The model list shares the still-open popover with the level.
   fireEvent.click(await screen.findByRole("option", { name: /Model B/ }));
-  expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^Model B$/,
+  );
   expect(useWorkbenchStore.getState().newChatDraft?.effort).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Harness" }));
   fireEvent.click(await screen.findByRole("option", { name: /Other harness/ }));
@@ -2229,7 +2225,7 @@ it.each([false, true])(
   },
 );
 
-it("keeps effort selectable when the narrow toolbar exhausts its compaction steps", async () => {
+it("keeps effort selectable in the model popover when the narrow toolbar exhausts its compaction steps", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
       return {
@@ -2247,10 +2243,7 @@ it("keeps effort selectable when the narrow toolbar exhausts its compaction step
   );
   mount();
   await settleLazyModules();
-  fireEvent.click(
-    await screen.findByRole("button", { name: /Thinking level/ }),
-  );
-  const slider = await screen.findByRole("slider", { name: "Thinking level" });
+  const slider = await openModelEffort();
   fireEvent.change(slider, { target: { value: "2" } });
   expect(slider).toHaveAttribute("aria-valuetext", "High");
   expect(useWorkbenchStore.getState().newChatDraft?.effort).toBe("high");
@@ -2375,13 +2368,7 @@ it.each(["sign-in", "discovery retry"] as const)(
 it("starts the first session with the effort chosen in the unsaved draft", async () => {
   mount();
   await settleLazyModules();
-  fireEvent.click(
-    await screen.findByRole("button", { name: /Thinking level/ }),
-  );
-  fireEvent.change(
-    await screen.findByRole("slider", { name: "Thinking level" }),
-    { target: { value: "2" } },
-  );
+  fireEvent.change(await openModelEffort(), { target: { value: "2" } });
   fireEvent.keyDown(screen.getByRole("slider", { name: "Thinking level" }), {
     key: "Escape",
   });

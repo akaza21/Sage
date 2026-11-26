@@ -63,6 +63,8 @@ export function ComposerQueuedPrompts({
                       : "Queued"}
           </span>
           {steerAvailable &&
+          // Steer is text-only, so a message with images waits for its turn.
+          !prompt.attachedContext.some((context) => context.kind === "image") &&
           !["sending", "saving", "deleting"].includes(prompt.status) ? (
             <button
               type="button"

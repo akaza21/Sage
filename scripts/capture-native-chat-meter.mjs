@@ -15,12 +15,10 @@ export function contextMeterFit(composer) {
   if (!slot) return "unknown";
   if (slot.getBoundingClientRect().width > 0)
     return slot.querySelector('[role="progressbar"]') ? "shown" : "pending";
+  // Access and harness names are always icon-only, so they never outrank it.
   const outranking = [
-    ".composer__capacity",
     ".project-scope .searchable-picker__trigger-label",
-    ".composer__effort-picker[data-overflow-control] .composer__effort-label",
-    ".composer__access-text",
-    ".composer__harness .searchable-picker__trigger-label",
+    ".composer__model-effort",
     ".composer__model-label",
   ];
   if (
