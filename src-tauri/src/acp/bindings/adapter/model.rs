@@ -79,6 +79,11 @@ pub(crate) enum AdapterRuntimeError {
     RewindUnavailable,
     #[error("the harness reports that it is not signed in")]
     SignInRequired,
+    /// The harness took the prompt into a Turn of its own that runs under
+    /// access other than the prompt's; it cannot be declined, so the runtime
+    /// stops and the prompt's Turn fails.
+    #[error("the harness took the prompt into a Turn running under other access")]
+    HarnessTurnRefused,
     #[error("adapter frame is invalid")]
     Frame,
     #[error("adapter event batch exceeds its count limit")]

@@ -370,5 +370,8 @@ fn turn_started_rejection(adapter: &CodexAdapter, error: AdapterError) -> Ingres
             "Codex turn/started rejected by adapter state"
         );
     }
-    identity(error)
+    match error {
+        AdapterError::Ingress(IngressError::TurnAccessRefused) => IngressError::TurnAccessRefused,
+        error => identity(error),
+    }
 }

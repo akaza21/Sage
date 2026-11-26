@@ -146,6 +146,11 @@ impl CodexAdapter {
         {
             return Ok((self.scoped_turn(value)?, TurnBinding::PreviousTerminal));
         }
+        if !self.turn_start_correlations.knows(&id) && self.joined_turn_overrides_access() {
+            return Err(
+                crate::acp::bindings::codex::incoming::IngressError::TurnAccessRefused.into(),
+            );
+        }
         match self.turn_start_correlations.observe(&id)? {
             CorrelationMatch::Pending(client_message_id) => {
                 self.retire_action_handoff()?;

@@ -374,3 +374,85 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
         assert_eq!(notices(&shared), 1);
     });
 }
+
+/// Recorded with codex-cli 0.167.1: a read-only prompt sent as Codex starts
+/// a goal continuation on a thread last prompted under workspace-write is
+/// taken into that Turn, which keeps workspace-write and wrote to the
+/// workspace. The `turn/started` that arrives before Codex answers the
+/// prompt is refused, so the prompt never runs under the wider access.
+#[test]
+fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
+    use crate::acp::bindings::adapter::AdapterRuntimeError;
+    use sage_acp_protocol::access_mode::SessionAccessMode;
+    const FIRST: &str = "01a2152a-48c9-7ab1-8af4-951391e0316a";
+    const GOAL: &str = "01a2152a-5858-7b42-8c45-f03f0fd8f5b6";
+    let turn_object = |id: &str| {
+        serde_json::json!({"id":id,"rootTurnId":id,"items":[],"itemsView":"notLoaded",
+            "status":"inProgress","error":null,"startedAt":null,"completedAt":null,
+            "durationMs":null})
+    };
+    let started = |id: &str| {
+        codex_line(serde_json::json!({"method":"turn/started","params":{
+            "threadId":"thread-1","turn":{"id":id,"rootTurnId":id,"items":[],
+            "itemsView":"notLoaded","status":"inProgress","error":null,
+            "startedAt":1795651426,"completedAt":null,"durationMs":null}}}))
+    };
+    runtime().block_on(async {
+        let mut codex = ready_codex();
+        let prompt = codex
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Reply with exactly the word READY.").unwrap(),
+                client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                access_mode: SessionAccessMode::WorkspaceWrite,
+            })
+            .unwrap();
+        let prompt_id = codex_request_id(&prompt);
+        codex
+            .resolve_egress(prompt.into_token(), EgressResolution::Queued)
+            .unwrap();
+        let (mut pump, _shared) = codex_pump(codex);
+        for frame in [
+            codex_line(serde_json::json!({"id":prompt_id,"result":{"turn":turn_object(FIRST)}})),
+            started(FIRST),
+            codex_line(serde_json::json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":FIRST,"status":"completed"}}})),
+        ] {
+            pump.push_stdout_chunk(&frame, 2).await.unwrap();
+        }
+        let parts = pump
+            .try_into_completed_parts()
+            .ok()
+            .expect("the workspace-write prompt ends");
+
+        let next = ActiveTurnIntent {
+            turn_id: turn("two"),
+            external_turn_id: None,
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        };
+        let mut pump = parts
+            .bind_turn(next.clone())
+            .ok()
+            .expect("a prompt may follow");
+        pump.queue_prompt(
+            Prompt::new("prompt", "Reply with the word JOINED as well.").unwrap(),
+            &next.client_message_id,
+            SessionAccessMode::ReadOnly,
+        )
+        .unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        let refused = pump.push_stdout_chunk(&started(GOAL), 3).await;
+        assert!(
+            matches!(
+                refused,
+                Err(AdapterPumpError::Adapter(
+                    AdapterRuntimeError::HarnessTurnRefused
+                ))
+            ),
+            "{refused:?}"
+        );
+    });
+}

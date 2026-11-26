@@ -10,6 +10,17 @@
 //! is unanswered stays with that request: Codex answers a `turn/start` sent
 //! during its own Turn with that Turn's id (it takes the prompt into it), and
 //! a reply naming another Turn stays an identity conflict.
+//!
+//! Codex keeps the policy a Turn started with: a `turn/start` it takes into
+//! a running Turn changes only later Turns (recorded with codex-cli 0.167.1:
+//! a read-only prompt joined to a goal continuation started under
+//! workspace-write still wrote to the workspace). So the rule the
+//! coordinator applies to an announced Turn applies to a joined prompt too:
+//! it may run only read-only or at exactly its own access. Otherwise the
+//! `turn/started` that arrives before Codex answers is refused, and since
+//! Codex cannot decline it, the runtime stops and the prompt's Turn fails.
+//! Sage's own Turn has always been answered before its `turn/started`
+//! arrives; were that order ever reversed, this fails closed.
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
@@ -86,6 +97,19 @@ impl CodexAdapter {
         access: SessionAccessMode,
     ) {
         self.native_turn.pending_access = Some((request_id, access));
+    }
+
+    /// Whether a Turn Codex starts now, taking in the unanswered prompt,
+    /// would run that prompt under access other than it asked for: the
+    /// Turn keeps the thread's access unless that is read-only.
+    pub(in crate::acp::bindings::codex::state) fn joined_turn_overrides_access(&self) -> bool {
+        self.native_turn
+            .pending_access
+            .is_some_and(|(request_id, asked)| {
+                self.turn_start_correlations.is_pending(request_id)
+                    && self.native_turn.thread_access != SessionAccessMode::ReadOnly
+                    && self.native_turn.thread_access != asked
+            })
     }
 
     /// Codex accepted the `turn/start` `request_id`, and with it its policy.

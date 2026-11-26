@@ -21,6 +21,9 @@ fn pump_error_summary(error: &AdapterPumpError) -> &'static str {
         AdapterPumpError::RecoveryRequired => "projection delivery failed",
         AdapterPumpError::Frame => "harness sent a malformed protocol frame",
         AdapterPumpError::Refused(_) => "harness refused the request",
+        AdapterPumpError::Adapter(
+            crate::acp::bindings::adapter::AdapterRuntimeError::HarnessTurnRefused,
+        ) => crate::acp::runtime::adapter_pump::REFUSED_TURN,
         AdapterPumpError::Adapter(_) => "harness adapter rejected the exchange",
     }
 }
