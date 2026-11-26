@@ -177,9 +177,19 @@ impl Replay {
     fn written(&mut self, adapter: &mut dyn HarnessAdapter, egress: AdapterEgress) {
         let sent: Value = serde_json::from_slice(egress.frame().payload()).expect("egress JSON");
         self.live.push_back(sent);
+        // As the adapter pump writes it: committed if mandatory, queued, then
+        // written.
+        if egress.token().is_mandatory() {
+            adapter
+                .commit_mandatory_egress(egress.token())
+                .expect("mandatory egress commits");
+        }
+        adapter
+            .resolve_egress(egress.token().clone(), EgressResolution::Queued)
+            .expect("egress queues");
         adapter
             .resolve_egress(egress.into_token(), EgressResolution::Written)
-            .expect("egress resolves");
+            .expect("egress is written");
     }
 
     fn command_for(&mut self, step: &Value, out: &Value) -> Option<AdapterCommand> {
