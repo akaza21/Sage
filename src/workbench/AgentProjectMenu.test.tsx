@@ -17,6 +17,8 @@ const invoke = vi.hoisted(() =>
 );
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
+// Native runtime, so the cleanup goes to the mocked Tauri command.
+Object.assign(window, { __TAURI_INTERNALS__: {} });
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
@@ -35,7 +37,9 @@ it("removes a project natively only after the permanent removal is confirmed", a
       onOpenProject={() => {}}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Project actions for Old" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Project actions for Old" }),
+  );
   const remove = screen.getByRole("menuitem", { name: "Remove project…" });
   expect(remove).toBeEnabled();
 
@@ -44,7 +48,9 @@ it("removes a project natively only after the permanent removal is confirmed", a
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(invoke).not.toHaveBeenCalled();
 
-  fireEvent.click(screen.getByRole("button", { name: "Project actions for Old" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Project actions for Old" }),
+  );
   fireEvent.click(screen.getByRole("menuitem", { name: "Remove project…" }));
   fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
   await waitFor(() =>

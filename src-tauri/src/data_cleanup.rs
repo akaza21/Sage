@@ -32,8 +32,12 @@ const ARCHIVED: &str = "NOT EXISTS(SELECT 1 FROM chat_tabs t WHERE t.chat_id=c.i
 
 pub(crate) trait DataCleanupStore {
     /// The Chats `scope` would remove, at most `limit`, for runtime release.
-    fn cleanup_chat_ids(&self, project: &str, scope: CleanupScope, limit: i64)
-    -> AppResult<Vec<String>>;
+    fn cleanup_chat_ids(
+        &self,
+        project: &str,
+        scope: CleanupScope,
+        limit: i64,
+    ) -> AppResult<Vec<String>>;
     /// Purges the Chats of `scope` and, for `CleanupScope::Project`, the
     /// Project. Returns how many Chats were deleted.
     fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<usize>;
@@ -82,7 +86,11 @@ fn chat_page(
     leaves_only: bool,
     limit: i64,
 ) -> AppResult<Vec<String>> {
-    let archived = if scope == CleanupScope::Archived { ARCHIVED } else { "1" };
+    let archived = if scope == CleanupScope::Archived {
+        ARCHIVED
+    } else {
+        "1"
+    };
     let leaves = if leaves_only {
         "NOT EXISTS(SELECT 1 FROM chat_lineage l
            WHERE l.parent_project_id=c.project_id AND l.parent_chat_id=c.id)"
@@ -121,7 +129,11 @@ fn admit_project(connection: &Connection, project: &str, scope: CleanupScope) ->
         }
         Some(_) => {}
     }
-    let archived = if scope == CleanupScope::Archived { ARCHIVED } else { "1" };
+    let archived = if scope == CleanupScope::Archived {
+        ARCHIVED
+    } else {
+        "1"
+    };
     let (running, unsettled): (bool, bool) = connection
         .query_row(
             &format!(
@@ -160,7 +172,11 @@ fn admit_chat(
     chat: &str,
     scope: CleanupScope,
 ) -> AppResult<()> {
-    let archived = if scope == CleanupScope::Archived { ARCHIVED } else { "1" };
+    let archived = if scope == CleanupScope::Archived {
+        ARCHIVED
+    } else {
+        "1"
+    };
     let admitted: bool = connection
         .query_row(
             &format!(
@@ -212,10 +228,16 @@ fn forget_project(database: &Database, project: &str) -> AppResult<()> {
         )
         .db()?;
     transaction
-        .execute("DELETE FROM acp_project_usage WHERE project_id=?1", [project])
+        .execute(
+            "DELETE FROM acp_project_usage WHERE project_id=?1",
+            [project],
+        )
         .db()?;
     transaction
-        .execute("DELETE FROM projects WHERE id=?1 AND kind='user'", [project])
+        .execute(
+            "DELETE FROM projects WHERE id=?1 AND kind='user'",
+            [project],
+        )
         .db()?;
     transaction.commit().db()
 }

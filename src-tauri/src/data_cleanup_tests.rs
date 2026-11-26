@@ -24,7 +24,10 @@ fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("sage-data-cleanup-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(root.join("a")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let project = database.create_project_with_chat(&root.join("a")).unwrap().id;
+    let project = database
+        .create_project_with_chat(&root.join("a"))
+        .unwrap()
+        .id;
     Fixture {
         root,
         database,
@@ -101,7 +104,11 @@ fn deleting_archived_chats_purges_forks_first_and_keeps_attached_chats() {
     let Fixture {
         database, project, ..
     } = &fixture;
-    let attached = database.bootstrap_snapshot().unwrap().active_tab_id.unwrap();
+    let attached = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
     let (parent, image) = with_history(database, project);
     let child = fork(database, project, &parent);
     // The parent is archived first, so its fork sorts after it by nothing
@@ -113,10 +120,27 @@ fn deleting_archived_chats_purges_forks_first_and_keeps_attached_chats() {
 
     assert_eq!(deleted, 2);
     for chat in [&parent, &child] {
-        assert_eq!(count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", chat), 0);
-        assert_eq!(count(database, "SELECT COUNT(*) FROM turns WHERE chat_id=?1", chat), 0);
+        assert_eq!(
+            count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", chat),
+            0
+        );
+        assert_eq!(
+            count(
+                database,
+                "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
+                chat
+            ),
+            0
+        );
     }
-    assert_eq!(count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", &attached), 1);
+    assert_eq!(
+        count(
+            database,
+            "SELECT COUNT(*) FROM chats WHERE id=?1",
+            &attached
+        ),
+        1
+    );
     let artifacts = database.image_artifact_root().unwrap();
     assert!(!artifacts.join(format!("{image}.full")).exists());
     fixture.finish();
@@ -131,7 +155,10 @@ fn removing_a_project_deletes_its_chats_roots_and_activity_only() {
         project,
     } = &fixture;
     std::fs::create_dir_all(root.join("b")).unwrap();
-    let other = database.create_project_with_chat(&root.join("b")).unwrap().id;
+    let other = database
+        .create_project_with_chat(&root.join("b"))
+        .unwrap()
+        .id;
     let (parent, image) = with_history(database, project);
     fork(database, project, &parent);
     archive(database, project, &parent);
@@ -139,22 +166,59 @@ fn removing_a_project_deletes_its_chats_roots_and_activity_only() {
         .connection()
         .execute("UPDATE app_state SET active_project_id=?1", [project])
         .unwrap();
-    let other_chats = count(database, "SELECT COUNT(*) FROM chats WHERE project_id=?1", &other);
+    let other_chats = count(
+        database,
+        "SELECT COUNT(*) FROM chats WHERE project_id=?1",
+        &other,
+    );
 
     let deleted = database.clean_up(project, CleanupScope::Project).unwrap();
 
     assert_eq!(deleted, 3);
-    for table in ["projects WHERE id", "project_roots WHERE project_id", "chats WHERE project_id", "turns WHERE project_id", "acp_project_usage WHERE project_id"] {
-        assert_eq!(count(database, &format!("SELECT COUNT(*) FROM {table}=?1"), project), 0, "{table}");
+    for table in [
+        "projects WHERE id",
+        "project_roots WHERE project_id",
+        "chats WHERE project_id",
+        "turns WHERE project_id",
+        "acp_project_usage WHERE project_id",
+    ] {
+        assert_eq!(
+            count(
+                database,
+                &format!("SELECT COUNT(*) FROM {table}=?1"),
+                project
+            ),
+            0,
+            "{table}"
+        );
     }
     let active: Option<String> = database
         .connection()
-        .query_row("SELECT active_project_id FROM app_state", [], |row| row.get(0))
+        .query_row("SELECT active_project_id FROM app_state", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(active, None);
-    assert_eq!(count(database, "SELECT COUNT(*) FROM projects WHERE id=?1", &other), 1);
-    assert_eq!(count(database, "SELECT COUNT(*) FROM chats WHERE project_id=?1", &other), other_chats);
-    assert!(root.join("a").is_dir(), "the Project's folder stays on disk");
+    assert_eq!(
+        count(
+            database,
+            "SELECT COUNT(*) FROM projects WHERE id=?1",
+            &other
+        ),
+        1
+    );
+    assert_eq!(
+        count(
+            database,
+            "SELECT COUNT(*) FROM chats WHERE project_id=?1",
+            &other
+        ),
+        other_chats
+    );
+    assert!(
+        root.join("a").is_dir(),
+        "the Project's folder stays on disk"
+    );
     let artifacts = database.image_artifact_root().unwrap();
     assert!(!artifacts.join(format!("{image}.full")).exists());
     fixture.finish();
@@ -175,12 +239,32 @@ fn removing_a_project_with_an_unsettled_runtime_changes_nothing() {
             [&chat],
         )
         .unwrap();
-    let chats = count(database, "SELECT COUNT(*) FROM chats WHERE project_id=?1", project);
+    let chats = count(
+        database,
+        "SELECT COUNT(*) FROM chats WHERE project_id=?1",
+        project,
+    );
 
-    let error = database.clean_up(project, CleanupScope::Project).unwrap_err();
+    let error = database
+        .clean_up(project, CleanupScope::Project)
+        .unwrap_err();
 
     assert!(error.to_string().contains("shutting down"), "{error}");
-    assert_eq!(count(database, "SELECT COUNT(*) FROM chats WHERE project_id=?1", project), chats);
-    assert_eq!(count(database, "SELECT COUNT(*) FROM projects WHERE id=?1", project), 1);
+    assert_eq!(
+        count(
+            database,
+            "SELECT COUNT(*) FROM chats WHERE project_id=?1",
+            project
+        ),
+        chats
+    );
+    assert_eq!(
+        count(
+            database,
+            "SELECT COUNT(*) FROM projects WHERE id=?1",
+            project
+        ),
+        1
+    );
     fixture.finish();
 }

@@ -6,7 +6,7 @@ import type {
   ProjectLayoutRequest,
 } from "../domain/workbench";
 import type { ProjectTransitionResult } from "../domain/project";
-import { invokeNative } from "../ports/nativeInvoke";
+import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ChatActionReport, ChatRowAction } from "./chatArchiveSlice";
 import {
@@ -345,10 +345,17 @@ export async function cleanUpProjectData(
     get,
     ...createChatTransitionContext(set, get),
     failedMessage: "native cleanup did not commit",
-    invoke: () =>
-      invokeNative<ProjectTransitionResult>(command, {
-        projectId,
-        expectedTransitionEpoch,
-      }),
+    invoke: async () =>
+      // The browser fixture is development-only; production builds drop it.
+      !import.meta.env.DEV || isTauriRuntime()
+        ? invokeNative<ProjectTransitionResult>(command, {
+            projectId,
+            expectedTransitionEpoch,
+          })
+        : (await import("../services/browserDesktop")).browserDesktop.cleanUp(
+            command,
+            projectId,
+            expectedTransitionEpoch,
+          ),
   });
 }

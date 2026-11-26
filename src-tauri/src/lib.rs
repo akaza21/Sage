@@ -22,14 +22,14 @@ mod chat_queue_commands;
 mod chat_read_state;
 mod chat_search;
 mod chat_search_commands;
-mod data_cleanup;
-mod data_cleanup_commands;
 #[cfg(feature = "codex-provisioning-helper")]
 #[doc(hidden)]
 pub mod codex_helper_boundary;
 mod commands;
 #[cfg(all(test, windows))]
 mod console_window_fixture;
+mod data_cleanup;
+mod data_cleanup_commands;
 mod database;
 #[cfg(all(feature = "browser-bridge", debug_assertions))]
 mod dev_bridge;

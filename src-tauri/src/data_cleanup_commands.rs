@@ -19,7 +19,13 @@ pub async fn delete_archived_chats(
     project_id: String,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(clean_up(&state, project_id, CleanupScope::Archived, expected_transition_epoch).await)
+    Ok(clean_up(
+        &state,
+        project_id,
+        CleanupScope::Archived,
+        expected_transition_epoch,
+    )
+    .await)
 }
 
 /// Permanently deletes a user Project and all of its Chats. Files on disk
@@ -30,7 +36,13 @@ pub async fn remove_project(
     project_id: String,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(clean_up(&state, project_id, CleanupScope::Project, expected_transition_epoch).await)
+    Ok(clean_up(
+        &state,
+        project_id,
+        CleanupScope::Project,
+        expected_transition_epoch,
+    )
+    .await)
 }
 
 pub(crate) async fn clean_up(
