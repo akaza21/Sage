@@ -21,10 +21,9 @@ import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
 import { harnessAvailability } from "./harnessAvailability";
-import { turnBindingId } from "./acp/acpTurnState";
 import {
   harnessSignInEvidence,
-  signInEvidenceListeners,
+  subscribeSignInEvidence,
 } from "../../services/acpHarnessDesktop";
 import {
   useInheritedComposerModel,
@@ -166,20 +165,17 @@ export function useChatHarnessSelection(chatId?: string): {
   // After a sign-in failure, sends wait for newer signed-in evidence or a
   // newer turn (Retry), instead of being refused again.
   const latest = page?.turns.at(-1);
-  const refused =
-    latest?.state === "failed" &&
-    latest.terminalReason?.kind === "authRequired" &&
-    latest.sessionId === page?.currentSessionId
-      ? latest
+  const refusedAt =
+    latest?.terminalReason?.kind === "authRequired" &&
+    latest.sessionId === selectedSession?.id
+      ? (latest.terminalAt ?? 0)
       : null;
   const evidence = useSyncExternalStore(subscribeSignInEvidence, () =>
-    refused
-      ? harnessSignInEvidence.get(turnBindingId(page!, refused) ?? "")
-      : undefined,
+    harnessSignInEvidence.get(selectedSession?.bindingId ?? ""),
   );
   const discoveryPhase: HarnessDiscoveryPhase =
-    refused &&
-    !(evidence?.[1] === "signedIn" && evidence[0] > (refused.terminalAt ?? 0))
+    refusedAt !== null &&
+    !(evidence?.[1] === "signedIn" && evidence[0] > refusedAt)
       ? "signInRequired"
       : sessionHarnessId &&
           sessionHarnessId === selectedHarnessId &&
@@ -281,12 +277,5 @@ export function useChatHarnessSelection(chatId?: string): {
     discoveryPhase,
     chooseHarness,
     chooseModel,
-  };
-}
-
-function subscribeSignInEvidence(listener: () => void) {
-  signInEvidenceListeners.add(listener);
-  return () => {
-    signInEvidenceListeners.delete(listener);
   };
 }

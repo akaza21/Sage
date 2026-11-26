@@ -148,13 +148,9 @@ export const isBackgroundProcess = (row: {
   (row.kind === "subagent" && row.state === "running" && !!row.stoppable);
 
 /** The session still runs background work. Busy only: Resources decodes the rows it shows. */
-export const backgroundWorkRunning = (page: AcpChatPage) => {
-  const rows = (page.sessionSurface as { activities?: unknown } | undefined)
-    ?.activities;
-  return (
-    Array.isArray(rows) &&
-    (rows as ({ state?: unknown } | null)[]).some(
-      (row) => row?.state === "running" && isBackgroundProcess(row),
-    )
+export const backgroundWorkRunning = (page: AcpChatPage) =>
+  !!(
+    page.sessionSurface as { activities?: { state?: unknown }[] } | undefined
+  )?.activities?.some?.(
+    (row) => row?.state === "running" && isBackgroundProcess(row),
   );
-};
