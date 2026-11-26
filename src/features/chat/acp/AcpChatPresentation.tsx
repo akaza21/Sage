@@ -28,11 +28,7 @@ import { isEditingFiles } from "./editingFiles";
 import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import {
-  backgroundWorkRunning,
-  terminalTurnStates,
-  turnReasonErrorItem,
-} from "./statusSemantics";
+import { terminalTurnStates, turnReasonErrorItem } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
@@ -59,14 +55,12 @@ export const Turn = memo(
     onRetry,
     inherited = false,
     latest = false,
-    background = false,
     fileSummaryInDock = false,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
     inherited?: boolean;
     latest?: boolean;
-    background?: boolean;
     fileSummaryInDock?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
     workspaceChanges?: readonly TurnWorkspaceChange[];
@@ -194,7 +188,6 @@ export const Turn = memo(
             {renderTurnPrompts(promptItems, turn, interactive)}
             <ChatTranscriptTurnSummary
               turn={turn}
-              background={background && terminal}
               runningHeading={!isSideChatId(page.chatId)}
               steered={workingItems
                 .filter((item) => item.kind === "userPrompt")
@@ -298,7 +291,6 @@ export const Turn = memo(
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
     left.latest === right.latest &&
-    left.background === right.background &&
     turnBindingId(left.page, left.turn) ===
       turnBindingId(right.page, right.turn) &&
     left.fileSummaryInDock === right.fileSummaryInDock &&
@@ -341,7 +333,6 @@ export function AcpChatPresentation({
       onReview={onReviewChanges}
     />
   );
-  const background = backgroundWorkRunning(page);
   const renderTurn = (turn: TurnProjection, index: number) => (
     <Fragment key={turn.id}>
       <TurnDaySeparator timestamp={dayTimestamps[index]} />
@@ -354,7 +345,6 @@ export function AcpChatPresentation({
         onOpenResource={onOpenResource}
         onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         latest={index === page.turns.length - 1}
-        background={background && index === page.turns.length - 1}
         fileSummaryInDock={editSummaryContainer !== undefined}
       />
     </Fragment>
