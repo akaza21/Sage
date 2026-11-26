@@ -94,7 +94,7 @@ it("bounds retained command evidence and keeps the newest refusal for a binding"
     refuse("binding-32", 150);
     expect(harnessSignInEvidence.size).toBe(32);
     expect(harnessSignInEvidence.has("binding-0")).toBe(false);
-    expect(harnessSignInEvidence.get("binding-32")).toEqual([200, "signedOut"]);
+    expect(harnessSignInEvidence.get("binding-32")).toEqual([200, "refused"]);
   } finally {
     harnessSignInEvidence.clear();
   }

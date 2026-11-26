@@ -360,3 +360,26 @@
 .acp-activity-row[data-activity-state="failed"] {
   color: var(--color-danger);
 }
+
+/* An earlier failure reads as one row until its Details open. */
+[data-latest="false"] .notice {
+  padding-block: var(--space-1);
+  background: none;
+}
+
+[data-latest="false"]
+  .notice:not(:has(.notice__details))
+  [data-turn-reason-remediation] {
+  display: none;
+}
+
+[data-latest="false"]
+  .notice:not(:has(.notice__details))
+  [data-turn-reason-message] {
+  display: inline-block;
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}

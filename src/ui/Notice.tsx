@@ -14,6 +14,8 @@ export interface NoticeProps {
   progress?: boolean;
   /** Historical failures are readable without replaying a live announcement. */
   announce?: boolean;
+  /** Hides this notice; its owner remembers the dismissal. */
+  onDismiss?: () => void;
 }
 
 export function Notice(props: NoticeProps) {
@@ -28,6 +30,7 @@ function NoticeContent({
   details,
   progress,
   announce = true,
+  onDismiss,
 }: NoticeProps) {
   const [expanded, setExpanded] = useState(false);
   const error = severity === "blocking";
@@ -91,6 +94,15 @@ function NoticeContent({
               </div>
             ) : null}
           </>
+        ) : null}
+        {onDismiss ? (
+          <button
+            type="button"
+            className="notice__text-link"
+            onClick={onDismiss}
+          >
+            Dismiss
+          </button>
         ) : null}
       </div>
     </div>

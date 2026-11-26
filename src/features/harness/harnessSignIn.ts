@@ -17,7 +17,9 @@ export type HarnessSignInState =
   | "checking"
   | "signedIn"
   | "signedOut"
-  | "unavailable";
+  | "unavailable"
+  // A turn was refused; the account has not been read since.
+  | "refused";
 
 export interface HarnessSignInStatus {
   state: HarnessSignInState;
@@ -123,7 +125,15 @@ export function harnessSignInStatus(harnessId: string): HarnessSignInStatus {
   const evidence = bindingId && harnessSignInEvidence.get(bindingId);
   return evidence &&
     (status.evidenceAt == null || evidence[0] >= status.evidenceAt)
-    ? { ...status, state: evidence[1], evidenceAt: evidence[0] }
+    ? {
+        ...status,
+        // A checkable account is read again before a refusal signs it out.
+        state:
+          evidence[1] === "refused" && !provider.backgroundCheck
+            ? "signedOut"
+            : evidence[1],
+        evidenceAt: evidence[0],
+      }
     : status;
 }
 
@@ -276,7 +286,9 @@ export function ensureHarnessSignInChecked(
     if (
       (onFocus && state === "signedOut") ||
       (provider.backgroundCheck &&
-        (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS))
+        (state === "refused" ||
+          checkedAt == null ||
+          Date.now() - checkedAt > STATUS_TTL_MS))
     )
       void refreshHarnessSignIn(harnessId);
   }

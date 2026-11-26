@@ -42,7 +42,6 @@ import {
   createChatOwnershipSlice,
   type ChatOwnershipSlice,
 } from "./chatOwnershipSlice";
-import { createChatAuthSlice, type ChatAuthSlice } from "./chatAuthSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
@@ -102,7 +101,6 @@ export interface WorkbenchState
     ChatArchiveSlice,
     ChatHandoffSlice,
     ChatOwnershipSlice,
-    ChatAuthSlice,
     EditorSlice,
     EditorConflictSlice,
     FileCreateSlice,
@@ -194,7 +192,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
-    ...createChatAuthSlice(set, get, store),
     ...createRepositoryCommitSlice(set, get, store),
     ...createRepositoryCheckoutSlice(set, get, store),
     ...createRepositoryRemoteSlice(set, get, store),
