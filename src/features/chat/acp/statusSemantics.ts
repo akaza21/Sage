@@ -167,3 +167,20 @@ export function getPermissionStatus(item: PermissionItem) {
     terminal,
   };
 }
+
+/** A background task, or a running subagent that can still be stopped: what Resources lists. */
+export const isBackgroundProcess = (row: {
+  kind?: unknown;
+  state?: unknown;
+  stoppable?: unknown;
+}) =>
+  row.kind === "backgroundTask" ||
+  (row.kind === "subagent" && row.state === "running" && !!row.stoppable);
+
+/** The session still runs background work. Busy only: Resources decodes the rows it shows. */
+export const backgroundWorkRunning = (page: AcpChatPage) =>
+  !!(
+    page.sessionSurface as { activities?: { state?: unknown }[] } | undefined
+  )?.activities?.some?.(
+    (row) => row?.state === "running" && isBackgroundProcess(row),
+  );

@@ -4,7 +4,7 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { FileRewindPreview, useFileRewindPreview } from "../FileRewindPreview";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
-import { isBackgroundProcess } from "./acpTurnState";
+import { isBackgroundProcess } from "./statusSemantics";
 
 const STATE_LABEL = {
   running: "Running",

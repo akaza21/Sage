@@ -1,8 +1,10 @@
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { decodeSessionSurface } from "../../services/acpSessionSurface";
 import { isSideChatId } from "../../workbench/sideChatState";
-import { backgroundWorkRunning } from "./acp/acpTurnState";
-import { terminalTurnStates } from "./acp/statusSemantics";
+import {
+  backgroundWorkRunning,
+  terminalTurnStates,
+} from "./acp/statusSemantics";
 
 /** Only an open menu folds the bounded page; closed rows retain no summary. */
 export function conversationState(page: AcpChatPage) {

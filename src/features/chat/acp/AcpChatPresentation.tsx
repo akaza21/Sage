@@ -15,7 +15,6 @@ import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import {
-  backgroundWorkRunning,
   chronologicalTurnItems,
   promptAttachmentItems,
   turnBindingId,
@@ -29,7 +28,11 @@ import { isEditingFiles } from "./editingFiles";
 import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { terminalTurnStates, turnReasonErrorItem } from "./statusSemantics";
+import {
+  backgroundWorkRunning,
+  terminalTurnStates,
+  turnReasonErrorItem,
+} from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
