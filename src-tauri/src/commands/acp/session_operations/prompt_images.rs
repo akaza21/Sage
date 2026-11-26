@@ -47,9 +47,31 @@ pub(super) fn admit_elements(contexts: &AttachedContexts) -> Result<(), AcpIpcEr
     })
 }
 
-/// A send that has no started session to ask, or a Steer, cannot carry images.
+/// Steer is text-only on every binding, so it cannot carry images; the
+/// composer keeps a queued message with images for the normal send instead.
 pub(super) fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
     if !requested(contexts).is_empty() {
+        return Err(unsupported());
+    }
+    admit_elements(contexts)
+}
+
+/// A send that starts its session has no negotiated capability yet, so its
+/// images are admitted against the binding's capability ceiling; the started
+/// session is checked again when the prompt is dispatched.
+pub(super) fn admit_for_binding(
+    state: &AppState,
+    binding_id: &sage_acp_protocol::intent::BindingId,
+    contexts: &AttachedContexts,
+) -> Result<(), AcpIpcError> {
+    if !requested(contexts).is_empty()
+        && !state
+            .acp
+            .resolve_session_binding(binding_id)
+            .ok()
+            .and_then(|binding| binding.supported_capabilities().ok())
+            .is_some_and(|ceiling| ceiling.prompt_images)
+    {
         return Err(unsupported());
     }
     admit_elements(contexts)

@@ -28,8 +28,10 @@ pub(super) async fn send_acp_turn(
             attached_context, ..
         } => prompt_images::admit_elements(attached_context),
         SendAcpTurnRequest::NewSession {
-            attached_context, ..
-        } => image_input_block(attached_context),
+            binding_id,
+            attached_context,
+            ..
+        } => prompt_images::admit_for_binding(state, binding_id, attached_context),
     }
     .map_err(prompt_not_dispatched)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -82,6 +84,8 @@ pub(super) async fn send_acp_turn(
             #[cfg(all(windows, feature = "acp-fixture"))]
             {
                 if state.acp.accepts_characterization_new_session(&binding_id) {
+                    // Characterization replays carry no images.
+                    image_input_block(&attached_context).map_err(prompt_not_dispatched)?;
                     return characterization::send(
                         state,
                         SendAcpTurnRequest::NewSession {

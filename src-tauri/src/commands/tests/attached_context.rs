@@ -434,11 +434,17 @@ fn attached_context_corrupt_and_out_of_range_fail_without_dispatch_or_user_item(
 }
 
 #[test]
-fn image_attachment_is_typed_not_dispatched_for_every_send_target() {
+fn image_attachment_is_admitted_against_the_session_or_the_binding_ceiling() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        for new_session in [false, true] {
-            // A session that did not negotiate image input; a Windows desktop
-            // fixture's Codex ceiling advertises it.
+        // The session did not negotiate image input, while the Codex binding's
+        // ceiling advertises it. A started session answers for itself; a first
+        // send that starts its session is admitted against the ceiling, and a
+        // binding Sage cannot resolve has no ceiling to admit images.
+        for (new_session, binding) in [
+            (false, "codex-app-server"),
+            (true, "codex-app-server"),
+            (true, "unknown-binding"),
+        ] {
             let fixture =
                 Fixture::with_capabilities(|capabilities| capabilities.prompt_images = false).await;
             let (calls, _) = fixture.install_host();
@@ -459,23 +465,36 @@ fn image_attachment_is_typed_not_dispatched_for_every_send_target() {
                 SendAcpTurnRequest::Session {
                     attached_context, ..
                 }
-                | SendAcpTurnRequest::NewSession {
-                    attached_context, ..
+                => {
+                    *attached_context =
+                        AttachedContexts::new("attachedContext", vec![image]).unwrap();
+                }
+                SendAcpTurnRequest::NewSession {
+                    attached_context,
+                    binding_id,
+                    ..
                 } => {
                     *attached_context =
                         AttachedContexts::new("attachedContext", vec![image]).unwrap();
+                    *binding_id = BindingId::new("binding", binding).unwrap();
                 }
             }
             let failure = send_acp_turn_inner(&fixture.state, request)
                 .await
                 .unwrap_err();
-            assert!(matches!(
+            let refused_as_unsupported = matches!(
                 failure.failure,
                 AcpIpcError::Unavailable {
                     reason: AcpUnavailableReason::ImageInputUnsupported,
                     ..
                 }
-            ));
+            );
+            let ceiling_admits = new_session && binding == "codex-app-server";
+            assert_eq!(
+                refused_as_unsupported, !ceiling_admits,
+                "{binding} new_session={new_session}: {:?}",
+                failure.failure
+            );
             assert_eq!(failure.prompt_dispatch, PromptDispatch::NotStarted);
             assert_eq!(fixture.counts(), before);
             assert!(calls.lock().unwrap().is_empty());
