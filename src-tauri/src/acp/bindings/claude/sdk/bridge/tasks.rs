@@ -41,7 +41,8 @@ impl Tasks {
     /// The task this event belongs to, when it runs in the background.
     /// `task_started` says whether it starts there (a CLI that does not say
     /// is taken to), and `task_updated` can move it there. `task_notification`
-    /// is a task's last report, so it forgets the task.
+    /// is a task's last report, so it forgets the task; one for a task never
+    /// seen (or long forgotten) is ignored.
     fn background(&mut self, id: &str, sdk: &Value) -> Option<Task> {
         let text = |key: &str| {
             sdk.get(key)
@@ -53,8 +54,10 @@ impl Tasks {
             .or_else(|| sdk["patch"].get("is_backgrounded"))
             .and_then(Value::as_bool);
         let id = clip(id, ID_BYTES);
+        let last = sdk.get("subtype").and_then(Value::as_str) == Some("task_notification");
         let index = match self.seen.iter().position(|task| task.id == id) {
             Some(index) => index,
+            None if last => return None,
             None => {
                 if self.seen.len() == TRACKED_TASKS {
                     self.seen.pop_front();
@@ -74,7 +77,7 @@ impl Tasks {
         if let Some(description) = text("description") {
             task.label = Some(clip(description, SESSION_ACTIVITY_LABEL_BYTES));
         }
-        let task = if sdk.get("subtype").and_then(Value::as_str) == Some("task_notification") {
+        let task = if last {
             self.seen.remove(index)?
         } else {
             self.seen[index].clone()
@@ -98,6 +101,8 @@ impl SdkBridge {
             Some("completed") => SessionActivityState::Completed,
             Some("failed") => SessionActivityState::Failed,
             Some("stopped" | "killed") => SessionActivityState::Cancelled,
+            // A task's last report ends it, whatever it says.
+            _ if field("subtype") == Some("task_notification") => SessionActivityState::Completed,
             _ => SessionActivityState::Running,
         };
         let progress = field("summary")

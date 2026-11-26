@@ -12,11 +12,15 @@ const STATE_LABEL = {
   cancelled: "Stopped",
 } as const;
 
-// The protocol's activity kind for a harness process that outlives its turn.
-// Hooks, retries and compaction show in their Turn instead.
+// `backgroundTask` is the protocol's kind for a harness process that
+// outlives its turn. A running background subagent joins them while it can be
+// stopped; Subagents lists it too, without a Stop. Hooks, retries and
+// compaction show in their Turn instead.
 const backgroundTasks = (surface: unknown) =>
   decodeSessionSurface(surface)?.activities.filter(
-    (activity) => activity.kind === "backgroundTask",
+    ({ kind, state, stoppable }) =>
+      kind === "backgroundTask" ||
+      (kind === "subagent" && state === "running" && stoppable),
   ) ?? [];
 
 function SessionStatus({
@@ -51,7 +55,11 @@ export function BackgroundProcesses({
       <ul className="acp-session-surface__activities">
         {tasks.map((activity) => (
           <li key={activity.key} data-state={activity.state}>
-            <span className="acp-session-surface__label">{activity.label}</span>
+            <span className="acp-session-surface__label">
+              {activity.kind === "subagent"
+                ? `Subagent: ${activity.label}`
+                : activity.label}
+            </span>
             {activity.progress ? (
               <span className="acp-session-surface__progress">
                 {activity.progress}
