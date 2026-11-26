@@ -21,6 +21,7 @@ import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
+import { projectChangeResource } from "./agentEditSummary";
 import { BackgroundTerminalSlot } from "./BackgroundTerminalSlot";
 
 interface TurnEditSummaryProps {
@@ -161,47 +162,10 @@ function EditSummary({
       </button>
       {expanded && summary.changes.length > 0 ? (
         <ul>
-          {summary.changes.map((change, index) => {
-            const location = change.resource;
+          {summary.changes.map((change) => {
             const action = editDiffAction(change);
-            if (location.kind === "unavailable") {
-              const deletedDisplay =
-                change.operation === "deleted" && location.reason === "missing"
-                  ? location.displayResource?.relativePath
-                  : null;
-              return (
-                <li key={`unavailable:${location.reason}:${index}`}>
-                  {action.resource &&
-                  onOpenResource &&
-                  change.turn.sessionId === page.currentSessionId ? (
-                    <button
-                      type="button"
-                      aria-label={`Open diff ${action.resource.relativePath}`}
-                      title={action.title}
-                      onClick={() => open(change)}
-                    >
-                      {action.resource.relativePath} · Deleted
-                    </button>
-                  ) : (
-                    <span className="acp-resource-unavailable">
-                      {deletedDisplay
-                        ? `${deletedDisplay} · Deleted`
-                        : `${location.label} · unavailable`}
-                    </span>
-                  )}
-                  {deletedDisplay ? null : (
-                    <span className="acp-change-operation">
-                      {change.operation}
-                    </span>
-                  )}
-                  <FileChangeTotals changes={[change]} />
-                  <span className="acp-file-changes__summary">
-                    {change.summary}
-                  </span>
-                </li>
-              );
-            }
-            const resource = location.resource;
+            // The projection admits only changes that name a project file.
+            const resource = projectChangeResource(change)!;
             const rootName = rootDisplayName(rootLabels, resource.rootId);
             const qualifiedLabel = `${rootName} / ${resource.relativePath}`;
             const admitted = chatFileChipBasename(resource.relativePath);
@@ -220,6 +184,7 @@ function EditSummary({
             return (
               <li key={resourceKey(resource)}>
                 {admitted &&
+                action.resource &&
                 change.turn.sessionId === page.currentSessionId &&
                 onOpenResource ? (
                   <button
@@ -235,13 +200,16 @@ function EditSummary({
                 ) : (
                   chip
                 )}
-                <span className="acp-change-operation">{change.operation}</span>
+                {["created", "deleted", "renamed"].includes(
+                  change.operation,
+                ) ? (
+                  <span className="acp-change-operation">
+                    {change.operation}
+                  </span>
+                ) : null}
                 {admitted && counted ? null : (
                   <FileChangeTotals changes={[change]} />
                 )}
-                <span className="acp-file-changes__summary">
-                  {change.summary}
-                </span>
                 {admitted &&
                 change.diffRef &&
                 change.turn.sessionId === page.currentSessionId ? (
@@ -258,7 +226,7 @@ function EditSummary({
                       )
                     }
                   >
-                    Preview saved diff
+                    Preview
                   </button>
                 ) : null}
                 {change.diffRef &&

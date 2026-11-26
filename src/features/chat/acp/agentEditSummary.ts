@@ -236,6 +236,13 @@ export function agentEditSummaryChangeKey(
       : `unavailable:${change.resource.reason}:${change.resource.label}`;
 }
 
+/** The project file a change names, or null when it lies outside the project's roots. */
+export function projectChangeResource(change: FileChangeProjection) {
+  return change.resource.kind === "resource"
+    ? change.resource.resource
+    : (change.resource.displayResource ?? null);
+}
+
 export function projectAgentEditSummary(
   page: AcpChatPage,
   turn: TurnProjection,
@@ -307,6 +314,13 @@ export function projectAgentEditSummary(
     for (const change of item.payload.changes) {
       if (!safeChange(change)) {
         rejectedUnsafeOrStale = true;
+        continue;
+      }
+      if (change.resource.kind === "unavailable" && !projectChangeResource(change)) {
+        // Outside the roots is not a project change; an unmappable path inside them is disclosed.
+        rejectedUnsafeOrStale ||= !["foreign", "missing"].includes(
+          change.resource.reason,
+        );
         continue;
       }
       const key = agentEditSummaryChangeKey(change);
