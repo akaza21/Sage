@@ -10,6 +10,7 @@ import {
   conflictGroupLabel,
   partitionSourceChanges,
 } from "../features/git/conflictPresentation";
+import { useWorkbenchStore } from "../app/store";
 import { SourceChangeRow } from "./SourceChangeRow";
 import { ChevronRight, Minus, Plus } from "../ui/leanIcons";
 
@@ -47,6 +48,7 @@ export function SourceChangeGroups({
   ) => Promise<void>;
   onGroupAction?: (action: "stage" | "unstage") => void;
 }) {
+  const openFile = useWorkbenchStore((state) => state.openFile);
   const { conflicts, others } = partitionSourceChanges(changes.slice(0, 300));
   const staged = others.filter((change) => change.indexStatus !== "unchanged");
   const unstaged = others.filter(
@@ -68,6 +70,7 @@ export function SourceChangeGroups({
       controlsDisabled={controlsDisabled}
       mutateRepositoryFile={mutateRepositoryFile}
       openDiff={openDiff}
+      openFile={openFile}
     />
   );
   const group = (

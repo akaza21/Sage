@@ -10,7 +10,6 @@ import {
 import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
 import { FileText, Minus, Plus, RotateCcw } from "../ui/leanIcons";
 import { FileKindIcon } from "../features/files/FileKindIcon";
-import { useWorkbenchStore } from "../app/store";
 
 interface SourceChangeRowProps {
   change: FileChange;
@@ -28,6 +27,8 @@ interface SourceChangeRowProps {
     resource: ResourceRef,
     repository?: RepositoryRef,
   ) => Promise<void>;
+  /** Passed in so 300 rows share one store subscription. */
+  openFile: (resource: ResourceRef) => Promise<void>;
 }
 
 export const SourceChangeRow = memo(function SourceChangeRow({
@@ -39,12 +40,12 @@ export const SourceChangeRow = memo(function SourceChangeRow({
   controlsDisabled,
   mutateRepositoryFile,
   openDiff,
+  openFile,
 }: SourceChangeRowProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const discardTriggerRef = useRef<HTMLButtonElement>(null);
   const discardWarningId = useId();
   const conflicted = isConflictedChange(change);
-  const openFile = useWorkbenchStore((state) => state.openFile);
   const displayChange = stagedGroup
     ? { ...change, worktreeStatus: "unchanged" as const }
     : change;
