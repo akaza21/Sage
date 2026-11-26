@@ -1,7 +1,9 @@
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
 import { lazyParts } from "../features/chat/lazyParts";
 import type * as NavigationChunk from "./ProjectChatNavigation";
-const NavigationPart = lazyParts<typeof NavigationChunk>(
+const NavigationPart = lazyParts<
+  Omit<typeof NavigationChunk, "openNotificationChat">
+>(
   () => import("./ProjectChatNavigation"),
 );
 
