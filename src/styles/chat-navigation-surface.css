@@ -158,13 +158,18 @@
   white-space: nowrap;
 }
 
+/* The pill yields before the title shrinks below a readable width. */
 .rail-pill--approval {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
   color: var(--rail-approval-text);
   background: var(--rail-approval-fill);
+  text-overflow: ellipsis;
 }
 
 .project-chat__title-label {
-  min-width: 0;
+  min-width: min(8em, 60%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
