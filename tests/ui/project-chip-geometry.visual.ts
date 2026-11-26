@@ -481,7 +481,14 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
           const box = icon.getBoundingClientRect();
           return [box.width, box.height];
         });
+      const chips = [...tab.children].map((chip) =>
+        chip.getBoundingClientRect(),
+      );
       return {
+        // The idle project chip keeps no room for its hidden clear button.
+        gaps: chips
+          .slice(1)
+          .map((chip, index) => Math.round(chip.left - chips[index]!.right)),
         attached: Math.abs(dock.top - strip.bottom) <= 0.5,
         insets: [strip.left - dock.left, dock.right - strip.right],
         height: strip.height,
@@ -495,6 +502,7 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       };
     });
     expect(geometry, `at ${width}px`).toEqual({
+      gaps: [16, 16],
       attached: true,
       insets: [12, 12],
       height: 36,
