@@ -123,7 +123,7 @@ function probeSignIn(probe: HarnessSignInState): {
 
 const GROUP_ORDER: Record<HarnessBadge, number> = {
   ready: 0,
-  checking: 1,
+  checking: 0,
   available: 0,
   signInNeeded: 0,
   unavailable: 1,
