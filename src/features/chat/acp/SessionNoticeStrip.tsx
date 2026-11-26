@@ -23,14 +23,24 @@ const versionOf = (notice: SessionNotice) =>
     notice.diagnostic === true,
   ]);
 
+/** `active` is the strip after the turns, for what is live in the session:
+ * its background tasks and the latest turn's Undo. */
 export function SessionStrip({
   page,
   hasEarlier = false,
+  active,
 }: {
   page: AcpChatPage;
   hasEarlier?: boolean;
+  active?: true;
 }) {
-  return (
+  return active ? (
+    <ConversationView
+      view="SessionSurfacePanel"
+      surface={page.sessionSurface}
+      chatId={page.chatId}
+    />
+  ) : (
     <>
       {page.forkedFrom && !hasEarlier ? (
         <ConversationView
@@ -44,13 +54,6 @@ export function SessionStrip({
         <SessionNoticeStrip
           session={JSON.stringify([page.chatId, page.currentSessionId])}
           notices={page.sessionNotices}
-        />
-      ) : null}
-      {page.sessionSurface ? (
-        <ConversationView
-          view="SessionSurfacePanel"
-          surface={page.sessionSurface}
-          chatId={page.chatId}
         />
       ) : null}
     </>

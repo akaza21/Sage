@@ -74,7 +74,7 @@ impl SdkBridge {
             Some("hook_started" | "hook_progress" | "hook_response") => hook(sdk, inbound),
             Some("task_started" | "task_progress" | "task_updated" | "task_notification") => {
                 self.subagent_task(sdk, inbound);
-                task(sdk, inbound);
+                self.task(sdk, inbound);
             }
             Some("notification") => {
                 let level = match field("priority") {
@@ -238,39 +238,6 @@ fn hook(sdk: &Value, inbound: &mut Inbound) {
     );
 }
 
-fn task(sdk: &Value, inbound: &mut Inbound) {
-    let field = |key: &str| sdk.get(key).and_then(Value::as_str);
-    let Some(id) = field("task_id") else {
-        return;
-    };
-    let status = field("status").or_else(|| sdk["patch"].get("status").and_then(Value::as_str));
-    let state = match status {
-        Some("completed") => SessionActivityState::Completed,
-        Some("failed") => SessionActivityState::Failed,
-        Some("stopped" | "killed") => SessionActivityState::Cancelled,
-        _ => SessionActivityState::Running,
-    };
-    let kind = if field("subagent_type").is_some() {
-        "subagent"
-    } else {
-        "task"
-    };
-    let description = field("description")
-        .or_else(|| sdk["patch"].get("description").and_then(Value::as_str))
-        .unwrap_or("Background task");
-    let progress = field("summary")
-        .map(str::to_owned)
-        .or_else(|| field("last_tool_name").map(|tool| format!("Using {tool}")))
-        .or_else(|| {
-            sdk["patch"]
-                .get("error")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        });
-    let id = format!("{TASK_PREFIX}{id}");
-    activity(inbound, &id, kind, description, state, progress.as_deref());
-}
-
 fn notice(inbound: &mut Inbound, level: SessionNoticeLevel, text: &str) {
     let Some(text) = prose(text, SESSION_NOTICE_TEXT_BYTES) else {
         return;
@@ -292,7 +259,7 @@ fn notice(inbound: &mut Inbound, level: SessionNoticeLevel, text: &str) {
         }));
 }
 
-fn activity(
+pub(super) fn activity(
     inbound: &mut Inbound,
     id: &str,
     kind: &'static str,
@@ -334,7 +301,7 @@ pub(super) fn prose(text: &str, max: usize) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn clip(value: &str, max: usize) -> String {
+pub(super) fn clip(value: &str, max: usize) -> String {
     if value.len() <= max {
         return value.to_owned();
     }

@@ -45,6 +45,7 @@
 }
 
 .acp-session-surface__activities button,
+.acp-session-surface__summary,
 .acp-session-surface__undo {
   min-height: var(--control-height-compact);
   padding: 0 var(--space-2);
@@ -55,6 +56,7 @@
   font: inherit;
 }
 
+.acp-session-surface__summary,
 .acp-session-surface__undo {
   justify-self: start;
 }

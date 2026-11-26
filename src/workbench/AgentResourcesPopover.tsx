@@ -18,6 +18,7 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import { MenuPopover } from "../ui/MenuPopover";
+import { NoticePart } from "../features/chat/lazyParts";
 import {
   liveAgent,
   projectRecentAgents,
@@ -213,7 +214,17 @@ export function AgentResourcesPopover({
       ) : null}
       <section aria-label="Background processes">
         <strong>Background processes</strong>
-        <p>No background processes reported.</p>
+        {validPage && page?.sessionSurface ? (
+          // Stop shares the transcript's session controls, loaded with them.
+          <NoticePart
+            part="ConversationView"
+            view="BackgroundProcesses"
+            surface={page.sessionSurface}
+            chatId={chatId}
+          />
+        ) : (
+          <p>No background processes reported.</p>
+        )}
       </section>
       <section aria-label="Sources">
         <strong>Sources</strong>

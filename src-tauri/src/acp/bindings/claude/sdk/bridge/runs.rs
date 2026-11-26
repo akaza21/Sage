@@ -40,6 +40,7 @@ impl SdkBridge {
         }
         if starts_run {
             inbound.started = self.prompted && self.prompt.is_none();
+            self.run_started(inbound.started, inbound);
             self.approval_turn = false;
         }
         true
