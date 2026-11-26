@@ -633,6 +633,10 @@ it("blocks legacy submit truthfully while preserving visible attachments", () =>
 });
 
 it("queues behind a live turn waiting on a tool instead of telling the user to wait beside Stop", () => {
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { "binding-a": "readOnly" },
+  });
   currentNonterminalTurn.mockReturnValue({
     state: "waitingTool",
   } as TurnProjection);
@@ -647,6 +651,14 @@ it("queues behind a live turn waiting on a tool instead of telling the user to w
           bindingId: "binding-a",
           installState: "available",
           source: "builtIn",
+          accessModes: [
+            {
+              id: "readOnly",
+              label: "Read-only",
+              description: "Read workspace files.",
+              fallback: true,
+            },
+          ],
         },
       ],
       selectedHarnessId: "harness-a",
