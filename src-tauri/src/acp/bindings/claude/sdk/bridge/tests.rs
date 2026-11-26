@@ -720,6 +720,32 @@ fn local_command_output_and_new_commands_reach_the_chat() {
 }
 
 #[test]
+fn a_command_whose_running_row_is_removed_is_not_listed() {
+    let mut bridge = initialized();
+    let commands = bridge
+        .inbound(
+            json!({"type":"system","subtype":"commands_changed","commands":[
+                {"name":"agents","description":"(removed) Ask Claude to create/manage subagents","argumentHint":"","builtin":true},
+                {"name":"agents","description":"Project agents skill","argumentHint":""},
+                {"name":"mcp","description":"Manage MCP servers","argumentHint":"","builtin":true},
+                {"name":"notes","description":"Old notes","argumentHint":""},
+                {"name":"notes","description":"(removed) shadowed row","argumentHint":""},
+            ]}),
+        )
+        .unwrap();
+    let listed: Vec<_> = updates(&commands)[0]["availableCommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|command| command["description"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        listed,
+        ["Manage MCP servers", "Old notes", "(removed) shadowed row"]
+    );
+}
+
+#[test]
 fn commands_sharing_a_name_list_the_row_that_runs() {
     let mut bridge = initialized();
     let commands = bridge
