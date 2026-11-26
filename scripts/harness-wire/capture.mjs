@@ -87,6 +87,24 @@ function scratchRepo(dir) {
   return { repo, emptyHome };
 }
 
+// Scrubs an already written capture again, on the host and with the --work
+// dir that recorded it, after the sanitizer learns a new spelling.
+function resanitize(out, harnesses, work) {
+  for (const harness of harnesses) {
+    const dir = path.join(out, harness);
+    for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".jsonl"))) {
+      const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
+      const sanitizer = makeSanitizer({
+        roots: [[path.join(scratch, "repo"), "repo"], [path.join(scratch, "empty-home"), "empty-home"], [work, "work"]],
+      });
+      const records = readTranscriptLines(path.join(dir, file)).map((line) => JSON.parse(line));
+      const body = sanitizer.records(records).map((record) => JSON.stringify(record));
+      fs.writeFileSync(path.join(dir, file), `${body.join("\n")}\n`);
+    }
+    fs.writeFileSync(path.join(dir, "shape.json"), `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`);
+  }
+}
+
 async function main() {
   const out = option("out");
   if (!out) throw new Error("--out <dir> is required");
@@ -96,6 +114,7 @@ async function main() {
     .filter(Boolean);
   const model = option("model", undefined);
   const work = option("work", path.join(os.tmpdir(), "sage-wire-capture"));
+  if (process.argv.includes("--resanitize")) return resanitize(out, harnesses, work);
   const image = await twoColourPng();
   let failures = 0;
   for (const harness of harnesses) {

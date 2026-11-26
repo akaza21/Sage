@@ -49,8 +49,13 @@ function spellings(path, label) {
   const slash = back.replace(/\\/g, "/");
   const out = new Map([
     [native, back],
+    // Inside JSON a string carries (a streamed tool input), each backslash
+    // is doubled.
+    [native.replace(/\\/g, "\\\\"), back.replace(/\\/g, "\\\\")],
     [forward, slash],
     [native.replace(/[^A-Za-z0-9]/g, "-"), slash.replace(/[^A-Za-z0-9]/g, "-")],
+    // Pi's session folder slug keeps every character but separators.
+    [native.replace(/[\\/:]/g, "-"), back.replace(/[\\/:]/g, "-")],
   ]);
   const drive = /^([A-Za-z]):\//.exec(forward);
   if (drive) out.set(`/${drive[1]}${forward.slice(2)}`, slash);
