@@ -1,5 +1,4 @@
 import type { AttachedContext } from "../../domain/attachedContext";
-import type { AgentSessionProjection } from "../../domain/acp";
 import { utf8ByteLength } from "../../domain/text";
 import {
   harnessUnavailableReason,
@@ -25,24 +24,6 @@ export const SIGN_IN_PHASES: readonly HarnessDiscoveryPhase[] = [
   "consent",
   "waiting",
 ];
-
-/**
- * A session whose start was abandoned before the harness answered (a slow
- * first launch) is back to created and cold with no capabilities yet; the
- * next send starts it again, so it does not refuse prompts.
- */
-export function startsOnSend(
-  session: Pick<
-    AgentSessionProjection,
-    "state" | "residency" | "nextRuntimeEpoch"
-  >,
-): boolean {
-  return (
-    session.state === "created" &&
-    session.residency === "cold" &&
-    session.nextRuntimeEpoch !== null
-  );
-}
 
 /** The session's own refusal, given when no reason below applies. */
 export const SESSION_PROMPT_REFUSAL =

@@ -222,21 +222,16 @@ export const createHarnessSlice: StateCreator<
 
       // Native probes are bounded; this bounds the wait itself, so a listing
       // that never answers ends in the Retry notice, not "Loading…".
-      const models = await new Promise<ModelOption[]>((resolve, reject) => {
-        const late = setTimeout(
-          () =>
-            reject(
-              new Error(
-                `${harness?.name ?? harnessId} did not list its models in time. Retry in a moment.`,
-              ),
-            ),
-          MODEL_LIST_DEADLINE_MS,
-        );
-        desktop
-          .listHarnessModels(harnessId)
-          .then(resolve, reject)
-          .finally(() => clearTimeout(late));
-      });
+      const models = await Promise.race([
+        desktop.listHarnessModels(harnessId),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            reject,
+            MODEL_LIST_DEADLINE_MS,
+            `${harness?.name} did not list its models in time. Retry in a moment.`,
+          ),
+        ),
+      ]);
       rememberHarnessModels(identity, models);
       if (current(generation, projectId, requestGeneration, harnessId)) {
         set({
