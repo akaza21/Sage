@@ -45,6 +45,7 @@ it("collapses a failure a later turn completed after, and dismissing it keeps it
 
 it("keeps the latest failure's Retry: it offers no Dismiss", () => {
   const failed = page("failed", { kind: "authRequired" });
+  failed.turns[0].id = "latest-failure" as never;
   render(
     <AcpChatPresentation
       page={failed}
