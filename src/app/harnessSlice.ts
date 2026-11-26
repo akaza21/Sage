@@ -33,6 +33,9 @@ export type HarnessDiscoveryPhase =
   | "ready"
   | "error";
 
+/** Above the native probe's own bound plus one queued probe ahead of it. */
+export const MODEL_LIST_DEADLINE_MS = 45_000;
+
 export function preferredModelId(
   models: ModelOption[] | null,
   previousModelId: string | null,
@@ -217,7 +220,23 @@ export const createHarnessSlice: StateCreator<
         return;
       }
 
-      const models = await desktop.listHarnessModels(harnessId);
+      // Native probes are bounded; this bounds the wait itself, so a listing
+      // that never answers ends in the Retry notice, not "Loading…".
+      const models = await new Promise<ModelOption[]>((resolve, reject) => {
+        const late = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `${harness?.name ?? harnessId} did not list its models in time. Retry in a moment.`,
+              ),
+            ),
+          MODEL_LIST_DEADLINE_MS,
+        );
+        desktop
+          .listHarnessModels(harnessId)
+          .then(resolve, reject)
+          .finally(() => clearTimeout(late));
+      });
       rememberHarnessModels(identity, models);
       if (current(generation, projectId, requestGeneration, harnessId)) {
         set({

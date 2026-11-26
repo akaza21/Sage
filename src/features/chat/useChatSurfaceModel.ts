@@ -21,6 +21,7 @@ import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { liveTurnStates } from "./acp/acpTurnState";
 import {
   SESSION_PROMPT_REFUSAL,
+  startsOnSend,
   composerDisabledReason,
   sizeReason,
 } from "./composerDisabledReason";
@@ -204,7 +205,9 @@ export function useChatSurfaceModel({
           model.harnessAvailable &&
           model.bindingId &&
           discoveryPhase === "ready" &&
-          (!model.selectedSession || model.selectedSession.capabilities.prompt),
+          (!model.selectedSession ||
+            model.selectedSession.capabilities.prompt ||
+            startsOnSend(model.selectedSession)),
         )
       : model.harnessAvailable;
     const usage =
@@ -283,7 +286,8 @@ export function useChatSurfaceModel({
   const sessionPromptUnavailable =
     !reason &&
     !queueAvailable &&
-    model.selectedSession?.capabilities.prompt === false;
+    model.selectedSession?.capabilities.prompt === false &&
+    !startsOnSend(model.selectedSession);
   const submit = useCallback(
     // The composer names the batch it staged; a queued message never does.
     (event: FormEvent, stagedRevision?: string | null) => {

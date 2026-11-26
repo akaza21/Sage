@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HarnessDefinition } from "../domain/harness";
 import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
+import { desktop } from "../services/desktop";
+import { MODEL_LIST_DEADLINE_MS } from "./harnessSlice";
 import { useWorkbenchStore } from "./store";
 
 const discoverCodex = vi.fn();
@@ -175,5 +177,62 @@ describe("harness discovery reconciliation", () => {
     expect(state.models).toEqual([]);
     expect(state.selectedModelId).toBeNull();
     expect(state.harnessDiscoveryPhase).not.toBe("ready");
+  });
+});
+
+describe("model listing for a harness that lists models before a session", () => {
+  const claude: HarnessDefinition = {
+    ...simulator,
+    id: "claude-code",
+    name: "Claude Code",
+    transport: "acp",
+    bindingId: "claude-code-sdk",
+  };
+  const opus = [{ id: "default", name: "Default", isDefault: true }];
+
+  beforeEach(() => {
+    seed({ harnesses: [claude] });
+    vi.restoreAllMocks();
+  });
+
+  it("ends a listing that never answers in a visible error that Retry clears", async () => {
+    vi.useFakeTimers();
+    try {
+      const listed = vi
+        .spyOn(desktop, "listHarnessModels")
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce(opus);
+      const selecting = useWorkbenchStore
+        .getState()
+        .selectHarness("claude-code");
+      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("idle");
+      await vi.advanceTimersByTimeAsync(MODEL_LIST_DEADLINE_MS);
+      await selecting;
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        harnessDiscoveryPhase: "error",
+        harnessDiscoveryError:
+          "Claude Code did not list its models in time. Retry in a moment.",
+      });
+      await useWorkbenchStore.getState().retryHarnessDiscovery();
+      expect(listed).toHaveBeenCalledTimes(2);
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        harnessDiscoveryPhase: "ready",
+        models: opus,
+        selectedModelId: "default",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the native refusal of a build that did not list its models", async () => {
+    const refusal =
+      "Claude Code did not list its models in time. Retry in a moment.";
+    vi.spyOn(desktop, "listHarnessModels").mockRejectedValueOnce(refusal);
+    await useWorkbenchStore.getState().selectHarness("claude-code");
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      harnessDiscoveryPhase: "error",
+      harnessDiscoveryError: refusal,
+    });
   });
 });

@@ -88,9 +88,19 @@ fn list_harness_models_inner(
     if harness_id == "codex" {
         let _ = harnesses.refresh_codex_registration();
     }
-    harnesses
+    let models = harnesses
         .models(harness_id)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    match harnesses.models_unlisted(harness_id) {
+        Some(name) if models.is_empty() => Err(models_unlisted_message(&name)),
+        _ => Ok(models),
+    }
+}
+
+/// A build that should list models and did not answer in time; the first
+/// start after an update can take that long, so a retry usually lists them.
+fn models_unlisted_message(name: &str) -> String {
+    format!("{name} did not list its models in time. Retry in a moment.")
 }
 
 #[tauri::command]
