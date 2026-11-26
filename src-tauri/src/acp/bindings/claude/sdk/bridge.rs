@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use serde_json::{Value, json};
 
 use super::config::SessionSettings;
+use crate::acp::bindings::standard_acp::surface::AUTH_REQUIRED_MESSAGE;
 
 mod commands;
 mod controls;
@@ -349,7 +350,7 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 /// Code's own words ride along as the error's `data`.
 fn acp_auth_error(id: Value, detail: String) -> Value {
     // The sign-in refusal code Claude's ACP surface also uses.
-    let mut error = acp_error(id, -32_000, "Authentication required");
+    let mut error = acp_error(id, -32_000, AUTH_REQUIRED_MESSAGE);
     error["error"]["data"] = Value::String(detail);
     error
 }

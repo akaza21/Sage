@@ -211,22 +211,34 @@ its raw method is retained and nothing is inferred from it";
 
 pub(crate) const HARNESS_RPC_ERROR_CODE: &str = "harness_rpc_error";
 
-const AUTH_DETAIL_CHARS: usize = 512;
+const AUTH_DETAIL_BYTES: usize = 512;
 
 pub(crate) fn auth_refusal_detail(
     profile: &StandardAcpProfile,
     frame: &Value,
 ) -> Option<RefusalDetail> {
-    // A harness's own words in `data` say more than the generic message the
-    // refusal is recognised by.
     let error = frame.get("error")?;
-    let message = bounded_text(error.get("data")).or_else(|| bounded_text(error.get("message")));
+    let message = bounded_text(error.get("message"));
+    // Only the generic auth-required message defers to the harness's own
+    // words in `data`; any other message is already the harness's own.
+    let message = match message.as_deref() {
+        Some(AUTH_REQUIRED_MESSAGE) => bounded_text(error.get("data")).or(message),
+        _ => message,
+    };
     RefusalDetail::new(message.as_deref(), Some(profile.remediation))
 }
 
+/// The message a sign-in refusal carries when its detail rides in `data`.
+pub(crate) const AUTH_REQUIRED_MESSAGE: &str = "Authentication required";
+
 fn bounded_text(value: Option<&Value>) -> Option<String> {
     let text = value?.as_str()?.trim();
-    (!text.is_empty() && text.chars().count() <= AUTH_DETAIL_CHARS).then(|| text.to_owned())
+    // Long text is cut on a char boundary within the detail's byte cap
+    // rather than dropped.
+    let end = (0..=text.len().min(AUTH_DETAIL_BYTES))
+        .rev()
+        .find(|&end| text.is_char_boundary(end))?;
+    (end > 0).then(|| text[..end].to_owned())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -281,6 +293,40 @@ mod tests {
             auth_refusal_detail(claude, &json!({"error": {"code": -32000}})).expect("detail");
         assert_eq!(detail.message(), None);
         assert_eq!(detail.remediation(), Some(claude.remediation));
+    }
+
+    #[test]
+    fn the_auth_required_message_defers_to_the_harness_words_in_data() {
+        let claude = super::super::profile::profile_for("claude-code").expect("claude profile");
+        let detail = auth_refusal_detail(
+            claude,
+            &json!({"error": {"code": -32000, "message": AUTH_REQUIRED_MESSAGE, "data": "OAuth token expired"}}),
+        )
+        .expect("detail");
+        assert_eq!(detail.message(), Some("OAuth token expired"));
+    }
+
+    #[test]
+    fn any_other_message_outranks_data() {
+        let claude = super::super::profile::profile_for("claude-code").expect("claude profile");
+        let detail = auth_refusal_detail(
+            claude,
+            &json!({"error": {"code": -32000, "message": "login needed", "data": "at stack.js:1"}}),
+        )
+        .expect("detail");
+        assert_eq!(detail.message(), Some("login needed"));
+    }
+
+    #[test]
+    fn long_harness_words_are_cut_on_a_char_boundary_not_dropped() {
+        let claude = super::super::profile::profile_for("claude-code").expect("claude profile");
+        let words = "€".repeat(200);
+        let detail = auth_refusal_detail(
+            claude,
+            &json!({"error": {"code": -32000, "message": AUTH_REQUIRED_MESSAGE, "data": words}}),
+        )
+        .expect("detail");
+        assert_eq!(detail.message(), Some("€".repeat(170).as_str()));
     }
 
     #[test]

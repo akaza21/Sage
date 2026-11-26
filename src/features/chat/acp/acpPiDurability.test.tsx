@@ -158,7 +158,9 @@ describe.each(["codex", "claude-code", "pi", "opencode", "oh-my-pi"])(
       render(presentation(next));
       expect(screen.queryByRole("img")).toBeNull();
       expect(screen.queryByText("Attempt failed")).toBeNull();
-      expect(screen.queryByText("Reason unavailable")).toBeNull();
+      expect(
+        screen.queryByText("The harness gave no error details."),
+      ).toBeNull();
       expect(screen.queryByRole("group", { name: "Turn failed" })).toBeNull();
     });
   },

@@ -2642,6 +2642,9 @@ describe("ChatSurface ACP resource integration", () => {
           errorBindingId: "claude-agent-acp",
         },
       );
+    // A refusal reads the account at once; that read stays pending here so
+    // the refused state's recovery can be exercised.
+    status.mockImplementationOnce(() => new Promise(() => {}));
     harnessSignInFailures.command?.({
       bindingId: "claude-agent-acp",
       busy: true,
@@ -2776,6 +2779,9 @@ describe("ChatSurface ACP resource integration", () => {
       })),
       turns: [failedTurn],
     };
+    // A refusal reads the account at once; that read stays pending here so
+    // the refused state's recovery can be exercised.
+    status.mockImplementationOnce(() => new Promise(() => {}));
     harnessSignInFailures.command?.({
       bindingId: "claude-agent-acp",
       busy: true,
@@ -2912,6 +2918,8 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
     };
+    // The re-read this refusal starts stays pending, as above.
+    status.mockImplementationOnce(() => new Promise(() => {}));
     act(() => harnessSignInFailures.page?.(hooks.page!));
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(

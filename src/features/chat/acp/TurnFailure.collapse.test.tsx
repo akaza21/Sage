@@ -42,3 +42,23 @@ it("collapses a failure a later turn completed after, and dismissing it keeps it
   render(view());
   expect(screen.queryByRole("group", { name: "Turn failed" })).toBeNull();
 });
+
+it("keeps the latest failure's Retry: it offers no Dismiss", () => {
+  const failed = page("failed", { kind: "authRequired" });
+  failed.turns[0].id = "latest-failure" as never;
+  render(
+    <AcpChatPresentation
+      page={failed}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+      onRetry={() => undefined}
+    />,
+  );
+  const failure = screen.getByRole("group", { name: "Turn failed" });
+  expect(failure).toHaveAttribute("data-latest", "true");
+  expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+});

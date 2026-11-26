@@ -40,9 +40,7 @@ export function TurnFailure({
   const reason = turn.terminalReason;
   const message =
     turnReasonMessage(turn) ||
-    (reason && reason.kind !== "other"
-      ? turnTerminalReasonLabels[reason.kind]
-      : "The harness gave no error details.");
+    turnTerminalReasonLabels[reason?.kind ?? "other"];
   const error = turnReasonErrorItem(turn);
   return (
     <div role="group" aria-label="Turn failed" data-latest={latest}>
@@ -70,10 +68,15 @@ export function TurnFailure({
           ) : undefined
         }
         action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
-        onDismiss={() => {
-          if (dismissed.push(turn.id) > 64) dismissed.shift();
-          setHidden(true);
-        }}
+        // The latest failure holds the turn's only Retry, so it stays.
+        onDismiss={
+          latest
+            ? undefined
+            : () => {
+                if (dismissed.push(turn.id) > 64) dismissed.shift();
+                setHidden(true);
+              }
+        }
       />
     </div>
   );
