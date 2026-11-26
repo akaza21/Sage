@@ -48,7 +48,6 @@ function ComposerOptionsBrowser({
   triggerRef,
   onDismiss,
   selectionKey,
-  canSelectEffort,
   focused,
   onModeRemoved,
   accessModes,
@@ -100,7 +99,6 @@ function ComposerOptionsBrowser({
     !!actions.onClearGoal,
     actions.goalUnobserved,
     !!actions.onCompact,
-    canSelectEffort,
     sessionModeActions(actions.sessionConfig).map((mode) => mode.id),
     sessionConfigControls(actions.sessionConfig, "other").map((option) => [
       option.id,

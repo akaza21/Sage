@@ -162,7 +162,10 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
         turnBusy: state === "locked",
       });
       const model = screen.getByLabelText("Model", { exact: true });
-      expect(model).toBeDisabled();
+      // A pending change leaves the advertised level reachable on the chip;
+      // its slider waits inside the popover. Transitions and turns lock it.
+      if (state === "pending") expect(model).toBeEnabled();
+      else expect(model).toBeDisabled();
       expect(model.getAttribute("title")).toMatch(/^Synthetic replay/);
       if (state === "locked")
         expect(model).toHaveAttribute("data-readonly-label", "true");

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import { HarnessSignInPart } from "../lazyParts";
 import {
@@ -12,7 +13,13 @@ export interface TurnFailureProps {
   turn: TurnProjection;
   onRetry?: () => void;
   page?: AcpChatPage;
+  /** An earlier failure is one line; its remediation waits under Details. */
+  latest?: boolean;
 }
+
+// Disposable WebView state: the newest 64 dismissed turns. A turn id belongs
+// to one chat, so this holds each chat's dismissals without a chat key.
+const dismissed: string[] = [];
 
 export function RetryTurnButton({ onRetry }: { onRetry: () => void }) {
   return (
@@ -22,8 +29,14 @@ export function RetryTurnButton({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
-  if (turn.state !== "failed") return null;
+export function TurnFailure({
+  turn,
+  onRetry,
+  page,
+  latest = true,
+}: TurnFailureProps) {
+  const [hidden, setHidden] = useState(() => dismissed.includes(turn.id));
+  if (turn.state !== "failed" || hidden) return null;
   const reason = turn.terminalReason;
   const message =
     turnReasonMessage(turn) ||
@@ -32,9 +45,9 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
       : "The harness gave no error details.");
   const error = turnReasonErrorItem(turn);
   return (
-    <div role="group" aria-label="Turn failed">
+    <div role="group" aria-label="Turn failed" data-latest={latest}>
       <Notice
-        identity={JSON.stringify(["turn-failure", turn.sessionId, turn.id])}
+        identity={turn.id}
         severity="blocking"
         message={
           <>
@@ -57,6 +70,10 @@ export function TurnFailure({ turn, onRetry, page }: TurnFailureProps) {
           ) : undefined
         }
         action={onRetry ? { label: "Retry", onClick: onRetry } : undefined}
+        onDismiss={() => {
+          if (dismissed.push(turn.id) > 64) dismissed.shift();
+          setHidden(true);
+        }}
       />
     </div>
   );

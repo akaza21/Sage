@@ -50,7 +50,7 @@ describe("composerDisabledReason", () => {
 
   it("explains the disabled composer while a turn is already running", () => {
     expect(composerDisabledReason({ ...healthy, activeTurn: true })).toBe(
-      "Wait for the active turn to finish, or cancel it when available.",
+      "Wait for the active turn to finish.",
     );
   });
 
@@ -62,7 +62,7 @@ describe("composerDisabledReason", () => {
         chatLoadFailed: true,
         harnessAvailable: false,
       }),
-    ).toBe("Wait for the active turn to finish, or cancel it when available.");
+    ).toBe("Wait for the active turn to finish.");
   });
 });
 

@@ -48,61 +48,72 @@ for (const width of [1888, 720, 480]) {
         await expectCompactComposerTargets(
           page.locator("form.composer").first(),
         );
+      // The model chip shows the level and opens it below the model list.
       const trigger = page
         .locator("form.composer")
         .first()
-        .getByRole("button", { name: "Thinking level: High", exact: true });
+        .getByRole("button", { name: "Model", exact: true });
+      await expect(trigger.locator(".composer__model-effort")).toHaveText(
+        "High",
+      );
       await trigger.focus();
       await page.keyboard.press("Enter");
       const panel = page.getByRole("dialog", {
-        name: "Thinking level",
+        name: "Select model",
         exact: true,
       });
-      const slider = panel.getByRole("slider", { name: "Thinking level" });
-      await expect(slider).toBeFocused();
+      const section = panel.getByRole("group", { name: "Thinking level" });
+      const slider = section.getByRole("slider", { name: "Thinking level" });
+      await expect(panel.getByRole("option", { selected: true })).toBeFocused();
       await expect(slider).toHaveAttribute("min", "0");
       await expect(slider).toHaveAttribute(
         "max",
         String(profile.levels.length - 1),
       );
       await expect(slider).toHaveAttribute("aria-valuetext", "High");
-      await expect(panel.locator(".composer-effort__stops span")).toHaveCount(
+      await expect(section.locator(".composer-effort__stops span")).toHaveCount(
         profile.levels.length,
       );
       await expect(panel.getByRole("combobox")).toHaveCount(0);
       await expect(
-        panel.getByRole("button", { name: "Reset effort" }),
+        section.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(profile.defaultValue ? 1 : 0);
-      await expect(
-        panel.getByRole("button", { name: "Select model: GPT-6 Astra" }),
-      ).toBeVisible();
-      await expect(panel.locator("button, input")).toHaveCount(
-        profile.defaultValue ? 3 : 2,
+      await expect(section.locator("button, input")).toHaveCount(
+        profile.defaultValue ? 2 : 1,
       );
-      expect(
-        await panel
-          .locator("button, input")
-          .evaluateAll((controls) =>
-            controls.map((control) => control.getAttribute("aria-label")),
-          ),
-      ).toEqual([
-        "Select model: GPT-6 Astra",
+      // Tab leaves the list's one stop for the reset, then the slider.
+      const stops: string[] = [];
+      for (const name of [
         ...(profile.defaultValue ? ["Reset effort"] : []),
         "Thinking level",
-      ]);
+      ]) {
+        await page.keyboard.press("Tab");
+        stops.push(
+          await page.evaluate(
+            () =>
+              document.activeElement?.getAttribute("aria-label") ??
+              document.activeElement?.textContent?.trim() ??
+              "",
+          ),
+        );
+        expect(stops.at(-1)).toBe(name);
+      }
+      await expect(slider).toBeFocused();
       await page.keyboard.press("Shift+Tab");
-      await expect(
-        panel.getByRole("button", {
-          name: profile.defaultValue
-            ? "Reset effort"
-            : "Select model: GPT-6 Astra",
-        }),
-      ).toBeFocused();
+      if (profile.defaultValue)
+        await expect(
+          section.getByRole("button", { name: "Reset effort" }),
+        ).toBeFocused();
+      else
+        await expect(
+          panel.getByRole("option", { selected: true }),
+        ).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(slider).toBeFocused();
       const box = (await panel.boundingBox())!;
+      const group = (await section.boundingBox())!;
       const rail = (await slider.boundingBox())!;
-      const heading = (await panel
+      const heading = (await section
         .locator(".composer-effort__heading")
         .boundingBox())!;
       const anchor = (await trigger.boundingBox())!;
@@ -112,13 +123,18 @@ for (const width of [1888, 720, 480]) {
         .boundingBox())!;
       const expectedWidth = Math.min(232, pane.width, width - 8 - pane.x);
       expect(box.width).toBe(expectedWidth);
-      expect(box.height).toBeGreaterThanOrEqual(84);
-      expect(box.height).toBeLessThanOrEqual(90);
+      // The level section spans the popover's foot, under the model list.
+      expect(group.x).toBeGreaterThanOrEqual(box.x);
+      expect(group.x + group.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(group.y + group.height).toBeLessThanOrEqual(box.y + box.height);
+      expect(group.y).toBeGreaterThan(
+        (await panel.getByRole("listbox").boundingBox())!.y,
+      );
       expect(rail.height).toBe(24);
-      expect(rail.width).toBe(expectedWidth - 26);
-      expect(rail.x - box.x).toBe(13);
+      expect(rail.x - group.x).toBe(8);
+      expect(rail.width).toBe(group.width - 16);
       expect(rail.y - heading.y - heading.height).toBe(8);
-      const centers = await panel
+      const centers = await section
         .locator(".composer-effort__stops span")
         .evaluateAll((stops) =>
           stops.map((stop) => {
@@ -134,22 +150,31 @@ for (const width of [1888, 720, 480]) {
         expect(center.y - rail.y).toBe(12);
       }
       await expect(
-        panel.locator('.composer-effort__stops [data-selected="true"]'),
+        section.locator('.composer-effort__stops [data-selected="true"]'),
       ).toHaveCSS("visibility", "hidden");
       expect(box.x).toBeGreaterThanOrEqual(8);
       expect(box.x + box.width).toBeLessThanOrEqual(width - 8);
       expect(box.y).toBeGreaterThanOrEqual(8);
       expect(box.y + box.height).toBeLessThanOrEqual(anchor.y);
-      const composer = (await page
-        .locator("form.composer")
+      // The popover ends at the chip's end, held inside the composer's dock.
+      const dock = (await page
+        .locator(".chat-dock-frame")
         .first()
         .boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(pane.x);
       expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width);
       if (width >= 720) {
-        expect(box.x).toBeGreaterThanOrEqual(composer.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(
-          composer.x + composer.width,
+        expect(box.x).toBeGreaterThanOrEqual(dock.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(dock.x + dock.width);
+        expect(box.x).toBeCloseTo(
+          Math.max(
+            dock.x,
+            Math.min(
+              anchor.x + anchor.width - box.width,
+              dock.x + dock.width - box.width,
+            ),
+          ),
+          0,
         );
       }
       await expectNoViewportOverflow(page);
@@ -192,11 +217,12 @@ async function openCodexEffort(page: Page) {
   const trigger = page
     .locator("form.composer")
     .first()
-    .getByRole("button", { name: "Thinking level: High", exact: true });
+    .getByRole("button", { name: "Model", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
-  const panel = page.getByRole("dialog", { name: "Thinking level" });
+  const panel = page.getByRole("dialog", { name: "Select model" });
   const slider = panel.getByRole("slider", { name: "Thinking level" });
+  await slider.focus();
   await expect(slider).toBeFocused();
   return { panel, slider };
 }

@@ -6,7 +6,10 @@ import { sessionRailUnreadVisible } from "../features/chat/acp/sessionRail";
 import { useAgentRailInteractions } from "./agentRailInteractions";
 import { ProjectChatRailGlyph } from "./ProjectChatActionMenu";
 import { useParentChatStatus, useRailChatId } from "./sideChatState";
-import type { AgentRailTrailingState } from "./agentRailStatusView";
+import {
+  agentRailTrailingState,
+  type AgentRailTrailingState,
+} from "./agentRailStatusView";
 
 export function CollapsedProjectStatus({
   chats,
@@ -31,21 +34,30 @@ function useCollapsedProjectState(
   );
   const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
   const readMarks = useChatReadMarks();
-  if (chats.length === 0) return null;
-  const running = chats.some((chat) => {
-    const status = parentChatStatus(chat.id, chat.status);
-    return status === "working" || status === "recovering";
-  });
-  if (running) return { kind: "working", label: "Working" };
-  const unread = chats.some(
-    (chat) =>
-      interactions.unread.has(chat.id) ||
-      sessionRailUnreadVisible({
-        focused: selected && chat.id === viewedChatId,
-        status: chat.status,
-        finishedAt: chat.finishedAt,
-        readThrough: readMarks.get(chat.id),
-      }),
-  );
-  return unread ? { kind: "unread", label: "Unread" } : null;
+  // Same per-chat state as the expanded rows; the most urgent one wins.
+  let shown: AgentRailTrailingState | null = null;
+  for (const chat of chats) {
+    const state = agentRailTrailingState({
+      status: parentChatStatus(chat.id, chat.status),
+      unread:
+        interactions.unread.has(chat.id) ||
+        sessionRailUnreadVisible({
+          focused: selected && chat.id === viewedChatId,
+          status: chat.status,
+          finishedAt: chat.finishedAt,
+          readThrough: readMarks.get(chat.id),
+        }),
+    });
+    if (state && (!shown || URGENCY[state.kind] < URGENCY[shown.kind]))
+      shown = state;
+  }
+  return shown;
 }
+
+const URGENCY: Record<AgentRailTrailingState["kind"], number> = {
+  waiting: 0,
+  failed: 1,
+  working: 2,
+  recovering: 2,
+  unread: 3,
+};
