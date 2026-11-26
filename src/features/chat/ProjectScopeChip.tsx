@@ -131,7 +131,7 @@ export function ProjectScopeChip({
         }
         triggerDetail={
           menuItem ? (
-            <span className="composer__action-description">
+            <span className="menu-description">
               Choose project for this chat
             </span>
           ) : undefined
