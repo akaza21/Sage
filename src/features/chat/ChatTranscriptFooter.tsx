@@ -4,7 +4,7 @@ import { ChevronRight } from "../../ui/leanIcons";
 import type { AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { TurnDaySeparator } from "./acp/AcpTurnDates";
-import { terminalTurnStates } from "./acp/statusSemantics";
+import { terminalTurnStates, turnStateLabels } from "./acp/statusSemantics";
 import { WorkedTurnTerminal } from "./acp/WorkedTurnTerminal";
 import { AnswerActions } from "./AnswerActions";
 import "./chat-transcript-work.css";
@@ -44,7 +44,9 @@ export function ChatTranscriptTurnSummary({
   }, [terminal, turn.id]);
   const duration = terminal
     ? (formatWorkedDuration(turn.createdAt, turn.terminalAt) ?? "Worked")
-    : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
+    : turn.state === "waitingApproval" || turn.state === "waitingUser"
+      ? turnStateLabels[turn.state]
+      : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
 
   if (terminal && !hasActivities) {
     if (!turn.items.some(isAssistantText)) return null;
