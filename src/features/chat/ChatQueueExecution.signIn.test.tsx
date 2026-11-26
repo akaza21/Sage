@@ -1,7 +1,13 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import type { AcpChatPage } from "../../domain/acp";
 import ChatQueueExecution from "./ChatQueueExecution";
+
+const pageEndingWith = (turn: object) =>
+  ({
+    turns: [{ id: "turn-1", terminalReason: { kind: "authRequired" } }, turn],
+  }) as unknown as AcpChatPage;
 
 afterEach(cleanup);
 
@@ -26,7 +32,10 @@ it("holds a queued prompt after a sign-in failure until a newer turn replaces it
     projectTransitioning: false,
     canPrompt: true,
     useNativeAcp: true,
-    hold: true,
+    page: pageEndingWith({
+      id: "turn-1b",
+      terminalReason: { kind: "authRequired" },
+    }),
     observedOrder: null,
     submit,
     updateQueuedPrompt,
@@ -35,7 +44,9 @@ it("holds a queued prompt after a sign-in failure until a newer turn replaces it
   const view = render(<ChatQueueExecution {...props} />);
   expect(submit).not.toHaveBeenCalled();
   expect(updateQueuedPrompt).not.toHaveBeenCalled();
-  view.rerender(<ChatQueueExecution {...props} hold={false} />);
+  view.rerender(
+    <ChatQueueExecution {...props} page={pageEndingWith({ id: "turn-2" })} />,
+  );
   expect(submit).toHaveBeenCalledOnce();
   expect(updateQueuedPrompt).toHaveBeenCalledWith("queued-1", "sending");
 });

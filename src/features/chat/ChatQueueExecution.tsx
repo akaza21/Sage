@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import type { AttachedContext } from "../../domain/attachedContext";
-import type { CuratedBindingId, CuratedModelId } from "../../domain/acp";
+import type {
+  AcpChatPage,
+  CuratedBindingId,
+  CuratedModelId,
+} from "../../domain/acp";
 import type {
   ChatTurnOrder,
   QueuedChatPrompt,
@@ -18,7 +22,7 @@ export default function ChatQueueExecution({
   projectTransitioning,
   canPrompt,
   useNativeAcp,
-  hold,
+  page,
   observedOrder,
   submit,
   updateQueuedPrompt,
@@ -35,8 +39,7 @@ export default function ChatQueueExecution({
   projectTransitioning: boolean;
   canPrompt: boolean;
   useNativeAcp: boolean;
-  /** The latest turn failed for sign-in: wait for a newer turn (a retry). */
-  hold?: boolean;
+  page?: AcpChatPage | null;
   observedOrder: ChatTurnOrder | null;
   submit: (
     text: string,
@@ -52,6 +55,8 @@ export default function ChatQueueExecution({
     barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
   ) => void;
 }) {
+  // After a sign-in failure, wait for a newer turn (a retry) before draining.
+  const hold = page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
   useEffect(() => {
     if (queuedTurnBarrier !== null) {
       if (
