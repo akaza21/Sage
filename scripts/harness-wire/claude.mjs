@@ -38,8 +38,13 @@ export function launch({ cwd, env, model }) {
   return { command: "claude", args, cwd, env };
 }
 
-export async function run(scenario, { cwd, env, emptyHome, image, model }) {
-  const scenarioEnv = { ...env };
+// Every scenario runs on a config home seeded with the sign-in alone, so no
+// plugin, skill, agent, setting or connector of the capturing account is
+// recorded; claude.ai connectors are switched off for the same reason.
+export const CONFIG = { env: "CLAUDE_CONFIG_DIR", from: [".claude"], files: [".credentials.json"] };
+
+export async function run(scenario, { cwd, env, emptyHome, configHome, image, model }) {
+  const scenarioEnv = { ...env, CLAUDE_CONFIG_DIR: configHome, ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   if (scenario === "auth-fail") {
     scenarioEnv.CLAUDE_CONFIG_DIR = emptyHome;
     for (const key of ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) {

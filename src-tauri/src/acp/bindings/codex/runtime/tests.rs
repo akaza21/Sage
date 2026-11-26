@@ -35,7 +35,6 @@ use sage_acp_protocol::{
 use sage_db::database::Database;
 
 mod background_terminal_tests;
-mod wire_replay_tests;
 mod browser_mcp_tests;
 mod duplicate_terminal_probe;
 mod foreign_thread_tests;
@@ -59,6 +58,7 @@ mod skills_journey_tests;
 mod steer_journey_tests;
 mod title_request_tests;
 mod usage_tests;
+mod wire_replay_tests;
 
 struct Mapper;
 

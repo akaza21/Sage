@@ -16,8 +16,12 @@ export function launch({ cwd, env }) {
   return { command: "pi", args: ["--mode", "rpc"], cwd, env, shell: process.platform === "win32" };
 }
 
-export async function run(scenario, { cwd, env, emptyHome, image }) {
-  const scenarioEnv = { ...env };
+// Every scenario runs on an agent dir seeded with the sign-in alone, so no
+// extension, skill or setting of the capturing account is recorded.
+export const CONFIG = { env: "PI_CODING_AGENT_DIR", from: [".pi", "agent"], files: ["auth.json"] };
+
+export async function run(scenario, { cwd, env, emptyHome, configHome, image }) {
+  const scenarioEnv = { ...env, PI_CODING_AGENT_DIR: configHome };
   if (scenario === "auth-fail") {
     scenarioEnv.PI_CODING_AGENT_DIR = emptyHome;
     for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"]) {

@@ -30,10 +30,19 @@ const IDENTITY_KEYS = new Set([
   "subscription_id",
   "chatgpt_account_id",
   "chatgptAccountId",
+  // The account's plan says who captured, not how the protocol behaves.
+  "subscriptionType",
+  "subscription_type",
+  "planType",
+  "plan_type",
 ]);
 const SECRET = /\b(?:sk-ant-[\w-]{8,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[\w-]{10,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,})/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+// Bounded by any non-hex character, so an id after `_` (a Pi session file
+// name) is caught too.
+const UUID = /(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])/gi;
+// A Windows named pipe carries a per-run name.
+const PIPE = /\\\\\.\\pipe\\[^\s"]+/gi;
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -65,7 +74,8 @@ function spellings(path, label) {
 export function makeSanitizer({ roots }) {
   // Longest first, so a scratch repo inside the home folder maps to the repo.
   const replacements = [];
-  for (const [path, label] of [...roots, [os.homedir(), "home"]]) {
+  const system = process.env.SystemRoot ? [[process.env.SystemRoot, "windows"]] : [];
+  for (const [path, label] of [...roots, [os.homedir(), "home"], ...system]) {
     for (const [spelling, target] of spellings(path, label)) {
       replacements.push([new RegExp(escapeRegExp(spelling), "gi"), target, spelling.length]);
     }
@@ -78,6 +88,7 @@ export function makeSanitizer({ roots }) {
   const text = (value) => {
     let out = value;
     for (const [pattern, target] of replacements) out = out.replace(pattern, target);
+    out = out.replace(PIPE, "fixture-pipe");
     out = out.replace(SECRET, "[redacted-secret]").replace(EMAIL, "user@example.invalid");
     out = out.replace(UUID, (match) => {
       const key = match.toLowerCase();
@@ -87,7 +98,7 @@ export function makeSanitizer({ roots }) {
       return uuids.get(key);
     });
     if (host.length > 2) out = out.replace(new RegExp(`\\b${escapeRegExp(host)}\\b`, "gi"), "fixture-host");
-    if (user.length > 3) out = out.replace(new RegExp(`\\b${escapeRegExp(user)}\\b`, "g"), "fixture-user");
+    if (user.length > 3) out = out.replace(new RegExp(`\\b${escapeRegExp(user)}\\b`, "gi"), "fixture-user");
     if (out.length > MAX_STRING) out = `${out.slice(0, MAX_STRING)}…[truncated]`;
     return out;
   };

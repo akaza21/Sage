@@ -34,7 +34,11 @@ function pointerPart(key) {
   return String(key).replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
-function isPermittedWindowsPath(value) {
+function isPermittedWindowsPath(raw) {
+  // The fixture root also appears with forward slashes and, inside JSON a
+  // string carries (a streamed tool input, a projected row), with doubled
+  // backslashes.
+  const value = raw.replace(/\\\\/gu, "\\").replace(/\//gu, "\\");
   if (!permittedWindowsRoot.test(value)) {
     return false;
   }

@@ -5,26 +5,18 @@
 //! `AdapterCommand` is issued, recorded request ids are re-pointed at the ids
 //! the binding chose, and every harness frame goes through `ingest`.
 
-use std::{
-    collections::{HashMap, VecDeque},
-    path::PathBuf,
-    sync::Arc,
-};
+mod driver;
+mod projection;
 
-use base64::Engine as _;
-use serde_json::{Value, json};
+use std::path::PathBuf;
 
-use super::adapter::{
-    AdapterCommand, AdapterEgress, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
-};
-use crate::acp::{
-    attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
-    transcript_quote::Prompt,
-    transport::{Frame, FrameReader},
-};
-use sage_acp_protocol::{
-    access_mode::SessionAccessMode, contract::RequiredText, permissions::PermissionDecision,
-};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+pub(crate) use driver::Replay;
+
+use super::adapter::ResourceMapper;
+use crate::acp::transport::{Frame, FrameReader};
 
 /// Where the committed corpus lives.
 pub(crate) fn corpus(harness: &str) -> PathBuf {
@@ -53,7 +45,7 @@ impl ResourceMapper for FixtureMapper {
             .and_then(|relative| {
                 sage_acp_protocol::intent::SafeResourceRef::new(
                     sage_acp_protocol::contract::SageRootId::parse("root-replay").ok()?,
-                    &relative.replace('\\', "/"),
+                    relative.replace('\\', "/"),
                 )
                 .ok()
             })
@@ -81,27 +73,40 @@ pub(crate) struct Record {
     pub(crate) frame: Value,
 }
 
-fn lines(harness: &str, file: &str) -> Vec<Value> {
+fn lines(harness: &str, file: &str) -> Vec<String> {
     let path = corpus(harness).join(file);
     let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path:?}: {error}"));
     text.lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).expect("transcript line"))
+        .map(str::to_owned)
         .collect()
 }
 
-/// The scenario's records; a `ref` record (`commands.jsonl#<line>`) stands
-/// for the frame that line of the same corpus holds.
+/// The frame of the line in `file` whose SHA-256 starts with `digest`, as a
+/// `ref` record names a handshake frame stored once.
+fn referenced(harness: &str, file: &str, digest: &str) -> Value {
+    let line = lines(harness, file)
+        .into_iter()
+        .find(|line| {
+            let hash = Sha256::digest(line.as_bytes());
+            hash.iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+                .starts_with(digest)
+        })
+        .unwrap_or_else(|| panic!("{harness}: no line of {file} has digest {digest}"));
+    let record: Value = serde_json::from_str(&line).expect("referenced line");
+    record["frame"].clone()
+}
+
 pub(crate) fn load(harness: &str, scenario: &str) -> Vec<Record> {
     lines(harness, &format!("{scenario}.jsonl"))
         .into_iter()
-        .map(|record| {
-            let frame = match record["ref"].as_str() {
-                Some(reference) => {
-                    let (file, at) = reference.split_once('#').expect("ref names a line");
-                    lines(harness, file)[at.parse::<usize>().expect("line")]["frame"].clone()
-                }
-                None => record["frame"].clone(),
+        .map(|line| {
+            let record: Value = serde_json::from_str(&line).expect("transcript line");
+            let frame = match (record["ref"].as_str(), record["sha256"].as_str()) {
+                (Some(file), Some(digest)) => referenced(harness, file, digest),
+                _ => record["frame"].clone(),
             };
             Record {
                 out: record["direction"] == "out",
@@ -123,374 +128,22 @@ pub(crate) fn frame(value: &Value) -> Frame {
         .expect("one frame")
 }
 
-/// What a client frame asks for, in any of the three wires: a JSON-RPC
-/// method, a stream-json control subtype, a Pi command or message type.
-fn out_kind(frame: &Value) -> String {
-    let text = |value: &Value| value.as_str().map(str::to_owned);
-    text(&frame["method"])
-        .or_else(|| text(&frame["request"]["subtype"]))
-        .or_else(|| text(&frame["type"]))
-        .unwrap_or_else(|| "reply".into())
-}
-
-fn out_id(frame: &Value) -> Option<Value> {
-    ["/request_id", "/id"]
-        .iter()
-        .find_map(|pointer| frame.pointer(pointer).filter(|id| !id.is_null()).cloned())
-}
-
-/// A harness frame that answers a client request, so its id is the client's.
-fn is_reply(frame: &Value) -> bool {
-    frame.get("method").is_none()
-        && matches!(
-            frame["type"].as_str(),
-            None | Some("control_response" | "response")
-        )
-}
-
-fn first_png(value: &Value) -> Option<Vec<u8>> {
-    match value {
-        Value::String(text) => {
-            let data = text.rsplit("base64,").next()?;
-            data.starts_with("iVBOR")
-                .then(|| base64::engine::general_purpose::STANDARD.decode(data).ok())
-                .flatten()
-        }
-        Value::Array(list) => list.iter().find_map(first_png),
-        Value::Object(map) => map.values().find_map(first_png),
-        _ => None,
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct Replay {
-    /// The Sage session the runtime was built for; a mode change names it.
-    session: String,
-    pub(crate) events: Vec<AdapterEvent>,
-    pub(crate) refused: Vec<String>,
-    pub(crate) ingest_errors: Vec<String>,
-    live: VecDeque<Value>,
-    ids: HashMap<String, Value>,
-    client_only: Vec<String>,
-    resolved: usize,
-}
-
-impl Replay {
-    fn written(&mut self, adapter: &mut dyn HarnessAdapter, egress: AdapterEgress) {
-        let sent: Value = serde_json::from_slice(egress.frame().payload()).expect("egress JSON");
-        self.live.push_back(sent);
-        // As the adapter pump writes it: committed if mandatory, queued, then
-        // written.
-        if egress.token().is_mandatory() {
-            adapter
-                .commit_mandatory_egress(egress.token())
-                .expect("mandatory egress commits");
-        }
-        adapter
-            .resolve_egress(egress.token().clone(), EgressResolution::Queued)
-            .expect("egress queues");
-        adapter
-            .resolve_egress(egress.into_token(), EgressResolution::Written)
-            .expect("egress is written");
-    }
-
-    fn command_for(&mut self, step: &Value, out: &Value) -> Option<AdapterCommand> {
-        let text = |key: &str| step[key].as_str().unwrap_or_default().to_owned();
-        match step["command"].as_str()? {
-            "initialize" => Some(AdapterCommand::Initialize),
-            "session" => Some(AdapterCommand::NewSession {
-                native_root: ROOT.into(),
-                model: None,
-            }),
-            "prompt" => {
-                let mut prompt = Prompt::new("prompt", &text("text")).expect("prompt");
-                if let Some(bytes) = first_png(out) {
-                    prompt.images = PromptImages(Arc::new(vec![PromptImage {
-                        media_type: sage_acp_protocol::intent::ImageMediaType::Png,
-                        bytes,
-                        preview: ImagePreview::Full,
-                    }]));
-                }
-                Some(AdapterCommand::Prompt {
-                    prompt,
-                    client_message_id: RequiredText::new("client", "replay-turn").expect("id"),
-                    access_mode: if step["mode"] == "plan" {
-                        SessionAccessMode::Plan
-                    } else {
-                        SessionAccessMode::Ask
-                    },
-                })
-            }
-            "permission" => {
-                // The oldest permission the replay has not answered yet.
-                let request = self
-                    .events
-                    .iter()
-                    .filter_map(|event| match event {
-                        AdapterEvent::PermissionRequest {
-                            external_request_id,
-                            ..
-                        } => Some(external_request_id.as_str().to_owned()),
-                        _ => None,
-                    })
-                    .nth(self.resolved)?;
-                self.resolved += 1;
-                Some(AdapterCommand::ResolvePermission {
-                    request_id: sage_acp_protocol::contract::SageServerRequestId::parse(&request)
-                        .expect("request id"),
-                    decision: if step["decision"] == "deny" {
-                        PermissionDecision::Deny
-                    } else {
-                        PermissionDecision::AllowOnce
-                    },
-                })
-            }
-            _ => None,
-        }
-    }
-
-    /// A session mode change, as Sage sends one before a prompt in that mode.
-    fn configure(&mut self, adapter: &mut dyn HarnessAdapter, mode: &str) {
-        use sage_acp_protocol::{
-            contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-            scheduler::RuntimeOwner,
-            session_config::{ConfigId, ConfigIntent, ConfigMutation},
-        };
-        let intent = ConfigIntent {
-            owner: RuntimeOwner {
-                project_id: SageProjectId::parse("project-replay").expect("project"),
-                chat_id: SageChatId::parse("chat-replay").expect("chat"),
-                session_id: SageAgentSessionId::parse(&self.session).expect("session"),
-                runtime_epoch: RuntimeEpoch::new(1).expect("epoch"),
-            },
-            expected_config_revision: serde_json::from_value(json!("1")).expect("revision"),
-            mutation: ConfigMutation::Mode(ConfigId::new("mode", mode).expect("mode id")),
-        };
-        match adapter.configure(&intent) {
-            Ok(Some(egress)) => self.written(adapter, egress),
-            Ok(None) => {}
-            Err(error) => self.refused.push(format!("mode {mode} {error}")),
-        }
-    }
-
-    fn client(&mut self, adapter: &mut dyn HarnessAdapter, record: &Record) {
-        if let Some(step) = &record.step {
-            if step["command"] == "mode" {
-                self.configure(adapter, step["mode"].as_str().unwrap_or_default());
-            } else if let Some(command) = self.command_for(step, &record.frame) {
-                match adapter.command(command) {
-                    Ok(egress) => self.written(adapter, egress),
-                    Err(error) => self.refused.push(format!("{} {error}", step["command"])),
-                }
-            }
-        }
-        let kind = out_kind(&record.frame);
-        match self.live.iter().position(|sent| out_kind(sent) == kind) {
-            Some(index) => {
-                let sent = self.live.remove(index).expect("matched egress");
-                if let (Some(recorded), Some(live)) = (out_id(&record.frame), out_id(&sent)) {
-                    self.ids.insert(recorded.to_string(), live);
-                }
-            }
-            None => self.client_only.push(kind),
-        }
-    }
-
-    fn harness(
-        &mut self,
-        adapter: &mut dyn HarnessAdapter,
-        mut value: Value,
-        resources: &dyn ResourceMapper,
-    ) {
-        if is_reply(&value) {
-            for pointer in ["/id", "/response/request_id"] {
-                if let Some(slot) = value.pointer_mut(pointer)
-                    && let Some(live) = self.ids.get(&slot.to_string())
-                {
-                    *slot = live.clone();
-                }
-            }
-        }
-        let start = self.events.len();
-        let result = adapter.ingest(&frame(&value), resources);
-        self.batches(adapter, result);
-        let new = &self.events[start..];
-        let started = new
-            .iter()
-            .any(|event| matches!(event, AdapterEvent::TurnStarted { .. }));
-        let idle = new.iter().any(|event| match event {
-            AdapterEvent::SessionReady { .. } => true,
-            AdapterEvent::Turn { state, .. } => state.is_terminal(),
-            _ => false,
-        });
-        // A Turn the harness began on its own is named and read, as the
-        // pump adopts it.
-        if started {
-            let id = RequiredText::new("client", "replay-harness-turn").expect("id");
-            let result = adapter.adopt_turn(id, resources);
-            self.batches(adapter, result);
-        }
-        // Idle background work the pump writes once nothing runs: the
-        // command list read when it is missing or stale.
-        if idle {
-            match adapter.discover_commands() {
-                Ok(Some(egress)) => {
-                    let sent = serde_json::from_slice(egress.frame().payload()).expect("JSON");
-                    self.live.push_back(sent);
-                    adapter
-                        .resolve_egress(egress.into_token(), EgressResolution::Written)
-                        .expect("discovery is written");
-                }
-                Ok(None) => {}
-                Err(error) => self.refused.push(format!("discover commands {error}")),
-            }
-        }
-    }
-
-    /// Takes a batch and every batch held back behind it.
-    fn batches(
-        &mut self,
-        adapter: &mut dyn HarnessAdapter,
-        first: Result<super::adapter::AdapterBatch, super::adapter::AdapterRuntimeError>,
-    ) {
-        let mut next = Some(first);
-        while let Some(result) = next.take() {
-            match result {
-                Ok(batch) => {
-                    let (events, egress) = batch.into_parts();
-                    self.events.extend(events);
-                    for egress in egress {
-                        self.written(adapter, egress);
-                    }
-                    next = adapter.held_batch().transpose();
-                }
-                Err(error) => self.ingest_errors.push(error.to_string()),
-            }
-        }
-    }
-
-    /// Feeds `records` to `adapter`, built for Sage session `session` at
-    /// epoch 1, and ends as the harness's output ends.
-    pub(crate) fn run(
-        adapter: &mut dyn HarnessAdapter,
-        session: &str,
-        records: &[Record],
-        resources: &dyn ResourceMapper,
-    ) -> Self {
-        let mut replay = Self {
-            session: session.to_owned(),
-            ..Self::default()
-        };
-        for record in records {
-            if record.out {
-                replay.client(adapter, record);
-            } else {
-                replay.harness(adapter, record.frame.clone(), resources);
-            }
-        }
-        match adapter.unfinished_replies() {
-            Ok(events) => replay.events.extend(events),
-            Err(error) => replay.ingest_errors.push(error.to_string()),
-        }
-        replay
-    }
-
-    /// The projection a scenario commits: what the binding listed, the rows
-    /// and states it produced, and every refusal, error and unsupported frame.
-    pub(crate) fn summary(&self, adapter: &dyn HarnessAdapter) -> Value {
-        let commands: Vec<String> = adapter
-            .available_commands()
-            .snapshot()
-            .commands
-            .iter()
-            .map(|command| command.name.clone())
-            .collect();
-        let mut rows: Vec<(String, usize)> = Vec::new();
-        for event in &self.events {
-            let row = row(event);
-            match rows.last_mut() {
-                Some((last, count)) if *last == row => *count += 1,
-                _ => rows.push((row, 1)),
-            }
-        }
-        json!({
-            "commands": commands,
-            "refused": self.refused,
-            "ingestErrors": self.ingest_errors,
-            "clientOnly": self.client_only,
-            "sageOnly": self.live.iter().map(out_kind).collect::<Vec<_>>(),
-            "rows": rows
-                .into_iter()
-                .map(|(row, count)| if count == 1 { row } else { format!("{row} x{count}") })
-                .collect::<Vec<_>>(),
-        })
-    }
-}
-
-/// Keys whose values are prose, ids or bulk the projection leaves out: the
-/// rows state what kind of thing happened, not what the model wrote.
-const DROPPED: [&str; 24] = [
-    "id",
-    "itemId",
-    "item_id",
-    "turnId",
-    "turn_id",
-    "externalRequestId",
-    "external_request_id",
-    "externalItemId",
-    "external_item_id",
-    "requestPayloadDigest",
-    "request_payload_digest",
-    "childThreadId",
-    "child_thread_id",
-    "childTurnId",
-    "child_turn_id",
-    "observedSequence",
-    "text",
-    "summary",
-    "inputSummary",
-    "outputSummary",
-    "old_text",
-    "new_text",
-    "details",
-    "capabilities",
-];
-
-fn prune(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.retain(|key, _| !DROPPED.contains(&key.as_str()));
-            map.values_mut().for_each(prune);
-        }
-        Value::Array(list) => list.iter_mut().for_each(prune),
-        Value::String(text) if text.len() > 48 => {
-            let cut = text.char_indices().nth(48).map_or(text.len(), |(at, _)| at);
-            text.truncate(cut);
-            text.push('…');
-        }
-        _ => {}
-    }
-}
-
-fn row(event: &AdapterEvent) -> String {
-    let mut value = serde_json::to_value(event).expect("event JSON");
-    prune(&mut value);
-    match value {
-        Value::String(name) => name,
-        Value::Object(map) => map
-            .into_iter()
-            .map(|(name, body)| format!("{name} {body}"))
-            .collect::<Vec<_>>()
-            .join(" "),
-        other => other.to_string(),
-    }
-}
-
 /// Compares a replay's summary with the committed `<scenario>.replay.json`.
-/// `SAGE_WIRE_BLESS=1` rewrites it instead, after a reviewed recapture.
+/// `SAGE_WIRE_BLESS=1` rewrites it instead, after a reviewed recapture. A
+/// frame the binding failed to take fails the replay outright, except in a
+/// scenario that records the harness refusing to work at all.
 pub(crate) fn assert_summary(harness: &str, scenario: &str, summary: &Value) {
+    let errors = summary["ingestErrors"].as_array().map_or(0, Vec::len);
+    assert!(
+        errors == 0 || scenario == "auth-fail",
+        "{harness}/{scenario}: the binding failed to take {errors} recorded frames: {}",
+        summary["ingestErrors"]
+    );
     let path = corpus(harness).join(format!("{scenario}.replay.json"));
-    let rendered = format!("{}\n", serde_json::to_string_pretty(summary).expect("summary"));
+    let rendered = format!(
+        "{}\n",
+        serde_json::to_string_pretty(summary).expect("summary")
+    );
     if std::env::var_os("SAGE_WIRE_BLESS").is_some() {
         std::fs::write(&path, rendered).expect("bless");
         return;

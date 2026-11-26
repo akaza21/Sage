@@ -6,6 +6,7 @@
 //
 //   node scripts/harness-wire/shape.mjs --diff <committed corpus> <new capture>
 //   node scripts/harness-wire/shape.mjs --write <corpus>   (rewrite shape.json)
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -100,19 +101,22 @@ export function shapeOfRecords(records, shape = { kinds: {}, commands: new Set()
   return shape;
 }
 
-// Records, with each `{ ref: "commands.jsonl#<line>" }` replaced by the frame
-// that line holds.
+// Records, with each `{ ref: "commands.jsonl", sha256 }` replaced by the
+// frame of the line of that file whose hash starts with `sha256`.
 export function readTranscript(file) {
   const lines = (name) =>
     fs
       .readFileSync(path.join(path.dirname(file), name), "utf8")
       .split("\n")
-      .filter((line) => line.trim())
-      .map((line) => JSON.parse(line));
-  return lines(path.basename(file)).map((record) => {
+      .filter((line) => line.trim());
+  return lines(path.basename(file)).map((line) => {
+    const record = JSON.parse(line);
     if (!record.ref) return record;
-    const [name, at] = record.ref.split("#");
-    return { ...record, frame: lines(name)[Number(at)].frame };
+    const stored = lines(record.ref).find((candidate) =>
+      createHash("sha256").update(candidate).digest("hex").startsWith(record.sha256),
+    );
+    if (!stored) throw new Error(`${file}: no line of ${record.ref} has digest ${record.sha256}`);
+    return { ...record, frame: JSON.parse(stored).frame };
   });
 }
 

@@ -9,6 +9,7 @@
 // Then compare with the committed corpus:
 //   node scripts/harness-wire/shape.mjs --diff src-tauri/tests/fixtures/harness-wire <dir>
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,9 +18,9 @@ import * as codex from "./codex.mjs";
 import * as pi from "./pi.mjs";
 import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
+import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
 import { twoColourPng } from "./wire.mjs";
 
-import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
 // A frame over this size that commands.jsonl already holds verbatim (the
 // session handshake every scenario repeats) is stored as a reference to it.
 const DEDUPE_BYTES = 1024;
@@ -50,12 +51,19 @@ function version(harness) {
 function dedupe(records, dir) {
   const file = path.join(dir, "commands.jsonl");
   const base = fs.existsSync(file) ? readTranscriptLines(file) : [];
-  const index = new Map(base.map((line, at) => [key(JSON.parse(line)), at]));
+  const index = new Map(base.map((line) => [key(JSON.parse(line)), line]));
   return records.map((record) => {
     const line = JSON.stringify(record);
-    const at = index.get(key(record));
-    return line.length > DEDUPE_BYTES && at !== undefined
-      ? JSON.stringify({ direction: record.direction, ms: record.ms, ref: `commands.jsonl#${at}` })
+    const stored = index.get(key(record));
+    // Named by the content hash of the stored line, so a later recapture of
+    // commands.jsonl alone can never re-point the reference.
+    return line.length > DEDUPE_BYTES && stored !== undefined
+      ? JSON.stringify({
+          direction: record.direction,
+          ms: record.ms,
+          ref: "commands.jsonl",
+          sha256: createHash("sha256").update(stored).digest("hex").slice(0, 16),
+        })
       : line;
   });
 }
@@ -84,7 +92,16 @@ function scratchRepo(dir) {
   git("commit", "-q", "-m", "initial");
   const emptyHome = path.join(dir, "empty-home");
   fs.mkdirSync(emptyHome, { recursive: true });
-  return { repo, emptyHome };
+  return { repo, emptyHome, configHome: path.join(dir, "config") };
+}
+
+// A config home holding only the harness's sign-in files.
+function seedConfig(configHome, config) {
+  fs.mkdirSync(configHome, { recursive: true });
+  for (const name of config.files) {
+    const source = path.join(os.homedir(), ...config.from, name);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(configHome, name));
+  }
 }
 
 // Scrubs an already written capture again, on the host and with the --work
@@ -95,7 +112,12 @@ function resanitize(out, harnesses, work) {
     for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".jsonl"))) {
       const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
       const sanitizer = makeSanitizer({
-        roots: [[path.join(scratch, "repo"), "repo"], [path.join(scratch, "empty-home"), "empty-home"], [work, "work"]],
+        roots: [
+          [path.join(scratch, "repo"), "repo"],
+          [path.join(scratch, "empty-home"), "empty-home"],
+          [path.join(scratch, "config"), "config"],
+          [work, "work"],
+        ],
       });
       const records = readTranscriptLines(path.join(dir, file)).map((line) => JSON.parse(line));
       const body = sanitizer.records(records).map((record) => JSON.stringify(record));
@@ -132,10 +154,14 @@ async function main() {
     const scenarios = driver.SCENARIOS.filter((name) => !only.length || only.includes(name));
     for (const scenario of scenarios) {
       const scratch = path.join(work, `${harness}-${scenario}`);
-      const { repo, emptyHome } = scratchRepo(scratch);
+      const { repo, emptyHome, configHome } = scratchRepo(scratch);
+      seedConfig(configHome, driver.CONFIG);
       process.stdout.write(`${harness}/${scenario} ... `);
-      const result = await driver.run(scenario, { cwd: repo, env: process.env, emptyHome, image, model });
-      const sanitizer = makeSanitizer({ roots: [[repo, "repo"], [emptyHome, "empty-home"], [work, "work"]] });
+      const result = await driver.run(scenario, { cwd: repo, env: process.env, emptyHome, configHome, image, model });
+      fs.rmSync(configHome, { recursive: true, force: true });
+      const sanitizer = makeSanitizer({
+        roots: [[repo, "repo"], [emptyHome, "empty-home"], [configHome, "config"], [work, "work"]],
+      });
       if (result.gap) {
         meta.gaps[scenario] = sanitizer.text(result.gap);
         delete meta.scenarios[scenario];

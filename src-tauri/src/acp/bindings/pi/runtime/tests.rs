@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 mod bridge;
-mod wire_replay_tests;
 mod bridge_ready;
 mod chrome_state;
 mod compact_command;
@@ -25,6 +24,7 @@ mod steer;
 mod store_ingress;
 #[cfg(feature = "acp-fixture")]
 mod title_retry;
+mod wire_replay_tests;
 
 use super::*;
 use crate::acp::{
