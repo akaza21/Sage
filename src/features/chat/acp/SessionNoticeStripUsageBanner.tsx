@@ -24,7 +24,7 @@ const label = (value: unknown) =>
   typeof value === "string" && value && value.length <= 128 ? value : null;
 
 /** The notice's usage limit, or `null` when it reports none. */
-export function usageLimitOf(notice: SessionNotice): UsageLimit | null {
+function usageLimitOf(notice: SessionNotice): UsageLimit | null {
   const record = notice.usageLimit;
   if (!record || typeof record !== "object") return null;
   const value = record as Record<string, unknown>;
@@ -62,7 +62,7 @@ function resets(seconds: number): string {
   })}`;
 }
 
-export function usageLimitText(reached: boolean, limit: UsageLimit): string {
+function usageLimitText(reached: boolean, limit: UsageLimit): string {
   const name = `${span(limit.windowMinutes)}${limit.provider}${
     limit.label ? ` ${limit.label}` : ""
   } limit`;
@@ -88,7 +88,9 @@ interface Dismissed {
  * window has reset. */
 export function UsageLimitBanner({ page }: { page: AcpChatPage }) {
   const session = JSON.stringify([page.chatId, page.currentSessionId]);
-  const now = Date.now() / 1_000;
+  // A window that reset before this mount is stale; one resetting later
+  // clears with the harness's next report.
+  const [now] = useState(() => Date.now() / 1_000);
   const limits = (page.sessionNotices ?? []).flatMap((notice) => {
     const limit = notice.level === "info" ? null : usageLimitOf(notice);
     return limit && !(limit.resetsAt !== null && limit.resetsAt <= now)
