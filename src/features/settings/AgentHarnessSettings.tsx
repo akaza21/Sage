@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
+import {
+  ensureHarnessSignInChecked,
+  harnessSignInRevision,
+  harnessSignInStatus,
+  subscribeHarnessSignIn,
+} from "../harness/harnessSignIn";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { SettingsRow } from "./SettingsRow";
-import HarnessAccountDetails from "./HarnessAccountDetails";
+import { HarnessCard } from "./HarnessCard";
+import { harnessCardStatus, harnessGroupRank } from "./harnessCardStatus";
 import { HarnessUpdateCheckSetting } from "./HarnessVersions";
 import type { HarnessNoticePresentation } from "../chat/harnessNoticePresentation";
 
@@ -27,6 +34,11 @@ export function AgentHarnessSettings({
   );
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
+  useSyncExternalStore(subscribeHarnessSignIn, harnessSignInRevision);
+  useEffect(() => {
+    if (isTauriRuntime())
+      ensureHarnessSignInChecked(harnesses.slice(0, 32).map(({ id }) => id));
+  }, [harnesses]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A refresh finishes whether or not Settings is still on screen: hidden
@@ -50,6 +62,39 @@ export function AgentHarnessSettings({
   }
   const disabled =
     transitioning || refreshing || phase === "checking" || phase === "waiting";
+  const cards = harnesses
+    .slice(0, 32)
+    // A Chat bound to a harness this build lacks keeps its name for that
+    // Chat; it is not a harness on this computer, so Settings omits it.
+    .filter((harness) => harness.unavailableReason !== "bindingMissing")
+    .map((harness) => {
+      const availability = harnessAvailability(harness);
+      return {
+        harness,
+        note:
+          harness.installState === "available" &&
+          availability.label !== "available"
+            ? sentenceCase(availability.label.replace(/^available — /, ""))
+            : null,
+        status: harnessCardStatus({
+          harness,
+          disabledReason: availability.disabledReason,
+          selected: harness.id === selectedId,
+          phase,
+          probe: harnessSignInStatus(harness.id).state,
+        }),
+      };
+    });
+  const groups = [
+    { label: "Available harnesses", rank: 0 },
+    { label: "Unavailable harnesses", rank: 1 },
+    { label: "Harnesses not installed", rank: 2 },
+  ].map((group) => ({
+    label: group.label,
+    cards: cards.filter(
+      (card) => harnessGroupRank(card.status.badge) === group.rank,
+    ),
+  }));
   return (
     <>
       <p>
@@ -69,59 +114,32 @@ export function AgentHarnessSettings({
       </div>
       {error ? <p role="alert">{error}</p> : null}
       <HarnessUpdateCheckSetting />
-      <div className="agent-settings__card">
-        {harnesses.slice(0, 32).map((harness) => {
-          const availability = harnessAvailability(harness);
-          const selected = harness.id === selectedId;
-          const status = sentenceCase(
-            `${availability.label}${harness.version ? ` · ${harness.version}` : ""}`,
-          );
-          const signIn = !harness.accountModelDiscovery
-            ? "Sign-in status is not exposed by this harness."
-            : !selected
-              ? "Select this harness to check sign-in."
-              : phase === "ready"
-                ? "Signed in; account models discovered."
-                : phase === "signInRequired" || phase === "consent"
-                  ? "Sign-in required."
-                  : phase === "waiting"
-                    ? "Waiting for sign-in."
-                    : phase === "checking"
-                      ? "Checking sign-in..."
-                      : "Sign-in status unknown.";
-          const reason =
-            harness.installState === "notInstalled"
-              ? "Install it, then choose Refresh discovery."
-              : availability.disabledReason;
-          return (
-            <div key={harness.id}>
-              <SettingsRow
-                title={harness.name}
-                description={`${status}. ${reason ?? signIn}`}
-              >
-                <button
-                  className="button button--compact"
-                  type="button"
-                  disabled={
-                    disabled ||
-                    !projectId ||
-                    Boolean(availability.disabledReason)
-                  }
-                  onClick={() => void selectHarness(harness.id)}
-                >
-                  {selected ? "Check models and sign-in" : "Select and check"}
-                </button>
-              </SettingsRow>
-              <HarnessAccountDetails
+      {groups.map((group) =>
+        group.cards.length ? (
+          <div
+            key={group.label}
+            className="harness-group"
+            role="group"
+            aria-label={group.label}
+          >
+            <p className="harness-group__label" aria-hidden="true">
+              {group.label}
+            </p>
+            {group.cards.map(({ harness, status, note }) => (
+              <HarnessCard
+                key={harness.id}
                 harness={harness}
-                selected={selected}
-                available={!availability.disabledReason}
-                disabled={disabled || !projectId}
+                status={status}
+                note={note}
+                selected={harness.id === selectedId}
+                actionDisabled={disabled || !projectId}
+                detailsDisabled={disabled || !projectId}
+                onSelect={() => void selectHarness(harness.id)}
               />
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        ) : null,
+      )}
       {!harnesses.length ? <p role="status">No harnesses discovered.</p> : null}
       <LazyModuleBoundary
         label="Your ACP agents"

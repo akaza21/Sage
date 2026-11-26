@@ -14,7 +14,8 @@ export type HarnessUnavailableReason =
   | "nodeVersionUnreadable"
   | "observationOnly"
   | "platformUnsupported"
-  | "versionTooOld";
+  | "versionTooOld"
+  | "bindingMissing";
 
 const unavailableMessages: Record<HarnessUnavailableReason, string> = {
   admissionIncomplete: "is still being checked.",
@@ -30,6 +31,7 @@ const unavailableMessages: Record<HarnessUnavailableReason, string> = {
   observationOnly: "can't be verified on this computer.",
   platformUnsupported: "isn't supported on this computer.",
   versionTooOld: "needs an update for Sage.",
+  bindingMissing: "isn't available in this build.",
 };
 
 export function harnessUnavailableReason(
