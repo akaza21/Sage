@@ -746,8 +746,10 @@ fn many_foreground_tasks_do_not_make_a_running_background_task_forgotten() {
         "description":"Serve the docs","is_backgrounded":true}),
     );
     for n in 0..80 {
-        feed(json!({"type":"system","subtype":"task_started","task_id":format!("f{n}"),
-            "description":"Run the build","is_backgrounded":false}));
+        feed(
+            json!({"type":"system","subtype":"task_started","task_id":format!("f{n}"),
+            "description":"Run the build","is_backgrounded":false}),
+        );
     }
     let ended = feed(
         json!({"type":"system","subtype":"task_notification","task_id":"b1",
