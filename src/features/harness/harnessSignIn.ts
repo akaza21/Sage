@@ -300,11 +300,12 @@ export function harnessesNeedingSignIn() {
   );
 }
 
-harnessSignInFailures.changed = (bindingId, state) => {
+harnessSignInFailures.changed = () => {
   notify();
   // A refused turn reads the account now, not at the next mount or focus.
-  const harness = signInHarnesses().find(
-    (entry) => entry.bindingId === bindingId,
+  ensureHarnessSignInChecked(
+    signInHarnesses()
+      .filter((entry) => harnessSignInStatus(entry.id).state === "refused")
+      .map((entry) => entry.id),
   );
-  if (state === "refused" && harness) ensureHarnessSignInChecked([harness.id]);
 };

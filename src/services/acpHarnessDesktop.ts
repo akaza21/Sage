@@ -38,12 +38,12 @@ export function rememberSignInEvidence(
     harnessSignInEvidence.set(bindingId, [evidenceAt, state]);
     if (harnessSignInEvidence.size > 32)
       harnessSignInEvidence.delete(harnessSignInEvidence.keys().next().value!);
-    harnessSignInFailures.changed?.(bindingId, state);
+    harnessSignInFailures.changed?.();
     return true;
   }
 }
 export const harnessSignInFailures: {
-  changed?: (bindingId: string, state: SignInEvidence[1]) => void;
+  changed?: () => void;
   command: (state: HarnessSignInCommand) => void;
   page: (page: AcpChatPage) => void;
 } = {
