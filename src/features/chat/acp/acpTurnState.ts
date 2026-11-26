@@ -38,7 +38,9 @@ export function promptAttachmentItems(
 }
 
 /** States in which a turn is live: it can be cancelled and a new prompt can queue behind it. */
-export const liveTurnStates: ReadonlySet<TurnProjection["state"]> = new Set<TurnProjection["state"]>([
+export const liveTurnStates: ReadonlySet<TurnProjection["state"]> = new Set<
+  TurnProjection["state"]
+>([
   "sending",
   "running",
   "waitingModel",

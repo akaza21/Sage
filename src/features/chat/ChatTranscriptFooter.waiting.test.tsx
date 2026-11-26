@@ -7,7 +7,10 @@ import { ChatTranscriptTurnSummary } from "./ChatTranscriptFooter";
 afterEach(cleanup);
 
 it("says the turn waits on the user instead of counting it as working", () => {
-  const turn = { ...page("waitingApproval").turns[0], createdAt: Date.now() - 167_000 };
+  const turn = {
+    ...page("waitingApproval").turns[0],
+    createdAt: Date.now() - 167_000,
+  };
   const { container } = render(
     <ChatTranscriptTurnSummary turn={turn} hasActivities />,
   );
