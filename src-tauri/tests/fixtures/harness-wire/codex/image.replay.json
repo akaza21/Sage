@@ -28,7 +28,9 @@
     "IgnoredLate",
     "Item {\"id\":\"#3\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<13 chars>\"}}}",
     "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17068,\"outputTokens\":8,\"contextWindow\":475000}}}",
-    "IgnoredLate x3",
+    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:codex:300\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<42 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":8,\"windowMinutes\":300,\"resetsAt\":1795715656}}}",
+    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:codex:10080\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<42 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":2,\"windowMinutes\":10080,\"resetsAt\":1796244038}}}",
+    "IgnoredLate x2",
     "Turn {\"id\":\"#2\",\"state\":\"completed\"}"
   ]
 }

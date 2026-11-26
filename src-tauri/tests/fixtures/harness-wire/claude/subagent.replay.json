@@ -69,7 +69,7 @@
     "Absorbed x2",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"subagent\",\"id\":\"#5\",\"label\":\"Reply with pong\",\"state\":\"running\",\"progress\":null,\"stoppable\":true}}",
     "Absorbed x3",
-    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"level\":\"warning\",\"diagnostic\":false,\"text\":\"<52 chars>\",\"source\":\"claude code\"}}",
+    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:seven_day\",\"level\":\"warning\",\"diagnostic\":false,\"text\":\"<52 chars>\",\"source\":\"claude code\",\"usageLimit\":{\"provider\":\"Claude\",\"usedPercent\":90,\"windowMinutes\":10080,\"resetsAt\":1795849200}}}",
     "Absorbed x3",
     "Turn {\"id\":\"#6\",\"state\":\"running\"}",
     "Item {\"id\":\"#7\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<0 chars>\"}}}",
