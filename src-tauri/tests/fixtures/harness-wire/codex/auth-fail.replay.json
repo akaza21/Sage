@@ -1,0 +1,38 @@
+{
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [],
+  "sageOnly": [
+    "skills/list",
+    "model/list"
+  ],
+  "commands": [
+    "compact",
+    "review",
+    "status",
+    "mcp"
+  ],
+  "rows": [
+    "Initialized {}",
+    "IgnoredLate",
+    "SessionReady {\"id\":\"#1\",\"loaded\":false}",
+    "IgnoredLate x2",
+    "Turn {\"id\":\"#2\",\"state\":\"sending\"}",
+    "IgnoredLate",
+    "Turn {\"id\":\"#2\",\"state\":\"running\"}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 2/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 3/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 4/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 5/5\",\"retryable\":true}}",
+    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"level\":\"warning\",\"diagnostic\":false,\"text\":\"<222 chars>\",\"source\":\"codex\"}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 1/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 2/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 3/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 4/5\",\"retryable\":true}}",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"Reconnecting... 5/5\",\"retryable\":true}}",
+    "IgnoredLate",
+    "Error {\"kind\":\"error\",\"payload\":{\"code\":\"codex\",\"message\":\"unexpected status 401 Unauthorized: Missing bear…\",\"retryable\":false}}",
+    "IgnoredLate",
+    "Turn {\"id\":\"#2\",\"state\":\"failed\"}"
+  ]
+}

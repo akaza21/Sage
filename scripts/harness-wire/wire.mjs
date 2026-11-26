@@ -114,7 +114,9 @@ export class Wire {
     while (this.queue.length) this.queue.shift();
     try {
       this.child.stdin.end();
-    } catch {}
+    } catch {
+      // The harness already closed its input; the exit wait below still runs.
+    }
     const exited = new Promise((resolve) => {
       if (this.exit) resolve();
       else this.child.once("exit", resolve);

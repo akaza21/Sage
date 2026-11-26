@@ -1,0 +1,34 @@
+{
+  "refused": [],
+  "ingestErrors": [],
+  "clientOnly": [],
+  "sageOnly": [
+    "skills/list",
+    "model/list"
+  ],
+  "commands": [
+    "compact",
+    "review",
+    "status",
+    "mcp"
+  ],
+  "rows": [
+    "Initialized {}",
+    "IgnoredLate",
+    "SessionReady {\"id\":\"#1\",\"loaded\":false}",
+    "IgnoredLate x3",
+    "Turn {\"id\":\"#2\",\"state\":\"sending\"}",
+    "IgnoredLate",
+    "Turn {\"id\":\"#2\",\"state\":\"running\"}",
+    "IgnoredLate x2",
+    "Item {\"id\":\"#3\",\"lifecycle\":\"started\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<0 chars>\"}}}",
+    "Item {\"id\":\"#3\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<0 chars>\"}}}",
+    "Item {\"id\":\"#3\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<4 chars>\"}}}",
+    "Item {\"id\":\"#3\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<8 chars>\"}}} x2",
+    "IgnoredLate",
+    "Item {\"id\":\"#3\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<13 chars>\"}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17068,\"outputTokens\":8,\"contextWindow\":475000}}}",
+    "IgnoredLate x3",
+    "Turn {\"id\":\"#2\",\"state\":\"completed\"}"
+  ]
+}
