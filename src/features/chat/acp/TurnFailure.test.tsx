@@ -255,7 +255,7 @@ describe("TurnFailure", () => {
     expect(
       screen.getByText("The harness gave no error details."),
     ).toBeVisible();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button").textContent).toBe("Dismiss");
   });
 
   it.each([

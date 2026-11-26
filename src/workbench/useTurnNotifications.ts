@@ -27,32 +27,44 @@ export function useNotificationVisibility(
 export function useNotificationNavigation(enterAgent: () => void) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    const navigation = listenNotificationNavigation(
-      nativeNotificationPort,
-      () => !useWorkbenchStore.getState().projectTransitioning,
-      async ({ projectId, chatId }) => {
-        await openNotifiedChat(projectId, chatId);
+    let disposed = false;
+    const failed = () => {
+      if (!disposed)
+        useWorkbenchStore.setState({
+          error: "The notification chat could not be opened.",
+        });
+    };
+    // A failed open or switch keeps its own error.
+    const unreported = () => {
+      if (!useWorkbenchStore.getState().error) failed();
+    };
+    // A click during a project switch waits in the held-open slot, loaded
+    // through the lazy rail entry so it adds no core chunk. A
+    // chat deleted meanwhile is still handed to land, which reports it.
+    const notified = {
+      open: async (projectId: string, chatId: string) => {
+        if (disposed) return;
+        await openNotifiedChat(projectId, chatId).catch(() => {});
         const current = useWorkbenchStore.getState();
-        if (
-          current.project?.id !== projectId ||
-          current.activeTabId !== chatId
-        ) {
-          throw new Error("Notification chat is no longer available");
-        }
+        if (current.project?.id !== projectId || current.activeTabId !== chatId)
+          return unreported();
         useAgentSettingsState.getState().close();
         enterAgent();
       },
-      () =>
-        useWorkbenchStore.setState({
-          error: "The notification chat could not be opened.",
-        }),
+      refused: unreported,
+    };
+    const navigation = listenNotificationNavigation(
+      nativeNotificationPort,
+      async ({ projectId, chatId }) =>
+        (await import("./ProjectChatNavigation")).openChatWhenSettled(
+          projectId,
+          chatId,
+          notified,
+        ),
+      failed,
     );
-    const unsubscribe = useWorkbenchStore.subscribe((state, before) => {
-      if (before.projectTransitioning && !state.projectTransitioning)
-        navigation.wake();
-    });
     return () => {
-      unsubscribe();
+      disposed = true;
       navigation.dispose();
     };
   }, [enterAgent]);

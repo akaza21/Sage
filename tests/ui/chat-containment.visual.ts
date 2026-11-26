@@ -514,17 +514,15 @@ for (const profile of profiles) {
               // tight composer drops: it never outlasts a control label.
               // (The width sweep in composer-compaction checks it returns.)
               const labelsCompacted = await composer.evaluate((element) =>
-                [
-                  ".composer__access-text",
-                  ".composer__harness .searchable-picker__trigger-label",
-                  ".composer__model-label",
-                  ".composer__effort-picker[aria-controls] .composer__effort-label",
-                ].some((selector) => {
-                  const label = element.querySelector(selector);
-                  return (
-                    label !== null && label.getBoundingClientRect().width === 0
-                  );
-                }),
+                [".composer__model-effort", ".composer__model-label"].some(
+                  (selector) => {
+                    const label = element.querySelector(selector);
+                    return (
+                      label !== null &&
+                      label.getBoundingClientRect().width === 0
+                    );
+                  },
+                ),
               );
               if (!profile.context || labelsCompacted)
                 await expect(composer.getByRole("progressbar")).toHaveCount(0);
@@ -695,10 +693,10 @@ for (const forcedColors of ["none", "active"] as const) {
 }
 
 // One test per picker keeps each resize sweep short under CPU load.
-const emptyChatPickers = (profile: ChatContainmentProfile) => [
+const emptyChatPickers = (_profile: ChatContainmentProfile) => [
   "Harness",
+  // The model popover also holds the thinking level when one is advertised.
   "Model",
-  ...(profile.effort ? ["Thinking level: High"] : []),
   // Add always offers Files and folders; its menu keyboard and resize
   // behaviour is covered with installModeActions.
   "Access options",
@@ -747,6 +745,10 @@ for (const profile of profiles) {
           await page.keyboard.press("Enter");
           const panel = page.locator(".menu-popover").filter({ visible: true });
           await expect(panel).toHaveCount(1);
+          if (name === "Model")
+            await expect(
+              panel.getByRole("slider", { name: "Thinking level" }),
+            ).toHaveCount(profile.effort ? 1 : 0);
           if (name === "Access options") {
             const first = panel.getByRole("menuitemradio").first();
             const last = panel.getByRole("menuitemradio").last();

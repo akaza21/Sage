@@ -145,7 +145,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         task_tool_lifecycle: true,
         vendor_updates: CLAUDE_VENDOR_UPDATES,
         passthrough_env: &[],
-        remediation: "Sign in by running claude auth login. Sage reuses that login from your Claude configuration directory.",
+        remediation: "Retry first: Claude Code reads its sign-in again for each request. If it fails again, run claude auth login.",
         agent_label: "Claude",
         session_mode: None,
         launch_policy: StandardAcpLaunchPolicy::Inherit,

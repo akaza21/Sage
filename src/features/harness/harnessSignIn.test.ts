@@ -1,6 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as AcpHarnessDesktopModule from "../../services/acpHarnessDesktop";
+import { harnessSignInFailures } from "../../services/acpHarnessDesktop";
 
 const desktop = vi.hoisted(() => ({
   getClaudeAuthStatus: vi.fn(),
@@ -365,4 +366,32 @@ it("orders failed native reads without hiding recovery or accepting an older suc
     accountReadStartedAt: 300,
   });
   expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
+});
+
+it("reads a checkable account again after a refused turn instead of signing it out", async () => {
+  desktop.getClaudeAuthStatus
+    .mockResolvedValueOnce({ loggedIn: true, accountReadStartedAt: 100 })
+    .mockResolvedValueOnce({ loggedIn: true, accountReadStartedAt: 300 });
+  expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
+  harnessSignInFailures.page({
+    sessions: [{ id: "session-1", bindingId: "fixture" }],
+    turns: [
+      {
+        state: "failed",
+        sessionId: "session-1",
+        terminalAt: 200,
+        terminalReason: { kind: "authRequired" },
+      },
+    ],
+  } as never);
+  expect(harnessesNeedingSignIn()).toEqual([]);
+  // The cached read is fresh, but a refusal still sends Sage back to Claude.
+  ensureHarnessSignInChecked(["claude-code"]);
+  await vi.waitFor(() =>
+    expect(harnessSignInStatus("claude-code")).toMatchObject({
+      state: "signedIn",
+      evidenceAt: 300,
+    }),
+  );
+  expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
 });

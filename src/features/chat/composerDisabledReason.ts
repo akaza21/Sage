@@ -43,8 +43,7 @@ export function composerDisabledReason({
 }: ComposerAvailability): string | null {
   if (projectTransitioning) return "Wait for the project to finish loading.";
   if (actionBusy) return "Wait for the current action to finish.";
-  if (activeTurn)
-    return "Wait for the active turn to finish, or cancel it when available.";
+  if (activeTurn) return "Wait for the active turn to finish.";
   if (!selectedHarness) return "Choose an available harness before sending.";
   if (harnessDiscoveryPhase === "checking")
     return "Wait while Sage checks the selected harness.";

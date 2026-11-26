@@ -70,6 +70,10 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
         .unwrap();
     assert_eq!(unavailable.binding_id.as_deref(), Some("absent-binding"));
     assert_eq!(unavailable.install_state, "unavailable");
+    assert_eq!(
+        unavailable.unavailable_reason,
+        Some(sage_domain::harness::HarnessUnavailableReason::BindingMissing)
+    );
     unavailable.validate_transport_contract().unwrap();
 
     reopened

@@ -163,18 +163,24 @@
 }
 
 .acp-file-changes li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding: 2px var(--space-2);
 }
 
+.acp-file-changes li > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.acp-file-changes li > .acp-inline-diff {
+  flex-basis: 100%;
+}
+
 .acp-file-changes li > .acp-resource-action {
   display: flex;
-  width: 100%;
-  justify-self: start;
-  min-width: 0;
   min-height: 28px;
   padding: 0 var(--space-1);
   border-color: transparent;
@@ -201,26 +207,16 @@
 }
 
 .acp-file-changes li > .acp-change-operation {
-  display: none;
-}
-
-.acp-file-changes li > .acp-file-changes__summary {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  padding: 0 var(--space-1) 2px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-normal);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-transform: capitalize;
 }
 
 .acp-file-changes__preview-toggle {
-  justify-self: start;
-  border: 0;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
-  font: inherit;
+  font-size: var(--font-size-xs);
   cursor: pointer;
 }
 
@@ -301,12 +297,6 @@
   .acp-file-changes .chat-file-chip__root {
     min-width: 0;
     max-width: 64px;
-  }
-
-  .acp-file-changes__preview-toggle {
-    max-width: 100%;
-    text-align: left;
-    overflow-wrap: anywhere;
   }
 
   .acp-file-changes__disposition > span,

@@ -1,5 +1,5 @@
 import type { AttachedContext } from "./attachedContext";
-import type { AcpCommandFailure, SageTurnId } from "./acp";
+import type { AcpCommandFailure } from "./acp";
 
 export const MAX_CHAT_COMPOSER_BYTES = 16 * 1024;
 export const MAX_CHAT_ERROR_BYTES = 2 * 1024;
@@ -25,7 +25,6 @@ export interface ChatTurnOrder {
 }
 
 export interface ChatOwnershipEntry {
-  dismissedAuthTurnId?: SageTurnId | null;
   composerText: string;
   attachedContext: readonly AttachedContext[];
   queuedPrompts?: readonly QueuedChatPrompt[];

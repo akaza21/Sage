@@ -5,6 +5,27 @@ import type { AgentRailChat } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
+import { useNotificationNavigation } from "./useTurnNotifications";
+
+// A native notification click: the shell queues the chat, then emits a wake.
+const native = vi.hoisted(() => ({
+  tauri: false,
+  clicked: [] as { projectId: string; chatId: string }[],
+  wake: () => {},
+}));
+vi.mock("../ports/nativeInvoke", async (actual) => ({
+  ...(await actual<object>()),
+  isTauriRuntime: () => native.tauri,
+}));
+vi.mock("../ports/nativeNotificationPort", () => ({
+  nativeNotificationPort: {
+    takeChat: async () => native.clicked.shift() ?? null,
+    listenOpen: async (wake: () => void) => {
+      native.wake = wake;
+      return () => {};
+    },
+  },
+}));
 
 const initial = useWorkbenchStore.getState();
 const store = () => useWorkbenchStore.getState();
@@ -100,6 +121,8 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initial, true);
+  native.tauri = false;
+  native.clicked = [];
 });
 
 it("opens a rail chat clicked during a project switch once the switch settles", async () => {
@@ -220,4 +243,208 @@ it("keeps a failed switch's error instead of replaying a held rail chat", async 
     error: "Switch failed",
   });
   expect(switches).toHaveBeenCalledTimes(1);
+});
+
+function Notifications() {
+  useNotificationNavigation(() => {});
+  return null;
+}
+
+/** Mounts the rail with the native notification listener of a desktop shell. */
+async function desktopRail(rows: Row[]) {
+  native.tauri = true;
+  const view = render(
+    <>
+      <Rail rows={rows} />
+      <Notifications />
+    </>,
+  );
+  await idle();
+  return view;
+}
+
+async function notify(row: Row) {
+  native.clicked.push({ projectId: row.project, chatId: row.chat.id });
+  native.wake();
+  // Lets the click reach the held-open slot before the test moves on.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+}
+
+it("opens only a notification clicked after a held rail chat, as the latest action", async () => {
+  const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
+  const view = await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  click(view, second);
+  await notify(first);
+  held.release();
+  await opened(first.project, first.chat.id);
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: first.project },
+    activeTabId: first.chat.id,
+    error: null,
+  });
+  // The replaced rail click never switches to its project.
+  expect(
+    switches.mock.calls.map(([request]) => request.targetProjectId),
+  ).toEqual([first.project]);
+});
+
+it("drops a notification clicked during a switch once a project row is clicked", async () => {
+  const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
+  const view = await desktopRail([first, second]);
+  const held = holdDiscovery();
+  click(view, first);
+  await held.started;
+  await notify(second);
+  fireEvent.click(view.getByRole("button", { name: "Open project" }));
+  held.release();
+  await opened(first.project, first.chat.id);
+  await idle();
+  expect(store().project?.id).toBe(first.project);
+  expect(
+    switches.mock.calls.map(([request]) => request.targetProjectId),
+  ).toEqual([first.project]);
+});
+
+it("opens a notification clicked during a switch once the switch settles", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  expect(store().project?.id).not.toBe(second.project);
+  held.release();
+  await opened(second.project, second.chat.id);
+});
+
+it("opens a held notification for a chat the truncated rail does not list", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  // The rail lists a bounded set of chats; this one fell outside it.
+  useWorkbenchStore.setState((state) => ({
+    unscopedChats: state.unscopedChats.map((item) =>
+      item.id === second.project ? { ...item, railChats: [] } : item,
+    ),
+  }));
+  held.release();
+  await opened(second.project, second.chat.id);
+});
+
+/** Sets what the rail lists for a project folder outside the current one. */
+function listFolder(row: Row, railChats: AgentRailChat[], archived: boolean) {
+  useWorkbenchStore.setState((state) => ({
+    unscopedChats: state.unscopedChats.map((item) =>
+      item.id === row.project
+        ? {
+            ...item,
+            railChats,
+            railArchived: archived
+              ? [{ id: row.chat.id, title: row.chat.title }]
+              : [],
+          }
+        : item,
+    ),
+  }));
+}
+
+it("restores a held notification chat archived before the click but past the capped rail lists", async () => {
+  await store().switchProject(second.project);
+  expect(await store().archiveChat(second.chat.id)).toBe(true);
+  await store().switchProject(real.project);
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  // Both bounded lists leave out this older archived chat.
+  listFolder(second, [], false);
+  await notify(second);
+  // The settling projection lists it as archived.
+  listFolder(second, [], true);
+  held.release();
+  await opened(second.project, second.chat.id);
+});
+
+it("drops a held notification chat archived during the hold with the generic error", async () => {
+  await desktopRail([first, second]);
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  listFolder(second, [], true);
+  held.release();
+  await vi.waitFor(() =>
+    expect(store().error).toBe("The notification chat could not be opened."),
+  );
+  await idle();
+  expect(store().project?.id).toBe(first.project);
+});
+
+it("keeps a rail click's failed switch error over a held notification", async () => {
+  let fail!: () => void;
+  const failing = new Promise<void>((resolve) => (fail = resolve));
+  const switches = vi
+    .spyOn(getWorkbenchPorts().project, "switchProject")
+    .mockImplementationOnce(async () => {
+      await failing;
+      throw new Error("Switch failed");
+    });
+  const view = await desktopRail([first, second]);
+  click(view, first);
+  await vi.waitFor(() => expect(switches).toHaveBeenCalledTimes(1));
+  await notify(second);
+  fail();
+  await vi.waitFor(() => expect(store().error).toBe("Switch failed"));
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: real.project },
+    error: "Switch failed",
+  });
+  expect(switches).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the error of a failed notification open", async () => {
+  vi.spyOn(getWorkbenchPorts().project, "switchProject").mockRejectedValueOnce(
+    new Error("Switch failed"),
+  );
+  await desktopRail([first, second]);
+  await notify(second);
+  await vi.waitFor(() => expect(store().error).toBe("Switch failed"));
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: real.project },
+    error: "Switch failed",
+  });
+});
+
+it("drops a held notification once the notification listener unmounts", async () => {
+  const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
+  native.tauri = true;
+  const view = render(
+    <>
+      <Rail rows={[first, second]} />
+      <Notifications />
+    </>,
+  );
+  await idle();
+  const held = holdDiscovery();
+  void store().switchProject(first.project);
+  await held.started;
+  await notify(second);
+  view.rerender(<Rail rows={[first, second]} />);
+  held.release();
+  await opened(first.project, first.chat.id);
+  await idle();
+  expect(store()).toMatchObject({
+    project: { id: first.project },
+    error: null,
+  });
+  expect(
+    switches.mock.calls.map(([request]) => request.targetProjectId),
+  ).toEqual([first.project]);
 });

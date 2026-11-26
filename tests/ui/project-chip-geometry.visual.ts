@@ -43,12 +43,15 @@ for (const scoped of [false, true]) {
         ],
       });
     }, scoped);
-    const trigger = page
-      .getByRole("group", { name: "Chat location" })
-      .getByRole("button", {
-        name: scoped ? "Project: Sage" : "Choose project",
-        exact: true,
-      });
+    const location = page.getByRole("group", { name: "Chat location" });
+    // The branch chip appears once the scoped project reads as a repository.
+    await expect(
+      location.getByRole("button", { name: /^Switch branch in / }),
+    ).toHaveCount(scoped ? 1 : 0);
+    const trigger = location.getByRole("button", {
+      name: scoped ? "Project: Sage" : "Choose project",
+      exact: true,
+    });
     await trigger.click();
     const menu = page.locator(".searchable-picker__popover--menu");
     const input = menu.getByPlaceholder("Search projects");
@@ -98,29 +101,20 @@ async function openSplitComposerScenario(page: Page) {
   await settleChatProjections(page);
 }
 
+/** The model chip shows the level and opens it at every toolbar fit. */
 async function expectEffortReachable(composer: Locator, level: string) {
-  const effort = composer.getByRole("button", {
-    name: `Thinking level: ${level}`,
-    exact: true,
-  });
-  await expect(
-    composer.locator(".composer__effort-picker[data-overflow-control]"),
-  ).toHaveCount(1);
-  if (!(await settledComposerFit(composer)).includes("effort-menu"))
-    return expect(effort).toBeVisible();
-  const add = composer.getByRole("button", {
-    name: "Composer options",
-    exact: true,
-  });
-  await add.click();
+  await settledComposerFit(composer);
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  await expect(model.locator(".composer__model-effort")).toHaveText(level);
+  await model.click();
   await expect(
     composer
       .page()
-      .getByRole("menu", { name: "Composer options menu", exact: true })
-      .getByRole("menuitem", { name: "Thinking level", exact: true }),
-  ).toBeVisible();
+      .getByRole("dialog", { name: "Select model" })
+      .getByRole("slider", { name: "Thinking level" }),
+  ).toHaveAttribute("aria-valuetext", level);
   await composer.page().keyboard.press("Escape");
-  await expect(add).toBeFocused();
+  await expect(model).toBeFocused();
 }
 
 async function expectResponsiveToolbar(composer: Locator) {
@@ -146,13 +140,8 @@ async function expectResponsiveToolbar(composer: Locator) {
   expect(markBox.x + markBox.width).toBeLessThanOrEqual(
     harnessBox.x + harnessBox.width + 0.5,
   );
-  if (await harnessLabel.isVisible()) {
-    expect(
-      await harnessLabel.evaluate(
-        (node) => node.scrollWidth <= node.clientWidth,
-      ),
-    ).toBe(true);
-  }
+  // The composer harness is its mark alone at every width.
+  await expect(harnessLabel).toBeHidden();
   if (!(await model.locator(".composer__model-label").isVisible()))
     await expect(model.locator(".composer__model-icon")).toBeVisible();
   await expectToolbarGeometry(composer);
@@ -356,14 +345,8 @@ test("composer controls compact by their own container width, not the window", a
     // The access control stays a target with or without its text.
     await expect(access, at).toBeVisible();
     expect((await access.boundingBox())!.width, at).toBeGreaterThanOrEqual(24);
-    // The harness name shows whole or not at all, leaving its mark.
-    if (await harnessLabel.isVisible())
-      expect(
-        await harnessLabel.evaluate(
-          (label) => label.scrollWidth <= label.clientWidth,
-        ),
-        at,
-      ).toBe(true);
+    // The harness shows its mark alone at every width.
+    await expect(harnessLabel, at).toBeHidden();
     await expect(composer.locator(".composer__shortcut"), at).toBeHidden();
     if (!(await modelLabel.isVisible())) {
       // The model name gives way to its icon, never to a bare chevron.
@@ -481,7 +464,17 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
           const box = icon.getBoundingClientRect();
           return [box.width, box.height];
         });
+      const chips = [...tab.children].map((chip) =>
+        (
+          chip.querySelector(".project-scope__picker") ?? chip
+        ).getBoundingClientRect(),
+      );
       return {
+        // Measured from the project trigger: the idle chip keeps no room for
+        // its hidden clear button.
+        gaps: chips
+          .slice(1)
+          .map((chip, index) => Math.round(chip.left - chips[index]!.right)),
         attached: Math.abs(dock.top - strip.bottom) <= 0.5,
         insets: [strip.left - dock.left, dock.right - strip.right],
         height: strip.height,
@@ -495,6 +488,7 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       };
     });
     expect(geometry, `at ${width}px`).toEqual({
+      gaps: [16, 16],
       attached: true,
       insets: [12, 12],
       height: 36,
@@ -510,6 +504,19 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       `composer-location-branch-${width}.png`,
     );
   }
+  // Hovering the project shows its clear button in the gap without moving
+  // the branch chip.
+  const branchLeft = async () => (await branch.boundingBox())!.x;
+  const idleBranch = await branchLeft();
+  await project.hover();
+  const clear = strip.getByRole("button", {
+    name: "Remove project from this chat",
+  });
+  await expect(clear).toBeVisible();
+  expect(await branchLeft()).toBe(idleBranch);
+  const clearBox = (await clear.boundingBox())!;
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(idleBranch);
+  await page.mouse.move(0, 0);
   await expect(project).toHaveCSS("font-size", "13px");
   await project.click();
   const menu = page.locator(".searchable-picker__popover--menu");
@@ -1092,12 +1099,9 @@ test("reserves clickable icon targets while allowing the harness to shrink", asy
     });
   });
   const model = composer.getByLabel("Model", { exact: true });
-  const effort = composer.getByRole("button", { name: "Thinking level: High" });
-  for (const trigger of [model, effort]) {
-    await expect(trigger).toHaveCSS("min-width", "28px");
-    expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(28);
-  }
-  await expect(effort).toHaveCSS("overflow", "hidden");
+  await expect(model.locator(".composer__model-effort")).toHaveText("High");
+  await expect(model).toHaveCSS("min-width", "28px");
+  expect((await model.boundingBox())!.width).toBeGreaterThanOrEqual(28);
   await composer.evaluate((element) => {
     element.style.width = "320px";
   });
