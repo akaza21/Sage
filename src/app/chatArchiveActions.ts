@@ -347,8 +347,14 @@ export async function cleanUpProjectData(
     ...createChatTransitionContext(set, get),
     failedMessage: "native cleanup did not commit",
     invoke: async () => {
-      // Only the browser fixture's port carries cleanUp.
-      const fixture = getWorkbenchPorts().chat.cleanUp;
+      // Only the browser fixture's chat port carries cleanUp.
+      const fixture = (
+        getWorkbenchPorts().chat as {
+          cleanUp?: (
+            ...args: [typeof command, string, number]
+          ) => Promise<ProjectTransitionResult>;
+        }
+      ).cleanUp;
       const result = fixture
         ? await fixture(command, projectId, expectedTransitionEpoch)
         : await invokeNative<ProjectTransitionResult>(command, {

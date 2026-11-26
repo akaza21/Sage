@@ -65,7 +65,7 @@ export function AgentProjectMenu({
         {confirming ? (
           <>
             <p className="menu-item" id={`${menuId}-note`}>
-              Delete {name} and its chats from Sage? Files stay on disk.
+              Delete {name} and its chats? Files stay on disk.
             </p>
             <Item label="Cancel" onClick={() => complete(() => {})} />
             <Item

@@ -8,6 +8,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { resetWorkbenchPortsForTests } from "../ports/workbenchRuntime";
 import ArchivedChatList from "./ArchivedChatList";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -18,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 // Native runtime, so the cleanup goes to the mocked Tauri command.
 Object.assign(window, { __TAURI_INTERNALS__: {} });
+resetWorkbenchPortsForTests();
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {

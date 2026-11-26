@@ -8,6 +8,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { resetWorkbenchPortsForTests } from "../ports/workbenchRuntime";
 import { AgentProjectMenu } from "./AgentProjectMenu";
 
 const invoke = vi.hoisted(() =>
@@ -19,6 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 // Native runtime, so the cleanup goes to the mocked Tauri command.
 Object.assign(window, { __TAURI_INTERNALS__: {} });
+resetWorkbenchPortsForTests();
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
@@ -45,7 +47,7 @@ it("removes a project natively only after the permanent removal is confirmed", a
 
   fireEvent.click(remove);
   expect(screen.getByRole("menu")).toHaveAccessibleDescription(
-    /^Delete Old and its chats from Sage?/,
+    /^Delete Old and its chats?/,
   );
   expect(screen.getByRole("menuitem", { name: "Cancel" })).toHaveFocus();
   fireEvent.click(screen.getByRole("menuitem", { name: "Cancel" }));
