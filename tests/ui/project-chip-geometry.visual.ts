@@ -441,16 +441,16 @@ test("each project chip shows its clear button right after the name", async ({
       name: "Remove project from this chat",
     });
     await expect(clear).toBeVisible();
-    await expect(clear).toHaveAttribute(
-      "title",
-      "Remove project from this chat",
-    );
     const box = (await clear.boundingBox())!;
     expect(box.x - (name.x + name.width)).toBeGreaterThanOrEqual(0);
     expect(box.x - (name.x + name.width)).toBeLessThanOrEqual(2);
     // Showing the button moves nothing.
     expect(await chip.locator(".project-scope__picker").boundingBox()).toEqual(
       name,
+    );
+    await expect(clear).toHaveAttribute(
+      "title",
+      "Remove project from this chat",
     );
   }
   const heading = (await home.getByRole("heading").boundingBox())!;
