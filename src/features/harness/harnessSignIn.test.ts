@@ -395,3 +395,41 @@ it("reads a checkable account again after a refused turn instead of signing it o
   );
   expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
 });
+
+it.each(["page", "command"] as const)(
+  "a refusal on the %s path reads a checkable account again at once",
+  async (path) => {
+    desktop.getClaudeAuthStatus
+      .mockResolvedValueOnce({ loggedIn: true, accountReadStartedAt: 100 })
+      .mockResolvedValueOnce({ loggedIn: true, accountReadStartedAt: 300 });
+    expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
+    if (path === "page")
+      harnessSignInFailures.page({
+        sessions: [{ id: "session-1", bindingId: "fixture" }],
+        turns: [
+          {
+            state: "failed",
+            sessionId: "session-1",
+            terminalAt: 200,
+            terminalReason: { kind: "authRequired" },
+          },
+        ],
+      } as never);
+    else
+      harnessSignInFailures.command({
+        bindingId: "fixture",
+        busy: true,
+        error: {
+          failure: { kind: "signInRequired", terminalAt: 200 } as never,
+        },
+      });
+    // No mount, focus or explicit check follows the refusal.
+    await vi.waitFor(() =>
+      expect(harnessSignInStatus("claude-code")).toMatchObject({
+        state: "signedIn",
+        evidenceAt: 300,
+      }),
+    );
+    expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
+  },
+);

@@ -250,7 +250,7 @@ describe("TurnFailure", () => {
   });
 
   it("states explicitly when the harness supplied no failure detail", () => {
-    render(<TurnFailure turn={page("failed").turns[0]} />);
+    render(<TurnFailure turn={page("failed").turns[0]} latest={false} />);
     expect(screen.queryByText("Turn failed")).toBeNull();
     expect(
       screen.getByText("The harness gave no error details."),
