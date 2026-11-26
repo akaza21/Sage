@@ -23,7 +23,7 @@ export function safeSessionNotices(value: unknown): SessionNotice[] {
     const diagnostic = record.diagnostic ?? false;
     const identity =
       record.identity == null
-        ? `legacy-record:${index}`
+        ? `legacy:${index}`
         : safeText(record.identity, 1024);
     if (
       !text ||
