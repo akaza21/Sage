@@ -202,13 +202,19 @@ mod tests {
             },
         };
         let db = status_db();
-        db.execute_batch("INSERT INTO agent_sessions VALUES('s',0,'p','c');
+        db.execute_batch(
+            "INSERT INTO agent_sessions VALUES('s',0,'p','c');
           INSERT INTO turns VALUES('t','p','c','s',0,'failed',2,1,2);
-          INSERT INTO acp_turn_terminal_reasons VALUES('s','t','authRequired');").unwrap();
+          INSERT INTO acp_turn_terminal_reasons VALUES('s','t','authRequired');",
+        )
+        .unwrap();
         assert_eq!(turn_json(&db)["signIn"], true);
-        db.execute_batch("UPDATE acp_turn_terminal_reasons SET kind='timeout';
+        db.execute_batch(
+            "UPDATE acp_turn_terminal_reasons SET kind='timeout';
           UPDATE turns SET state='completed';
-          INSERT INTO session_runtime_epochs VALUES('s',1,'running');").unwrap();
+          INSERT INTO session_runtime_epochs VALUES('s',1,'running');",
+        )
+        .unwrap();
         assert_eq!(turn_json(&db).get("signIn"), None);
         let surface = |kind: &str, state, stoppable| {
             let mut surface = SessionSurface::default();
@@ -238,10 +244,14 @@ mod tests {
         assert_eq!(surface("subagent", running, true), Some(true.into()));
         // A foreground subagent or a finished task is not background work.
         assert_eq!(surface("subagent", running, false), None);
-        assert_eq!(surface("backgroundTask", SessionActivityState::Completed, false), None);
+        assert_eq!(
+            surface("backgroundTask", SessionActivityState::Completed, false),
+            None
+        );
         // Nor is a task whose runtime has ended.
         surface("backgroundTask", running, false);
-        db.execute("UPDATE session_runtime_epochs SET state='exited'", []).unwrap();
+        db.execute("UPDATE session_runtime_epochs SET state='exited'", [])
+            .unwrap();
         assert_eq!(turn_json(&db).get("background"), None);
     }
 

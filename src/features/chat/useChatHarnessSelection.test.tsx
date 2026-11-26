@@ -70,7 +70,7 @@ it("holds sends after a sign-in failure until newer signed-in evidence", () => {
     ...refused,
     sessions: [{ ...refused.sessions[0], bindingId: "binding-1" }],
     turns: [{ ...refused.turns[0], terminalAt: 10 }],
-  } as AcpChatPage;
+  } as unknown as AcpChatPage;
   useWorkbenchStore.setState({
     harnesses: [],
     selectedHarnessId: "pi",
