@@ -247,6 +247,28 @@ fn stepping_down_from_a_permissive_mode_cancels_the_running_turn() {
 }
 
 #[test]
+fn leaving_a_default_auto_steps_down_and_choosing_it_again_does_not() {
+    use SessionAccessMode::{Ask, Auto, FullAccess, Plan};
+    let root = std::env::temp_dir().join(format!("sage-step-down-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let state = claude_chat_in_plan(&root);
+    let fresh = chat::running_mode(&state, "claude-agent-acp", &session("session-new"));
+    assert_eq!(
+        fresh,
+        Some(Auto),
+        "a chat with no choice of its own runs the default"
+    );
+    assert!(chat::steps_down(fresh, Ask));
+    assert!(!chat::steps_down(fresh, Auto));
+    let planned = chat::running_mode(&state, "claude-agent-acp", &session("session-a"));
+    assert_eq!(planned, Some(Plan));
+    assert!(!chat::steps_down(planned, Ask));
+    assert!(chat::steps_down(Some(FullAccess), Auto));
+    drop(state);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn a_chat_can_step_down_while_its_harness_is_unavailable() {
     use SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite};
     let registry = crate::acp::bindings::registry::BindingRegistry::default();

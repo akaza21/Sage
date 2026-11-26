@@ -29,6 +29,29 @@ pub(super) fn carries_mode(
     }
 }
 
+/// The mode a turn in the chat runs under before a new choice: its own choice or the default it
+/// follows, or its saved choice alone when the default cannot be read.
+pub(super) fn running_mode(
+    state: &AppState,
+    binding_id: &str,
+    session_id: &SageAgentSessionId,
+) -> Option<SessionAccessMode> {
+    turn_access_mode(state, binding_id, session_id)
+        .ok()
+        .or_else(|| {
+            state
+                .settings
+                .chat_access(session_id.as_str())
+                .ok()
+                .flatten()
+        })
+}
+
+/// Leaving a mode that runs actions unasked for another mode stops the running turn.
+pub(super) fn steps_down(running: Option<SessionAccessMode>, chosen: SessionAccessMode) -> bool {
+    running.is_some_and(SessionAccessMode::runs_unasked) && running != Some(chosen)
+}
+
 fn chat_binding(
     state: &AppState,
     session_id: &SageAgentSessionId,
@@ -73,14 +96,12 @@ pub(crate) async fn set_chat_access(
         });
     }
     let session = request.session_id.as_str();
-    // The mode a turn runs under now, the chat's choice or the default it follows.
-    let previous = turn_access_mode(&state, &binding_id, &request.session_id).ok();
+    let previous = running_mode(&state, &binding_id, &request.session_id);
     state
         .settings
         .set_chat_access(session, request.mode, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
-    let stepped_down =
-        previous.is_some_and(SessionAccessMode::runs_unasked) && previous != Some(request.mode);
+    let stepped_down = steps_down(previous, request.mode);
     let transition = state.project_transitions.lock().await;
     let Ok(generation) = ProjectGeneration::new(*transition) else {
         return Ok(ChatAccessChange::default());
