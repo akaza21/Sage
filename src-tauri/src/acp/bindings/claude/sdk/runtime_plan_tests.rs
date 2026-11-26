@@ -13,7 +13,7 @@ fn prompt(runtime: &mut ClaudeSdkRuntime) {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Plan the change").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Plan,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
 }

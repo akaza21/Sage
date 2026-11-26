@@ -40,11 +40,11 @@ pub(super) fn with_text_content(label: &str, tool: &Map<String, Value>) -> Strin
 /// A file action's label while it still waits for approval: "Edit a.rs?"
 /// rather than the "Edited a.rs" its row reads once it ran.
 pub(super) fn pending_file_action(label: &str) -> Option<String> {
-    [("Edited ", "Edit "), ("Created ", "Create "), ("Deleted ", "Delete ")]
-        .into_iter()
-        .find_map(|(done, ask)| {
-            label
-                .strip_prefix(done)
-                .map(|path| format!("{ask}{path}?"))
-        })
+    [
+        ("Edited ", "Edit "),
+        ("Created ", "Create "),
+        ("Deleted ", "Delete "),
+    ]
+    .into_iter()
+    .find_map(|(done, ask)| label.strip_prefix(done).map(|path| format!("{ask}{path}?")))
 }

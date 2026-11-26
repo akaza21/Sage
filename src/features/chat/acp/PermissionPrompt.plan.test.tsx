@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
@@ -83,7 +89,9 @@ describe("PermissionPrompt plan approval", () => {
     resolved();
     render(<PermissionPrompt items={[planCard()]} />);
     if (label === "Always allow") {
-      fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "More allow options" }),
+      );
       fireEvent.click(screen.getByRole("menuitem", { name: label }));
     } else {
       fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
