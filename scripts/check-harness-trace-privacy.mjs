@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -23,7 +23,7 @@ function fixtureFiles(directory) {
     const file = join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...fixtureFiles(file));
-    } else if (entry.name === "frames.jsonl" || entry.name.endsWith(".json")) {
+    } else if (entry.name.endsWith(".jsonl") || entry.name.endsWith(".json")) {
       files.push(file);
     }
   }
@@ -99,8 +99,13 @@ export function privacyFailuresForFixtures(directory, workspaceRoot = root) {
   return failures;
 }
 
+// Real wire transcripts recorded by scripts/harness-wire/capture.mjs.
+const wireRoot = join(root, "src-tauri", "tests", "fixtures", "harness-wire");
+
 function main() {
-  const failures = privacyFailuresForFixtures(tracesRoot);
+  const failures = [tracesRoot, wireRoot].flatMap((directory) =>
+    existsSync(directory) ? privacyFailuresForFixtures(directory) : [],
+  );
   if (failures.length > 0) {
     console.error(
       `Harness trace privacy check found ${failures.length} disallowed path value(s):`,

@@ -16,3 +16,4 @@ tools/footprint-control/gen
 
 # Generated validation output and local test fixtures.
 output/
+src-tauri/tests/fixtures/harness-wire/

@@ -19,7 +19,7 @@ import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
 import { twoColourPng } from "./wire.mjs";
 
-export const MAX_TRANSCRIPT_BYTES = 96 * 1024;
+import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
 // A frame over this size that commands.jsonl already holds verbatim (the
 // session handshake every scenario repeats) is stored as a reference to it.
 const DEDUPE_BYTES = 1024;
@@ -124,7 +124,7 @@ async function main() {
         process.stdout.write(`gap: ${result.gap}\n`);
         continue;
       }
-      const records = result.wire.records.map((record) => sanitizer.record(record));
+      const records = sanitizer.records(result.wire.records);
       const lines = scenario === "commands" ? records.map((r) => JSON.stringify(r)) : dedupe(records, dir);
       const body = `${lines.join("\n")}\n`;
       const bytes = Buffer.byteLength(body);

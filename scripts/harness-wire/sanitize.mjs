@@ -14,6 +14,7 @@ const IDENTITY_KEYS = new Set([
   "accountUuid",
   "account_id",
   "accountId",
+  "organization",
   "organization_uuid",
   "organizationUuid",
   "organization_id",
@@ -38,47 +39,40 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Each spelling a Windows or POSIX path takes on the wire: native, forward
-// slashes, and the drive-less POSIX form a Git Bash tool prints.
-function spellings(path) {
+// Each spelling a path takes on the wire, with the placeholder it becomes:
+// native, forward slashes, the drive-less POSIX form a Git Bash tool prints,
+// and the dashed project slug Claude Code names its session folders with.
+function spellings(path, label) {
   const native = path.replace(/[\\/]+$/, "");
   const forward = native.replace(/\\/g, "/");
-  const out = new Set([native, forward]);
+  const back = `${WORKSPACE}\\${label}`;
+  const slash = back.replace(/\\/g, "/");
+  const out = new Map([
+    [native, back],
+    [forward, slash],
+    [native.replace(/[^A-Za-z0-9]/g, "-"), slash.replace(/[^A-Za-z0-9]/g, "-")],
+  ]);
   const drive = /^([A-Za-z]):\//.exec(forward);
-  if (drive) {
-    const rest = forward.slice(2);
-    out.add(`/${drive[1].toLowerCase()}${rest}`);
-    out.add(`/${drive[1].toUpperCase()}${rest}`);
-    out.add(`${drive[1].toLowerCase()}:${native.slice(2)}`);
-    out.add(`${drive[1].toLowerCase()}:${rest}`);
-  }
-  return [...out].sort((a, b) => b.length - a.length);
+  if (drive) out.set(`/${drive[1]}${forward.slice(2)}`, slash);
+  return out;
 }
 
 export function makeSanitizer({ roots }) {
   // Longest first, so a scratch repo inside the home folder maps to the repo.
   const replacements = [];
-  const home = os.homedir();
-  for (const [path, label] of [...roots, [home, "home"]]) {
-    for (const spelling of spellings(path)) {
-      const target = spelling.includes("\\") || /^[A-Za-z]:/.test(spelling)
-        ? `${WORKSPACE}\\${label}`
-        : `${WORKSPACE.replace(/\\/g, "/")}/${label}`;
-      replacements.push([new RegExp(escapeRegExp(spelling), "gi"), target]);
+  for (const [path, label] of [...roots, [os.homedir(), "home"]]) {
+    for (const [spelling, target] of spellings(path, label)) {
+      replacements.push([new RegExp(escapeRegExp(spelling), "gi"), target, spelling.length]);
     }
   }
-  replacements.sort((a, b) => b[0].source.length - a[0].source.length);
+  replacements.sort((a, b) => b[2] - a[2]);
   const host = os.hostname();
   const user = os.userInfo().username;
   const uuids = new Map();
 
   const text = (value) => {
     let out = value;
-    for (const [pattern, target] of replacements) {
-      out = out.replace(pattern, (match) =>
-        match.includes("/") && !match.includes("\\") ? target.replace(/\\/g, "/") : target,
-      );
-    }
+    for (const [pattern, target] of replacements) out = out.replace(pattern, target);
     out = out.replace(SECRET, "[redacted-secret]").replace(EMAIL, "user@example.invalid");
     out = out.replace(UUID, (match) => {
       const key = match.toLowerCase();
@@ -108,5 +102,58 @@ export function makeSanitizer({ roots }) {
     return value;
   };
 
-  return { record: (record) => walk(record, ""), text };
+  return { record: (record) => walk(record, ""), records: (list) => joinSplitRuns(list, text).map((r) => walk(r, "")), text };
+}
+
+// The streamed piece of text a frame carries, keyed by the stream it extends:
+// a stream-json content block delta, a JSON-RPC `.../delta` notification, or a
+// Pi message update.
+function deltaSlot(frame) {
+  const event = frame?.event;
+  if (event?.type === "content_block_delta" && event.delta) {
+    const field = ["text", "thinking", "partial_json"].find((name) => typeof event.delta[name] === "string");
+    if (field) return { stream: `${frame.parent_tool_use_id}:${event.index}:${field}`, holder: event.delta, field };
+  }
+  if (typeof frame?.method === "string" && /[dD]elta$/.test(frame.method) && typeof frame.params?.delta === "string") {
+    return { stream: `${frame.method}:${frame.params.itemId}`, holder: frame.params, field: "delta" };
+  }
+  const update = frame?.assistantMessageEvent;
+  if (frame?.type === "message_update" && typeof update?.delta === "string") {
+    return { stream: `${update.type}:${update.contentIndex}`, holder: update, field: "delta" };
+  }
+  return null;
+}
+
+// A path or name split across streamed pieces escapes a per-string scrub, so
+// each run of one stream's pieces is scrubbed joined. A run the scrub changes
+// becomes one frame carrying the scrubbed whole; any other run is untouched.
+function joinSplitRuns(records, text) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length > 1) {
+      const slots = run.map((record) => deltaSlot(record.frame));
+      const joined = slots.map((slot) => slot.holder[slot.field]).join("");
+      const scrubbed = text(joined);
+      if (scrubbed !== joined) {
+        const first = structuredClone(run[0]);
+        const slot = deltaSlot(first.frame);
+        slot.holder[slot.field] = joined;
+        out.push(first);
+        run = [];
+        return;
+      }
+    }
+    out.push(...run);
+    run = [];
+  };
+  for (const record of records) {
+    const slot = record.direction === "in" ? deltaSlot(record.frame) : null;
+    const current = run.length ? deltaSlot(run[0].frame).stream : null;
+    if (!slot || slot.stream !== current) flush();
+    if (slot) run.push(record);
+    else out.push(record);
+  }
+  flush();
+  return out;
 }
