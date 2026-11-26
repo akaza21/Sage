@@ -359,7 +359,7 @@ mod tests {
             {"value": "default", "supportsEffort": true, "supportedEffortLevels": ["low", "high"]},
             {"value": "haiku"},
         ]}));
-        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models)));
+        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models, None)));
         let known = known_models(&binding).unwrap();
         let launched = |model| ModelOption::launched(&known, model);
         assert_eq!(launched(Some("haiku")).unwrap().id, "haiku");

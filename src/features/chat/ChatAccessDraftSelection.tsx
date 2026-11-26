@@ -24,7 +24,7 @@ import {
 
 /**
  * The draft is given to the session as soon as it starts, before the first
- * prompt is sent, and Auto and Full access are confirmed natively then.
+ * prompt is sent, and Full access is confirmed natively then.
  */
 export function ChatAccessDraftSelection({
   bindingId,

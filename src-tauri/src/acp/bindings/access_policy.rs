@@ -35,6 +35,7 @@ pub(crate) fn session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'s
         .map(|native| native.session_mode)
 }
 
+#[cfg(test)]
 pub(crate) fn access_modes(
     binding: &str,
     version: &str,
@@ -199,6 +200,7 @@ pub(crate) fn admitted_modes(
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn effective_mode(
     binding: &str,
     version: &str,
@@ -224,6 +226,7 @@ fn effective_among(
 }
 
 /// A choice the binding cannot carry never lowers or raises the default.
+#[cfg(test)]
 pub(crate) fn turn_mode(
     binding: &str,
     version: &str,
