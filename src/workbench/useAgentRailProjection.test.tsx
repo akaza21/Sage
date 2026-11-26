@@ -10,9 +10,7 @@ import {
   useAgentRailInteractions,
 } from "./agentRailInteractions";
 import { sessionRailPill } from "../features/chat/acp/sessionRail";
-import {
-  compareAgentRailViewChats,
-} from "./agentRailStatusView";
+import { compareAgentRailViewChats } from "./agentRailStatusView";
 import {
   mirrorAgentRailStatus,
   railStatusForTurn,
