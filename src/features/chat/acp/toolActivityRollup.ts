@@ -57,6 +57,7 @@ const clauses: Partial<Record<ToolKind, readonly string[]>> = {
   search: ["explored files", "explored files"],
   fetch: ["fetched a page", "fetched pages"],
 };
+const TOOL_CLAUSE = ["used a tool", "used tools"];
 function itemFile(presentation: ToolPresentation): string | null {
   const location =
     "resources" in presentation ? presentation.resources[0] : undefined;
@@ -120,7 +121,7 @@ export function toolItemLabel(
 function mixedClauses(items: readonly ToolProjectionItem[]): string {
   // Kinds that share wording (every kind without its own clause reads "used
   // a tool") count as one clause, so the summary never repeats itself.
-  const counts = new Map<string | null, number>();
+  const counts = new Map<readonly string[] | null, number>();
   const integrations = new Set<string>();
   for (const { payload } of items) {
     const presentation = payload.presentation;
@@ -131,9 +132,11 @@ function mixedClauses(items: readonly ToolProjectionItem[]): string {
           ? WEB_SEARCH_INTEGRATION
           : null;
     if (integration) integrations.add(integration);
-    const forms = clauses[presentation.kind] ??
-      fileVerbs[presentation.kind]?.slice(2) ?? ["used a tool", "used tools"];
-    const key = integration ? null : forms.join("\n");
+    const key = integration
+      ? null
+      : (clauses[presentation.kind] ??
+        fileVerbs[presentation.kind] ??
+        TOOL_CLAUSE);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const names = [...integrations];
@@ -143,7 +146,7 @@ function mixedClauses(items: readonly ToolProjectionItem[]): string {
         return names.length === 1
           ? `used ${names[0]} integration`
           : `used ${names.slice(0, -1).join(", ")} and ${names.at(-1)} integrations`;
-      return forms.split("\n")[count === 1 ? 0 : 1];
+      return forms.at(count === 1 ? -2 : -1);
     })
     .join(", ");
   return text[0].toUpperCase() + text.slice(1);
