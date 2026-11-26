@@ -15,16 +15,17 @@ const stateIcons = { completed: Check, failed: CircleX, cancelled: Circle };
 export function TurnSessionActivities({
   activities,
 }: {
-  activities: readonly TurnSessionActivity[];
+  activities?: readonly TurnSessionActivity[];
 }) {
-  if (activities.length === 0) return null;
+  if (!activities?.length) return null;
   return (
     <WorkRow>
       <ul className="acp-session-activities" aria-label="Activity">
         {activities.map((activity, index) => {
           const running = activity.state === "running";
-          const Icon =
-            activity.state === "running" ? null : stateIcons[activity.state];
+          const Icon = running
+            ? null
+            : stateIcons[activity.state as keyof typeof stateIcons];
           return (
             <li
               key={`${index}:${activity.label}`}

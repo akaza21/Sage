@@ -23,14 +23,24 @@ const versionOf = (notice: SessionNotice) =>
     notice.diagnostic === true,
   ]);
 
+/** `end` is the strip after the turns: the latest turn's Undo and the
+ * session's background tasks. */
 export function SessionStrip({
   page,
   hasEarlier = false,
+  end,
 }: {
   page: AcpChatPage;
   hasEarlier?: boolean;
+  end?: true;
 }) {
-  return (
+  return end ? (
+    <ConversationView
+      view="SessionSurfacePanel"
+      surface={page.sessionSurface}
+      chatId={page.chatId}
+    />
+  ) : (
     <>
       {page.forkedFrom && !hasEarlier ? (
         <ConversationView
@@ -47,16 +57,6 @@ export function SessionStrip({
         />
       ) : null}
     </>
-  );
-}
-
-export function SessionSurface({ page }: { page: AcpChatPage }) {
-  return (
-    <ConversationView
-      view="SessionSurfacePanel"
-      surface={page.sessionSurface}
-      chatId={page.chatId}
-    />
   );
 }
 

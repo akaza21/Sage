@@ -247,7 +247,7 @@ export function ChatTranscript({
                 {page.sessionSurface ? (
                   // After the turns: Undo and background tasks belong to the
                   // latest one, not above the first prompt.
-                  <NoticePart part="SessionSurface" page={page} />
+                  <NoticePart part="SessionStrip" page={page} end />
                 ) : null}
               </>
             ) : (

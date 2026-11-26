@@ -205,9 +205,7 @@ export const Turn = memo(
                   renderItem={renderWorkingItem}
                 />
               ) : null}
-              <TurnSessionActivities
-                activities={turn.sessionActivities ?? []}
-              />
+              <TurnSessionActivities activities={turn.sessionActivities} />
               <BrowserOperations
                 operations={turn.browserOperations ?? []}
                 collapsed={turn.browserOperationsCollapsed ?? 0}
