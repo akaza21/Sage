@@ -1,5 +1,4 @@
 import { useId, useRef, useState } from "react";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { MoreHorizontal } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
 
@@ -15,7 +14,8 @@ export function AgentProjectMenu({
   onOpenProject: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  // Removal is permanent, so the menu asks again in place before it runs.
+  const [confirming, setConfirming] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const complete = (action: () => void) => {
@@ -23,6 +23,16 @@ export function AgentProjectMenu({
     trigger.current?.focus();
     action();
   };
+  const item = (label: string, action: () => void) => (
+    <button
+      className="menu-item"
+      type="button"
+      role="menuitem"
+      onClick={action}
+    >
+      {label}
+    </button>
+  );
   return (
     <div className="project-chat-actions">
       <button
@@ -33,7 +43,10 @@ export function AgentProjectMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setConfirming(false);
+          setOpen(!open);
+        }}
       >
         <MoreHorizontal size={16} aria-hidden="true" />
       </button>
@@ -44,67 +57,30 @@ export function AgentProjectMenu({
         ariaLabel={`Project actions for ${name}`}
         onDismiss={() => setOpen(false)}
       >
-        <button
-          className="menu-item"
-          type="button"
-          role="menuitem"
-          onClick={() => complete(onCreateChat)}
-        >
-          New chat in project
-        </button>
-        <button
-          className="menu-item"
-          type="button"
-          role="menuitem"
-          onClick={() => complete(onOpenProject)}
-        >
-          Open project
-        </button>
-        <button
-          className="menu-item"
-          type="button"
-          role="menuitem"
-          onClick={() => complete(() => setRemoving(true))}
-        >
-          Remove project…
-        </button>
-        {[
-          [
-            "Rename project",
-            "Project renaming is not supported by the native project registry.",
-          ],
-          [
-            "Reveal project",
-            "Revealing a project folder is not supported by the native project registry.",
-          ],
-        ].map(([label, reason]) => (
-          <button
-            key={label}
-            className="menu-item"
-            type="button"
-            role="menuitem"
-            disabled
-            title={reason}
-            aria-label={`${label}: ${reason}`}
-          >
-            {label}
-          </button>
-        ))}
+        {confirming ? (
+          <>
+            <p className="menu-item" role="note">
+              Delete {name} and all its chats from Sage? Its folder stays on
+              disk. This can't be undone.
+            </p>
+            {item("Cancel", () => complete(() => {}))}
+            {item("Remove project", () =>
+              complete(
+                () =>
+                  void import("../app/chatArchiveActions").then((actions) =>
+                    actions.cleanUpProjectData("remove_project", projectId),
+                  ),
+              ),
+            )}
+          </>
+        ) : (
+          <>
+            {item("New chat in project", () => complete(onCreateChat))}
+            {item("Open project", () => complete(onOpenProject))}
+            {item("Remove project…", () => setConfirming(true))}
+          </>
+        )}
       </MenuPopover>
-      {removing ? (
-        <ConfirmDialog
-          title={`Remove ${name}?`}
-          description="This project and all of its chats, archived ones included, will be permanently deleted from Sage. Files in the project folder are not touched. This can't be undone."
-          confirmLabel="Remove project"
-          onCancel={() => setRemoving(false)}
-          onConfirm={() => {
-            setRemoving(false);
-            void import("../app/chatArchiveActions").then((actions) =>
-              actions.cleanUpProjectData("remove_project", projectId),
-            );
-          }}
-        />
-      ) : null}
     </div>
   );
 }

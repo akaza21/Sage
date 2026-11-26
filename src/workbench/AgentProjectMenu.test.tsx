@@ -44,15 +44,17 @@ it("removes a project natively only after the permanent removal is confirmed", a
   expect(remove).toBeEnabled();
 
   fireEvent.click(remove);
-  expect(screen.getByRole("dialog")).toHaveTextContent("Remove Old?");
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.getByRole("note")).toHaveTextContent(
+    "Delete Old and all its chats from Sage?",
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Cancel" }));
   expect(invoke).not.toHaveBeenCalled();
 
   fireEvent.click(
     screen.getByRole("button", { name: "Project actions for Old" }),
   );
   fireEvent.click(screen.getByRole("menuitem", { name: "Remove project…" }));
-  fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove project" }));
   await waitFor(() =>
     expect(invoke).toHaveBeenCalledWith("remove_project", {
       projectId: "project-old",
