@@ -4,6 +4,9 @@ use sage_acp_protocol::intent::session_event::{
 };
 
 pub(crate) const REFUSED_TURN: &str = "The agent started a turn this chat cannot run with its current access or state, so the session was stopped. Send a message to continue.";
+/// Why the session stopped when the harness took the user's message into a
+/// Turn it was already running under other access: that message never ran.
+pub(crate) const JOINED_TURN_REFUSED: &str = "The agent was already running a turn under different access, so your message was not run and the session was stopped. Send it again to continue.";
 
 /// Why the session stopped when a harness keeps running a Turn Sage refused.
 pub(crate) fn refused_turn_notice() -> Result<SessionNotice, AdapterPumpError> {

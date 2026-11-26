@@ -20,12 +20,31 @@
 //! `turn/started` that arrives before Codex answers is refused, and since
 //! Codex cannot decline it, the runtime stops and the prompt's Turn fails.
 //! Sage's own Turn has always been answered before its `turn/started`
-//! arrives; were that order ever reversed, this fails closed.
+//! arrives; were that order ever reversed, this fails closed. The check
+//! assumes the reverse for a raced Turn: Codex sends its own Turn's
+//! `turn/started` before it answers the `turn/start` it took in (as
+//! recorded). A Codex that answered first would bind the prompt with no
+//! check, so the live access-race probe must be re-run on Codex upgrades.
+//!
+//! A session action races the same way (recorded with codex-cli 0.167.1):
+//! `thread/compact/start` or `review/start` sent as Codex starts its own
+//! Turn gets that Turn's `turn/started` first, then the answer, then Codex
+//! interrupts its Turn and runs the action in a Turn of its own. Until the
+//! answer, that `turn/started` would bind to the action, so the same rule
+//! holds against the access the chat had when the action was sent. Once
+//! answered, an action asks nothing: compact answers `{}` before its own
+//! `turn/started`, which must bind, and neither action sets the policy.
+//!
+//! Two limits remain. An answered action's own Turn runs under
+//! `thread_access` with no check: a read-only chat's `/review` after a
+//! workspace-write prompt runs the reviewer under workspace-write. And a
+//! goal `turn/started` that arrives after a compact's `{}` answer binds to
+//! the compact unchecked, under the same frame-order assumption.
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
 
-use super::super::{AdapterError, CodexAdapter, ExternalKind, ScopedExternalId};
+use super::super::{AdapterError, CodexAdapter, ExternalKind, RequestKind, ScopedExternalId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::acp::bindings::codex) struct NativeTurn {
@@ -34,7 +53,8 @@ pub(in crate::acp::bindings::codex) struct NativeTurn {
     /// prompt whose `turn/start` Codex accepts sets the policy the thread's
     /// later Turns keep.
     thread_access: SessionAccessMode,
-    /// A sent `turn/start` and the access it asks for, until Codex answers.
+    /// A sent `turn/start` or session action and the chat's access when it
+    /// was sent, until Codex answers.
     pending_access: Option<(u64, SessionAccessMode)>,
 }
 
@@ -99,25 +119,29 @@ impl CodexAdapter {
         self.native_turn.pending_access = Some((request_id, access));
     }
 
-    /// Whether a Turn Codex starts now, taking in the unanswered prompt,
-    /// would run that prompt under access other than it asked for: the
+    /// Whether a Turn Codex starts now, binding to the unanswered prompt or
+    /// action, would run it under access other than it asked for: the
     /// Turn keeps the thread's access unless that is read-only.
     pub(in crate::acp::bindings::codex::state) fn joined_turn_overrides_access(&self) -> bool {
         self.native_turn
             .pending_access
             .is_some_and(|(request_id, asked)| {
-                self.turn_start_correlations.is_pending(request_id)
+                self.pending_kind(request_id).is_some()
+                    && self.turn_start_correlations.is_pending(request_id)
                     && self.native_turn.thread_access != SessionAccessMode::ReadOnly
                     && self.native_turn.thread_access != asked
             })
     }
 
-    /// Codex accepted the `turn/start` `request_id`, and with it its policy.
+    /// Codex answered `request_id`. A `turn/start` it accepted sets the
+    /// policy later Turns keep; an action leaves the policy as it was.
     pub(crate) fn accept_thread_access(&mut self, request_id: u64) {
         if let Some((pending, access)) = self.native_turn.pending_access
             && pending == request_id
         {
-            self.native_turn.thread_access = access;
+            if self.pending_kind(request_id) == Some(RequestKind::TurnStart) {
+                self.native_turn.thread_access = access;
+            }
             self.native_turn.pending_access = None;
         }
     }

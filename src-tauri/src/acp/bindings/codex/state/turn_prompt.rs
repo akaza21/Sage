@@ -102,9 +102,7 @@ impl CodexAdapter {
             _ => request,
         };
         let request = self.reserve(request)?;
-        if prompt.action.is_none() {
-            self.ask_thread_access(id, access_mode);
-        }
+        self.ask_thread_access(id, access_mode);
         self.turn_start_correlations
             .register(id, client_message_id.clone());
         Ok(request)

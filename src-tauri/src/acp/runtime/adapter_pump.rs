@@ -44,7 +44,7 @@ pub(crate) mod steer;
 pub(crate) use activity::DurableActivityItem;
 pub(crate) use batch_journal::{AdapterBatchJournal, JournalReceipt, PumpJournalError};
 use coalescer::PendingIngress;
-pub(crate) use completion::{CompletedPumpParts, REFUSED_TURN, refused_turn_notice};
+pub(crate) use completion::{CompletedPumpParts, JOINED_TURN_REFUSED, refused_turn_notice};
 pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
 use payload::hex;
 pub(crate) use payload::permission_payload_fits;
