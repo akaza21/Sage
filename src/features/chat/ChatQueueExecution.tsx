@@ -39,7 +39,7 @@ export default function ChatQueueExecution({
   projectTransitioning: boolean;
   canPrompt: boolean;
   useNativeAcp: boolean;
-  page?: AcpChatPage | null;
+  page: AcpChatPage | null;
   observedOrder: ChatTurnOrder | null;
   submit: (
     text: string,
@@ -56,7 +56,10 @@ export default function ChatQueueExecution({
   ) => void;
 }) {
   // After a sign-in failure, wait for a newer turn (a retry) before draining.
-  const hold = page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
+  const last = page?.turns.at(-1);
+  const hold =
+    last?.sessionId === page?.currentSessionId &&
+    last?.terminalReason?.kind === "authRequired";
   useEffect(() => {
     if (queuedTurnBarrier !== null) {
       if (

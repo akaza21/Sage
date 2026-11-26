@@ -6,7 +6,15 @@ import ChatQueueExecution from "./ChatQueueExecution";
 
 const pageEndingWith = (turn: object) =>
   ({
-    turns: [{ id: "turn-1", terminalReason: { kind: "authRequired" } }, turn],
+    currentSessionId: "session-1",
+    turns: [
+      {
+        id: "turn-1",
+        sessionId: "session-1",
+        terminalReason: { kind: "authRequired" },
+      },
+      { sessionId: "session-1", ...turn },
+    ],
   }) as unknown as AcpChatPage;
 
 afterEach(cleanup);

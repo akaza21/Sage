@@ -158,10 +158,10 @@
   white-space: nowrap;
 }
 
-/* The pill yields before the title shrinks below a readable width. */
+/* The pill yields to the title; the row spinner still marks approval. */
 .rail-pill--approval {
   min-width: 0;
-  flex-shrink: 1;
+  flex-shrink: 1000;
   overflow: hidden;
   color: var(--rail-approval-text);
   background: var(--rail-approval-fill);
@@ -169,7 +169,7 @@
 }
 
 .project-chat__title-label {
-  min-width: min(8em, 60%);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
