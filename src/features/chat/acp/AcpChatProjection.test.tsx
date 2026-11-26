@@ -279,7 +279,7 @@ describe("AcpChatProjection", () => {
     });
     fireEvent.click(within(card).getByRole("button", { name: /file changed/ }));
     expect(
-      within(card).getByText(createdFileEvent.expected.summary),
+      within(card).getByText(createdFileEvent.expected.operation),
     ).toBeVisible();
     expect(within(card).getByText("new.ts")).toBeVisible();
     expect(within(card).queryByText(/Path does not exist/)).toBeNull();
