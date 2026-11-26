@@ -31,6 +31,10 @@ const ARCHIVED: &str = "NOT EXISTS(SELECT 1 FROM chat_tabs t WHERE t.chat_id=c.i
     AND NOT EXISTS(SELECT 1 FROM workbench_tabs w WHERE w.project_id=c.project_id AND w.id=c.id)";
 
 pub(crate) trait DataCleanupStore {
+    /// Refuses before anything is released or deleted.
+    fn admit_cleanup(&self, project: &str, scope: CleanupScope) -> AppResult<()>;
+    /// Whether `chat` is still one `scope` removes; runtime release asks.
+    fn still_in_scope(&self, project: &str, chat: &str, scope: CleanupScope) -> bool;
     /// The Chats `scope` would remove, at most `limit`, for runtime release.
     fn cleanup_chat_ids(
         &self,
@@ -39,11 +43,41 @@ pub(crate) trait DataCleanupStore {
         limit: i64,
     ) -> AppResult<Vec<String>>;
     /// Purges the Chats of `scope` and, for `CleanupScope::Project`, the
-    /// Project. Returns how many Chats were deleted.
-    fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<usize>;
+    /// Project. Each Chat commits on its own, so a refusal after the first
+    /// one is returned beside the count instead of as an error.
+    fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<CleanupOutcome>;
+}
+
+/// What a cleanup removed, and why it stopped early if it did.
+#[derive(Debug)]
+pub(crate) struct CleanupOutcome {
+    pub(crate) deleted: usize,
+    pub(crate) refusal: Option<AppError>,
 }
 
 impl DataCleanupStore for Database {
+    fn admit_cleanup(&self, project: &str, scope: CleanupScope) -> AppResult<()> {
+        validate_chat_identifier("Project ID", project)?;
+        admit_project(&self.connection(), project, scope)
+    }
+
+    fn still_in_scope(&self, project: &str, chat: &str, scope: CleanupScope) -> bool {
+        let archived = if scope == CleanupScope::Archived {
+            ARCHIVED
+        } else {
+            "1"
+        };
+        self.connection()
+            .query_row(
+                &format!(
+                    "SELECT EXISTS(SELECT 1 FROM chats c WHERE c.project_id=?1 AND c.id=?2 AND {archived})"
+                ),
+                params![project, chat],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+    }
+
     fn cleanup_chat_ids(
         &self,
         project: &str,
@@ -54,26 +88,32 @@ impl DataCleanupStore for Database {
         chat_page(&self.connection(), project, scope, false, limit)
     }
 
-    fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<usize> {
-        validate_chat_identifier("Project ID", project)?;
-        admit_project(&self.connection(), project, scope)?;
+    fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<CleanupOutcome> {
+        self.admit_cleanup(project, scope)?;
         let mut deleted = 0;
-        loop {
-            let page = chat_page(&self.connection(), project, scope, true, PAGE)?;
-            if page.is_empty() {
-                break;
+        let stopped = (|| -> AppResult<()> {
+            loop {
+                let page = chat_page(&self.connection(), project, scope, true, PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                for chat in page {
+                    self.purge_chat(project, &chat, |connection| {
+                        admit_chat(connection, project, &chat, scope)
+                    })?;
+                    deleted += 1;
+                }
             }
-            for chat in page {
-                self.purge_chat(project, &chat, |connection| {
-                    admit_chat(connection, project, &chat, scope)
-                })?;
-                deleted += 1;
+            if scope == CleanupScope::Project {
+                forget_project(self, project)?;
             }
+            Ok(())
+        })()
+        .err();
+        match stopped {
+            Some(error) if deleted == 0 => Err(error),
+            refusal => Ok(CleanupOutcome { deleted, refusal }),
         }
-        if scope == CleanupScope::Project {
-            forget_project(self, project)?;
-        }
-        Ok(deleted)
     }
 }
 
@@ -203,22 +243,19 @@ fn admit_chat(
 fn forget_project(database: &Database, project: &str) -> AppResult<()> {
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction().db()?;
-    let (chats, trash): (bool, bool) = transaction
+    // Forks share their parent's Project, so every Chat is gone by now;
+    // a Chat created meanwhile or a new trash intent keeps the Project.
+    let kept: bool = transaction
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1),
-                    EXISTS(SELECT 1 FROM resource_trash_intents WHERE project_id=?1)",
+            "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1)
+                 OR EXISTS(SELECT 1 FROM resource_trash_intents WHERE project_id=?1)",
             [project],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .db()?;
-    if chats {
+    if kept {
         return Err(AppError::InvalidRequest(
-            "Delete the Chats forked from this Project's Chats in other Projects first".into(),
-        ));
-    }
-    if trash {
-        return Err(AppError::InvalidRequest(
-            "A move to Trash in this Project is still being recovered; try again".into(),
+            "The Project changed while it was being removed; try again".into(),
         ));
     }
     transaction

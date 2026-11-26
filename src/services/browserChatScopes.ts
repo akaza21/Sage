@@ -373,7 +373,7 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
         );
         if (snapshot.project?.id === project) {
           snapshot.project = null;
-          selectBrowserScope(snapshot, snapshot.projects[0]?.id ?? null);
+          selectBrowserScope(snapshot, null);
         }
       } else if (snapshot.project?.id === project) snapshot.archivedChats = [];
       refreshUnscoped(snapshot);

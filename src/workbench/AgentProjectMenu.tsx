@@ -2,6 +2,19 @@ import { useId, useRef, useState } from "react";
 import { MoreHorizontal } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
 
+function Item({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      className="menu-item"
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function AgentProjectMenu({
   projectId,
   name,
@@ -23,16 +36,6 @@ export function AgentProjectMenu({
     trigger.current?.focus();
     action();
   };
-  const item = (label: string, action: () => void) => (
-    <button
-      className="menu-item"
-      type="button"
-      role="menuitem"
-      onClick={action}
-    >
-      {label}
-    </button>
-  );
   return (
     <div className="project-chat-actions">
       <button
@@ -55,29 +58,40 @@ export function AgentProjectMenu({
         open={open}
         triggerRef={trigger}
         ariaLabel={`Project actions for ${name}`}
+        ariaDescribedBy={confirming ? `${menuId}-note` : undefined}
+        focusKey={confirming}
         onDismiss={() => setOpen(false)}
       >
         {confirming ? (
           <>
-            <p className="menu-item" role="note">
+            <p className="menu-item" id={`${menuId}-note`}>
               Delete {name} and all its chats from Sage? Its folder stays on
               disk. This can't be undone.
             </p>
-            {item("Cancel", () => complete(() => {}))}
-            {item("Remove project", () =>
-              complete(
-                () =>
-                  void import("../app/chatArchiveActions").then((actions) =>
-                    actions.cleanUpProjectData("remove_project", projectId),
-                  ),
-              ),
-            )}
+            <Item label="Cancel" onClick={() => complete(() => {})} />
+            <Item
+              label="Remove project"
+              onClick={() =>
+                complete(
+                  () =>
+                    void import("../app/chatArchiveActions").then((actions) =>
+                      actions.cleanUpProjectData("remove_project", projectId),
+                    ),
+                )
+              }
+            />
           </>
         ) : (
           <>
-            {item("New chat in project", () => complete(onCreateChat))}
-            {item("Open project", () => complete(onOpenProject))}
-            {item("Remove project…", () => setConfirming(true))}
+            <Item
+              label="New chat in project"
+              onClick={() => complete(onCreateChat)}
+            />
+            <Item
+              label="Open project"
+              onClick={() => complete(onOpenProject)}
+            />
+            <Item label="Remove project…" onClick={() => setConfirming(true)} />
           </>
         )}
       </MenuPopover>

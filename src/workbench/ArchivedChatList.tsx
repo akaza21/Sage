@@ -74,7 +74,7 @@ export default function ArchivedChatList({
       ) : null}
       {deleting === "all" ? (
         <ConfirmDialog
-          title={`Delete ${chats.length} archived chats?`}
+          title="Delete all archived chats?"
           description="These chats and their history will be permanently deleted from Sage. This can't be undone."
           confirmLabel="Delete all"
           onCancel={() => setDeleting(null)}

@@ -116,7 +116,9 @@ fn deleting_archived_chats_purges_forks_first_and_keeps_attached_chats() {
     archive(database, project, &parent);
     archive(database, project, &child);
 
-    let deleted = database.clean_up(project, CleanupScope::Archived).unwrap();
+    let outcome = database.clean_up(project, CleanupScope::Archived).unwrap();
+    assert!(outcome.refusal.is_none(), "{:?}", outcome.refusal);
+    let deleted = outcome.deleted;
 
     assert_eq!(deleted, 2);
     for chat in [&parent, &child] {
@@ -172,7 +174,9 @@ fn removing_a_project_deletes_its_chats_roots_and_activity_only() {
         &other,
     );
 
-    let deleted = database.clean_up(project, CleanupScope::Project).unwrap();
+    let outcome = database.clean_up(project, CleanupScope::Project).unwrap();
+    assert!(outcome.refusal.is_none(), "{:?}", outcome.refusal);
+    let deleted = outcome.deleted;
 
     assert_eq!(deleted, 3);
     for table in [

@@ -340,22 +340,30 @@ export async function cleanUpProjectData(
   if (get().projectTransitioning) return false;
   set({ projectTransitioning: true, error: null });
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
-  return commitIdentityChatResult({
+  let stopped: string | null = null;
+  const committed = await commitIdentityChatResult({
     set,
     get,
     ...createChatTransitionContext(set, get),
     failedMessage: "native cleanup did not commit",
-    invoke: async () =>
+    invoke: async () => {
       // The browser fixture is development-only; production builds drop it.
-      !import.meta.env.DEV || isTauriRuntime()
-        ? invokeNative<ProjectTransitionResult>(command, {
-            projectId,
-            expectedTransitionEpoch,
-          })
-        : (await import("../services/browserDesktop")).browserDesktop.cleanUp(
-            command,
-            projectId,
-            expectedTransitionEpoch,
-          ),
+      const result =
+        !import.meta.env.DEV || isTauriRuntime()
+          ? await invokeNative<ProjectTransitionResult>(command, {
+              projectId,
+              expectedTransitionEpoch,
+            })
+          : (await import("../services/browserDesktop")).browserDesktop.cleanUp(
+              command,
+              projectId,
+              expectedTransitionEpoch,
+            );
+      // A cleanup that stopped part way still commits what it removed.
+      if (result.committed) stopped = result.recoveryError;
+      return result;
+    },
   });
+  if (stopped) set({ error: stopped });
+  return committed;
 }

@@ -136,7 +136,7 @@ it("deletes every archived chat of the project in one confirmed native cleanup",
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(screen.getByRole("button", { name: "Delete all archived" }));
   expect(screen.getByRole("dialog")).toHaveTextContent(
-    "Delete 2 archived chats?",
+    "Delete all archived chats?",
   );
   fireEvent.click(screen.getByRole("button", { name: "Delete all" }));
   await waitFor(() =>
