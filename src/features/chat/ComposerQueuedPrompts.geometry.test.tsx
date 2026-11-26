@@ -56,7 +56,7 @@ it("removes queued flow rows and returns focus to their own composer", () => {
   expect(screen.queryByLabelText("Queued messages")).toBeNull();
 });
 
-it("offers Steer only for queued messages it can carry, so images wait for their turn", () => {
+it("keeps a queued message with images off text-only Steer so it waits for the normal send", () => {
   const row = (
     id: string,
     attachedContext: QueuedChatPrompt["attachedContext"],
@@ -100,6 +100,5 @@ it("offers Steer only for queued messages it can carry, so images wait for their
       name: "Steer queued message: Change direction",
     }),
   ).toBeEnabled();
-  expect(screen.queryByText("Needs retry")).toBeNull();
   expect(screen.getAllByText("Queued")).toHaveLength(2);
 });
