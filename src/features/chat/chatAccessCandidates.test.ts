@@ -50,16 +50,18 @@ it("offers only the modes the live session advertises", () => {
   ]);
 });
 
-it("offers Auto and Full access only to a live session, never as a default", () => {
+it("offers Full access only to a live session and Auto as a default too", () => {
   expect(ids(sessionAccessModeCandidates(claude))).toEqual([
     "ask",
     "acceptEdits",
     "plan",
+    "auto",
   ]);
   expect(ids(chatAccessCandidates(claude, null))).toEqual([
     "ask",
     "acceptEdits",
     "plan",
+    "auto",
   ]);
 });
 
