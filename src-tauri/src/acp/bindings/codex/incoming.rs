@@ -255,6 +255,8 @@ pub(crate) enum IngressError {
     UnsupportedServerRequest,
     #[error("permission decline state is conflicting or over limit and requires runtime teardown")]
     PermissionTeardownRequired,
+    #[error("Codex took the pending prompt into a Turn running under other access")]
+    TurnAccessRefused,
 }
 
 pub(crate) fn ingest<M: ResourceMapper>(

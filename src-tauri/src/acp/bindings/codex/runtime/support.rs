@@ -271,6 +271,9 @@ pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {
         | AdapterError::Ingress(
             IngressError::PermissionTeardownRequired | IngressError::UnsupportedServerRequest,
         ) => AdapterRuntimeError::MandatoryDenyTeardown,
+        AdapterError::Ingress(IngressError::TurnAccessRefused) => {
+            AdapterRuntimeError::HarnessTurnRefused
+        }
         _ => AdapterRuntimeError::Operation,
     }
 }
