@@ -295,7 +295,7 @@
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
         "maxGzipBytes": 3225,
         "maxCssGzipBytes": 737,
-        "reason": "Session notices, activities, Undo, the prompt actions trigger with its rewind/fork check, the usage-limit banner. JS 2310 B, CSS 449 B; cap from ConversationActions; 780 B from QuickOpen."
+        "reason": "Session notices, activities, Undo, the prompt actions trigger with its rewind/fork check, the usage-limit banner. JS 3218 B, CSS 621 B; cap from ConversationActions; 780 B from QuickOpen."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
