@@ -194,26 +194,24 @@ mod tests {
     };
 
     #[test]
-    fn no_mode_that_needs_a_confirmation_is_a_stored_default() {
+    fn full_access_is_never_a_stored_default() {
         let store = SettingsStore::in_memory().unwrap();
-        for (mode, id) in [(FullAccess, "fullAccess")] {
-            assert!(!mode.is_default_eligible());
-            let modes = BTreeMap::from([("claude-agent-acp".into(), mode)]);
-            assert!(store.set_session_access_modes(&modes).is_err());
-            assert!(store.session_access_modes().unwrap().is_empty());
-            // The schema refuses it too, so no other writer can store one.
-            assert!(
-                store
-                    .0
-                    .lock()
-                    .unwrap()
-                    .execute(
-                        "INSERT INTO binding_access_modes VALUES ('claude-agent-acp',?1)",
-                        [id],
-                    )
-                    .is_err()
-            );
-        }
+        assert!(!FullAccess.is_default_eligible());
+        let modes = BTreeMap::from([("claude-agent-acp".into(), FullAccess)]);
+        assert!(store.set_session_access_modes(&modes).is_err());
+        assert!(store.session_access_modes().unwrap().is_empty());
+        // The schema refuses it too, so no other writer can store one.
+        assert!(
+            store
+                .0
+                .lock()
+                .unwrap()
+                .execute(
+                    "INSERT INTO binding_access_modes VALUES ('claude-agent-acp','fullAccess')",
+                    [],
+                )
+                .is_err()
+        );
         let modes = BTreeMap::from([
             ("claude-agent-acp".into(), AcceptEdits),
             ("claude-code-sdk".into(), Auto),
