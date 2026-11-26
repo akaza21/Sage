@@ -3,9 +3,7 @@ import { lazyParts } from "../features/chat/lazyParts";
 import type * as NavigationChunk from "./ProjectChatNavigation";
 const NavigationPart = lazyParts<
   Omit<typeof NavigationChunk, "openChatWhenSettled">
->(
-  () => import("./ProjectChatNavigation"),
-);
+>(() => import("./ProjectChatNavigation"));
 
 export function AgentRecentChats({
   items,
