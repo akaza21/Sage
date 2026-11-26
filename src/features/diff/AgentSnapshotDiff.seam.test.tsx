@@ -610,7 +610,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
-    expect(screen.getByText("Saved edit")).toBeVisible();
+    expect(screen.queryByText("Saved edit")).toBeNull();
     expect(screen.getByRole("button", { name: /Open diff/ })).toHaveAttribute(
       "title",
       "Open current working-tree changes against Git",
