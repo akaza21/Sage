@@ -9,7 +9,6 @@ import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
-import { recoverStart } from "./acp/sessionRequest";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
@@ -362,7 +361,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             ? { onRetry: acpLoadFailure.retry }
             : sessionPromptUnavailable && selectedSession?.state === "starting"
               ? {
-                  onRetry: () => recoverStart(chatId),
+                  onRetry: () =>
+                    void import("./acp/useSessionControl").then((control) =>
+                      control.recoverStart(chatId),
+                    ),
                   message: "The agent did not finish starting.",
                 }
               : null
