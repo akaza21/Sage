@@ -123,7 +123,12 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
     "ul.acp-session-activities",
   )!;
   const rows = within(list).getAllByRole("listitem");
-  expect(rows).toHaveLength(3);
+  // The state styles the row: a failed one shows in the danger colour.
+  expect(rows.map((row) => row.getAttribute("data-activity-state"))).toEqual([
+    "completed",
+    "failed",
+    "running",
+  ]);
   expect(rows[0]).toHaveTextContent(
     /^PreToolUse hook #1 \(project\), Completed$/,
   );

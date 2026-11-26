@@ -123,24 +123,28 @@ export function SessionSurfacePanel({
   };
   if (!tasks.length && !undoTurn) return null;
   const running = tasks.filter(({ state }) => state === "running").length;
+  // The task chat's header lists them under its resources; a side chat
+  // has no such header, so its list opens here.
+  const resources = () =>
+    isSideChatId(chatId)
+      ? null
+      : document.querySelector<HTMLButtonElement>(
+          'button[aria-label="Show chat resources"]',
+        );
   return (
     <section className="acp-session-surface" aria-label="Session activity">
       {tasks.length ? (
         <button
           type="button"
           className="acp-session-surface__summary"
-          aria-expanded={listed}
+          {...(resources()
+            ? { "aria-haspopup": "dialog" as const }
+            : { "aria-expanded": listed })}
           onClick={() => {
-            // The task chat's header lists them under its resources; a side
-            // chat has no such header, so its list opens here.
-            const resources = isSideChatId(chatId)
-              ? null
-              : document.querySelector<HTMLButtonElement>(
-                  ".agent-task-header__resources > button",
-                );
-            if (!resources) setListed((open) => !open);
-            else if (resources.getAttribute("aria-expanded") !== "true")
-              resources.click();
+            const trigger = resources();
+            if (!trigger) setListed((open) => !open);
+            else if (trigger.getAttribute("aria-expanded") !== "true")
+              trigger.click();
           }}
         >
           {`${tasks.length} background ${tasks.length === 1 ? "task" : "tasks"}${running ? ` · ${running} running` : ""}`}

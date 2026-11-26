@@ -983,3 +983,33 @@ fn a_stop_keeps_its_interrupt_until_there_is_room_to_send_it() {
         .unwrap();
     assert_eq!(freed.replies[0]["request"]["subtype"], "interrupt");
 }
+
+#[test]
+fn a_stopped_background_task_does_not_explain_the_next_run_as_finished() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    bridge
+        .inbound(
+            json!({"type":"system","subtype":"task_started","task_id":"b1",
+        "description":"Serve the docs","is_backgrounded":true}),
+        )
+        .unwrap();
+    bridge
+        .inbound(
+            json!({"type":"system","subtype":"task_notification","task_id":"b1",
+        "status":"stopped","output_file":"","summary":"Stopped"}),
+        )
+        .unwrap();
+    let run = bridge.inbound(run_start()).unwrap();
+    let labels: Vec<_> = run
+        .session
+        .iter()
+        .filter_map(|event| match event {
+            sage_acp_protocol::intent::session_event::SessionScopedEvent::Activity(row) => {
+                Some(row.label.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["Claude Code started this turn on its own"]);
+}

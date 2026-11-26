@@ -8,7 +8,9 @@ const stateLabels: Record<TurnSessionActivity["state"], string> = {
   failed: "Failed",
   cancelled: "Cancelled",
 };
-const stateIcons = { completed: Check, failed: CircleX, cancelled: Circle };
+// A running row has no icon; it shows the spinner.
+const stateIcons: Partial<Record<TurnSessionActivity["state"], typeof Check>> =
+  { completed: Check, failed: CircleX, cancelled: Circle };
 
 // Session activities carry no order relative to the Turn's items, so they
 // follow them. Running rows are not live regions: state is read, not announced.
@@ -23,13 +25,12 @@ export function TurnSessionActivities({
       <ul className="acp-session-activities">
         {activities.map((activity, index) => {
           const running = activity.state === "running";
-          const Icon = running
-            ? null
-            : stateIcons[activity.state as keyof typeof stateIcons];
+          const Icon = stateIcons[activity.state];
           return (
             <li
               key={`${index}:${activity.label}`}
               className="acp-activity-row acp-session-activity"
+              data-activity-state={activity.state}
             >
               {Icon ? (
                 <Icon size={14} aria-hidden="true" />
@@ -38,7 +39,7 @@ export function TurnSessionActivities({
                   <LoaderCircle size={12} aria-hidden="true" />
                 </span>
               )}
-              <span className={running ? "acp-live-shimmer" : undefined}>
+              <span className={running ? "acp-live-shimmer" : ""}>
                 {activity.label}
               </span>
               <span className="sr-only">{`, ${stateLabels[activity.state]}${activity.progress ? ": " : ""}`}</span>

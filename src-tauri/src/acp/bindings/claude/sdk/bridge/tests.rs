@@ -762,6 +762,31 @@ fn only_tasks_running_in_the_background_become_activities() {
         (row.label.as_str(), row.state),
         ("Watch the tests", SessionActivityState::Running)
     );
+
+    // A background subagent stays a subagent: Resources lists it once, there.
+    let subagent = feed(
+        json!({"type":"system","subtype":"task_started","task_id":"t1","tool_use_id":"toolu_bg",
+        "description":"Find the model source","subagent_type":"general-purpose","is_backgrounded":true}),
+    );
+    let settled = feed(
+        json!({"type":"system","subtype":"task_notification","task_id":"t1","tool_use_id":"toolu_bg",
+        "status":"completed","output_file":"","summary":"Found it"}),
+    );
+    let kinds: Vec<_> = subagent
+        .iter()
+        .chain(&settled)
+        .filter_map(|event| match event {
+            SessionScopedEvent::Activity(row) => Some((row.kind.as_str(), row.state)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("subagent", SessionActivityState::Running),
+            ("subagent", SessionActivityState::Completed)
+        ]
+    );
 }
 
 #[test]
