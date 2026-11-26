@@ -2,7 +2,6 @@ import type { ChatHarnessControlsProps } from "./chatHarnessControlsProps";
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useState } from "react";
 import { useStore } from "zustand";
 import {
   cachedHarnessModels,
@@ -77,7 +76,6 @@ export function ChatHarnessControls({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const [effortFromAdd, setEffortFromAdd] = useState(false);
   const {
     active,
     modelId,
@@ -214,8 +212,7 @@ export function ChatHarnessControls({
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
   const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
-  const { controls, effortInMenu, contextVisible } = useComposerToolbarFit(
-    !draftPickers && canSelectEffort,
+  const { controls, contextVisible } = useComposerToolbarFit(
     active !== null && active !== "options",
   );
   // A draft picks its project in its location strip, so its "+" offers none.
@@ -232,7 +229,6 @@ export function ChatHarnessControls({
   const hasActions =
     Object.values(addActions).some(Boolean) ||
     planAccess ||
-    effortInMenu ||
     projectAction ||
     modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported");
@@ -291,55 +287,44 @@ export function ChatHarnessControls({
             onDismiss={dismiss}
           />
         ) : null}
-        <ComposerHarnessPicker
-          canContinueInNewChat={!(draftPickers || availableBinding)}
-          discoveryPhase={discoveryPhase}
-          open={active === "harness"}
-          onOpenChange={setHarnessOpen}
-          candidates={harnessCandidates}
-          disabled={projectTransitioning || turnBusy}
-          onSelect={onSelectHarness}
-          selectedId={selectedHarnessId}
-        />
-        <ComposerModelControls
-          triggerRef={modelTrigger}
-          panelId={modelId}
-          open={active === "model"}
-          effortOpen={active === "effort"}
-          effortSuspended={effortInMenu}
-          onToggle={() => toggle("model")}
-          onToggleEffort={() => {
-            setEffortFromAdd(false);
-            toggle("effort");
-          }}
-          effortAnchorRef={effortFromAdd ? optionsTriggerRef : undefined}
-          onDismiss={dismiss}
-          choices={modelChoices}
-          selectedId={currentModelId}
-          modelLabel={modelLabel}
-          effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
-          contextWindow={contextWindow}
-          effortOption={effortOption}
-          draftEffort={draftEffort}
-          restored={selectedSessionConfig?.restored}
-          notice={selectedSessionConfig?.notice}
-          awaitingSession={
-            !draftPickers &&
-            !sessionOwnsSelection &&
-            selectedHarnessId !== null &&
-            availableBinding
-          }
-          disabled={turnBusy || projectTransitioning || !canPrompt}
-          effortDisabled={turnBusy || projectTransitioning}
-          pending={modePending || modelsLoading}
-          readOnlyLabel={
-            !projectTransitioning &&
-            (!!inheriting ||
-              (turnBusy && (hasSessionModel || models.length > 0)))
-          }
-          onSelectModel={chooseModel}
-          onSetOption={onSetSessionConfigOption}
-        />
+        <div className="composer__selector">
+          <ComposerHarnessPicker
+            canContinueInNewChat={!(draftPickers || availableBinding)}
+            discoveryPhase={discoveryPhase}
+            open={active === "harness"}
+            onOpenChange={setHarnessOpen}
+            candidates={harnessCandidates}
+            disabled={projectTransitioning || turnBusy}
+            onSelect={onSelectHarness}
+            selectedId={selectedHarnessId}
+          />
+          <ComposerModelControls
+            triggerRef={modelTrigger}
+            panelId={modelId}
+            open={active === "model"}
+            onToggle={() => toggle("model")}
+            onDismiss={dismiss}
+            choices={modelChoices}
+            selectedId={currentModelId}
+            modelLabel={modelLabel}
+            effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
+            contextWindow={contextWindow}
+            effortOption={effortOption}
+            draftEffort={draftEffort}
+            restored={selectedSessionConfig?.restored}
+            notice={selectedSessionConfig?.notice}
+            disabled={turnBusy || projectTransitioning || !canPrompt}
+            effortDisabled={turnBusy || projectTransitioning}
+            pending={modePending || modelsLoading}
+            readOnlyLabel={
+              !projectTransitioning &&
+              (!!inheriting ||
+                (turnBusy && (hasSessionModel || models.length > 0)))
+            }
+            onSelectModel={chooseModel}
+            onSetOption={onSetSessionConfigOption}
+          />
+        </div>
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
@@ -365,14 +350,6 @@ export function ChatHarnessControls({
             {...addActions}
             draftPickers={draftPickers}
             harnessName={selectedHarness?.name}
-            onOpenEffort={
-              effortInMenu
-                ? () => {
-                    setEffortFromAdd(true);
-                    toggle("effort");
-                  }
-                : undefined
-            }
             onClose={closeActions}
             onSetSessionMode={onSetSessionMode}
             onSetSessionConfigOption={onSetSessionConfigOption}

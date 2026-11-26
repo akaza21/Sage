@@ -18,24 +18,21 @@ import {
 } from "../../domain/acpSessionConfigControls";
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
-import {
-  ComposerEffortControl,
-  EffortTriggerFace,
-} from "./ComposerEffortControl";
+import { ComposerEffortControl } from "./ComposerEffortControl";
 import type { DraftEffort } from "./DraftEffortControl";
 
 const ModelMenu = lazy(() => import("./ComposerModelMenu"));
 const DraftEffortControl = lazy(() => import("./DraftEffortControl"));
 
+/**
+ * One trigger shows the model and its thinking level. Its popover lists the
+ * harness's models and, when the harness reports levels, the level slider.
+ */
 export function ComposerModelControls({
   triggerRef,
   panelId,
   open,
-  effortOpen,
-  effortSuspended = false,
   onToggle,
-  onToggleEffort,
-  effortAnchorRef,
   onDismiss,
   choices,
   selectedId,
@@ -46,7 +43,6 @@ export function ComposerModelControls({
   draftEffort,
   restored,
   notice,
-  awaitingSession = false,
   disabled,
   effortDisabled = disabled,
   pending,
@@ -57,11 +53,7 @@ export function ComposerModelControls({
   triggerRef: RefObject<HTMLButtonElement | null>;
   panelId: string;
   open: boolean;
-  effortOpen: boolean;
-  effortSuspended?: boolean;
   onToggle: () => void;
-  onToggleEffort: () => void;
-  effortAnchorRef?: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
   choices:
     | readonly ComposerModelChoice[]
@@ -74,7 +66,6 @@ export function ComposerModelControls({
   draftEffort?: DraftEffort;
   restored?: string;
   notice?: string;
-  awaitingSession?: boolean;
   disabled: boolean;
   effortDisabled?: boolean;
   pending: boolean;
@@ -84,7 +75,7 @@ export function ComposerModelControls({
 }) {
   const count =
     "type" in choices ? flattenChoices(choices).length : choices.length;
-  const available = !disabled && !pending && count > 0;
+  const listed = !disabled && count > 0;
   // Callers pass a fresh handler on every render; a stable one lets the menu's
   // memoised options skip re-rendering on each focus or selection change.
   const latestSelect = useRef(onSelectModel);
@@ -95,8 +86,34 @@ export function ComposerModelControls({
     (modelId: string) => latestSelect.current(modelId),
     [],
   );
-  const hasEffortControl =
-    !!selectedConfigChoice(effortOption) || (!effortOption && !!draftEffort);
+  const selectEffort = selectedConfigChoice(effortOption)
+    ? (effortOption as Extract<AcpConfigOption, { type: "select" }>)
+    : null;
+  const draftLevels = !effortOption && draftEffort ? draftEffort : null;
+  // The chip opens while either its models or its level can change, so a
+  // level stays reachable without a catalog or while the prompt is blocked.
+  // A change in flight keeps the popover open; only its controls wait.
+  const openable =
+    listed || (!!(selectEffort || draftLevels) && !effortDisabled);
+  const effort = (mode: "label" | "panel") =>
+    selectEffort ? (
+      <ComposerEffortControl
+        mode={mode}
+        option={selectEffort}
+        disabled={effortDisabled}
+        pending={pending}
+        onSetOption={onSetOption}
+      />
+    ) : draftLevels ? (
+      <Suspense fallback={null}>
+        <DraftEffortControl
+          mode={mode}
+          draft={draftLevels}
+          disabled={effortDisabled}
+          pending={pending}
+        />
+      </Suspense>
+    ) : null;
   const modelDescription =
     modelLabel === "Model"
       ? undefined
@@ -108,19 +125,8 @@ export function ComposerModelControls({
           .filter(Boolean)
           .join(". ");
   useEffect(() => {
-    if (
-      (open && !available) ||
-      (effortOpen && (effortDisabled || !hasEffortControl))
-    )
-      onDismiss();
-  }, [
-    available,
-    effortDisabled,
-    effortOpen,
-    hasEffortControl,
-    onDismiss,
-    open,
-  ]);
+    if (open && !openable) onDismiss();
+  }, [openable, onDismiss, open]);
   return (
     <>
       <div className="composer__model-group">
@@ -135,9 +141,9 @@ export function ComposerModelControls({
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
           data-restored={restored ? true : undefined}
           aria-controls={panelId}
-          aria-haspopup="listbox"
-          aria-expanded={open && available}
-          disabled={!available}
+          aria-haspopup="dialog"
+          aria-expanded={open && openable}
+          disabled={!openable || pending}
           onPointerDown={(event) => event.currentTarget.blur()}
           onClick={onToggle}
         >
@@ -147,72 +153,20 @@ export function ComposerModelControls({
             aria-hidden="true"
           />
           <span className="composer__model-label">{modelLabel}</span>
-          {effortLabel && !hasEffortControl ? (
-            <span className="composer__model-effort"> {effortLabel}</span>
+          {selectEffort || draftLevels ? (
+            effort("label")
+          ) : effortLabel ? (
+            <span className="composer__model-effort">{effortLabel}</span>
           ) : null}
           <ChevronDown size={12} aria-hidden="true" />
         </button>
-        {effortSuspended && !effortOpen ? (
-          <span
-            className="composer__control-trigger composer__effort-picker"
-            data-overflow-control="effort"
-            data-suspended
-          />
-        ) : effortOption?.type === "select" ? (
-          <ComposerEffortControl
-            triggerVisible={!effortSuspended}
-            anchorRef={effortAnchorRef}
-            fallbackRef={triggerRef}
-            option={effortOption}
-            restored={restored}
-            modelLabel={modelLabel}
-            open={effortOpen}
-            onToggle={onToggleEffort}
-            onDismiss={onDismiss}
-            onOpenModel={onToggle}
-            modelAvailable={available}
-            disabled={effortDisabled}
-            pending={pending}
-            onSetOption={onSetOption}
-          />
-        ) : draftEffort && !effortOption ? (
-          <Suspense fallback={null}>
-            <DraftEffortControl
-              draft={draftEffort}
-              triggerVisible={!effortSuspended}
-              anchorRef={effortAnchorRef}
-              fallbackRef={triggerRef}
-              modelLabel={modelLabel}
-              open={effortOpen}
-              onToggle={onToggleEffort}
-              onDismiss={onDismiss}
-              onOpenModel={onToggle}
-              modelAvailable={available}
-              disabled={effortDisabled}
-              pending={pending}
-            />
-          </Suspense>
-        ) : awaitingSession ? (
-          <button
-            type="button"
-            className="composer__control-trigger composer__effort-picker"
-            aria-label="Thinking level"
-            title="Available when the harness advertises effort controls for this session."
-            disabled
-          >
-            <EffortTriggerFace label="Thinking level" />
-          </button>
-        ) : null}
-        {contextWindow ? (
-          <span className="composer__capacity">{contextWindow} context</span>
-        ) : null}
         {notice ? (
           <span className="composer__config-notice" role="status">
             {notice}
           </span>
         ) : null}
       </div>
-      {open && available ? (
+      {open && openable ? (
         <Suspense
           fallback={
             <ComposerMenuLoading
@@ -226,10 +180,13 @@ export function ComposerModelControls({
             panelId={panelId}
             choices={choices}
             selectedId={selectedId}
+            contextWindow={contextWindow}
             disabled={disabled || pending}
             onDismiss={onDismiss}
             onSelect={selectModel}
-          />
+          >
+            {effort("panel")}
+          </ModelMenu>
         </Suspense>
       ) : null}
     </>
