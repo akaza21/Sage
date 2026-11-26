@@ -208,8 +208,7 @@ export function useChatSurfaceModel({
           page &&
           model.harnessAvailable &&
           model.bindingId &&
-          discoveryPhase === "ready" &&
-          !sessionRefusesPrompts,
+          discoveryPhase === "ready",
         )
       : model.harnessAvailable;
     const usage =
@@ -231,7 +230,6 @@ export function useChatSurfaceModel({
     model.selectedSession,
     model.useNativeAcp,
     page,
-    sessionRefusesPrompts,
   ]);
   const {
     activeAcpTurn,
@@ -241,7 +239,8 @@ export function useChatSurfaceModel({
     canPrompt: protocolCanPrompt,
     usage,
   } = turnEligibility;
-  const canPrompt = protocolCanPrompt && !accessReason;
+  const canPrompt =
+    protocolCanPrompt && !accessReason && !sessionRefusesPrompts;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
   const sendBlocked =
