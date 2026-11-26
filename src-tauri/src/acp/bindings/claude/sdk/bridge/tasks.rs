@@ -60,7 +60,10 @@ impl Tasks {
             None if last => return None,
             None => {
                 if self.seen.len() == TRACKED_TASKS {
-                    self.seen.pop_front();
+                    // A foreground task's row is its tool's; a background
+                    // one forgotten would never see its last report.
+                    let oldest = self.seen.iter().position(|task| !task.background);
+                    self.seen.remove(oldest.unwrap_or(0));
                 }
                 self.seen.push_back(Task {
                     id,
