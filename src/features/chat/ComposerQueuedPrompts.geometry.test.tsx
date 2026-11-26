@@ -57,7 +57,10 @@ it("removes queued flow rows and returns focus to their own composer", () => {
 });
 
 it("offers Steer only for queued messages it can carry, so images wait for their turn", () => {
-  const row = (id: string, attachedContext: QueuedChatPrompt["attachedContext"]) =>
+  const row = (
+    id: string,
+    attachedContext: QueuedChatPrompt["attachedContext"],
+  ) =>
     ({
       id,
       text: id,
@@ -88,7 +91,9 @@ it("offers Steer only for queued messages it can carry, so images wait for their
     />,
   );
   expect(
-    screen.queryByRole("button", { name: "Steer queued message: Look at this" }),
+    screen.queryByRole("button", {
+      name: "Steer queued message: Look at this",
+    }),
   ).toBeNull();
   expect(
     screen.getByRole("button", {

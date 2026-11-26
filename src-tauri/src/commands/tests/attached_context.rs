@@ -464,8 +464,7 @@ fn image_attachment_is_admitted_against_the_session_or_the_binding_ceiling() {
             match &mut request {
                 SendAcpTurnRequest::Session {
                     attached_context, ..
-                }
-                => {
+                } => {
                     *attached_context =
                         AttachedContexts::new("attachedContext", vec![image]).unwrap();
                 }
