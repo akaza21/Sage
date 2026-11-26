@@ -380,15 +380,18 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
 /// taken into that Turn, which keeps workspace-write and wrote to the
 /// workspace. The `turn/started` that arrives before Codex answers the
 /// prompt is refused, so the prompt never runs under the wider access.
-/// A `/compact` raced the same way gets the goal Turn's `turn/started`
-/// before its `{}` answer, so it is refused too; a compact answered first
-/// binds its own `turn/started`, whatever the thread's access.
+/// A `/compact` or `/review` raced the same way gets the goal Turn's
+/// `turn/started` before its answer, so it is refused too. A compact
+/// answered first binds its own `turn/started`, whatever the thread's
+/// access, and an answered review leaves the thread's access as it was.
 #[test]
 fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
-    use crate::acp::bindings::adapter::AdapterRuntimeError;
+    use crate::acp::bindings::adapter::{AdapterRuntimeError, HarnessTurnAuthority};
+    use crate::acp::session_action::{ReviewTarget, SessionAction};
     use sage_acp_protocol::access_mode::SessionAccessMode;
     const FIRST: &str = "01a2152a-48c9-7ab1-8af4-951391e0316a";
     const GOAL: &str = "01a2152a-5858-7b42-8c45-f03f0fd8f5b6";
+    const REVIEW: &str = "01a2155e-a7cf-77e1-bf7a-4525903a99e8";
     let turn_object = |id: &str| {
         serde_json::json!({"id":id,"rootTurnId":id,"items":[],"itemsView":"notLoaded",
             "status":"inProgress","error":null,"startedAt":null,"completedAt":null,
@@ -400,16 +403,33 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
             "itemsView":"notLoaded","status":"inProgress","error":null,
             "startedAt":1795651426,"completedAt":null,"durationMs":null}}}))
     };
-    let joined = |compact: bool| {
-        if !compact {
+    let completed = |id: &str| {
+        codex_line(serde_json::json!({"method":"turn/completed","params":{
+            "threadId":"thread-1","turn":{"id":id,"status":"completed"}}}))
+    };
+    let joined = |action: Option<SessionAction>| {
+        let Some(action) = action else {
             return Prompt::new("prompt", "Reply with the word JOINED as well.").unwrap();
-        }
-        let mut prompt = Prompt::new("prompt", "/compact").unwrap();
-        prompt.action = Some(crate::acp::session_action::SessionAction::Compact {});
+        };
+        let mut prompt = Prompt::new("prompt", action.prompt_text()).unwrap();
+        prompt.action = Some(action);
         prompt
     };
+    let compact = || Some(SessionAction::Compact {});
+    let review = || {
+        Some(SessionAction::Review {
+            target: ReviewTarget::UncommittedChanges {},
+        })
+    };
     runtime().block_on(async {
-        for (compact, answered_first) in [(false, false), (true, false), (true, true)] {
+        for (action, answered_first) in [
+            (None, false),
+            (compact(), false),
+            (review(), false),
+            (compact(), true),
+            (review(), true),
+        ] {
+            let is_review = matches!(action, Some(SessionAction::Review { .. }));
             let mut codex = ready_codex();
             let prompt = codex
                 .command(AdapterCommand::Prompt {
@@ -422,14 +442,13 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
             codex
                 .resolve_egress(prompt.into_token(), EgressResolution::Queued)
                 .unwrap();
-            let (mut pump, _shared) = codex_pump(codex);
+            let (mut pump, shared) = codex_pump(codex);
             for frame in [
                 codex_line(
                     serde_json::json!({"id":prompt_id,"result":{"turn":turn_object(FIRST)}}),
                 ),
                 started(FIRST),
-                codex_line(serde_json::json!({"method":"turn/completed","params":{
-                    "threadId":"thread-1","turn":{"id":FIRST,"status":"completed"}}})),
+                completed(FIRST),
             ] {
                 pump.push_stdout_chunk(&frame, 2).await.unwrap();
             }
@@ -448,7 +467,7 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 .ok()
                 .expect("a prompt may follow");
             pump.queue_prompt(
-                joined(compact),
+                joined(action),
                 &next.client_message_id,
                 SessionAccessMode::ReadOnly,
             )
@@ -458,26 +477,63 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 pump.flush_one(&mut transport).unwrap(),
                 FlushDisposition::Written
             );
-            if answered_first {
-                let id = serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"]
-                    .as_u64()
-                    .unwrap();
-                let answer = codex_line(serde_json::json!({"id":id,"result":{}}));
-                pump.push_stdout_chunk(&answer, 3).await.unwrap();
-                pump.push_stdout_chunk(&started(GOAL), 3)
-                    .await
-                    .expect("the compact's own Turn binds");
+            if !answered_first {
+                let refused = pump.push_stdout_chunk(&started(GOAL), 3).await;
+                assert!(
+                    matches!(
+                        refused,
+                        Err(AdapterPumpError::Adapter(
+                            AdapterRuntimeError::HarnessTurnRefused
+                        ))
+                    ),
+                    "review={is_review}: {refused:?}"
+                );
                 continue;
             }
-            let refused = pump.push_stdout_chunk(&started(GOAL), 3).await;
-            assert!(
-                matches!(
-                    refused,
-                    Err(AdapterPumpError::Adapter(
-                        AdapterRuntimeError::HarnessTurnRefused
-                    ))
-                ),
-                "compact={compact}: {refused:?}"
+            let id = serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"]
+                .as_u64()
+                .unwrap();
+            if !is_review {
+                let answer = codex_line(serde_json::json!({"id":id,"result":{}}));
+                pump.push_stdout_chunk(&answer, 3).await.unwrap();
+                pump.push_stdout_chunk(&started(GOAL), 3).await.unwrap();
+                let bound = shared
+                    .0
+                    .lock()
+                    .unwrap()
+                    .durable_batches
+                    .iter()
+                    .flatten()
+                    .any(|event| {
+                        matches!(event, DurableAdapterEvent::Turn {
+                            scope, native_turn_id: Some(native), ..
+                        } if scope.turn_id == next.turn_id && native.as_str() == GOAL)
+                    });
+                assert!(bound, "the compact's own Turn binds to the chat's Turn");
+                continue;
+            }
+            let answer = codex_line(
+                serde_json::json!({"id":id,"result":{"turn":turn_object(REVIEW),
+                    "reviewThreadId":"thread-1"}}),
+            );
+            for frame in [answer, started(REVIEW), completed(REVIEW)] {
+                pump.push_stdout_chunk(&frame, 3).await.unwrap();
+            }
+            let mut parts = pump
+                .try_into_completed_parts()
+                .ok()
+                .expect("the review ends");
+            parts
+                .accept_idle_stdout_chunk(&started(GOAL), 4, &mut transport)
+                .await
+                .unwrap();
+            assert!(parts.turn_started());
+            assert_eq!(
+                parts.harness_turn_authority(),
+                Some(HarnessTurnAuthority::Access(
+                    SessionAccessMode::WorkspaceWrite
+                )),
+                "a review sets no policy; Codex keeps the wider access"
             );
         }
     });

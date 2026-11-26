@@ -34,6 +34,12 @@
 //! holds against the access the chat had when the action was sent. Once
 //! answered, an action asks nothing: compact answers `{}` before its own
 //! `turn/started`, which must bind, and neither action sets the policy.
+//!
+//! Two limits remain. An answered action's own Turn runs under
+//! `thread_access` with no check: a read-only chat's `/review` after a
+//! workspace-write prompt runs the reviewer under workspace-write. And a
+//! goal `turn/started` that arrives after a compact's `{}` answer binds to
+//! the compact unchecked, under the same frame-order assumption.
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
