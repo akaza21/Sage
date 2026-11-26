@@ -6,7 +6,8 @@ import type {
   SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
-import { terminalItemLifecycles } from "./statusSemantics";
+import { decodeSessionSurface } from "../../../services/acpSessionSurface";
+import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
 
 export function turnBindingId(page: AcpChatPage, turn: TurnProjection) {
   return page.sessions.find((session) => session.id === turn.sessionId)
@@ -137,3 +138,22 @@ export function chronologicalTurnItems(
         (Number.isFinite(right.ordinal) ? right.ordinal : Infinity),
     );
 }
+
+/** Background tasks, and running subagents that can still be stopped: what Resources lists. */
+export const backgroundProcesses = (surface: unknown) =>
+  decodeSessionSurface(surface)?.activities.filter(
+    ({ kind, state, stoppable }) =>
+      kind === "backgroundTask" ||
+      (kind === "subagent" && state === "running" && stoppable),
+  ) ?? [];
+
+/** The session still runs background work after its turn settled. */
+export const backgroundWorkRunning = (page: AcpChatPage) =>
+  backgroundProcesses(page.sessionSurface).some(
+    ({ state }) => state === "running",
+  );
+
+/** A chat is busy while a turn is unsettled or background work still runs. */
+export const chatBusy = (page: AcpChatPage) =>
+  page.turns.some((turn) => !terminalTurnStates.has(turn.state)) ||
+  backgroundWorkRunning(page);

@@ -79,7 +79,14 @@ export function safeChatStatus(value: unknown): AcpChatStatus | null {
       (terminalAt === null && turn.terminalAt !== null)
     )
       return null;
-    latestTurn = { state: turn.state, updatedAt, createdAt, terminalAt };
+    latestTurn = {
+      state: turn.state,
+      updatedAt,
+      createdAt,
+      terminalAt,
+      ...(turn.signIn === true && { signIn: true }),
+      ...(turn.background === true && { background: true }),
+    };
   }
   return {
     projectId: projectId as AcpChatStatus["projectId"],

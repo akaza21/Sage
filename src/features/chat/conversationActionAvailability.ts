@@ -1,6 +1,7 @@
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { decodeSessionSurface } from "../../services/acpSessionSurface";
 import { isSideChatId } from "../../workbench/sideChatState";
+import { chatBusy } from "./acp/acpTurnState";
 
 /** Only an open menu folds the bounded page; closed rows retain no summary. */
 export function conversationState(page: AcpChatPage) {
@@ -23,7 +24,7 @@ export function conversationState(page: AcpChatPage) {
     boundary,
     hot: session?.residency === "hot",
     sessionId: page.currentSessionId,
-    busy: page.turns.some((row) => row.terminalAt == null),
+    busy: chatBusy(page),
     latest: page.turns.at(-1)?.id,
     undoTurn: decodeSessionSurface(page.sessionSurface)?.undoTurn,
   };

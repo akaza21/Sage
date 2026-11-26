@@ -2,14 +2,18 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { normalizeProjectionPage } from "../app/acpProjectionMerge";
 import { useWorkbenchStore } from "../app/store";
-import type { AcpChatPage } from "../domain/acp";
+import type { AcpChatPage, AcpChatStatus } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { createBrowserChatTab } from "../services/browserChat";
 import {
   resetAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
-import { compareAgentRailViewChats } from "./agentRailStatusView";
+import { sessionRailPill } from "../features/chat/acp/sessionRail";
+import {
+  agentRailTrailingState,
+  compareAgentRailViewChats,
+} from "./agentRailStatusView";
 import {
   mirrorAgentRailStatus,
   railStatusForTurn,
@@ -55,7 +59,7 @@ it("uses the newest turn for approvals regardless of native page order", () => {
   ]) {
     act(() => mirrorAgentRailProjection({ ...current, turns }));
     expect(useWorkbenchStore.getState().tabs[0].status).toBe("waiting");
-    expect(result.current.approval.has("chat-1")).toBe(true);
+    expect(result.current.attention.get("chat-1")).toBe("approval");
   }
 });
 
@@ -69,9 +73,9 @@ it("mirrors real lifecycle status, native first-prompt titles, and approval atte
     updatedAt: 2,
   });
   act(() => mirrorAgentRailProjection(page("waitingApproval")));
-  expect(result.current.approval.has("chat-1")).toBe(true);
+  expect(result.current.attention.get("chat-1")).toBe("approval");
   act(() => mirrorAgentRailProjection(page("completed")));
-  expect(result.current.approval.has("chat-1")).toBe(false);
+  expect(result.current.attention.has("chat-1")).toBe(false);
   expect(useWorkbenchStore.getState().tabs[0].status).toBe("complete");
   expect(railStatusForTurn("waitingUser")).toBe("waiting");
   expect(railStatusForTurn("deliveryUnknown")).toBe("failed");
@@ -140,3 +144,54 @@ function mirrorAgentRailProjection(page: AcpChatPage) {
     latestTurn: normalizeProjectionPage(page).turns.at(-1) ?? null,
   });
 }
+
+const settled = {
+  state: "completed" as const,
+  updatedAt: 5,
+  createdAt: 2,
+  terminalAt: 5,
+};
+function mirrorLatest(latestTurn: AcpChatStatus["latestTurn"]) {
+  act(() =>
+    mirrorAgentRailStatus({
+      projectId: "project-1" as never,
+      chatId: "chat-1" as never,
+      title: "Chat",
+      latestTurn,
+    }),
+  );
+  return useWorkbenchStore.getState().tabs[0];
+}
+
+it("keeps a settled turn working while its background work runs", () => {
+  seed();
+  const running = mirrorLatest({ ...settled, background: true });
+  expect(running.status).toBe("working");
+  // Not Done or Unread until the background work ends.
+  expect(running.finishedAt).toBeUndefined();
+  expect(mirrorLatest(settled)).toMatchObject({
+    status: "complete",
+    finishedAt: 5,
+  });
+});
+
+it("labels a sign-in failure Sign in, not Failed", () => {
+  seed();
+  const { result } = renderHook(() => useAgentRailInteractions());
+  const tab = mirrorLatest({ ...settled, state: "failed", signIn: true });
+  const attention = result.current.attention.get("chat-1");
+  expect(
+    agentRailTrailingState({ status: tab.status, unread: false, attention }),
+  ).toEqual({ kind: "failed", label: "Sign in" });
+  mirrorLatest({ ...settled, state: "failed" });
+  expect(result.current.attention.get("chat-1")).toBeUndefined();
+});
+
+it("keeps a question's Needs input pill without a mounted chat", () => {
+  seed();
+  const { result } = renderHook(() => useAgentRailInteractions());
+  mirrorLatest({ ...settled, state: "waitingUser", terminalAt: null });
+  expect(
+    sessionRailPill(false, result.current.attention.get("chat-1")),
+  ).toBe("Needs input");
+});

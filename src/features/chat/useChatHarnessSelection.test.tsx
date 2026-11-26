@@ -1,12 +1,21 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
+import type { AcpChatPage } from "../../domain/acp";
+import {
+  harnessSignInEvidence,
+  rememberSignInEvidence,
+} from "../../services/acpHarnessDesktop";
+import { page } from "./acp/acpProjection.fixture";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 
-vi.mock("./acp", () => ({ useAcpChatProjection: () => null }));
+const projection = vi.hoisted(() => ({ page: null as AcpChatPage | null }));
+vi.mock("./acp", () => ({ useAcpChatProjection: () => projection.page }));
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
+  projection.page = null;
+  harnessSignInEvidence.clear();
   useWorkbenchStore.setState(initial, true);
 });
 
@@ -53,4 +62,25 @@ it("does not let an older same-harness selection publish after a newer selection
     await older;
   });
   expect(publish).toHaveBeenCalledTimes(3);
+});
+
+it("holds sends after a sign-in failure until newer signed-in evidence", () => {
+  const refused = page("failed", { kind: "authRequired" });
+  projection.page = {
+    ...refused,
+    sessions: [{ ...refused.sessions[0], bindingId: "binding-1" }],
+    turns: [{ ...refused.turns[0], terminalAt: 10 }],
+  } as AcpChatPage;
+  useWorkbenchStore.setState({
+    harnesses: [],
+    selectedHarnessId: "pi",
+    harnessDiscoveryPhase: "ready",
+  });
+  const hook = renderHook(() => useChatHarnessSelection("c"));
+  expect(hook.result.current.discoveryPhase).toBe("signInRequired");
+  // An account read from before the failure does not release it.
+  act(() => void rememberSignInEvidence("binding-1", 5, "signedIn"));
+  expect(hook.result.current.discoveryPhase).toBe("signInRequired");
+  act(() => void rememberSignInEvidence("binding-1", 20, "signedIn"));
+  expect(hook.result.current.discoveryPhase).toBe("ready");
 });

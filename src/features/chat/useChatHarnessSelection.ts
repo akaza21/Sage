@@ -1,4 +1,11 @@
-import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useStore } from "zustand";
 
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
@@ -14,6 +21,11 @@ import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
 import { harnessAvailability } from "./harnessAvailability";
+import { turnBindingId } from "./acp/acpTurnState";
+import {
+  harnessSignInEvidence,
+  signInEvidenceListeners,
+} from "../../services/acpHarnessDesktop";
 import {
   useInheritedComposerModel,
   useInheritedStore,
@@ -151,8 +163,25 @@ export function useChatHarnessSelection(chatId?: string): {
       )?.id ?? null)
     : null;
   const sessionModelId = selectedSession?.modelId ?? null;
-  const discoveryPhase =
-    sessionHarnessId &&
+  // After a sign-in failure, sends wait for newer signed-in evidence or a
+  // newer turn (Retry), instead of being refused again.
+  const latest = page?.turns.at(-1);
+  const refused =
+    latest?.state === "failed" &&
+    latest.terminalReason?.kind === "authRequired" &&
+    latest.sessionId === page?.currentSessionId
+      ? latest
+      : null;
+  const evidence = useSyncExternalStore(subscribeSignInEvidence, () =>
+    refused
+      ? harnessSignInEvidence.get(turnBindingId(page!, refused) ?? "")
+      : undefined,
+  );
+  const discoveryPhase: HarnessDiscoveryPhase =
+    refused &&
+    !(evidence?.[1] === "signedIn" && evidence[0] > (refused.terminalAt ?? 0))
+      ? "signInRequired"
+      : sessionHarnessId &&
     sessionHarnessId === selectedHarnessId &&
     sessionModelId === selectedModelId
       ? "ready"
@@ -252,5 +281,12 @@ export function useChatHarnessSelection(chatId?: string): {
     discoveryPhase,
     chooseHarness,
     chooseModel,
+  };
+}
+
+function subscribeSignInEvidence(listener: () => void) {
+  signInEvidenceListeners.add(listener);
+  return () => {
+    signInEvidenceListeners.delete(listener);
   };
 }

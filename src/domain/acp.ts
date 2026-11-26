@@ -377,5 +377,9 @@ export interface AcpChatStatus {
     updatedAt: number;
     createdAt: number;
     terminalAt: number | null;
+    /** The turn failed because the harness needs a sign-in. */
+    signIn?: true;
+    /** The settled turn's session still runs background work. */
+    background?: true;
   } | null;
 }

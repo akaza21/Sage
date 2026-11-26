@@ -23,31 +23,34 @@ export function ChatTranscriptTurnSummary({
   children,
   steered,
   runningHeading = true,
+  background = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
   steered?: readonly ReactNode[];
   runningHeading?: boolean;
+  /** The settled turn's session still runs background work. */
+  background?: boolean;
 }) {
-  const terminal = terminalTurnStates.has(turn.state);
+  const settled = terminalTurnStates.has(turn.state);
+  const terminal = settled && !background;
   const [expanded, setExpanded] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const groupsId = useId();
   useEffect(() => {
-    if (terminal) return;
+    if (settled) return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(timer);
-  }, [terminal, turn.id]);
+  }, [settled, turn.id]);
   const verb = terminal ? "Worked" : "Working";
-  const duration =
-    turn.state === "waitingApproval" || turn.state === "waitingUser"
+  const duration = settled
+    ? terminal
+      ? (formatDuration(verb, turn.createdAt, turn.terminalAt) ?? verb)
+      : "Working in the background"
+    : turn.state === "waitingApproval" || turn.state === "waitingUser"
       ? turnStateLabels[turn.state]
-      : (formatDuration(
-          verb,
-          turn.createdAt,
-          terminal ? turn.terminalAt : nowMs,
-        ) ?? verb);
+      : (formatDuration(verb, turn.createdAt, nowMs) ?? verb);
 
   if (terminal && !hasActivities) {
     if (!turn.items.some(isAssistantText)) return null;
@@ -71,7 +74,7 @@ export function ChatTranscriptTurnSummary({
     ) : null;
 
   if (!terminal) {
-    const thinking = hasActivities ? null : (
+    const thinking = hasActivities || background ? null : (
       <p className="acp-thought acp-live-shimmer" data-activity-kind="thought">
         Thinking
       </p>
