@@ -14,7 +14,6 @@ import {
 } from "../features/chat/acp/chatReadMarks";
 import {
   sessionRailFinished,
-  sessionRailPill,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import { lazyParts } from "../features/chat/lazyParts";
@@ -26,6 +25,7 @@ import {
   useRailHoverCard,
 } from "./agentRailInteractions";
 import { agentRailTrailingState } from "./agentRailStatusView";
+import { railPill, railTrailing } from "./railAttentionLabels";
 import {
   ProjectChatActionMenu,
   ProjectChatTrailingState,
@@ -200,11 +200,10 @@ export function ProjectChatNavigation({
             readThrough: readMarks.get(tab.id),
           });
         const attention = interactions.attention.get(tab.id);
-        const trailingState = agentRailTrailingState({
-          status,
-          unread,
+        const trailingState = railTrailing(
+          agentRailTrailingState({ status, unread }),
           attention,
-        });
+        );
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
           projectTransitioning ||
@@ -226,7 +225,7 @@ export function ProjectChatNavigation({
                 });
             });
         };
-        const approvalLabel = sessionRailPill(
+        const approvalLabel = railPill(
           awaitingApprovalIds.has(tab.id),
           attention,
         );
