@@ -71,6 +71,8 @@ test("a + menu taller than a short window scrolls with its bar shown only on hov
 }) => {
   const menu = await openMenu(page, 420);
   expect(await overflow(menu)).toBeGreaterThan(0);
+  // The click that opened it may have left the pointer over the menu.
+  await page.mouse.move(0, 0);
   const hidden = await thumb(menu);
   expect(hidden).toBe("rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)");
   await menu.hover();
