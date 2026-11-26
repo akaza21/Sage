@@ -210,6 +210,7 @@ test("an unfiltered menu sections commands by source and fits a narrow window", 
         .nth(2)
         .evaluate((option) => {
           const row = option.getBoundingClientRect();
+          const note = option.querySelector(".menu-description")!;
           const menu = option
             .closest(".composer-slash-menu")!
             .getBoundingClientRect();
@@ -217,15 +218,17 @@ test("an unfiltered menu sections commands by source and fits a narrow window", 
             menuWithinViewport:
               menu.left >= 0 && menu.right <= window.innerWidth,
             rowWithinMenu: row.left >= menu.left && row.right <= menu.right + 1,
-            // A long description is cut to one line inside the menu.
-            singleLine: row.height < 40,
+            // A long description is cut to two lines inside the menu.
+            twoLines:
+              note.getBoundingClientRect().height <=
+              2 * parseFloat(getComputedStyle(note).lineHeight) + 1,
           };
         }),
     )
     .toEqual({
       menuWithinViewport: true,
       rowWithinMenu: true,
-      singleLine: true,
+      twoLines: true,
     });
 });
 
