@@ -38,11 +38,12 @@
 //! An answered review runs under the thread's access (recorded with
 //! codex-cli 0.167.1): `review/start` takes no policy, and on a thread last
 //! prompted under workspace-write the reviewer ran under workspace-write
-//! even when the request carried a read-only policy. The answer names the
-//! review Turn with no root; its `turn/started` names a new Turn rooted at
-//! the answer, and its items and end name the answer's Turn. So that
-//! `turn/started` is refused by the same rule, against the chat's access
-//! when the review was sent.
+//! even when the request carried a read-only policy. So a review that rule
+//! would refuse is refused before its Turn is prepared, and `review/start`
+//! is never sent. The outcome is already known then: no `turn/start` is
+//! unanswered, so the thread's access cannot change before the review is
+//! answered. For the same reason a raced `turn/started` is never refused
+//! against a sent review; that refusal still guards prompts and compacts.
 //!
 //! Two limits remain. A goal `turn/started` that arrives after a compact's
 //! `{}` answer binds to the compact unchecked: the compaction's own
@@ -57,6 +58,10 @@ use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
 };
 
+use crate::acp::{
+    runtime::REVIEW_ACCESS_REFUSED, session_action::SessionAction, transcript_quote::Prompt,
+};
+
 use super::super::{AdapterError, CodexAdapter, ExternalKind, RequestKind, ScopedExternalId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,9 +74,6 @@ pub(in crate::acp::bindings::codex) struct NativeTurn {
     /// A sent `turn/start` or session action and the chat's access when it
     /// was sent, until Codex answers.
     pending_access: Option<(u64, SessionAccessMode)>,
-    /// The Turn of an answered review whose reviewer would run under wider
-    /// access than the chat's, until its `turn/started` is refused.
-    refused_review: Option<ExternalId>,
 }
 
 impl Default for NativeTurn {
@@ -80,7 +82,6 @@ impl Default for NativeTurn {
             announced: None,
             thread_access: SessionAccessMode::ReadOnly,
             pending_access: None,
-            refused_review: None,
         }
     }
 }
@@ -155,33 +156,27 @@ impl CodexAdapter {
             && self.native_turn.thread_access != asked
     }
 
-    /// True once, for the `turn/started` of `turn`, a review answered
-    /// under access narrower than the thread's.
-    pub(in crate::acp::bindings::codex::state) fn take_refused_review(
-        &mut self,
-        turn: &ExternalId,
-    ) -> bool {
-        self.native_turn
-            .refused_review
-            .take_if(|review| review == turn)
-            .is_some()
+    /// The refusal of `prompt` asked under `access`, before its Turn is
+    /// prepared: a review whose reviewer would run under other access.
+    pub(crate) fn prompt_refusal(
+        &self,
+        prompt: &Prompt,
+        access: SessionAccessMode,
+    ) -> Option<&'static str> {
+        (matches!(prompt.action, Some(SessionAction::Review { .. }))
+            && self.thread_access_overrides(access))
+        .then_some(REVIEW_ACCESS_REFUSED)
     }
 
     /// Codex answered `request_id`. A `turn/start` it accepted sets the
-    /// policy later Turns keep; an action leaves the policy as it was, and a
-    /// review answered as `turn` runs under it.
-    pub(crate) fn accept_thread_access(&mut self, request_id: u64, turn: &str) {
+    /// policy later Turns keep; an action leaves the policy as it was.
+    pub(crate) fn accept_thread_access(&mut self, request_id: u64) {
         if let Some((pending, access)) = self.native_turn.pending_access
             && pending == request_id
         {
-            let kind = self.pending_kind(request_id);
-            if kind == Some(RequestKind::TurnStart) {
+            if self.pending_kind(request_id) == Some(RequestKind::TurnStart) {
                 self.native_turn.thread_access = access;
             }
-            self.native_turn.refused_review = (kind == Some(RequestKind::Review)
-                && self.thread_access_overrides(access))
-            .then(|| ExternalId::new("externalTurnId", turn.to_owned()).ok())
-            .flatten();
             self.native_turn.pending_access = None;
         }
     }

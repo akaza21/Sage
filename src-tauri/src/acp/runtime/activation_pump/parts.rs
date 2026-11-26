@@ -120,7 +120,11 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn validate_command_prompt(
         &self,
         prompt: &crate::acp::transcript_quote::Prompt,
+        access: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(refusal) = self.adapter.prompt_refusal(prompt, access) {
+            return Err(crate::acp::runtime::HostError::PromptRefused(refusal));
+        }
         if let Some(revision) = prompt.command_revision {
             self.adapter
                 .available_commands()

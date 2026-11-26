@@ -7,6 +7,9 @@ pub(crate) const REFUSED_TURN: &str = "The agent started a turn this chat cannot
 /// Why the session stopped when the harness took the user's message into a
 /// Turn it was already running under other access: that message never ran.
 pub(crate) const JOINED_TURN_REFUSED: &str = "The agent was already running a turn under different access, so your message was not run and the session was stopped. Send it again to continue.";
+/// Why a review was refused before it was sent: the reviewer would run under
+/// the access the agent still holds, which differs from the chat's.
+pub(crate) const REVIEW_ACCESS_REFUSED: &str = "This review was not started because the agent's access still differs from this chat's. Send a message first, then ask for the review again.";
 
 /// Why the session stopped when a harness keeps running a Turn Sage refused.
 pub(crate) fn refused_turn_notice() -> Result<SessionNotice, AdapterPumpError> {

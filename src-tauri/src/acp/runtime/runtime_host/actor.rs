@@ -241,10 +241,7 @@ impl<E: RuntimeEngine> Actor<E> {
         let turn_id = match self.engine.prepare_prompt(&intent) {
             Ok(turn_id) => turn_id,
             Err(error) => {
-                self.state = if matches!(
-                    error,
-                    HostError::Capacity | HostError::Intent | HostError::RepositoryBusy(_)
-                ) {
+                self.state = if error.refused_before_prepare() {
                     HostState::Idle
                 } else {
                     HostState::Recovery

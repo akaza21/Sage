@@ -140,8 +140,8 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
 
 #[test]
 fn a_session_notice_records_once_on_the_running_epoch_of_a_session_holding_an_undo() {
-    // The harness keeps running the Turn it was refused, so its session stops;
-    // the chat is told why on the same epoch, rewind and all, once.
+    // A notice on the running epoch of a session holding an undo is recorded
+    // and shown once; a later epoch or an ended one is refused.
     let fixture = Fixture::new();
     fixture.run();
     fixture.turn("turn-1", 0);
@@ -173,6 +173,18 @@ fn a_session_notice_records_once_on_the_running_epoch_of_a_session_holding_an_un
         )
     };
     assert_ne!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
+    assert_eq!(
+        load_chat_page(
+            &fixture.database.connection(),
+            fixture.project.clone(),
+            fixture.chat.clone(),
+            None,
+        )
+        .unwrap()
+        .session_notices
+        .len(),
+        1
+    );
     assert_eq!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
     assert!(matches!(
         record(notice(epoch + 1)),
