@@ -26,27 +26,28 @@
   gap: var(--composer-location-icon-gap);
 }
 
-/* In the location strip the clear button sits in the gap after the chip, so
-   it neither leaves a hole when hidden nor moves the next chip when shown. */
-.project-scope--inline .project-scope__clear {
+/* The clear button sits just after the project name, outside the chip's
+   box, so it neither leaves a hole when hidden nor moves anything when shown
+   (the next strip chip, or the centred home caption). */
+.project-scope--inline .project-scope__clear,
+.project-scope--caption .project-scope__clear {
   position: absolute;
   inset-inline-start: 100%;
   width: var(--space-4);
 }
 
+/* The home caption is as wide as its name and centred, so its clear button
+   lands next to the name rather than at the edge of the row. */
 .project-scope--caption {
   --picker-field-padding: 0;
   --picker-field-min-height: 0;
   --radius-picker-field: var(--radius-none);
   --picker-trigger-width: 100%;
   --picker-trigger-justify: center;
+  position: relative;
   display: flex;
-  width: 100%;
-  justify-content: center;
-}
-
-.project-scope--caption .project-scope__picker {
-  width: 100%;
+  width: fit-content;
+  margin-inline: auto;
 }
 
 .project-scope__caption {
