@@ -56,10 +56,7 @@ export default function ChatQueueExecution({
   ) => void;
 }) {
   // After a sign-in failure, wait for a newer turn (a retry) before draining.
-  const last = page?.turns.at(-1);
-  const hold =
-    last?.sessionId === page?.currentSessionId &&
-    last?.terminalReason?.kind === "authRequired";
+  const hold = page?.turns.at(-1)?.terminalReason?.kind === "authRequired";
   useEffect(() => {
     if (queuedTurnBarrier !== null) {
       if (
@@ -97,10 +94,11 @@ export default function ChatQueueExecution({
       return;
     updateQueuedPrompt(next.id, "sending");
     const afterOrder =
-      observedOrder &&
-      (!knownTurnOrder || laterTurnOrder(observedOrder, knownTurnOrder))
-        ? observedOrder
-        : knownTurnOrder;
+      knownTurnOrder && observedOrder
+        ? laterTurnOrder(observedOrder, knownTurnOrder)
+          ? observedOrder
+          : knownTurnOrder
+        : (knownTurnOrder ?? observedOrder);
     void submit(
       next.text,
       next.attachedContext,
