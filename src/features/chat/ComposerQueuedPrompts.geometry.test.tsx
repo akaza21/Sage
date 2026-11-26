@@ -55,3 +55,50 @@ it("removes queued flow rows and returns focus to their own composer", () => {
   expect(screen.getByRole("textbox", { name: "First chat" })).toHaveFocus();
   expect(screen.queryByLabelText("Queued messages")).toBeNull();
 });
+
+it("keeps a queued message with images off text-only Steer so it waits for the normal send", () => {
+  const row = (
+    id: string,
+    attachedContext: QueuedChatPrompt["attachedContext"],
+  ) =>
+    ({
+      id,
+      text: id,
+      attachedContext,
+      bindingId: "binding",
+      modelId: null,
+      status: "queued",
+    }) satisfies QueuedChatPrompt;
+  render(
+    <ComposerQueuedPrompts
+      disabled={false}
+      steerAvailable
+      prompts={[
+        row("Look at this", [
+          {
+            kind: "image",
+            artifactId: "a77c3f00-487c-40b5-87ac-236de6843bd1",
+            mediaType: "image/png",
+            width: 1200,
+            height: 800,
+            byteLength: 1024,
+            sha256: "a".repeat(64),
+            label: "screenshot.png",
+          },
+        ]),
+        row("Change direction", []),
+      ]}
+    />,
+  );
+  expect(
+    screen.queryByRole("button", {
+      name: "Steer queued message: Look at this",
+    }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", {
+      name: "Steer queued message: Change direction",
+    }),
+  ).toBeEnabled();
+  expect(screen.getAllByText("Queued")).toHaveLength(2);
+});
