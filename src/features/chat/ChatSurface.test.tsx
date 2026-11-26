@@ -83,6 +83,12 @@ vi.mock("./acp", async () => {
   };
 });
 
+const recoverStart = vi.hoisted(() => vi.fn());
+vi.mock("./acp/useSessionControl", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  recoverStart,
+}));
+
 vi.mock("./chatSignInRecovery", async (importOriginal) => {
   const actual = await importOriginal<typeof ChatSignInRecovery>();
   return {
@@ -2425,6 +2431,38 @@ describe("ChatSurface ACP resource integration", () => {
         "The selected harness cannot accept prompts in this session.",
       ),
     ).toBeNull();
+  });
+
+  it("offers Retry for a start that ended needing recovery and drives it", () => {
+    // The start's epoch stays open while its tree is not yet proven gone.
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "starting",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: null,
+          capabilities: { prompt: false, closeSession: false },
+          revision: "2",
+          projectionRevision: "3",
+        },
+      ],
+    } as unknown as AcpChatPage;
+
+    render(<ChatSurface />);
+
+    expect(
+      screen.getByText("The agent did not finish starting."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(recoverStart).toHaveBeenCalledOnce();
   });
 
   it("shows the selected harness even when the current session uses another", () => {

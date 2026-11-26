@@ -78,6 +78,8 @@ export interface ChatComposerRegionProps {
   missingBindingNotice: boolean;
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
+  /** What the Retry notice says; a chat that failed to load by default. */
+  retryMessage?: string;
   /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string; isInternal?: boolean } | null | undefined;
   newChat?: boolean;

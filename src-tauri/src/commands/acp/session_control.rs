@@ -59,6 +59,9 @@ enum ControlIntent {
     StopActivity {
         activity_key: String,
     },
+    /// Drives a start that ended needing recovery to completion, so the
+    /// session is one the next send starts again.
+    RecoverStart,
 }
 
 #[derive(Serialize)]
@@ -148,6 +151,19 @@ pub(crate) async fn control_acp_session(
                 preview: None,
             });
         }
+        ControlIntent::RecoverStart => {
+            super::start_recovery::drive(&state, &request.project_id, &request.chat_id)
+                .await
+                .map_err(|release| {
+                    control_error(SessionControlError::RecoveryRequired(
+                        SafeText::new("message", release.message("starting").as_str()).ok(),
+                    ))
+                })?;
+            return Ok(SessionControlResponse {
+                summary: None,
+                preview: None,
+            });
+        }
         ControlIntent::StopActivity { activity_key } => {
             let activity_id = crate::acp::store::session_surface::activity_id(
                 &state.database.connection(),
@@ -218,6 +234,13 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(stop.control, ControlIntent::StopActivity { .. }));
+        let recover: SessionControlRequest = serde_json::from_value(json!({
+            "projectId":"project-one", "projectGeneration":"1", "chatId":"chat-one",
+            "sessionId":"session-one", "runtimeEpoch":"1",
+            "control":{"kind":"recoverStart"}
+        }))
+        .unwrap();
+        assert!(matches!(recover.control, ControlIntent::RecoverStart));
         assert!(
             serde_json::from_value::<SessionControlRequest>(json!({
                 "projectId":"project-one", "projectGeneration":"1", "chatId":"chat-one",

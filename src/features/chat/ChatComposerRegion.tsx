@@ -71,6 +71,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     missingBindingNotice,
     disabledReason,
     onRetryLoad,
+    retryMessage,
     goal,
     goalCapabilities,
     onSubmit,
@@ -310,6 +311,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               id={disabledReasonId}
               scope={dictationScope}
               onRetry={onRetryLoad}
+              message={retryMessage}
               compact={
                 // A visible error explains the session's own refusal; a local
                 // reason (size, queue, access) stays visible.

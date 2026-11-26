@@ -44,6 +44,7 @@ export function NewChatDraftSurface({
     updateNewChatDraft: update,
     selectDraftHarness: chooseHarness,
     selectDraftModel: chooseModel,
+    retryHarnessDiscovery,
   } = useWorkbenchStore.getState();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
@@ -211,6 +212,10 @@ export function NewChatDraftSurface({
           onSelectHarness={chooseHarness}
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
+          onRetryLoad={
+            available && discoveryError ? () => void retryHarnessDiscovery() : null
+          }
+          retryMessage={discoveryError ?? undefined}
           disabledReason={
             available
               ? discoveryError
