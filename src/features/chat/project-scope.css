@@ -22,7 +22,16 @@
 .project-scope--inline {
   --picker-trigger-hover-color: var(--color-text-emphasis);
   --picker-trigger-hover-fill: var(--composer-control-hover);
+  position: relative;
   gap: var(--composer-location-icon-gap);
+}
+
+/* In the location strip the clear button sits in the gap after the chip, so
+   it neither leaves a hole when hidden nor moves the next chip when shown. */
+.project-scope--inline .project-scope__clear {
+  position: absolute;
+  inset-inline-start: 100%;
+  width: var(--space-4);
 }
 
 .project-scope--caption {
@@ -88,10 +97,8 @@
   }
 }
 
-/* Out of the layout until the chip is hovered or focused, so the hidden
-   button never leaves a gap after the project name. */
 .project-scope__clear {
-  display: none;
+  display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
@@ -102,10 +109,11 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
+  visibility: hidden;
 }
 .project-scope:hover .project-scope__clear,
 .project-scope:focus-within .project-scope__clear {
-  display: inline-flex;
+  visibility: visible;
 }
 .project-scope__clear:focus-visible {
   outline: var(--focus-ring);

@@ -498,6 +498,19 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       `composer-location-branch-${width}.png`,
     );
   }
+  // Hovering the project shows its clear button in the gap without moving
+  // the branch chip.
+  const branchLeft = async () => (await branch.boundingBox())!.x;
+  const idleBranch = await branchLeft();
+  await project.hover();
+  const clear = strip.getByRole("button", {
+    name: "Remove project from this chat",
+  });
+  await expect(clear).toBeVisible();
+  expect(await branchLeft()).toBe(idleBranch);
+  const clearBox = (await clear.boundingBox())!;
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(idleBranch);
+  await page.mouse.move(0, 0);
   await expect(project).toHaveCSS("font-size", "13px");
   await project.click();
   const menu = page.locator(".searchable-picker__popover--menu");
