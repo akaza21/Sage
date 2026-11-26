@@ -562,10 +562,10 @@ describe("ToolActivityRollup", () => {
         { ...tool("command-1", "execute"), toolState },
         { ...tool("command-2", "execute"), toolState },
       ];
-      const live = ordinary.startsWith("Running");
+      const live = !ordinary.startsWith("Ran");
       expect(toolRollupLabel("execute", items)).toBe(ordinary);
       expect(toolRollupLabel("execute", items, "declaredTest")).toBe(
-        live ? "Running tests" : "Ran tests · 2 commands",
+        live ? declaredSingleton : "Ran tests · 2 commands",
       );
       expect(toolRollupLabel("execute", items, "ordinary", true)).toBe(
         "Ran commands",
