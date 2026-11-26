@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 mod bridge;
+mod wire_replay_tests;
 mod bridge_ready;
 mod chrome_state;
 mod compact_command;

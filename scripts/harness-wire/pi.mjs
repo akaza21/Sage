@@ -48,10 +48,16 @@ export async function run(scenario, { cwd, env, emptyHome, image }) {
       { command: "prompt", text, images: images.length },
     );
     const reply = await wire.until(answered(id), { serve });
-    if (reply.success === false) return reply;
+    if (reply.success === false) {
+      // A host with no provider signed in cannot record a turn: say so rather
+      // than commit a refusal under the scenario's name.
+      if (scenario !== "auth-fail") gap = `the prompt was refused: ${String(reply.error).split("\n")[0]}`;
+      return reply;
+    }
     return wire.until((frame) => frame.type === "agent_end", { serve });
   };
   let outcome = "completed";
+  let gap;
   try {
     const state = command("get_state", {}, { command: "initialize" });
     const models = command("get_available_models");
@@ -77,5 +83,5 @@ export async function run(scenario, { cwd, env, emptyHome, image }) {
     outcome = `error: ${error.message}`;
   }
   await wire.close(scenario === "shell" ? 6000 : 2500);
-  return { wire, outcome, decisions: [], args: spec.args };
+  return { wire, outcome, gap, decisions: [], args: spec.args };
 }

@@ -33,6 +33,48 @@ pub(crate) fn corpus(harness: &str) -> PathBuf {
         .join(harness)
 }
 
+/// The sanitized scratch repository every transcript works in.
+pub(crate) const ROOT: &str = "C:\\fixture-workspace\\repo";
+
+/// Maps the scratch repository's files to one Sage root.
+pub(crate) struct FixtureMapper;
+
+impl ResourceMapper for FixtureMapper {
+    fn map_existing(
+        &self,
+        absolute_path: &str,
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        let path = absolute_path.replace('/', "\\");
+        path.strip_prefix(ROOT)
+            .and_then(|rest| rest.strip_prefix('\\'))
+            .and_then(|relative| {
+                sage_acp_protocol::intent::SafeResourceRef::new(
+                    sage_acp_protocol::contract::SageRootId::parse("root-replay").ok()?,
+                    &relative.replace('\\', "/"),
+                )
+                .ok()
+            })
+            .ok_or(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
+    }
+}
+
+/// The scenarios a harness's corpus holds, so a new capture is replayed
+/// without a test naming it.
+pub(crate) fn scenarios(harness: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(corpus(harness))
+        .expect("corpus")
+        .filter_map(|entry| {
+            let name = entry.ok()?.file_name().into_string().ok()?;
+            name.strip_suffix(".jsonl").map(str::to_owned)
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 pub(crate) struct Record {
     out: bool,
     step: Option<Value>,
@@ -145,7 +187,7 @@ impl Replay {
         match step["command"].as_str()? {
             "initialize" => Some(AdapterCommand::Initialize),
             "session" => Some(AdapterCommand::NewSession {
-                native_root: "C:\\fixture-workspace\\repo".into(),
+                native_root: ROOT.into(),
                 model: None,
             }),
             "prompt" => {

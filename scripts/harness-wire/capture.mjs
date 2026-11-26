@@ -117,6 +117,13 @@ async function main() {
       process.stdout.write(`${harness}/${scenario} ... `);
       const result = await driver.run(scenario, { cwd: repo, env: process.env, emptyHome, image, model });
       const sanitizer = makeSanitizer({ roots: [[repo, "repo"], [emptyHome, "empty-home"], [work, "work"]] });
+      if (result.gap) {
+        meta.gaps[scenario] = sanitizer.text(result.gap);
+        delete meta.scenarios[scenario];
+        fs.rmSync(path.join(dir, `${scenario}.jsonl`), { force: true });
+        process.stdout.write(`gap: ${result.gap}\n`);
+        continue;
+      }
       const records = result.wire.records.map((record) => sanitizer.record(record));
       const lines = scenario === "commands" ? records.map((r) => JSON.stringify(r)) : dedupe(records, dir);
       const body = `${lines.join("\n")}\n`;

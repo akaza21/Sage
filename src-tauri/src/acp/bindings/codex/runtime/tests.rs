@@ -35,6 +35,7 @@ use sage_acp_protocol::{
 use sage_db::database::Database;
 
 mod background_terminal_tests;
+mod wire_replay_tests;
 mod browser_mcp_tests;
 mod duplicate_terminal_probe;
 mod foreign_thread_tests;

@@ -94,6 +94,8 @@ export function makeSanitizer({ roots }) {
   };
 
   const walk = (value, key) => {
+    // A process id changes every run and says nothing about the protocol.
+    if (key === "pid" && typeof value === "number") return 0;
     if (typeof value === "string") {
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
