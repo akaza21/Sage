@@ -39,7 +39,8 @@ export function TurnFailure({
   if (turn.state !== "failed" || hidden) return null;
   const reason = turn.terminalReason;
   const message =
-    turnReasonMessage(turn) || turnTerminalReasonLabels[reason?.kind ?? "other"];
+    turnReasonMessage(turn) ||
+    turnTerminalReasonLabels[reason?.kind ?? "other"];
   const error = turnReasonErrorItem(turn);
   return (
     <div role="group" aria-label="Turn failed" data-latest={latest}>

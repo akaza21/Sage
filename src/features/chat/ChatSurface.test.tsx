@@ -2918,6 +2918,8 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
     };
+    // The re-read this refusal starts stays pending, as above.
+    status.mockImplementationOnce(() => new Promise(() => {}));
     act(() => harnessSignInFailures.page?.(hooks.page!));
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(
