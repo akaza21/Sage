@@ -79,8 +79,13 @@ fn declining_a_plan_lets_the_turn_end_as_claude_ends_it() {
         json!({"behavior":"deny","message":
             "The user chose to keep planning. Stop and wait for the user to say what to change."})
     );
+    let token = egress.into_token();
+    runtime.commit_mandatory_egress(&token).unwrap();
     runtime
-        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
         .unwrap();
     feed(
         &mut runtime,
