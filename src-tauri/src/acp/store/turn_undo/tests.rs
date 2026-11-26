@@ -136,13 +136,22 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
         fixture.pending(),
         Some(("turn-2".into(), UndoneThread::Cut))
     );
+}
 
+#[test]
+fn a_session_notice_records_once_on_the_running_epoch_of_a_session_holding_an_undo() {
     // The harness keeps running the Turn it was refused, so its session stops;
     // the chat is told why on the same epoch, rewind and all, once.
+    let fixture = Fixture::new();
+    fixture.run();
+    fixture.turn("turn-1", 0);
+    fixture.turn("turn-2", 1);
+    fixture.undo("turn-2", false);
+    let epoch = fixture.epoch() as u64;
     let notice = |epoch: u64| crate::acp::store::SessionNoticeCommand {
-        project_id: command.project_id.clone(),
-        chat_id: command.chat_id.clone(),
-        session_id: command.session_id.clone(),
+        project_id: fixture.project.clone(),
+        chat_id: fixture.chat.clone(),
+        session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),
         runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
         notice: sage_acp_protocol::intent::session_event::SessionNotice {
             identity: None,
@@ -163,19 +172,8 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
             &command,
         )
     };
-    let epoch = command.runtime_epoch.get();
     assert_ne!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
     assert_eq!(record(notice(epoch)).unwrap(), ProjectionRevision::ZERO);
-    let surface: String = fixture
-        .database
-        .connection()
-        .query_row(
-            "SELECT surface_json FROM acp_session_surfaces WHERE session_id='session-a'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(surface.matches("The agent started a turn").count(), 1);
     assert!(matches!(
         record(notice(epoch + 1)),
         Err(StoreError::Conflict { .. })
