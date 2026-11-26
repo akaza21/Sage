@@ -172,6 +172,11 @@ export function useChatSurfaceModel({
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
+  // A created session has not started (or its slow first start was
+  // abandoned, leaving the pending capabilities); a send starts it.
+  const sessionRefusesPrompts =
+    model.selectedSession?.capabilities.prompt === false &&
+    model.selectedSession.state !== "created";
   const turnEligibility = useMemo(() => {
     const activeAcpTurn = model.useNativeAcp
       ? currentNonterminalTurn(page)
@@ -198,11 +203,6 @@ export function useChatSurfaceModel({
       currentSession?.runtimeEpoch &&
       !currentSession.capabilities.closeSession,
     );
-    // A created session has not started (or its slow first start was
-    // abandoned, leaving the pending capabilities); a send starts it.
-    const sessionRefusesPrompts =
-      model.selectedSession?.capabilities.prompt === false &&
-      model.selectedSession.state !== "created";
     const canPrompt = model.useNativeAcp
       ? Boolean(
           page &&
@@ -222,7 +222,6 @@ export function useChatSurfaceModel({
       canCloseSession,
       canEndSession,
       canPrompt,
-      sessionRefusesPrompts,
       usage,
     };
   }, [
@@ -232,6 +231,7 @@ export function useChatSurfaceModel({
     model.selectedSession,
     model.useNativeAcp,
     page,
+    sessionRefusesPrompts,
   ]);
   const {
     activeAcpTurn,
@@ -239,7 +239,6 @@ export function useChatSurfaceModel({
     canCloseSession,
     canEndSession,
     canPrompt: protocolCanPrompt,
-    sessionRefusesPrompts,
     usage,
   } = turnEligibility;
   const canPrompt = protocolCanPrompt && !accessReason;
