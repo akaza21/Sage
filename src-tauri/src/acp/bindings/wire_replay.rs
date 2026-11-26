@@ -78,7 +78,7 @@ pub(crate) fn scenarios(harness: &str) -> Vec<String> {
 pub(crate) struct Record {
     out: bool,
     step: Option<Value>,
-    frame: Value,
+    pub(crate) frame: Value,
 }
 
 fn lines(harness: &str, file: &str) -> Vec<Value> {
@@ -247,13 +247,39 @@ impl Replay {
         }
     }
 
+    /// A session mode change, as Sage sends one before a prompt in that mode.
+    fn configure(&mut self, adapter: &mut dyn HarnessAdapter, mode: &str) {
+        use sage_acp_protocol::{
+            contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+            scheduler::RuntimeOwner,
+            session_config::{ConfigId, ConfigIntent, ConfigMutation},
+        };
+        let intent = ConfigIntent {
+            owner: RuntimeOwner {
+                project_id: SageProjectId::parse("project-replay").expect("project"),
+                chat_id: SageChatId::parse("chat-replay").expect("chat"),
+                session_id: SageAgentSessionId::parse("session-replay").expect("session"),
+                runtime_epoch: RuntimeEpoch::new(1).expect("epoch"),
+            },
+            expected_config_revision: serde_json::from_value(json!("1")).expect("revision"),
+            mutation: ConfigMutation::Mode(ConfigId::new("mode", mode).expect("mode id")),
+        };
+        match adapter.configure(&intent) {
+            Ok(Some(egress)) => self.written(adapter, egress),
+            Ok(None) => {}
+            Err(error) => self.refused.push(format!("mode {mode} {error}")),
+        }
+    }
+
     fn client(&mut self, adapter: &mut dyn HarnessAdapter, record: &Record) {
-        if let Some(step) = &record.step
-            && let Some(command) = self.command_for(step, &record.frame)
-        {
-            match adapter.command(command) {
-                Ok(egress) => self.written(adapter, egress),
-                Err(error) => self.refused.push(format!("{} {error}", step["command"])),
+        if let Some(step) = &record.step {
+            if step["command"] == "mode" {
+                self.configure(adapter, step["mode"].as_str().unwrap_or_default());
+            } else if let Some(command) = self.command_for(step, &record.frame) {
+                match adapter.command(command) {
+                    Ok(egress) => self.written(adapter, egress),
+                    Err(error) => self.refused.push(format!("{} {error}", step["command"])),
+                }
             }
         }
         let kind = out_kind(&record.frame);
@@ -283,8 +309,50 @@ impl Replay {
                 }
             }
         }
-        let mut batch = Some(adapter.ingest(&frame(&value), resources));
-        while let Some(result) = batch.take() {
+        let start = self.events.len();
+        let result = adapter.ingest(&frame(&value), resources);
+        self.batches(adapter, result);
+        let new = &self.events[start..];
+        let started = new
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::TurnStarted { .. }));
+        let idle = new.iter().any(|event| match event {
+            AdapterEvent::SessionReady { .. } => true,
+            AdapterEvent::Turn { state, .. } => state.is_terminal(),
+            _ => false,
+        });
+        // A Turn the harness began on its own is named and read, as the
+        // pump adopts it.
+        if started {
+            let id = RequiredText::new("client", "replay-harness-turn").expect("id");
+            let result = adapter.adopt_turn(id, resources);
+            self.batches(adapter, result);
+        }
+        // Idle background work the pump writes once nothing runs: the
+        // command list read when it is missing or stale.
+        if idle {
+            match adapter.discover_commands() {
+                Ok(Some(egress)) => {
+                    let sent = serde_json::from_slice(egress.frame().payload()).expect("JSON");
+                    self.live.push_back(sent);
+                    adapter
+                        .resolve_egress(egress.into_token(), EgressResolution::Written)
+                        .expect("discovery is written");
+                }
+                Ok(None) => {}
+                Err(error) => self.refused.push(format!("discover commands {error}")),
+            }
+        }
+    }
+
+    /// Takes a batch and every batch held back behind it.
+    fn batches(
+        &mut self,
+        adapter: &mut dyn HarnessAdapter,
+        first: Result<super::adapter::AdapterBatch, super::adapter::AdapterRuntimeError>,
+    ) {
+        let mut next = Some(first);
+        while let Some(result) = next.take() {
             match result {
                 Ok(batch) => {
                     let (events, egress) = batch.into_parts();
@@ -292,10 +360,10 @@ impl Replay {
                     for egress in egress {
                         self.written(adapter, egress);
                     }
+                    next = adapter.held_batch().transpose();
                 }
                 Err(error) => self.ingest_errors.push(error.to_string()),
             }
-            batch = adapter.held_batch().transpose();
         }
     }
 

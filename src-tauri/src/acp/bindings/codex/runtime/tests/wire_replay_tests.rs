@@ -13,8 +13,15 @@ fn every_recorded_codex_transcript_projects_as_committed() {
         "{scenarios:?}"
     );
     for scenario in &scenarios {
+        let mut records = wire_replay::load("codex", scenario);
+        // The capture ran Codex on its own home; Sage launches it on a
+        // managed one and admits only that.
+        for record in &mut records {
+            if let Some(home) = record.frame.pointer_mut("/result/codexHome") {
+                *home = json!(MANAGED_CODEX_HOME);
+            }
+        }
         let mut runtime = fixture_runtime();
-        let records = wire_replay::load("codex", scenario);
         let replay = Replay::run(&mut runtime, &records, &FixtureMapper);
         wire_replay::assert_summary("codex", scenario, &replay.summary(&runtime));
     }

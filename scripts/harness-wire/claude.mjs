@@ -115,7 +115,7 @@ export async function run(scenario, { cwd, env, emptyHome, image, model }) {
         break;
       case "plan-approve":
       case "plan-decline": {
-        const mode = control({ subtype: "set_permission_mode", mode: "plan" });
+        const mode = control({ subtype: "set_permission_mode", mode: "plan" }, { command: "mode", mode: "plan" });
         await wire.until(answered(mode), { serve });
         await prompt(PROMPTS.plan, { step: { mode: "plan" } });
         break;
