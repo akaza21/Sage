@@ -55,8 +55,28 @@ function hasDisallowedPath(value) {
   return posixAbsolutePath.test(value);
 }
 
+// JSON text a string carries (a streamed tool input), parsed, so its values
+// are read as values rather than through a second layer of escapes.
+function nestedJson(value) {
+  const text = value.trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function inspect(value, pointer, failures) {
   if (typeof value === "string") {
+    const nested = nestedJson(value);
+    if (nested !== undefined) {
+      inspect(nested, pointer, failures);
+      return;
+    }
     if (hasDisallowedPath(value)) {
       failures.push(pointer || "/");
     }

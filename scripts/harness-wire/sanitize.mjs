@@ -162,7 +162,7 @@ function deltaSlot(frame) {
     );
     if (field)
       return {
-        stream: `${frame.parent_tool_use_id}:${event.index}:${field}`,
+        stream: `${frame.api_message_id}:${frame.parent_tool_use_id}:${event.index}:${field}`,
         holder: event.delta,
         field,
       };
@@ -190,37 +190,43 @@ function deltaSlot(frame) {
 }
 
 // A path or name split across streamed pieces escapes a per-string scrub, so
-// each run of one stream's pieces is scrubbed joined. A run the scrub changes
-// becomes one frame carrying the scrubbed whole; any other run is untouched.
+// all pieces of one stream are scrubbed joined, even when other frames come
+// between them. A stream the scrub changes, or one that names a drive path,
+// becomes one frame (at its first piece) carrying the whole; any other stream
+// is untouched.
 function joinSplitRuns(records, text) {
-  const out = [];
-  let run = [];
-  const flush = () => {
-    if (run.length > 1) {
-      const slots = run.map((record) => deltaSlot(record.frame));
-      const joined = slots.map((slot) => slot.holder[slot.field]).join("");
-      const scrubbed = text(joined);
-      // A drive path split across pieces is joined even once scrubbed, so no
-      // piece holds a path the privacy check cannot read whole.
-      if (scrubbed !== joined || /[A-Za-z]:(?:\\|\/)/.test(joined)) {
-        const first = structuredClone(run[0]);
-        const slot = deltaSlot(first.frame);
-        slot.holder[slot.field] = joined;
-        out.push(first);
-        run = [];
-        return;
-      }
+  const streams = new Map();
+  let messages = 0;
+  records.forEach((record, at) => {
+    // Content is numbered within a message, so a message start (Pi's, or a
+    // stream-json stream event's) opens new streams.
+    if (record.frame?.type === "message_start" || record.frame?.event?.type === "message_start") {
+      messages += 1;
     }
-    out.push(...run);
-    run = [];
-  };
-  for (const record of records) {
     const slot = record.direction === "in" ? deltaSlot(record.frame) : null;
-    const current = run.length ? deltaSlot(run[0].frame).stream : null;
-    if (!slot || slot.stream !== current) flush();
-    if (slot) run.push(record);
-    else out.push(record);
+    if (!slot) return;
+    const key = `${messages}:${slot.stream}`;
+    if (!streams.has(key)) streams.set(key, []);
+    streams.get(key).push(at);
+  });
+  const replaced = new Map();
+  const dropped = new Set();
+  for (const indices of streams.values()) {
+    if (indices.length < 2) continue;
+    const joined = indices
+      .map((at) => {
+        const slot = deltaSlot(records[at].frame);
+        return slot.holder[slot.field];
+      })
+      .join("");
+    if (text(joined) === joined && !/[A-Za-z]:(?:\\|\/)/.test(joined)) continue;
+    const first = structuredClone(records[indices[0]]);
+    const slot = deltaSlot(first.frame);
+    slot.holder[slot.field] = joined;
+    replaced.set(indices[0], first);
+    indices.slice(1).forEach((at) => dropped.add(at));
   }
-  flush();
-  return out;
+  return records
+    .map((record, at) => replaced.get(at) ?? record)
+    .filter((_, at) => !dropped.has(at));
 }
