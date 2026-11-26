@@ -99,7 +99,11 @@ pub(crate) async fn clean_up(
             .unwrap_or_else(PoisonError::into_inner)
             .take()
         {
-            result.recovery_error = Some(message);
+            // A transition's own recovery error stays first.
+            result.recovery_error = Some(match result.recovery_error.take() {
+                Some(earlier) => format!("{earlier} {message}"),
+                None => message,
+            });
         }
         crate::chat_archive_commands::forget_read_marks_of_deleted_chats(
             &state.database,

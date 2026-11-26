@@ -64,7 +64,7 @@ export function AgentProjectMenu({
       >
         {confirming ? (
           <>
-            <p className="menu-item" id={`${menuId}-note`}>
+            <p className="menu-item" role="none" id={`${menuId}-note`}>
               Delete {name} and its chats? Files stay on disk.
             </p>
             <Item label="Cancel" onClick={() => complete(() => {})} />

@@ -183,6 +183,18 @@ fn admit_project(
         }
         Some(_) => {}
     }
+    let pending_trash: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM resource_trash_intents WHERE project_id=?1)",
+            [project],
+            |row| row.get(0),
+        )
+        .db()?;
+    if pending_trash && scope == CleanupScope::Project {
+        return Err(AppError::InvalidRequest(
+            "A move to Trash in this Project is still being recovered; try again".into(),
+        ));
+    }
     let archived = if scope == CleanupScope::Archived {
         ARCHIVED
     } else {

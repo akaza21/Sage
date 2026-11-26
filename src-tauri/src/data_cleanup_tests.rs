@@ -278,3 +278,31 @@ fn an_idle_runtime_is_admitted_for_release_but_refuses_an_unsettled_purge() {
     );
     fixture.finish();
 }
+
+#[test]
+fn an_archived_chat_with_an_open_fork_is_kept_and_reported() {
+    let fixture = fixture();
+    let Fixture {
+        database, project, ..
+    } = &fixture;
+    let (parent, _) = with_history(database, project);
+    let (lone, _) = with_history(database, project);
+    fork(database, project, &parent);
+    archive(database, project, &parent);
+    archive(database, project, &lone);
+
+    let outcome = database.clean_up(project, CleanupScope::Archived).unwrap();
+
+    assert_eq!(outcome.deleted, 1);
+    let refusal = outcome.refusal.expect("the kept parent is reported");
+    assert!(refusal.to_string().contains("open forks"), "{refusal}");
+    assert_eq!(
+        count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", &lone),
+        0
+    );
+    assert_eq!(
+        count(database, "SELECT COUNT(*) FROM chats WHERE id=?1", &parent),
+        1
+    );
+    fixture.finish();
+}
