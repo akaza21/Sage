@@ -1,0 +1,112 @@
+{
+  "harness": "claude",
+  "scenarios": {
+    "commands": {
+      "outcome": "completed",
+      "firstFrameMs": 2794,
+      "frames": 4,
+      "bytes": 35460,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "shell": {
+      "outcome": "completed",
+      "firstFrameMs": 2010,
+      "frames": 131,
+      "bytes": 72320,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "edit": {
+      "outcome": "completed",
+      "firstFrameMs": 2857,
+      "frames": 57,
+      "bytes": 35090,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "image": {
+      "outcome": "completed",
+      "firstFrameMs": 1757,
+      "frames": 16,
+      "bytes": 13345,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "subagent": {
+      "outcome": "completed",
+      "firstFrameMs": 2432,
+      "frames": 49,
+      "bytes": 31805,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "plan-approve": {
+      "outcome": "completed",
+      "firstFrameMs": 2408,
+      "frames": 169,
+      "bytes": 67771,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "plan-decline": {
+      "outcome": "completed",
+      "firstFrameMs": 1796,
+      "frames": 128,
+      "bytes": 41289,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "auth-fail": {
+      "outcome": "completed",
+      "firstFrameMs": 2343,
+      "frames": 9,
+      "bytes": 25119,
+      "exit": {
+        "code": 1,
+        "signal": null
+      },
+      "stderrTail": ""
+    }
+  },
+  "version": "2.1.332 (Claude Code)",
+  "gaps": {},
+  "args": [
+    "--output-format",
+    "stream-json",
+    "--input-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--permission-prompt-tool",
+    "stdio",
+    "--permission-mode",
+    "default",
+    "--setting-sources",
+    "user,project,local",
+    "--session-id",
+    "--model",
+    "haiku"
+  ]
+}
