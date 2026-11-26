@@ -54,7 +54,13 @@ pub(crate) async fn clean_up(
     expected_transition_epoch: u64,
 ) -> ProjectTransitionResult {
     // Admission runs before any runtime is released, so a refused cleanup
-    // leaves every live Chat alone; the purge admits each Chat again.
+    // leaves every live Chat alone. Idle runtimes are parked next, and the
+    // purge then refuses any that did not settle.
+    // A stale request releases nothing.
+    let epoch = *state.project_transitions.lock().await;
+    if epoch != expected_transition_epoch {
+        return failed_transition(epoch, "project changed before the requested cleanup");
+    }
     let admitted = state
         .database
         .admit_cleanup(&project_id, scope)

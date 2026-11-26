@@ -230,7 +230,7 @@ fn removing_a_project_deletes_its_chats_roots_and_activity_only() {
 }
 
 #[test]
-fn removing_a_project_with_an_unsettled_runtime_changes_nothing() {
+fn an_idle_runtime_is_admitted_for_release_but_refuses_an_unsettled_purge() {
     let fixture = fixture();
     let Fixture {
         database, project, ..
@@ -250,6 +250,11 @@ fn removing_a_project_with_an_unsettled_runtime_changes_nothing() {
         project,
     );
 
+    // An idle live runtime does not block admission, so the command can
+    // park it; one still live at purge time refuses the removal.
+    database
+        .admit_cleanup(project, CleanupScope::Project)
+        .unwrap();
     let error = database
         .clean_up(project, CleanupScope::Project)
         .unwrap_err();

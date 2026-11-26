@@ -31,7 +31,8 @@ const ARCHIVED: &str = "NOT EXISTS(SELECT 1 FROM chat_tabs t WHERE t.chat_id=c.i
     AND NOT EXISTS(SELECT 1 FROM workbench_tabs w WHERE w.project_id=c.project_id AND w.id=c.id)";
 
 pub(crate) trait DataCleanupStore {
-    /// Refuses before anything is released or deleted.
+    /// Refuses before any runtime is released: a missing or internal
+    /// Project, a pending Trash recovery, or a running Turn.
     fn admit_cleanup(&self, project: &str, scope: CleanupScope) -> AppResult<()>;
     /// Whether `chat` is still one `scope` removes; runtime release asks.
     fn still_in_scope(&self, project: &str, chat: &str, scope: CleanupScope) -> bool;
@@ -58,7 +59,7 @@ pub(crate) struct CleanupOutcome {
 impl DataCleanupStore for Database {
     fn admit_cleanup(&self, project: &str, scope: CleanupScope) -> AppResult<()> {
         validate_chat_identifier("Project ID", project)?;
-        admit_project(&self.connection(), project, scope)
+        admit_project(&self.connection(), project, scope, false)
     }
 
     fn still_in_scope(&self, project: &str, chat: &str, scope: CleanupScope) -> bool {
@@ -89,7 +90,8 @@ impl DataCleanupStore for Database {
     }
 
     fn clean_up(&self, project: &str, scope: CleanupScope) -> AppResult<CleanupOutcome> {
-        self.admit_cleanup(project, scope)?;
+        validate_chat_identifier("Project ID", project)?;
+        admit_project(&self.connection(), project, scope, true)?;
         let mut deleted = 0;
         let stopped = (|| -> AppResult<()> {
             loop {
@@ -106,6 +108,11 @@ impl DataCleanupStore for Database {
             }
             if scope == CleanupScope::Project {
                 forget_project(self, project)?;
+            } else if !chat_page(&self.connection(), project, scope, false, 1)?.is_empty() {
+                // Only Chats with an attached fork remain.
+                return Err(AppError::InvalidRequest(
+                    "Archived chats with open forks were kept; delete the forks first".into(),
+                ));
             }
             Ok(())
         })()
@@ -152,7 +159,14 @@ fn chat_page(
 
 /// Refuses before anything is deleted: only a user Project is removed, and
 /// nothing in scope may be running a Turn or holding an unsettled runtime.
-fn admit_project(connection: &Connection, project: &str, scope: CleanupScope) -> AppResult<()> {
+/// `settled` also refuses live runtimes: false before the command parks
+/// idle runtimes, true once they have had the chance to settle.
+fn admit_project(
+    connection: &Connection,
+    project: &str,
+    scope: CleanupScope,
+    settled: bool,
+) -> AppResult<()> {
     let kind: Option<String> = connection
         .query_row("SELECT kind FROM projects WHERE id=?1", [project], |row| {
             row.get(0)
@@ -187,22 +201,18 @@ fn admit_project(connection: &Connection, project: &str, scope: CleanupScope) ->
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .db()?;
-    let action = if scope == CleanupScope::Project {
-        "removing the Project"
-    } else {
-        "deleting"
+    let refusal = match (scope, running, settled && unsettled) {
+        (CleanupScope::Archived, true, _) => ChatRuntimeRelease::TurnRunning.message("deleting"),
+        (CleanupScope::Archived, _, true) => ChatRuntimeRelease::Unsettled.message("deleting"),
+        (CleanupScope::Project, true, _) => {
+            "Stop the running turns in this Project before removing it".into()
+        }
+        (CleanupScope::Project, _, true) => {
+            "This Project's agents are still shutting down; try removing it again".into()
+        }
+        _ => return Ok(()),
     };
-    if running {
-        return Err(AppError::InvalidRequest(
-            ChatRuntimeRelease::TurnRunning.message(action),
-        ));
-    }
-    if unsettled {
-        return Err(AppError::InvalidRequest(
-            ChatRuntimeRelease::Unsettled.message(action),
-        ));
-    }
-    Ok(())
+    Err(AppError::InvalidRequest(refusal))
 }
 
 /// Runs before the purge and again inside its transaction.
