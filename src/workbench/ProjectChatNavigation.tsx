@@ -14,7 +14,7 @@ import {
 } from "../features/chat/acp/chatReadMarks";
 import {
   sessionRailFinished,
-  sessionRailPill,
+  sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import { lazyParts } from "../features/chat/lazyParts";
@@ -222,10 +222,13 @@ export function ProjectChatNavigation({
                 });
             });
         };
-        const approvalLabel = sessionRailPill(
-          awaitingApprovalIds.has(tab.id),
-          attention,
-        );
+        // A question needs input; an approval, mounted or remembered, awaits one.
+        const approvalLabel =
+          attention === "input"
+            ? "Needs input"
+            : awaitingApprovalIds.has(tab.id) || attention
+              ? sessionRailStatusLabel(tab.status, true)
+              : "";
         return (
           <Fragment key={tab.id}>
             <div

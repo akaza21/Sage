@@ -2,14 +2,13 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { normalizeProjectionPage } from "../app/acpProjectionMerge";
 import { useWorkbenchStore } from "../app/store";
-import type { AcpChatPage, AcpChatStatus } from "../domain/acp";
+import type { AcpChatPage } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { createBrowserChatTab } from "../services/browserChat";
 import {
   resetAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
-import { sessionRailPill } from "../features/chat/acp/sessionRail";
 import { compareAgentRailViewChats } from "./agentRailStatusView";
 import {
   mirrorAgentRailStatus,
@@ -142,29 +141,21 @@ function mirrorAgentRailProjection(page: AcpChatPage) {
   });
 }
 
-const settled = {
-  state: "completed" as const,
-  updatedAt: 5,
-  createdAt: 2,
-  terminalAt: 5,
-};
-function mirrorLatest(latestTurn: AcpChatStatus["latestTurn"]) {
+it("keeps a question's Needs input flag without a mounted chat", () => {
+  seed();
+  const { result } = renderHook(() => useAgentRailInteractions());
   act(() =>
     mirrorAgentRailStatus({
       projectId: "project-1" as never,
       chatId: "chat-1" as never,
       title: "Chat",
-      latestTurn,
+      latestTurn: {
+        state: "waitingUser",
+        updatedAt: 5,
+        createdAt: 2,
+        terminalAt: null,
+      },
     }),
   );
-  return useWorkbenchStore.getState().tabs[0];
-}
-
-it("keeps a question's Needs input pill without a mounted chat", () => {
-  seed();
-  const { result } = renderHook(() => useAgentRailInteractions());
-  mirrorLatest({ ...settled, state: "waitingUser", terminalAt: null });
-  expect(sessionRailPill(false, result.current.attention.get("chat-1"))).toBe(
-    "Needs input",
-  );
+  expect(result.current.attention.get("chat-1")).toBe("input");
 });
