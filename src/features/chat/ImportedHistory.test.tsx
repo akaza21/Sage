@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 
 const { invokeNative } = vi.hoisted(() => ({ invokeNative: vi.fn() }));
 vi.mock("../../ports/nativeInvoke", async (original) => ({
@@ -12,6 +12,15 @@ import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import { ImportedHistory } from "./ImportedHistory";
 
+// In the app the transcript chunks have loaded long before an imported chat
+// opens. Load them once here, so the findBy budget is not spent on a cold
+// module transform (several seconds on Windows).
+beforeAll(async () => {
+  await Promise.all([
+    import("./acp/SessionNoticeStrip"),
+    import("./acp/AcpChatPresentation"),
+  ]);
+});
 afterEach(cleanup);
 
 it("renders the imported Turns as inherited Turns, an unfinished one stopped", async () => {
