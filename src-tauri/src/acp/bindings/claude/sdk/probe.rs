@@ -459,7 +459,10 @@ mod tests {
         let other = AdmittedClaudeSdkBinding::for_test_with_digest([8; 32]);
         assert!(!listing_failed(&other), "only for the build that failed");
         // A build that answered with no models offers none; that is not a failure to list.
-        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Failed(Instant::now(), true)));
+        *lock(&PROBED) = Some((
+            binding.binding_digest(),
+            Probed::Failed(Instant::now(), true),
+        ));
         assert!(!listing_failed(&binding));
     }
 

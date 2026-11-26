@@ -197,9 +197,13 @@ mod model_lookup_tests {
 
     #[tokio::test]
     async fn model_lookup_returns_the_two_simulator_models() {
-        let actual = list_harness_models_async(&HarnessCatalog::default(), "sage-simulator", MODEL_LISTING_DEADLINE)
-            .await
-            .unwrap();
+        let actual = list_harness_models_async(
+            &HarnessCatalog::default(),
+            "sage-simulator",
+            MODEL_LISTING_DEADLINE,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             serde_json::to_value(actual).unwrap(),
             expected_simulator_models()
@@ -289,7 +293,12 @@ mod model_lookup_tests {
                         tokio::task::yield_now().await;
                         progress_tx.send(()).unwrap();
                     });
-                    let models = list_harness_models_async(&lookup, "sage-simulator", MODEL_LISTING_DEADLINE).await;
+                    let models = list_harness_models_async(
+                        &lookup,
+                        "sage-simulator",
+                        MODEL_LISTING_DEADLINE,
+                    )
+                    .await;
                     unrelated.await.unwrap();
                     models
                 })

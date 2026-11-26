@@ -124,9 +124,8 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
 const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(30);
 
 pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
-    let cleanup = Instant::now()
-        + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc)
-        + LAUNCH_ALLOWANCE;
+    let cleanup =
+        Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc) + LAUNCH_ALLOWANCE;
     let reserve = Duration::from_millis(
         LIMITS.deadlines_ms.tree_termination.saturating_mul(2)
             + LIMITS.deadlines_ms.wal_convergence,
