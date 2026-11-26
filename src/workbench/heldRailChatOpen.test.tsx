@@ -440,7 +440,10 @@ it("drops a held notification once the notification listener unmounts", async ()
   held.release();
   await opened(first.project, first.chat.id);
   await idle();
-  expect(store()).toMatchObject({ project: { id: first.project }, error: null });
+  expect(store()).toMatchObject({
+    project: { id: first.project },
+    error: null,
+  });
   expect(
     switches.mock.calls.map(([request]) => request.targetProjectId),
   ).toEqual([first.project]);
