@@ -54,7 +54,12 @@ type ModifierCode = keyof typeof MODIFIERS;
  * each as f (forbidden), a (allowed) or r (required): "rfa" requires Ctrl or
  * Cmd, forbids Shift and allows Alt.
  */
-export function keymapChord<Extra extends object = object>(
+/** What a binding may add to its chord: Mac overrides, a reservation or copy. */
+type KeymapExtra = Partial<
+  Pick<KeymapBinding, "apple" | "appleControl" | "reservedFor">
+> & { description?: string };
+
+export function keymapChord<Extra extends KeymapExtra = KeymapExtra>(
   id: string,
   label: string,
   scope: KeymapScope,
