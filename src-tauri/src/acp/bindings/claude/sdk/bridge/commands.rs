@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 /// Rows can share a name; `/name` runs the first built-in row that carries it, else the first
 /// row, so only that row is listed.
-pub(super) fn commands(reply: &Value) -> Value {
+pub(in crate::acp::bindings::claude::sdk) fn commands(reply: &Value) -> Value {
     let rows = reply
         .get("commands")
         .and_then(Value::as_array)

@@ -187,6 +187,7 @@ impl AppState {
         }));
         acp.set_commands_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
+            crate::commands::draft_commands::follow_live_catalog(&commands_app, &notice);
             let _ = commands_app.emit("acp-commands-changed-v1", notice);
         }));
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {

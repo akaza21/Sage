@@ -115,7 +115,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         project_commands::persist_project_layout_and_close,
         project_commands::trace_close_stage,
         project_commands::switch_project,
-        commands::list_builtin_commands,
+        commands::draft_commands::list_draft_commands,
         commands::list_harness_models,
         commands::list_harnesses,
         commands::refresh_harnesses,
