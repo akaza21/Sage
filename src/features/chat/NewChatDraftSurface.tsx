@@ -92,7 +92,7 @@ export function NewChatDraftSurface({
   const shownProject = projects.find((item) => item.id === targetId);
   // A remembered harness still being checked takes typing; sending waits.
   const available =
-    harness?.installState === "available" ||
+    !!harness &&
     preferredAvailableHarness(harnesses, draft.harnessId) === harness;
   const choice = effectiveDraftChoice(draft, {
     harnesses,
