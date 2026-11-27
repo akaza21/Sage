@@ -80,16 +80,16 @@ it("holds a remembered harness discovery still checks, and falls back once it fa
     versionChecking = false,
   ) =>
     ({
-    id,
-    name: id,
-    description: "",
-    source: "builtIn",
-    accountModelDiscovery: false,
-    transport: "acp",
-    installState,
-    bindingId: installState === "available" ? `${id}-binding` : null,
-    versionChecking,
-  }) as HarnessDefinition;
+      id,
+      name: id,
+      description: "",
+      source: "builtIn",
+      accountModelDiscovery: false,
+      transport: "acp",
+      installState,
+      bindingId: installState === "available" ? `${id}-binding` : null,
+      versionChecking,
+    }) as HarnessDefinition;
   const fast = harness("fast", "available");
   expect(
     preferredAvailableHarness(
