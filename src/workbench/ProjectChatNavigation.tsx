@@ -14,7 +14,7 @@ import {
 } from "../features/chat/acp/chatReadMarks";
 import {
   sessionRailFinished,
-  sessionRailStatusLabel,
+  sessionRailPill,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import { lazyParts } from "../features/chat/lazyParts";
@@ -200,7 +200,11 @@ export function ProjectChatNavigation({
             readThrough: readMarks.get(tab.id),
           });
         const attention = interactions.attention.get(tab.id);
-        const trailingState = agentRailTrailingState({ status, unread });
+        const trailingState = agentRailTrailingState({
+          status,
+          unread,
+          attention,
+        });
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
           projectTransitioning ||
@@ -222,13 +226,10 @@ export function ProjectChatNavigation({
                 });
             });
         };
-        // A question needs input; an approval, mounted or remembered, awaits one.
-        const approvalLabel =
-          attention === "input"
-            ? "Needs input"
-            : awaitingApprovalIds.has(tab.id) || attention
-              ? sessionRailStatusLabel(tab.status, true)
-              : "";
+        const approvalLabel = sessionRailPill(
+          awaitingApprovalIds.has(tab.id),
+          attention,
+        );
         return (
           <Fragment key={tab.id}>
             <div

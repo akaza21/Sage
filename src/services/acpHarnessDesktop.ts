@@ -21,6 +21,12 @@ type SignInEvidence = readonly [
   state: "signedIn" | "signedOut" | "unavailable" | "refused",
 ];
 export const harnessSignInEvidence = new Map<string, SignInEvidence>();
+const evidenceListeners = new Set<() => void>();
+/** Chats that hold sends after a sign-in failure wake on newer evidence. */
+export function subscribeSignInEvidence(listener: () => void) {
+  evidenceListeners.add(listener);
+  return () => void evidenceListeners.delete(listener);
+}
 export function rememberSignInEvidence(
   bindingId: string | undefined,
   evidenceAt: number | null | undefined,
@@ -39,6 +45,7 @@ export function rememberSignInEvidence(
     if (harnessSignInEvidence.size > 32)
       harnessSignInEvidence.delete(harnessSignInEvidence.keys().next().value!);
     harnessSignInFailures.changed?.();
+    for (const listener of evidenceListeners) listener();
     return true;
   }
 }

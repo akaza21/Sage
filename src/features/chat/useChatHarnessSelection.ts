@@ -1,4 +1,11 @@
-import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useStore } from "zustand";
 
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
@@ -14,6 +21,10 @@ import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
 import { harnessAvailability } from "./harnessAvailability";
+import {
+  harnessSignInEvidence,
+  subscribeSignInEvidence,
+} from "../../services/acpHarnessDesktop";
 import {
   useInheritedComposerModel,
   useInheritedStore,
@@ -151,14 +162,28 @@ export function useChatHarnessSelection(chatId?: string): {
       )?.id ?? null)
     : null;
   const sessionModelId = selectedSession?.modelId ?? null;
-  const discoveryPhase =
-    sessionHarnessId &&
-    sessionHarnessId === selectedHarnessId &&
-    sessionModelId === selectedModelId
-      ? "ready"
-      : chatId !== undefined && globalModels === null
+  // After a sign-in failure, sends wait for newer signed-in evidence or a
+  // newer turn (Retry), instead of being refused again.
+  const latest = page?.turns.at(-1);
+  const refusedAt =
+    latest?.terminalReason?.kind === "authRequired" &&
+    latest.sessionId === selectedSession?.id
+      ? (latest.terminalAt ?? 0)
+      : null;
+  const evidence = useSyncExternalStore(subscribeSignInEvidence, () =>
+    harnessSignInEvidence.get(selectedSession?.bindingId ?? ""),
+  );
+  const discoveryPhase: HarnessDiscoveryPhase =
+    refusedAt !== null &&
+    !(evidence?.[1] === "signedIn" && evidence[0] > refusedAt)
+      ? "signInRequired"
+      : sessionHarnessId &&
+          sessionHarnessId === selectedHarnessId &&
+          sessionModelId === selectedModelId
         ? "ready"
-        : harnessDiscoveryPhase;
+        : chatId !== undefined && globalModels === null
+          ? "ready"
+          : harnessDiscoveryPhase;
   useLayoutEffect(() => {
     // Materialize pre-session defaults through the same owned chat selection
     // as a draft's explicit pick, so rendering and native start agree.
