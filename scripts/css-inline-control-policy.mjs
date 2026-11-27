@@ -11,8 +11,9 @@ function stripComments(source) {
 const ABSOLUTE = /(?:^|[;{\s])position\s*:\s*absolute\b/iu;
 // An inline-axis offset of a whole containing block (`100%`, `-100%`,
 // `calc(100% + …)`) puts the box beside its parent, outside the parent's box;
-// `calc(100% - 8px)` stays inside it. Shorthands (`inset`, `inset-inline`)
-// and offsets split across rules are not read.
+// `calc(100% - 8px)` stays inside it. Only the `calc(±100% + …)` form is
+// read, not `calc(-100% - …)`, shorthands (`inset`, `inset-inline`) or
+// offsets split across rules.
 const BESIDE_PARENT =
   /(?:^|[;{\s])(left|right|inset-inline-start|inset-inline-end)\s*:\s*(?:calc\(\s*-?100%\s*\+|-?100%\s*(?:[;!]|$))/iu;
 
