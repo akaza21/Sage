@@ -60,6 +60,7 @@ fn deliver_window(
                 super::super::kind_for_action(action).unwrap(),
             ),
             Relevance::Resync => ("lost-notices".into(), "resync"),
+            Relevance::GitRefs => (".git".into(), "changed"),
             Relevance::Drop => continue,
         };
         let notice = WorkspaceNotifyNotice {
