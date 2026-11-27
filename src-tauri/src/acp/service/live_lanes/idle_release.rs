@@ -12,7 +12,10 @@ use sage_acp_protocol::{contract::SageChatId, scheduler::RuntimeOwner};
 use super::{AcpService, ActivationClaim, explicit_close_deadline};
 
 const HIDDEN_IDLE: Duration = Duration::from_secs(2 * 60);
-const SHOWN_IDLE: Duration = Duration::from_secs(15 * 60);
+/// The Chat on screen keeps its runtime this long after its last turn, so a
+/// follow-up within a few minutes needs no restart; after that the harness
+/// process (often hundreds of MB) is released and the next prompt starts it.
+const SHOWN_IDLE: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, Default)]
 pub(crate) struct IdleRelease {
