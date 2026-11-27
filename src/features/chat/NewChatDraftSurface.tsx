@@ -226,9 +226,12 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
           disabledReason={
-            available
-              ? discoveryError
-              : "Choose an available harness before sending."
+            // The notice above already shows a discovery error with Retry.
+            !available
+              ? "Choose an available harness before sending."
+              : draft.error || unconfirmed
+                ? discoveryError
+                : null
           }
           project={shownProject}
           newChat
