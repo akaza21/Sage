@@ -67,6 +67,7 @@ pub(crate) fn discover_installed_harness_presence() -> Vec<InstalledHarness> {
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn enrich_installed_harness_versions(
     present: &[InstalledHarness],
     cache: &DisplayVersionCache,

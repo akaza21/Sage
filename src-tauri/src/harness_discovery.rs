@@ -31,8 +31,10 @@ pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, bundled_claude_code_version,
     discover_claude_launch, sha256_file,
 };
+#[cfg(test)]
+pub(crate) use display_versions::enrich_installed_harness_versions;
 pub(crate) use display_versions::{
-    DisplayVersionCache, discover_installed_harness_presence, enrich_installed_harness_versions,
+    DisplayVersionCache, discover_installed_harness_presence,
     enrich_installed_harness_versions_each,
 };
 #[cfg(all(test, windows))]

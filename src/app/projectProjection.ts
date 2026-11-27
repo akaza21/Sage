@@ -111,7 +111,11 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     resourceTrashError: null,
     resourceTrashNotice: null,
     requestGenerations: {},
-    models: [],
+    // Shown until the harness's live listing answers; never sent with.
+    models:
+      (selectedHarnessId === snapshot.selectedHarnessId &&
+        snapshot.rememberedModels) ||
+      [],
     harnessDiscoveryPhase: "idle" as const,
     harnessDiscoveryError: null,
     harnessAccount: null,

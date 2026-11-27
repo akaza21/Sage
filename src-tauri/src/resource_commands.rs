@@ -23,10 +23,20 @@ use sage_domain::{
 };
 use sage_workspace::Workspace;
 
+/// The snapshot, with the listing its selected harness gave when last asked:
+/// a new chat shows it at once while the live listing answers, and never
+/// sends with it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BootstrapReply {
+    #[serde(flatten)]
+    snapshot: BootstrapSnapshot,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    remembered_models: Vec<sage_domain::harness::ModelOption>,
+}
+
 #[tauri::command]
-pub async fn get_bootstrap_snapshot(
-    state: State<'_, AppState>,
-) -> Result<BootstrapSnapshot, String> {
+pub async fn get_bootstrap_snapshot(state: State<'_, AppState>) -> Result<BootstrapReply, String> {
     let transition_epoch = *state.project_transitions.lock().await;
     let database = state.database.clone();
     let harnesses = state.harnesses.clone();
@@ -42,7 +52,15 @@ pub async fn get_bootstrap_snapshot(
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())?;
-    Ok(snapshot)
+    let remembered_models = snapshot
+        .selected_harness_id
+        .as_deref()
+        .and_then(|id| state.settings.remembered_harness_models(id).ok())
+        .unwrap_or_default();
+    Ok(BootstrapReply {
+        snapshot,
+        remembered_models,
+    })
 }
 
 pub(crate) async fn build_bootstrap_snapshot(

@@ -117,7 +117,7 @@ export function ChatHarnessControls({
   const drafting = !!(draftPickers || draftChatId);
   // Remembered models name the choice while the live listing is asked.
   const modelsLoading =
-    drafting && (!knownModels || (modelsPending && !models.length));
+    drafting && (!knownModels || (!!modelsPending && !models.length));
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||

@@ -38,22 +38,13 @@ pub fn list_builtin_commands(state: State<'_, AppState>, harness_id: String) -> 
 /// A model probe can also learn the start mode the harness's own settings name, which moves its
 /// default access; the catalog is sent again when that changes what the WebView was told.
 ///
-/// With `remembered`, it answers at once from SQLite with the listing kept
-/// from the last time it was asked, and starts nothing; a new chat shows it
-/// until the live listing answers, and never sends with it.
+/// A live listing is kept, so the next start shows it before asking again.
 #[tauri::command]
 pub async fn list_harness_models(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     harness_id: String,
-    remembered: Option<bool>,
 ) -> Result<Vec<ModelOption>, String> {
-    if remembered == Some(true) {
-        return state
-            .settings
-            .remembered_harness_models(&harness_id)
-            .map_err(|error| error.to_string());
-    }
     let access = |harnesses: &HarnessCatalog| {
         let definition = harnesses
             .definitions()
@@ -65,7 +56,6 @@ pub async fn list_harness_models(
     let models =
         list_harness_models_async(&state.harnesses, &harness_id, MODEL_LISTING_DEADLINE).await;
     if let Ok(models) = &models {
-        // Shown at the next start while this listing is asked for again.
         let _ = state.settings.remember_harness_models(
             &harness_id,
             models,

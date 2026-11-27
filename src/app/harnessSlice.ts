@@ -151,12 +151,16 @@ export const createHarnessSlice: StateCreator<
       ? null
       : harnessModelIdentity(harness);
     const cached = cachedHarnessModels(identity);
+    // The listing kept from the last start stays shown while this one is
+    // asked; the phase stays unsettled, so nothing sends with it.
+    const shown =
+      cached ?? (harnessId === get().selectedHarnessId ? get().models : []);
     set({
       selectedHarnessId: harnessId,
       harnessAccountReadStartedAt: null,
       ...(!refresh && {
-        models: cached ?? [],
-        selectedModelId: preferredModelId(cached, previousModelId),
+        models: shown,
+        selectedModelId: preferredModelId(shown, previousModelId),
       }),
       harnessRequestGeneration: requestGeneration,
       harnessDiscoveryPhase: cached
@@ -167,20 +171,6 @@ export const createHarnessSlice: StateCreator<
       harnessDiscoveryError: null,
       harnessAccount: null,
     });
-    // Last start's listing shows at once; the phase stays unsettled, so
-    // nothing sends with it before the live listing below confirms it.
-    if (!cached && !refresh)
-      desktop.listHarnessModels(harnessId, true).then((models) => {
-        if (
-          models.length &&
-          !get().models.length &&
-          current(generation, projectId, requestGeneration, harnessId)
-        )
-          set({
-            models,
-            selectedModelId: preferredModelId(models, previousModelId),
-          });
-      }, () => undefined);
     if (detecting) return;
     if (cached) {
       revalidate(harnessId, identity, generation, projectId, requestGeneration);
