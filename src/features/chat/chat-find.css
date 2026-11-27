@@ -33,7 +33,7 @@
   outline: none;
   background: transparent;
   color: var(--agent-find-text);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .chat-find__input input::-webkit-search-cancel-button {
   display: none;
@@ -68,13 +68,13 @@
 }
 .chat-find__results [role="status"] {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .chat-find__scope {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--agent-shell-divider);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 .chat-find__spinner {

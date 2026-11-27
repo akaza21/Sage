@@ -68,6 +68,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "ci-rust-phase.node-test.mjs",
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
+  "css-scale-policy.node-test.mjs",
   "css-token-policy.node-test.mjs",
   "css-inline-control-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
@@ -408,6 +409,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "ui-test-port.node-test.mjs",
     reason:
       "Portable VS-2 checks of shared UI test port resolution and validation; no Vite, browser, or subprocess launch.",
+  },
+  {
+    file: "css-scale-policy.node-test.mjs",
+    reason:
+      "Portable checks that font sizes use the type scale tokens and @media widths use the shared window breakpoints; reads in-memory sources only.",
   },
   {
     file: "css-token-policy.node-test.mjs",

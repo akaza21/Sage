@@ -51,7 +51,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .turn-navigator__preview p {
   display: -webkit-box;
@@ -60,7 +60,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   white-space: pre-line;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   line-height: 18px;
   color: var(--agent-nav-preview-muted);
 }

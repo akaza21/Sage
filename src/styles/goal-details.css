@@ -27,7 +27,7 @@
 .chat-goal-editor {
   padding: var(--space-3);
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .chat-goal-editor label {
   display: block;

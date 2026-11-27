@@ -44,7 +44,7 @@
 .agent-task-header__agent-glyph {
   margin-left: -2px;
   color: var(--agent-subagent-violet);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   line-height: 1;
 }
 
