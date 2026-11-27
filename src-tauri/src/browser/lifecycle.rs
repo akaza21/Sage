@@ -267,7 +267,11 @@ pub(super) async fn open_browser_tab_tracked(
     hide_or_close(
         &state.tabs,
         &label,
-        |webview| webview.hide().map_err(|error| error.to_string()),
+        |webview| {
+            // A tab opened in the background, as an agent's, starts lean.
+            super::memory_target::keep_less(webview, true);
+            webview.hide().map_err(|error| error.to_string())
+        },
         |webview| close_webview_on_main_thread(&app, &state.tabs, webview, false),
     )
     .await?;
