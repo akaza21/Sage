@@ -9,6 +9,7 @@ import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
 import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
 import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
+import { cssInlineControlPolicyErrors } from "./css-inline-control-policy.mjs";
 import {
   cssHighlightPolicyErrors,
   discoverSourceFilesWithCssBound,
@@ -1032,6 +1033,12 @@ for (const error of await cssHighlightPolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 for (const error of await cssHygienePolicyErrors(root, productionCssFiles)) {
+  fail(error);
+}
+for (const error of await cssInlineControlPolicyErrors(
+  root,
+  productionCssFiles,
+)) {
   fail(error);
 }
 

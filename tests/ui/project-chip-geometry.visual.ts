@@ -567,26 +567,22 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   expect(await branchLeft()).toBe(idleBranch);
   const clearBox = (await clear.boundingBox())!;
   expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(idleBranch);
-  // The hover fill is one pill around the name and the clear button.
-  // The chip paints the fill and a same-coloured shadow shifted by its
-  // offset; their union is the pill.
+  // The hover fill is one pill: the chip's own filled box holds the name
+  // and the clear button, with nothing painted outside it.
   const pill = await strip.locator(".project-scope").evaluate((chip) => {
     const box = chip.getBoundingClientRect();
     const style = getComputedStyle(chip);
-    const shadow = /^(rgba?\([^)]*\)) (-?[\d.]+)px (-?[\d.]+)px/.exec(
-      style.boxShadow,
-    );
     return {
       left: box.left,
-      right: box.right + Number(shadow?.[2]),
+      right: box.right,
       top: box.top,
-      bottom: box.bottom + Number(shadow?.[3]),
+      bottom: box.bottom,
       background: style.backgroundColor,
-      shadow: shadow?.[1],
+      shadow: style.boxShadow,
     };
   });
   expect(pill.background).not.toBe("rgba(0, 0, 0, 0)");
-  expect(pill.shadow).toBe(pill.background);
+  expect(pill.shadow).toBe("none");
   const projectBox = (await project.boundingBox())!;
   for (const box of [clearBox, projectBox]) {
     expect(box.x).toBeGreaterThanOrEqual(pill.left);

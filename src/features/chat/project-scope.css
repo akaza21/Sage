@@ -8,9 +8,7 @@
   max-width: 100%;
   flex: 0 1 auto;
   align-items: center;
-  gap: var(--space-1);
   white-space: nowrap;
-  position: relative;
 }
 
 .project-scope__picker {
@@ -21,19 +19,24 @@
 .project-scope--inline {
   --picker-trigger-hover-color: var(--color-text-emphasis);
   --picker-trigger-hover-fill: var(--composer-control-hover);
-  gap: var(--composer-location-icon-gap);
 }
 
-/* Hovered, the strip chip is one pill: its fill, the trigger's own colour,
-   reaches by a shadow over the clear button just after the name. */
-.project-scope--inline:has(.project-scope__clear):hover {
+/* The clear button is the chip's last flex item, so the hovered chip is one
+   pill around the name and the button. Before another chip, the chip lends
+   the button's width back to the row gap: idle it keeps no room after the
+   name, and showing the button moves nothing. */
+.project-scope--inline:has(> .project-scope__clear):not(:last-child) {
+  margin-inline-end: calc(-1 * var(--space-4));
+}
+
+.project-scope--inline:has(> .project-scope__clear):hover {
   border-radius: var(--radius-picker-field);
   background: var(--composer-control-hover);
-  box-shadow: var(--space-4) 0 var(--composer-control-hover);
 }
 
 /* The home caption is as wide as its name and centred, so its clear button
-   lands next to the name rather than at the edge of the row. */
+   lands next to the name rather than at the edge of the row. A start pad as
+   wide as the button keeps the name itself centred. */
 .project-scope--caption {
   --picker-field-padding: 0;
   --picker-field-min-height: 0;
@@ -43,6 +46,10 @@
   display: flex;
   width: fit-content;
   margin-inline: auto;
+}
+
+.project-scope--caption:has(> .project-scope__clear) {
+  padding-inline-start: var(--space-4);
 }
 
 .project-scope__caption {
@@ -95,15 +102,11 @@
 
 .project-scope__clear {
   display: inline-flex;
+  flex: none;
+  align-self: stretch;
   align-items: center;
   justify-content: center;
-  /* Placed just after the name, outside the chip's box, so it neither leaves
-     a hole when hidden nor moves anything when shown (the next strip chip, or
-     the centred home caption). Only those two variants offer it. */
-  position: absolute;
-  inset-inline-start: 100%;
   width: var(--space-4);
-  height: 20px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
