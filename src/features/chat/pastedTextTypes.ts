@@ -1,4 +1,15 @@
-import type { PromptPick } from "../../ports/promptAttachments";
+import type {
+  PromptFileOwner,
+  PromptPick,
+  StagedPromptPick,
+} from "../../ports/promptAttachments";
+
+/** Attaches a pick's images, all or none, for the owner native stored them
+ * for; the count attached. */
+export type PickedImages = (
+  pick: StagedPromptPick,
+  owner: PromptFileOwner,
+) => Promise<number>;
 
 export interface StagedSummary {
   /** The batch revision the next send names; null when nothing is staged. */
@@ -16,7 +27,12 @@ export interface HeldPaste {
 // Notices keep at most a size, a lower bound in UTF-8 bytes.
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
-  | { kind: "pick"; pick: PromptPick }
+  | {
+      kind: "pick";
+      pick: PromptPick;
+      /** Set when the harness takes images. */
+      images?: PickedImages;
+    }
   | { kind: "overLimit"; bytes: number }
   | { kind: "pending" }
   | { kind: "edit"; bytes: number };

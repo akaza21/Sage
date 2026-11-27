@@ -15,7 +15,6 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64",
 );
-const png = (name: string) => ({ name, mimeType: "image/png", buffer: PNG });
 
 interface Captured {
   creates: number;
@@ -88,9 +87,15 @@ async function attach(
   ...names: string[]
 ) {
   await plus.click();
-  const chooser = page.waitForEvent("filechooser");
-  await menu.getByRole("menuitem", { name: "Add images" }).click();
-  await (await chooser).setFiles(names.map(png));
+  await page.evaluate((picked) => {
+    (window as never as { draftPlus: { picks: string[] } }).draftPlus.picks =
+      picked;
+  }, names);
+  await menu.getByRole("menuitem", { name: "Attach" }).click();
+  await page
+    .getByRole("menu", { name: "Attach" })
+    .getByRole("menuitem", { name: "Files…" })
+    .click();
   await expect(chips.getByRole("listitem")).toHaveCount(names.length);
 }
 
@@ -103,9 +108,7 @@ test("the new-chat draft's + menu offers only draft-safe sections", async ({
     "Add to message",
     "Model and access",
   ]);
-  await expect(
-    menu.getByRole("menuitem", { name: "Add images" }),
-  ).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Attach" })).toBeVisible();
   await expect(
     menu.getByRole("menuitemcheckbox", { name: "Plan mode" }),
   ).toBeVisible();
@@ -230,7 +233,7 @@ test("a file staged on the draft goes with the first turn once", async ({
   const files = (scope: typeof draft) =>
     scope.getByRole("list", { name: "Attachments for the next message" });
   await plus.click();
-  await menu.getByRole("menuitem", { name: "Files and folders" }).click();
+  await menu.getByRole("menuitem", { name: "Attach" }).click();
   await page
     .getByRole("menu", { name: "Attach" })
     .getByRole("menuitem", { name: "Files…" })

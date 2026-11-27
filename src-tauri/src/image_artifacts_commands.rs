@@ -145,9 +145,14 @@ pub(crate) async fn remove_chat_image(
 pub(crate) struct PreparedUpload {
     project_id: String,
     chat_id: String,
-    media_type: ImageMediaType,
-    bytes: Vec<u8>,
-    label: String,
+    image: PreparedImage,
+}
+
+/// Image bytes within the upload bound, normalised, for no owner yet.
+pub(crate) struct PreparedImage {
+    pub(crate) media_type: ImageMediaType,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) label: String,
 }
 
 /// The whole upload in one call, for tests that need no project lock.
@@ -179,19 +184,36 @@ pub(crate) fn prepare_upload(mut request: UploadChatImageRequest) -> AppResult<P
         .decode(&encoded)
         .map_err(|_| AppError::InvalidRequest("image data is not valid base64".into()))?;
     drop(encoded);
-    let (media_type, bytes) = match normalize_upload(request.media_type, &bytes)? {
+    Ok(PreparedUpload {
+        project_id: request.project_id,
+        chat_id: request.chat_id,
+        image: prepare_image(request.media_type, bytes, request.label)?,
+    })
+}
+
+/// Bounds and normalises raw image bytes; the raw copy is freed once the
+/// normalised one exists. It touches no database.
+pub(crate) fn prepare_image(
+    media_type: ImageMediaType,
+    bytes: Vec<u8>,
+    label: String,
+) -> AppResult<PreparedImage> {
+    if bytes.is_empty() || bytes.len() > sage_core::limits::IMAGE_UPLOAD_BYTES {
+        return Err(AppError::ResourceLimit(
+            "image upload exceeds its bound".into(),
+        ));
+    }
+    let (media_type, bytes) = match normalize_upload(media_type, &bytes)? {
         Some(normalized) => {
             drop(bytes);
             (normalized.media_type, normalized.bytes)
         }
-        None => (request.media_type, bytes),
+        None => (media_type, bytes),
     };
-    Ok(PreparedUpload {
-        project_id: request.project_id,
-        chat_id: request.chat_id,
+    Ok(PreparedImage {
         media_type,
         bytes,
-        label: request.label,
+        label,
     })
 }
 
@@ -200,7 +222,18 @@ pub(crate) fn store_upload(
     database: &Database,
     upload: PreparedUpload,
 ) -> AppResult<ImageAttachedContext> {
-    if database.active_project_id()?.as_deref() != Some(&upload.project_id) {
+    store_image(database, &upload.project_id, &upload.chat_id, &upload.image)
+}
+
+/// Stores a prepared image as a pending artifact of a chat in the active
+/// project.
+pub(crate) fn store_image(
+    database: &Database,
+    project_id: &str,
+    chat_id: &str,
+    image: &PreparedImage,
+) -> AppResult<ImageAttachedContext> {
+    if database.active_project_id()?.as_deref() != Some(project_id) {
         return Err(AppError::InvalidRequest(
             "image project is not active".into(),
         ));
@@ -209,11 +242,11 @@ pub(crate) fn store_upload(
     ingest_image(
         &connection,
         database.image_artifact_root()?,
-        &upload.project_id,
-        &upload.chat_id,
-        upload.media_type,
-        &upload.bytes,
-        &upload.label,
+        project_id,
+        chat_id,
+        image.media_type,
+        &image.bytes,
+        &image.label,
     )
 }
 

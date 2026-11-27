@@ -1110,7 +1110,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     // Any usable binding offers files; outside the desktop app the row says
     // why it cannot attach them instead of acting.
     const files = menu.getByRole("menuitem", {
-      name: "Files and folders",
+      name: "Attach",
       exact: true,
     });
     await expect(files).toHaveAttribute("aria-disabled", "true");

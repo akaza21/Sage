@@ -217,18 +217,19 @@ test("a hung catalog read ends the hold at its deadline", async ({ page }) => {
 test("a built-in command with images sends nothing", async ({ page }) => {
   const opened = await openDraft(page, ["fast"], ["fast"]);
   await opened.plus.click();
-  const chooser = page.waitForEvent("filechooser");
-  await opened.menu.getByRole("menuitem", { name: "Add images" }).click();
-  await (
-    await chooser
-  ).setFiles({
-    name: "shot.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-      "base64",
-    ),
+  await page.evaluate(() => {
+    (window as never as { draftPlus: { picks: string[] } }).draftPlus.picks = [
+      "shot.png",
+    ];
   });
+  await opened.menu.getByRole("menuitem", { name: "Attach" }).click();
+  await page
+    .getByRole("menu", { name: "Attach" })
+    .getByRole("menuitem", { name: "Files…" })
+    .click();
+  await expect(
+    opened.draft.getByRole("list", { name: "Attached context" }),
+  ).toBeVisible();
   await sendFirst(opened, "/fast");
   await expect(
     opened.chat.getByText(

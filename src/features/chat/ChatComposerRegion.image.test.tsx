@@ -88,7 +88,7 @@ function renderComposer(
 async function openAttachMenu() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
   await settleLazyModules();
-  fireEvent.click(screen.getByRole("menuitem", { name: "Files and folders" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Attach" }));
   await settleLazyModules();
 }
 
@@ -245,9 +245,10 @@ describe("composer image input", () => {
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      expect(
-        screen.getByRole("menuitem", { name: "Files and folders" }),
-      ).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByRole("menuitem", { name: "Attach" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
     },
   );
 
@@ -439,9 +440,10 @@ describe("composer image input", () => {
       imageInputDisabledReason: "This harness does not advertise image input.",
     });
     await openAttachMenu();
-    expect(
-      screen.getByRole("menuitem", { name: "Files and folders" }),
-    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "Attach" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByLabelText("Choose images")).toBeNull();
@@ -460,20 +462,19 @@ describe("composer image input", () => {
     renderComposer({ imageInputAvailable: true });
     await openAttachMenu();
     const attach = screen.getByRole("menu", { name: "Attach" });
-    for (const pick of ["Files…", "Folder…"]) {
-      const item = within(attach).getByRole("menuitem", { name: pick });
-      expect(item).toBeDisabled();
-      expect(item).toHaveAttribute(
-        "title",
-        "Attaching files needs the Sage desktop app with an ACP harness.",
-      );
-    }
+    const folder = within(attach).getByRole("menuitem", { name: "Folder…" });
+    expect(folder).toBeDisabled();
+    expect(folder).toHaveAttribute(
+      "title",
+      "Attaching files needs the Sage desktop app with an ACP harness.",
+    );
+    // Files… still picks images.
     expect(
-      within(attach).getByRole("menuitem", { name: "Images…" }),
+      within(attach).getByRole("menuitem", { name: "Files…" }),
     ).toBeEnabled();
   });
 
-  it("accepts image paste and chooser only with capability", () => {
+  it("accepts image paste and chooser only with capability", async () => {
     const { onAddImages } = renderComposer({ imageInputAvailable: true });
     fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [png()] },
@@ -481,6 +482,8 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledWith([
       expect.objectContaining({ name: "sample.png" }),
     ]);
+    // The chooser comes with Attach's menu.
+    await openAttachMenu();
     const chooser = screen.getByLabelText("Choose images") as HTMLInputElement;
     fireEvent.change(chooser, { target: { files: [png()] } });
     expect(onAddImages).toHaveBeenCalledTimes(2);
@@ -546,11 +549,11 @@ describe("composer image input", () => {
 
   it("opens the persistent chooser from Add's attach menu and closes it", async () => {
     renderComposer({ imageInputAvailable: true });
-    const chooser = screen.getByLabelText("Choose images");
-    const choose = vi.spyOn(chooser, "click");
     const trigger = screen.getByRole("button", { name: "Composer options" });
     await openAttachMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Images…" }));
+    const chooser = screen.getByLabelText("Choose images");
+    const choose = vi.spyOn(chooser, "click");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Files…" }));
     expect(choose).toHaveBeenCalledOnce();
     expect(chooser.isConnected).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
@@ -579,7 +582,7 @@ describe("composer image input", () => {
       "notice--info",
     );
     await openAttachMenu();
-    expect(screen.getByRole("menuitem", { name: "Images…" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Files…" })).toBeDisabled();
   });
 
   it("shows an uploaded image thumbnail and removes its context", async () => {

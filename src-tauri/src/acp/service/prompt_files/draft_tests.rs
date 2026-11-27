@@ -1,4 +1,4 @@
-use super::super::{Resource, Selection};
+use super::super::{Resource, Resources, Selection};
 use super::*;
 use crate::chat_lifecycle::create::ChatCreateStore;
 use crate::project_registry::create::ProjectCreateStore;
@@ -60,7 +60,9 @@ impl Fixture {
             name: name.into(),
             bytes: b"context".to_vec(),
         }]));
-        stage_with(&self.state, request, move || Ok(Some(picked))).await
+        stage_with(&self.state, request, move || Ok(Some(picked.into())))
+            .await
+            .map(|staged| staged.and_then(|staged| staged.files))
     }
     async fn hand_off(
         &self,
@@ -190,9 +192,11 @@ fn a_draft_batch_goes_back_only_to_undo_its_own_handoff_and_never_reaches_anothe
             name: "own.txt".into(),
             bytes: b"chat".to_vec(),
         }]));
-        let own = stage_with(&fixture.state, request, move || Ok(Some(picked)))
+        let own = stage_with(&fixture.state, request, move || Ok(Some(picked.into())))
             .await
             .unwrap()
+            .unwrap()
+            .files
             .unwrap();
         assert!(
             fixture
