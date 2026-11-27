@@ -170,12 +170,21 @@ export async function pickFiles(
     if (!result) return;
     // A draft discarded while its picker was open keeps nothing.
     if (staged.draft && draftEnded(staged.chatId)) return;
-    if (result.files) apply(staged, result.files);
-    // Images are files too.
-    const count =
-      (result.files?.files.length ?? 0) + ((await images?.(result)) ?? 0);
+    // Images settle first: stored ones are attached or removed again,
+    // whatever becomes of the file list. Images are files too.
+    let count = 0;
+    let refused = "";
+    try {
+      count = (await images?.(result, target)) ?? 0;
+    } catch (error) {
+      refused = failure(error, "The images could not be attached.");
+    }
+    if (result.files) {
+      apply(staged, result.files);
+      count += result.files.files.length;
+    }
     announce(
-      `${count} ${count === 1 ? "file" : "files"} attached to the next message.`,
+      `${count ? `${count} ${count === 1 ? "file" : "files"} attached to the next message. ` : ""}${refused}`.trim(),
     );
   } catch (error) {
     await reconcile(staged);

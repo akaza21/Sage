@@ -371,6 +371,72 @@ describe("composer attach from the + menu", () => {
     ).toHaveTextContent("1 file attached to the next message.");
   });
 
+  it("removes every picked image again when they would put the chat over 4", async () => {
+    withSession(true);
+    const image = (index: number) => ({
+      kind: "image" as const,
+      artifactId: `11111111-1111-4111-8111-11111111111${index}`,
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 68,
+      sha256: "a".repeat(64),
+      label: `shot-${index}.png`,
+    });
+    const held = [0, 1, 2].map(image);
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files"
+        ? { files: null, images: [image(3), image(4)] }
+        : null,
+    );
+    const attach = vi.fn(() => true);
+    useWorkbenchStore.setState({
+      chatUiById: { "chat-a": { attachedContext: held } },
+      attachChatContext: attach,
+    } as never);
+    renderComposer({
+      imageInputAvailable: true,
+      onAddImages: vi.fn(),
+      attachedContext: held,
+    });
+    await pick("Files…");
+    await settleLazyModules();
+    expect(attach).not.toHaveBeenCalled();
+    const removed = native.mock.calls
+      .filter(([command]) => command === "remove_chat_image")
+      .map(([, { request }]) => request.artifactId);
+    expect(removed).toEqual([image(3).artifactId, image(4).artifactId]);
+    expect(
+      document.querySelector("#disabled-reason-paste [aria-live=polite]"),
+    ).toHaveTextContent("A message can include at most 4 images.");
+  });
+
+  it("stages picked images as files once the chat already holds 4", async () => {
+    withSession(true);
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files" ? picked("r1", ["shot.png"]) : null,
+    );
+    const held = [0, 1, 2, 3].map((index) => ({
+      kind: "image" as const,
+      artifactId: `00000000-0000-4000-8000-00000000000${index}`,
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      sha256: "a".repeat(64),
+      label: `image-${index}.png`,
+    }));
+    renderComposer({
+      imageInputAvailable: true,
+      onAddImages: vi.fn(),
+      attachedContext: held,
+    });
+    await pick("Files…");
+    expect(native).toHaveBeenCalledWith("stage_prompt_files", {
+      request: { owner, pick: "files", images: false, expectedRevision: null },
+    });
+  });
+
   it("picks images only through Files… where the harness takes images but no files", async () => {
     withSession(false);
     native.mockResolvedValue(null);

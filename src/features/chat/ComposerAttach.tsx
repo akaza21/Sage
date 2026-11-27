@@ -98,7 +98,13 @@ export function ComposerAttach({
                   close();
                   if (imageOnly) chooser.current?.click();
                   else
-                    onPick(pick, images && pickedImages(chatId, images.accept));
+                    onPick(
+                      pick,
+                      // Full, or busy uploading: picked images stay files.
+                      images && !images.disabled
+                        ? pickedImages(chatId, images.accept)
+                        : undefined,
+                    );
                 }}
               >
                 {label}

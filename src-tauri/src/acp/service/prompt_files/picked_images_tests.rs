@@ -39,8 +39,16 @@ impl Fixture {
         }
     }
     async fn pick(&self, owner: serde_json::Value, images: bool) -> StagedPick {
+        self.pick_at(owner, images, None).await.unwrap().unwrap()
+    }
+    async fn pick_at(
+        &self,
+        owner: serde_json::Value,
+        images: bool,
+        expected: Option<&str>,
+    ) -> Result<Option<StagedPick>, String> {
         let request = serde_json::from_value(serde_json::json!({
-            "owner": owner, "pick": "files", "expectedRevision": null, "images": images,
+            "owner": owner, "pick": "files", "expectedRevision": expected, "images": images,
         }))
         .unwrap();
         let paths = ["shot.png", "notes.txt"].map(|name| self.picks.join(name));
@@ -49,8 +57,15 @@ impl Fixture {
             read_picked(&paths, images).map(Some)
         })
         .await
-        .unwrap()
-        .unwrap()
+    }
+    fn artifacts(&self) -> i64 {
+        self.state
+            .database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM chat_image_artifacts", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
     }
     fn chat_owner(&self) -> serde_json::Value {
         serde_json::json!({"projectId": self.project, "chatId": self.chat, "projectGeneration": 0})
@@ -105,15 +120,7 @@ fn without_image_support_a_picked_png_is_staged_as_a_file() {
         let staged = fixture.pick(fixture.chat_owner(), false).await;
         assert_eq!(names(&staged), ["shot.png", "notes.txt"]);
         assert!(staged.images.is_empty() && staged.draft_images.is_empty());
-        let count: i64 = fixture
-            .state
-            .database
-            .connection()
-            .query_row("SELECT COUNT(*) FROM chat_image_artifacts", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(count, 0);
+        assert_eq!(fixture.artifacts(), 0);
     });
 }
 
@@ -151,4 +158,16 @@ fn a_pick_over_the_message_image_count_is_refused() {
         Some(super::super::limits::IMAGE_OVER_COUNT.as_str())
     );
     assert!(read_picked(&paths[1..], true).is_ok());
+}
+
+#[test]
+fn a_pick_whose_files_fail_to_stage_removes_the_images_it_stored() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let stale = fixture
+            .pick_at(fixture.chat_owner(), true, Some("stale-revision"))
+            .await;
+        assert!(stale.is_err());
+        assert_eq!(fixture.artifacts(), 0);
+    });
 }

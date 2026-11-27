@@ -6,6 +6,7 @@ it("hands a draft's picked image bytes to the draft's image intake as a file", a
   const intake = vi.fn();
   const count = await attachPickedImages(
     null,
+    { draftToken: "00000000-0000-4000-8000-000000000000" },
     {
       files: null,
       draftImages: [

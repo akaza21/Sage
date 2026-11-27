@@ -1,10 +1,15 @@
 import type {
+  PromptFileOwner,
   PromptPick,
   StagedPromptPick,
 } from "../../ports/promptAttachments";
 
-/** Attaches a pick's images; the count attached. */
-export type PickedImages = (pick: StagedPromptPick) => Promise<number>;
+/** Attaches a pick's images, all or none, for the owner native stored them
+ * for; the count attached. */
+export type PickedImages = (
+  pick: StagedPromptPick,
+  owner: PromptFileOwner,
+) => Promise<number>;
 
 export interface StagedSummary {
   /** The batch revision the next send names; null when nothing is staged. */
