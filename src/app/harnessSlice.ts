@@ -164,7 +164,8 @@ export const createHarnessSlice: StateCreator<
     set({
       selectedHarnessId: harnessId,
       harnessAccountReadStartedAt: null,
-      ...(!refresh && {
+      // A retry keeps its listing unless a live one is cached to replace it.
+      ...((!refresh || cached) && {
         models: shown,
         selectedModelId: preferredModelId(shown, previousModelId),
       }),

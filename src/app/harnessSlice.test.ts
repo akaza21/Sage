@@ -4,6 +4,11 @@ import type { HarnessDefinition } from "../domain/harness";
 import type { ModelOption } from "../domain/workbench";
 import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
+import {
+  harnessModelIdentity,
+  rememberHarnessModels,
+  resetHarnessModelCache,
+} from "./harnessModelCache";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { NewChatDraft } from "./newChatDraftSlice";
 import { useWorkbenchStore } from "./store";
@@ -252,4 +257,19 @@ describe("startup before discovery and listings settle", () => {
     expect(state.selectedHarnessId).toBe("pi");
     expect(state.selectedModelId).toBe("sonnet");
   });
+
+  it("lets a retry show only a cached live listing, never the remembered one, as ready", async () => {
+    rememberHarnessModels(harnessModelIdentity(pi), [opus]);
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "error",
+      harnessDiscoveryError: "Pi did not list its models in time.",
+    });
+    await useWorkbenchStore.getState().retryHarnessDiscovery();
+    const state = useWorkbenchStore.getState();
+    expect(state.harnessDiscoveryPhase).toBe("ready");
+    expect(state.models).toEqual([opus]);
+    expect(effectiveDraftChoice(draft, state)?.modelId).toBe("opus");
+    resetHarnessModelCache();
+  });
 });
+

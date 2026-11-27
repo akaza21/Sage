@@ -108,7 +108,7 @@ impl DiscoveryState {
         discovered: Vec<InstalledHarness>,
     ) {
         registry.claude_admission().apply_discovery(claude);
-        let admitted = std::mem::take(&mut self.write().admitted);
+        let admitted = self.read().admitted.clone();
         for id in DISCOVERED_HARNESSES {
             if !admitted.contains(&id) {
                 admit(
@@ -118,7 +118,10 @@ impl DiscoveryState {
                 );
             }
         }
-        self.write().snapshot = DiscoverySnapshot::Discovered(discovered);
+        // One write, so no reader sees an admitted harness as checking again.
+        let mut progress = self.write();
+        progress.admitted.clear();
+        progress.snapshot = DiscoverySnapshot::Discovered(discovered);
     }
 
     #[cfg(test)]
