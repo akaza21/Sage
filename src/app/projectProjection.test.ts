@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import type { BootstrapSnapshot, HarnessDefinition } from "../domain/workbench";
+import type {
+  BootstrapSnapshot,
+  HarnessDefinition,
+  ModelOption,
+} from "../domain/workbench";
 import { currentProjectLayout, snapshotProjection } from "./projectProjection";
 import { useWorkbenchStore } from "./store";
 
@@ -65,7 +69,10 @@ it("preserves a valid gapped layout for authoritative transition comparisons", (
 });
 
 it("shows the remembered listing only for the harness the snapshot restored", () => {
-  const harness = (id: string, installState: HarnessDefinition["installState"]) =>
+  const harness = (
+    id: string,
+    installState: HarnessDefinition["installState"],
+  ) =>
     ({
       id,
       name: id,
@@ -96,7 +103,7 @@ it("shows the remembered listing only for the harness the snapshot restored", ()
     turnChanges: [],
     recoveredBuffers: [],
     recoveryNotice: null,
-  } as BootstrapSnapshot;
+  } as BootstrapSnapshot & { rememberedModels: ModelOption[] };
   // Still being checked, the restored harness keeps its place and listing.
   const restored = snapshotProjection(snapshot);
   expect(restored.selectedHarnessId).toBe("slow");
@@ -105,10 +112,13 @@ it("shows the remembered listing only for the harness the snapshot restored", ()
   // Once it failed its check, another harness's choice shows no listing.
   const fallback = snapshotProjection({
     ...snapshot,
-    harnesses: [harness("fast", "available"), {
-      ...harness("slow", "unavailable"),
-      versionChecking: false,
-    }],
+    harnesses: [
+      harness("fast", "available"),
+      {
+        ...harness("slow", "unavailable"),
+        versionChecking: false,
+      },
+    ],
   });
   expect(fallback.selectedHarnessId).toBe("fast");
   expect(fallback.models).toEqual([]);

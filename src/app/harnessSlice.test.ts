@@ -222,9 +222,7 @@ describe("startup before discovery and listings settle", () => {
     // The live listing no longer offers the remembered model.
     answerLive([opus]);
     await vi.waitFor(() =>
-      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
-        "ready",
-      ),
+      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("ready"),
     );
     expect(useWorkbenchStore.getState().selectedModelId).toBe("opus");
     expect(
@@ -233,7 +231,11 @@ describe("startup before discovery and listings settle", () => {
   });
 
   it("keeps the remembered harness while it is checked, though another answered first", async () => {
-    const checking = { ...pi, installState: "unavailable", versionChecking: true };
+    const checking = {
+      ...pi,
+      installState: "unavailable",
+      versionChecking: true,
+    };
     await useWorkbenchStore
       .getState()
       .applyHarnessDiscovery([simulator, checking as HarnessDefinition]);
@@ -244,9 +246,7 @@ describe("startup before discovery and listings settle", () => {
     void useWorkbenchStore.getState().applyHarnessDiscovery([simulator, pi]);
     answerLive([sonnet]);
     await vi.waitFor(() =>
-      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
-        "ready",
-      ),
+      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("ready"),
     );
     state = useWorkbenchStore.getState();
     expect(state.selectedHarnessId).toBe("pi");

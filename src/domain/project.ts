@@ -6,7 +6,7 @@ import type {
   WorkbenchTab,
 } from "./chat";
 import type { RecoveredEditorBuffer } from "./editor";
-import type { HarnessDefinition, ModelOption } from "./harness";
+import type { HarnessDefinition } from "./harness";
 import type { FileChange, ProjectRepositoryStatus } from "./repository";
 import type { ResourceRef } from "./resource";
 
@@ -192,8 +192,6 @@ export interface BootstrapSnapshot {
   sessionId: string | null;
   selectedHarnessId: string | null;
   selectedModelId: string | null;
-  /** The selected harness's listing when it was last asked. */
-  rememberedModels?: ModelOption[];
   messages: ChatMessage[];
   repositories: ProjectRepositoryStatus;
   turnChanges: FileChange[];

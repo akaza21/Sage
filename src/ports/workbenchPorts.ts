@@ -306,12 +306,7 @@ export interface ForkChatRequest {
 export interface AgentPort {
   listHarnesses(): Promise<HarnessDefinition[]>;
   refreshHarnesses(): Promise<HarnessDefinition[]>;
-  /** `remembered`: the listing kept from the last start, read from SQLite
-   * at once; shown only until the live listing answers. */
-  listHarnessModels(
-    harnessId: string,
-    remembered?: boolean,
-  ): Promise<ModelOption[]>;
+  listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
 

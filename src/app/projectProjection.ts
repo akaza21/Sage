@@ -1,5 +1,6 @@
 import type {
   BootstrapSnapshot,
+  ModelOption,
   ProjectLayoutRequest,
 } from "../domain/workbench";
 import { browserLiveTabs } from "../ports/nativeBrowserPort";
@@ -58,7 +59,10 @@ export async function reconcileLiveBrowserTabs(
   };
 }
 
-export function snapshotProjection(snapshot: BootstrapSnapshot) {
+/** The native bootstrap also names the restored harness's last listing. */
+type BootstrapReply = BootstrapSnapshot & { rememberedModels?: ModelOption[] };
+
+export function snapshotProjection(snapshot: BootstrapReply) {
   const selectedHarnessId = snapshot.sessionId
     ? snapshot.selectedHarnessId
     : (preferredAvailableHarness(snapshot.harnesses, snapshot.selectedHarnessId)
