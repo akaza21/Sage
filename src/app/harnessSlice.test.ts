@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HarnessDefinition } from "../domain/harness";
 import type { ModelOption } from "../domain/workbench";
@@ -201,6 +201,8 @@ describe("startup before discovery and listings settle", () => {
   const draft = { harnessId: "pi", modelId: "sonnet" } as NewChatDraft;
   let answerLive: (models: ModelOption[]) => void = () => undefined;
 
+  afterEach(resetHarnessModelCache);
+
   beforeEach(() => {
     // As the bootstrap restores it: the harness used last and the listing
     // it gave then.
@@ -269,7 +271,5 @@ describe("startup before discovery and listings settle", () => {
     expect(state.harnessDiscoveryPhase).toBe("ready");
     expect(state.models).toEqual([opus]);
     expect(effectiveDraftChoice(draft, state)?.modelId).toBe("opus");
-    resetHarnessModelCache();
   });
 });
-

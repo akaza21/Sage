@@ -25,7 +25,10 @@ impl BootstrapReply {
         let remembered_models = snapshot
             .selected_harness_id
             .as_deref()
-            .filter(|id| kept_by_projection(&snapshot.harnesses, id))
+            // A restored session keeps its harness as it is in the WebView.
+            .filter(|id| {
+                snapshot.session_id.is_some() || kept_by_projection(&snapshot.harnesses, id)
+            })
             .and_then(|id| settings.remembered_harness_models(id).ok())
             .unwrap_or_default();
         Self {
@@ -65,6 +68,14 @@ mod remembered_listing_tests {
             harness.version_checking = false;
         }
         assert!(!kept_by_projection(&settled, "codex"));
+        // An ACP harness is kept once available only with its binding.
+        let codex = settled.iter_mut().find(|h| h.id == "codex").unwrap();
+        codex.install_state = "available".into();
+        codex.binding_id = None;
+        assert!(!kept_by_projection(&settled, "codex"));
+        let codex = settled.iter_mut().find(|h| h.id == "codex").unwrap();
+        codex.binding_id = Some("codex-app-server".into());
+        assert!(kept_by_projection(&settled, "codex"));
         assert!(!kept_by_projection(&detecting, "not-a-harness"));
     }
 }
