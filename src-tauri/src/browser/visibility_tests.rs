@@ -61,3 +61,20 @@ fn an_unplaced_webview_cannot_be_revealed_by_a_release() {
     let visibility = PageVisibility::default();
     visibility.reveal(|| panic!("unplaced page shown")).unwrap();
 }
+
+#[test]
+fn placing_wakes_a_page_only_after_a_real_hide() {
+    let visibility = PageVisibility::default();
+    // A new page starts asleep, so its first placement wakes it.
+    assert!(visibility.place());
+    // A move or resize places it again without waking it.
+    assert!(!visibility.place());
+    // A toolbar popover only covers it for a moment.
+    visibility.hide();
+    assert!(!visibility.place());
+    // Leaving the page puts it to sleep; showing it again wakes it once.
+    visibility.hide();
+    visibility.sleep();
+    assert!(visibility.place());
+    assert!(!visibility.place());
+}

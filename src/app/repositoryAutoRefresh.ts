@@ -61,9 +61,6 @@ export function startRepositoryAutoRefresh(
   let stampInFlight = false;
   let lastStamp: string | null = null;
   let gitStampSoon = false;
-  const stampInterval = deps.pollAlways
-    ? STAMP_INTERVAL_MS
-    : WATCHED_STAMP_INTERVAL_MS;
   let resyncPollUntil = -Infinity;
   const polling = () => deps.pollAlways || performance.now() < resyncPollUntil;
   let idlePolls = 0;
@@ -160,7 +157,11 @@ export function startRepositoryAutoRefresh(
     }
     if (!stopped && visible() && stampTimer === null) {
       // Git wrote while this read ran: read again within a tick.
-      scheduleStamp(gitStampSoon ? STAMP_INTERVAL_MS : stampInterval);
+      scheduleStamp(
+        gitStampSoon || deps.pollAlways
+          ? STAMP_INTERVAL_MS
+          : WATCHED_STAMP_INTERVAL_MS,
+      );
     }
   };
 
