@@ -23,31 +23,8 @@ use sage_domain::{
 };
 use sage_workspace::Workspace;
 
-/// The snapshot, with the listing its selected harness gave when last asked:
-/// a new chat shows it at once while the live listing answers, and never
-/// sends with it.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BootstrapReply {
-    #[serde(flatten)]
-    snapshot: BootstrapSnapshot,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    remembered_models: Vec<sage_domain::harness::ModelOption>,
-}
-
-/// Mirrors the WebView's choice (`preferredAvailableHarness`): a harness still
-/// being checked, or an available one with a binding where it needs one.
-/// Another choice there would show this harness's listing under another.
-fn kept_by_projection(harnesses: &[sage_domain::harness::HarnessDefinition], id: &str) -> bool {
-    harnesses.iter().any(|harness| {
-        harness.id == id
-            && (harness.install_state == "detecting"
-                || (harness.version_checking && harness.install_state != "available")
-                || (harness.install_state == "available"
-                    && (harness.transport != sage_domain::harness::HarnessTransport::Acp
-                        || harness.binding_id.is_some())))
-    })
-}
+mod bootstrap_reply;
+use bootstrap_reply::BootstrapReply;
 
 #[tauri::command]
 pub async fn get_bootstrap_snapshot(state: State<'_, AppState>) -> Result<BootstrapReply, String> {
@@ -66,16 +43,7 @@ pub async fn get_bootstrap_snapshot(state: State<'_, AppState>) -> Result<Bootst
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())?;
-    let remembered_models = snapshot
-        .selected_harness_id
-        .as_deref()
-        .filter(|id| kept_by_projection(&snapshot.harnesses, id))
-        .and_then(|id| state.settings.remembered_harness_models(id).ok())
-        .unwrap_or_default();
-    Ok(BootstrapReply {
-        snapshot,
-        remembered_models,
-    })
+    Ok(BootstrapReply::new(snapshot, &state.settings))
 }
 
 pub(crate) async fn build_bootstrap_snapshot(
@@ -656,25 +624,5 @@ mod tests {
             assert_eq!(rows, 2);
         }
         fs::remove_dir_all(base).unwrap();
-    }
-}
-
-#[cfg(test)]
-mod remembered_listing_tests {
-    use super::kept_by_projection;
-    use crate::harnesses::HarnessCatalog;
-
-    #[test]
-    fn a_listing_goes_only_with_a_harness_the_webview_keeps() {
-        // Before discovery settles every curated harness is still detected.
-        let detecting = HarnessCatalog::default().definitions();
-        assert!(kept_by_projection(&detecting, "codex"));
-        let mut settled = detecting.clone();
-        for harness in &mut settled {
-            harness.install_state = "unavailable".into();
-            harness.version_checking = false;
-        }
-        assert!(!kept_by_projection(&settled, "codex"));
-        assert!(!kept_by_projection(&detecting, "not-a-harness"));
     }
 }
