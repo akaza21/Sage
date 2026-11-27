@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 
+import type { PasteNotices } from "./ComposerPasteNotices";
 import type { StagedSummary } from "./pastedTextTypes";
 import { useComposerPasteSignal } from "./useComposerPasteSignal";
 
@@ -13,6 +14,7 @@ export function useComposerPaste(
 ) {
   const signal = useComposerPasteSignal();
   const [staged, setStaged] = useState<StagedSummary>();
+  const [notices, setNotices] = useState<PasteNotices>();
   // A batch staged before a reload is read back before any send, unfocused too.
   const armed = nativeAcp || signal.seq > 0;
   const noticeId = `${disabledReasonId}-paste`;
@@ -21,6 +23,8 @@ export function useComposerPaste(
     activeTurn,
     signal,
     setStaged,
+    notices,
+    setNotices,
     armed,
     noticeId,
     pickFiles: signal.holdPick,

@@ -127,7 +127,8 @@
   overscroll-behavior: contain;
 }
 
-.composer__notices {
+.composer__notices,
+.notice-stack {
   min-height: 0;
   max-block-size: min(10rem, 20vh);
   padding-inline: var(--space-3);
@@ -135,7 +136,8 @@
   overscroll-behavior: contain;
 }
 
-.composer__notices:empty {
+.composer__notices:empty,
+.notice-stack:empty {
   display: none;
 }
 
@@ -333,6 +335,11 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: var(--line-height-normal);
+}
+
+/* The stack already insets its notices. */
+.notice-stack .composer__disabled-reason {
+  padding-inline: 0;
 }
 
 .access-mode {

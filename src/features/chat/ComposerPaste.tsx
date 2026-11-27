@@ -7,7 +7,7 @@ import {
   pasteAttachmentRefusal,
   type PasteAttachability,
 } from "./composerPasteText";
-import { ComposerPasteNotices } from "./ComposerPasteNotices";
+import type { PasteNotices } from "./ComposerPasteNotices";
 // Also registers the draft's file handoff on the draft port.
 import { noteDraftFiles } from "./draftFileHandoff";
 import { PastedTextChips } from "./PastedTextChips";
@@ -35,7 +35,7 @@ export function ComposerPaste({
   input: { seq, take },
   text,
   disabled,
-  noticeId,
+  onNotices,
   onStaged,
 }: {
   chatId: string | undefined;
@@ -47,7 +47,8 @@ export function ComposerPaste({
   input: { seq: number; take(): HeldInput[] };
   text: string;
   disabled: boolean;
-  noticeId: string;
+  /** The composer shows these in its notice stack. */
+  onNotices(next: PasteNotices | undefined): void;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
@@ -141,19 +142,17 @@ export function ComposerPaste({
     activeTurn && state.items.length
       ? "Attached text goes with the next message you send, not a queued one. Send it once the turn finishes."
       : "";
-  return (
-    <>
-      <ComposerPasteNotices id={noticeId} notice={transient} reason={reason} />
-      {state.items.length > 0 ? (
-        <PastedTextChips
-          items={state.items}
-          // A removal racing a paste is refused by revision natively.
-          disabled={disabled || state.busy}
-          onRemove={(id, label) =>
-            void removeStaged(owner, id, label, announce)
-          }
-        />
-      ) : null}
-    </>
+  useEffect(
+    () => onNotices({ notice: transient, reason }),
+    [onNotices, transient, reason],
   );
+  useEffect(() => () => onNotices(undefined), [onNotices]);
+  return state.items.length > 0 ? (
+    <PastedTextChips
+      items={state.items}
+      // A removal racing a paste is refused by revision natively.
+      disabled={disabled || state.busy}
+      onRemove={(id, label) => void removeStaged(owner, id, label, announce)}
+    />
+  ) : null;
 }

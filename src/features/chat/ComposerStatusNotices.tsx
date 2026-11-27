@@ -4,12 +4,14 @@ import type { ReactNode } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 import { Notice } from "../../ui/Notice";
 import type { NoticeSeverity } from "../../ui/Notice";
+import { NoticeStack, type StackEntry } from "../../ui/NoticeStack";
 
-export type ComposerStatusNoticeProps = Pick<
-  ChatComposerRegionProps,
-  "workbenchError" | "chatError" | "chatAuth"
+export type ComposerStatusNoticeProps = Partial<
+  Pick<ChatComposerRegionProps, "workbenchError" | "chatError" | "chatAuth">
 > & {
-  imageStatus: ComposerProblem | null;
+  imageStatus?: ComposerProblem | null;
+  /** The composer's other notices, ahead of its status in source order. */
+  notices?: readonly StackEntry[];
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   authRecovery?: {
     harnessId: string;
@@ -19,49 +21,69 @@ export type ComposerStatusNoticeProps = Pick<
   };
 };
 
-/** Errors remain available while the optional notice surface loads. */
+/** The composer's one notice stack; errors remain available while the
+ * optional notice surface loads. */
 export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
-  const { workbenchError, chatError, imageStatus, children } = props;
-  const problems = resolveComposerProblems([
-    imageStatus,
+  const {
     workbenchError,
     chatError,
-  ]);
-  return problems.length || children ? (
-    <div
-      className="composer__notices"
-      role="region"
-      aria-label="Composer notices"
-      tabIndex={0}
-    >
-      {children}
-      {problems.map(({ identity, message, severity }) => (
-        <Notice
-          key={identity}
-          identity={identity}
-          message={message}
-          severity={severity}
-          progress={severity === "info"}
-        />
-      ))}
-    </div>
-  ) : null;
+    imageStatus,
+    notices = [],
+    children,
+  } = props;
+  return (
+    <NoticeStack
+      label="Composer notices"
+      notices={[
+        ...notices,
+        !!children && { key: "sign-in", severity: "blocking", node: children },
+        ...resolveComposerProblems([
+          imageStatus,
+          workbenchError,
+          chatError,
+        ]).map(({ identity, message, severity }) => ({
+          key: identity,
+          severity,
+          node: (
+            <Notice
+              identity={identity}
+              message={message}
+              severity={severity}
+              progress={severity === "info"}
+            />
+          ),
+        })),
+      ]}
+    />
+  );
 }
 
-export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
+/**
+ * The usage-limit banner leads the stack. It sits outside the sign-in
+ * surface's swap, so its dismissals survive a sign-in refusal.
+ */
+export function ComposerStatusNotices({
+  lead,
+  ...props
+}: ComposerStatusNoticeProps & { lead?: ReactNode }) {
   const refusal =
     props.authRecovery || props.chatAuth?.errorKind === "signInRequired";
   const frame = <ComposerNoticeFrame {...props} />;
-  return refusal ? (
-    <ComposerOptionsPart
-      part="ComposerNoticeSurface"
-      {...props}
-      fallback={frame}
-    />
-  ) : (
-    frame
+  return (
+    <>
+      {lead}
+      {refusal ? (
+        <ComposerOptionsPart
+          part="ComposerNoticeSurface"
+          {...props}
+          fallback={frame}
+        />
+      ) : (
+        frame
+      )}
+    </>
   );
 }
 

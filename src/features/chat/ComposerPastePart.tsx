@@ -14,7 +14,7 @@ const PASTE_UNAVAILABLE =
 
 function PasteUnavailable({
   input: { seq, take },
-  noticeId,
+  onNotices,
   onStaged,
 }: ComponentProps<typeof PasteChunk.ComposerPaste>) {
   useEffect(() => void take(), [seq, take]);
@@ -22,11 +22,11 @@ function PasteUnavailable({
     () => onStaged({ revision: null, busy: false, settled: true }),
     [onStaged],
   );
-  return (
-    <p id={noticeId} className="composer__disabled-reason">
-      {PASTE_UNAVAILABLE}
-    </p>
-  );
+  useEffect(() => {
+    onNotices({ notice: "", reason: PASTE_UNAVAILABLE });
+    return () => onNotices(undefined);
+  }, [onNotices]);
+  return null;
 }
 
 export function ComposerPasteSlot({
@@ -48,7 +48,7 @@ export function ComposerPasteSlot({
       nativeAcp={paste.nativeAcp}
       activeTurn={paste.activeTurn}
       input={paste.signal}
-      noticeId={paste.noticeId}
+      onNotices={paste.setNotices}
       onStaged={paste.setStaged}
     />
   ) : null;
