@@ -148,7 +148,8 @@ export const Turn = memo(
       <ItemView
         key={item.id}
         item={item}
-        workingItems={turn.items}
+        // A settled turn runs nothing, even a tool the harness left in progress.
+        workingItems={terminal ? undefined : turn.items}
         interactive={interactive}
         fileReferenceOwner={fileReferenceOwner}
         onOpenResource={openForTurn}

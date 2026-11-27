@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { RailAttention } from "../features/chat/acp/sessionRail";
 
 interface ArchiveUndo {
   projectId: string;
@@ -11,9 +12,9 @@ let undoTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 let state: {
   unread: ReadonlySet<string>;
-  approval: ReadonlySet<string>;
+  attention: ReadonlyMap<string, RailAttention>;
   undo: ArchiveUndo | null;
-} = { unread: new Set(), approval: new Set(), undo: null };
+} = { unread: new Set(), attention: new Map(), undo: null };
 function publish() {
   for (const listener of listeners) listener();
 }
@@ -56,34 +57,37 @@ export function setAgentRailArchiveUndo(
   state = { ...state, undo };
   publish();
 }
-export function setAgentRailApproval(chatId: string, pending: boolean) {
-  if (state.approval.has(chatId) === pending) return;
-  const approval = new Set(state.approval);
-  if (!pending) approval.delete(chatId);
-  else {
-    if (approval.size >= MAX_INTERACTION_CHATS)
-      approval.delete(approval.values().next().value!);
-    approval.add(chatId);
+/** What a chat's latest turn waits on the user for, kept while it unmounts. */
+export function setAgentRailAttention(chatId: string, kind?: RailAttention) {
+  if (state.attention.get(chatId) === kind) return;
+  const attention = new Map(state.attention);
+  attention.delete(chatId);
+  if (kind) {
+    if (attention.size >= MAX_INTERACTION_CHATS)
+      attention.delete(attention.keys().next().value!);
+    attention.set(chatId, kind);
   }
-  state = { ...state, approval };
+  state = { ...state, attention };
   publish();
 }
 export function resetAgentRailInteractions() {
   if (undoTimer) clearTimeout(undoTimer);
   undoTimer = undefined;
-  state = { unread: new Set(), approval: new Set(), undo: null };
+  state = { unread: new Set(), attention: new Map(), undo: null };
   publish();
 }
 
 export function pruneAgentRailInteractions(chatIds: ReadonlySet<string>) {
   const unread = new Set([...state.unread].filter((id) => chatIds.has(id)));
-  const approval = new Set([...state.approval].filter((id) => chatIds.has(id)));
+  const attention = new Map(
+    [...state.attention].filter(([id]) => chatIds.has(id)),
+  );
   if (
     unread.size === state.unread.size &&
-    approval.size === state.approval.size
+    attention.size === state.attention.size
   )
     return;
-  state = { ...state, unread, approval };
+  state = { ...state, unread, attention };
   publish();
 }
 

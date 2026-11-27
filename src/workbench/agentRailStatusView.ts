@@ -2,6 +2,7 @@ import type { AgentRailChat, SessionStatus } from "../domain/workbench";
 import {
   sessionRailLive,
   sessionRailStatusLabel,
+  type RailAttention,
 } from "../features/chat/acp/sessionRail";
 
 export const AGENT_RAIL_ORGANIZE_MODES = ["project", "list"] as const;
@@ -21,11 +22,12 @@ export interface AgentRailTrailingState {
 export function agentRailTrailingState(input: {
   status?: SessionStatus;
   unread: boolean;
+  attention?: RailAttention;
 }): AgentRailTrailingState | null {
   if (input.status === "failed" || sessionRailLive(input.status)) {
     return {
       kind: input.status as AgentRailTrailingStateKind,
-      label: sessionRailStatusLabel(input.status),
+      label: sessionRailStatusLabel(input.status, input.attention),
     };
   }
   return input.unread ? { kind: "unread", label: "Unread" } : null;
