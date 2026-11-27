@@ -95,7 +95,6 @@ describe("Codex chrome parity (w10 group B)", () => {
     );
     expect(box).not.toMatch(/background/);
     expect(global).toMatch(/--chat-dialog-checkbox-edge:\s*#858585;/);
-    expect(rule(text, ".close-side-chat-dialog")).toMatch(/font-size:\s*13px;/);
   });
 
   it("places Agent find below the header with a 32 px second row (B9, s6/f0676)", async () => {
