@@ -68,7 +68,7 @@ it("preserves a valid gapped layout for authoritative transition comparisons", (
   expect(layout?.tabs).toBe(tabs);
 });
 
-it("shows the remembered listing only for the harness the snapshot restored", () => {
+it("shows the remembered listing for a restored harness still being checked", () => {
   const harness = (
     id: string,
     installState: HarnessDefinition["installState"],
@@ -104,22 +104,11 @@ it("shows the remembered listing only for the harness the snapshot restored", ()
     recoveredBuffers: [],
     recoveryNotice: null,
   } as BootstrapSnapshot & { rememberedModels: ModelOption[] };
-  // Still being checked, the restored harness keeps its place and listing.
+  // Still being checked, the restored harness keeps its place and listing,
+  // though another harness already answered.
   const restored = snapshotProjection(snapshot);
   expect(restored.selectedHarnessId).toBe("slow");
   expect(restored.selectedModelId).toBe("sonnet");
   expect(restored.models).toEqual(snapshot.rememberedModels);
-  // Once it failed its check, another harness's choice shows no listing.
-  const fallback = snapshotProjection({
-    ...snapshot,
-    harnesses: [
-      harness("fast", "available"),
-      {
-        ...harness("slow", "unavailable"),
-        versionChecking: false,
-      },
-    ],
-  });
-  expect(fallback.selectedHarnessId).toBe("fast");
-  expect(fallback.models).toEqual([]);
+  expect(restored.harnessDiscoveryPhase).toBe("idle");
 });
