@@ -7,10 +7,7 @@ import { ChatHome } from "./ChatHome";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import {
-  harnessSettling,
-  preferredAvailableHarness,
-} from "../../domain/harness";
+import { preferredAvailableHarness } from "../../domain/harness";
 
 const unchangedSession = () => Promise.resolve();
 // Images taken just before Send join the draft before it is sent: Send waits
@@ -95,7 +92,7 @@ export function NewChatDraftSurface({
   // A remembered harness still being checked takes typing; sending waits.
   const available =
     harness?.installState === "available" ||
-    (!!harness && harnessSettling(harness));
+    preferredAvailableHarness(harnesses, draft.harnessId) === harness;
   const choice = effectiveDraftChoice(draft, {
     harnesses,
     selectedHarnessId,

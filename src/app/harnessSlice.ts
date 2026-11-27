@@ -9,7 +9,11 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { harnessSettling, preferredAvailableHarness } from "../domain/harness";
+import {
+  harnessSettling,
+  harnessUnavailableReason,
+  preferredAvailableHarness,
+} from "../domain/harness";
 import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
 import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
@@ -92,31 +96,33 @@ export const createHarnessSlice: StateCreator<
     get().harnessRequestGeneration === requestGeneration &&
     get().selectedHarnessId === harnessId;
 
-  const revalidate = (
+  /** Asks the harness for its live listing. Revalidating a cached one
+   * (`previousModelId` undefined) keeps the selection only while it is
+   * still listed; a first listing falls back to its default. */
+  const list = async (
     harnessId: string,
     identity: string | null,
     generation: number,
     projectId: string,
     requestGeneration: number,
+    previousModelId?: string | null,
   ) => {
-    desktop
-      .listHarnessModels(harnessId)
-      .then((models) => {
-        rememberHarnessModels(identity, models);
-        if (!current(generation, projectId, requestGeneration, harnessId)) {
-          return;
-        }
-        const selected = get().selectedModelId;
-        set({
-          models,
-          selectedModelId: models.some((model) => model.id === selected)
+    const models = await desktop.listHarnessModels(harnessId);
+    rememberHarnessModels(identity, models);
+    if (!current(generation, projectId, requestGeneration, harnessId)) return;
+    const selected = get().selectedModelId;
+    set({
+      models,
+      selectedModelId:
+        previousModelId === undefined
+          ? models.some((model) => model.id === selected)
             ? selected
-            : null,
-          harnessDiscoveryPhase: "ready",
-          harnessDiscoveryError: null,
-        });
-      })
-      .catch(() => undefined);
+            : null
+          : preferredModelId(models, previousModelId),
+      harnessDiscoveryPhase: "ready",
+      harnessDiscoveryError: null,
+      ...(previousModelId !== undefined && { error: null }),
+    });
   };
 
   const load = async (
@@ -173,14 +179,16 @@ export const createHarnessSlice: StateCreator<
     });
     if (detecting) return;
     if (cached) {
-      revalidate(harnessId, identity, generation, projectId, requestGeneration);
+      list(harnessId, identity, generation, projectId, requestGeneration).catch(
+        () => undefined,
+      );
       return;
     }
     try {
       if (usesAccountModelDiscovery) {
         if (!harness.bindingId) {
           throw new Error(
-            "This account-model binding is not installed and admitted yet.",
+            harnessUnavailableReason("admissionIncomplete", harness.name),
           );
         }
         const nativeGeneration = String(
@@ -221,17 +229,14 @@ export const createHarnessSlice: StateCreator<
         return;
       }
 
-      const models = await desktop.listHarnessModels(harnessId);
-      rememberHarnessModels(identity, models);
-      if (current(generation, projectId, requestGeneration, harnessId)) {
-        set({
-          models,
-          selectedModelId: preferredModelId(models, previousModelId),
-          harnessDiscoveryPhase: "ready",
-          harnessDiscoveryError: null,
-          error: null,
-        });
-      }
+      await list(
+        harnessId,
+        identity,
+        generation,
+        projectId,
+        requestGeneration,
+        previousModelId,
+      );
     } catch (error) {
       if (!current(generation, projectId, requestGeneration, harnessId)) return;
       const message = errorMessage(error);

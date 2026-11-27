@@ -53,9 +53,6 @@ export async function loadProjectProjection(
     snapshot.project?.roots.filter(
       (root) => root.availability === "available",
     ) ?? [];
-  const projectionLoads: Promise<void>[] = availableRoots.map((root) =>
-    get().loadDirectory(childResource(root.id)),
-  );
   const selectedHarnessId = get().selectedHarnessId;
   // A harness's live listing can take seconds; the project is usable (and
   // the composer shows the remembered models) before it answers.
@@ -66,7 +63,9 @@ export async function loadProjectProjection(
       generation,
       projectId,
     );
-  await Promise.all(projectionLoads);
+  await Promise.all(
+    availableRoots.map((root) => get().loadDirectory(childResource(root.id))),
+  );
   if (projectId && !matchesProjectIntent(get(), generation, projectId)) {
     return;
   }

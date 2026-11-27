@@ -115,11 +115,9 @@ export function snapshotProjection(snapshot: BootstrapReply) {
     resourceTrashError: null,
     resourceTrashNotice: null,
     requestGenerations: {},
-    // Shown until the harness's live listing answers; never sent with.
-    models:
-      (selectedHarnessId === snapshot.selectedHarnessId &&
-        snapshot.rememberedModels) ||
-      [],
+    // Native sends it only for a harness kept here; shown until the live
+    // listing answers, and never sent with.
+    models: snapshot.rememberedModels ?? [],
     harnessDiscoveryPhase: "idle" as const,
     harnessDiscoveryError: null,
     harnessAccount: null,
