@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { Stacked } from "../../ui/NoticeStack";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
   heldInputMessage,
   pasteAttachmentRefusal,
   type PasteAttachability,
 } from "./composerPasteText";
-import type { PasteNotices } from "./ComposerPasteNotices";
+import {
+  ComposerPasteNotices,
+  type PasteNotices,
+} from "./ComposerPasteNotices";
 // Also registers the draft's file handoff on the draft port.
 import { noteDraftFiles } from "./draftFileHandoff";
 import { PastedTextChips } from "./PastedTextChips";
@@ -35,6 +46,7 @@ export function ComposerPaste({
   input: { seq, take },
   text,
   disabled,
+  noticeId,
   onNotices,
   onStaged,
 }: {
@@ -47,6 +59,7 @@ export function ComposerPaste({
   input: { seq: number; take(): HeldInput[] };
   text: string;
   disabled: boolean;
+  noticeId: string;
   /** The composer shows these in its notice stack. */
   onNotices(next: PasteNotices | undefined): void;
   onStaged(next: StagedSummary): void;
@@ -142,11 +155,21 @@ export function ComposerPaste({
     activeTurn && state.items.length
       ? "Attached text goes with the next message you send, not a queued one. Send it once the turn finishes."
       : "";
-  useEffect(
-    () => onNotices({ notice: transient, reason }),
-    [onNotices, transient, reason],
+  // Before paint, so the stack never shows a notice a frame late.
+  useLayoutEffect(
+    () =>
+      onNotices(
+        <Stacked key={noticeId} quiet={!transient && !reason}>
+          <ComposerPasteNotices
+            id={noticeId}
+            notice={transient}
+            reason={reason}
+          />
+        </Stacked>,
+      ),
+    [onNotices, noticeId, transient, reason],
   );
-  useEffect(() => () => onNotices(undefined), [onNotices]);
+  useLayoutEffect(() => () => onNotices(undefined), [onNotices]);
   return state.items.length > 0 ? (
     <PastedTextChips
       items={state.items}

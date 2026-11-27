@@ -1,4 +1,4 @@
-import { useEffect, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, type ComponentProps } from "react";
 
 import type * as PasteChunk from "./ComposerPaste";
 import { lazyParts } from "./lazyParts";
@@ -14,6 +14,7 @@ const PASTE_UNAVAILABLE =
 
 function PasteUnavailable({
   input: { seq, take },
+  noticeId,
   onNotices,
   onStaged,
 }: ComponentProps<typeof PasteChunk.ComposerPaste>) {
@@ -22,10 +23,14 @@ function PasteUnavailable({
     () => onStaged({ revision: null, busy: false, settled: true }),
     [onStaged],
   );
-  useEffect(() => {
-    onNotices({ notice: "", reason: PASTE_UNAVAILABLE });
+  useLayoutEffect(() => {
+    onNotices(
+      <p key={noticeId} id={noticeId} className="composer__disabled-reason">
+        {PASTE_UNAVAILABLE}
+      </p>,
+    );
     return () => onNotices(undefined);
-  }, [onNotices]);
+  }, [noticeId, onNotices]);
   return null;
 }
 
@@ -48,6 +53,7 @@ export function ComposerPasteSlot({
       nativeAcp={paste.nativeAcp}
       activeTurn={paste.activeTurn}
       input={paste.signal}
+      noticeId={paste.noticeId}
       onNotices={paste.setNotices}
       onStaged={paste.setStaged}
     />

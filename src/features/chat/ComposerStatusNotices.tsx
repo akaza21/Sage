@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 import { Notice } from "../../ui/Notice";
 import type { NoticeSeverity } from "../../ui/Notice";
-import { NoticeStack, type StackEntry } from "../../ui/NoticeStack";
+import { NoticeStack, Stacked, type StackEntry } from "../../ui/NoticeStack";
 
 export type ComposerStatusNoticeProps = Partial<
   Pick<ChatComposerRegionProps, "workbenchError" | "chatError" | "chatAuth">
@@ -38,52 +38,41 @@ export function ComposerNoticeFrame(
       label="Composer notices"
       notices={[
         ...notices,
-        !!children && { key: "sign-in", severity: "blocking", node: children },
+        !!children && (
+          <Stacked key="sign-in" severity="blocking">
+            {children}
+          </Stacked>
+        ),
         ...resolveComposerProblems([
           imageStatus,
           workbenchError,
           chatError,
-        ]).map(({ identity, message, severity }) => ({
-          key: identity,
-          severity,
-          node: (
-            <Notice
-              identity={identity}
-              message={message}
-              severity={severity}
-              progress={severity === "info"}
-            />
-          ),
-        })),
+        ]).map(({ identity, message, severity }) => (
+          <Notice
+            key={identity}
+            identity={identity}
+            message={message}
+            severity={severity}
+            progress={severity === "info"}
+          />
+        )),
       ]}
     />
   );
 }
 
-/**
- * The usage-limit banner leads the stack. It sits outside the sign-in
- * surface's swap, so its dismissals survive a sign-in refusal.
- */
-export function ComposerStatusNotices({
-  lead,
-  ...props
-}: ComposerStatusNoticeProps & { lead?: ReactNode }) {
+export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
   const refusal =
     props.authRecovery || props.chatAuth?.errorKind === "signInRequired";
   const frame = <ComposerNoticeFrame {...props} />;
-  return (
-    <>
-      {lead}
-      {refusal ? (
-        <ComposerOptionsPart
-          part="ComposerNoticeSurface"
-          {...props}
-          fallback={frame}
-        />
-      ) : (
-        frame
-      )}
-    </>
+  return refusal ? (
+    <ComposerOptionsPart
+      part="ComposerNoticeSurface"
+      {...props}
+      fallback={frame}
+    />
+  ) : (
+    frame
   );
 }
 

@@ -1,19 +1,28 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { NoticeSeverity } from "./Notice";
 
-export interface StackedNotice {
-  /** Unique within the stack; keeps a notice mounted while others come and go. */
-  key: string;
-  severity: NoticeSeverity;
-  node: ReactNode;
-  /** A live region kept mounted with nothing to show: it does not make the
-   * stack a region of its own. */
+interface StackedProps {
+  severity?: NoticeSeverity;
+  /** A live region or description kept mounted with nothing visible: it
+   * does not make the stack a region of its own. */
   quiet?: boolean;
 }
 
-export type StackEntry = StackedNotice | false | null | undefined;
+/** A stack entry that is not a `Notice`; unmarked entries are info. */
+export function Stacked({ children }: StackedProps & { children: ReactNode }) {
+  return children;
+}
 
-const rank = { blocking: 0, warning: 1, info: 2 };
+/** A keyed `Notice` or `Stacked` element, or nothing. */
+export type StackEntry = ReactElement<StackedProps> | false | null | undefined;
+
+// Unmarked entries and info share the last rank.
+const rank: Partial<Record<NoticeSeverity, number>> = {
+  blocking: 1,
+  warning: 2,
+};
+const rankOf = (notice: ReactElement<StackedProps>) =>
+  rank[notice.props.severity!] || 3;
 
 /**
  * One surface's notices in one place: blocking, then warning, then info,
@@ -27,17 +36,15 @@ export function NoticeStack({
   notices: readonly StackEntry[];
 }) {
   const stack = notices
-    .filter((notice): notice is StackedNotice => !!notice)
-    .sort((a, b) => rank[a.severity] - rank[b.severity]);
+    .filter((notice): notice is ReactElement<StackedProps> => !!notice)
+    .sort((a, b) => rankOf(a) - rankOf(b));
   // Focusable so a stack taller than its cap scrolls from the keyboard.
-  const region = stack.some((notice) => !notice.quiet)
+  const region = stack.some((notice) => !notice.props.quiet)
     ? { role: "region", "aria-label": label, tabIndex: 0 }
     : null;
   return stack.length ? (
     <div className="notice-stack" {...region}>
-      {stack.map((notice) => (
-        <Fragment key={notice.key}>{notice.node}</Fragment>
-      ))}
+      {stack}
     </div>
   ) : null;
 }

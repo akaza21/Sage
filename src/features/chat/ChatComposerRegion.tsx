@@ -15,7 +15,6 @@ import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { composerAvailability } from "./ComposerAvailabilityNotice";
-import { pasteNotices } from "./ComposerPasteNotices";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows } from "./lazyParts";
@@ -138,7 +137,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
-  const [describedReason, availability] = composerAvailability({
+  const availability = composerAvailability({
     reason: disabledReason,
     id: disabledReasonId,
     scope: dictationScope,
@@ -206,19 +205,15 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {/* One stack above the field: usage limits lead, then blocking,
-                warning and info notices. Hidden, it keeps only notices that
-                hold state (usage dismissals, a paste live region). */}
+            {/* One stack above the field: usage limits lead (outside the
+                sign-in surface's swap, so dismissals survive a refusal), then
+                blocking, warning and info notices. Hidden, it drops status
+                problems as before; the rest stay mounted. */}
+            {chatAuth?.page?.sessionNotices ? (
+              <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
+            ) : null}
             <ComposerStatusNotices
-              lead={
-                chatAuth?.page?.sessionNotices ? (
-                  <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
-                ) : null
-              }
-              notices={[
-                pasteNotices(paste.noticeId, paste.armed, paste.notices),
-                ...availability,
-              ]}
+              notices={[paste.notices, ...availability]}
               {...(!hidden && {
                 workbenchError,
                 chatError,
@@ -342,7 +337,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               text={text}
               disabled={actionDisabled}
             />
-            {describedReason}
             {otherContext.length > 0 ? (
               <div className="composer__attachment-row">
                 <AttachmentsPart

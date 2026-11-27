@@ -1,35 +1,47 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { NoticeStack, type StackEntry } from "./NoticeStack";
+import { Notice } from "./Notice";
+import { NoticeStack, Stacked } from "./NoticeStack";
 
 afterEach(cleanup);
 
-const line = (key: string, severity: "info" | "warning" | "blocking") => ({
-  key,
-  severity,
-  node: <p>{key}</p>,
-});
+const notice = (identity: string, severity: "warning" | "blocking") => (
+  <Notice
+    key={identity}
+    identity={identity}
+    severity={severity}
+    message={identity}
+  />
+);
 
 it("orders blocking, then warning, then info, each in source order", () => {
   render(
     <NoticeStack
       label="Notices"
       notices={[
-        line("info a", "info"),
+        <Stacked key="info a">
+          <p>info a</p>
+        </Stacked>,
         null,
-        line("blocking a", "blocking"),
-        line("warning a", "warning"),
+        notice("blocking a", "blocking"),
+        notice("warning a", "warning"),
         false,
-        line("info b", "info"),
-        line("blocking b", "blocking"),
+        <Stacked key="info b" severity="info">
+          <p>info b</p>
+        </Stacked>,
+        notice("blocking b", "blocking"),
+        <Stacked key="sign-in" severity="blocking">
+          <p>blocking c</p>
+        </Stacked>,
       ]}
     />,
   );
   const stack = screen.getByRole("region", { name: "Notices" });
   expect([...stack.children].map((child) => child.textContent)).toEqual([
-    "blocking a",
-    "blocking b",
-    "warning a",
+    "Error: blocking a",
+    "Error: blocking b",
+    "blocking c",
+    "Warning: warning a",
     "info a",
     "info b",
   ]);
@@ -37,12 +49,11 @@ it("orders blocking, then warning, then info, each in source order", () => {
 });
 
 it("keeps a quiet live region mounted without making an empty region, and renders nothing when empty", () => {
-  const live = (text: string): StackEntry => ({
-    key: "live",
-    severity: "info",
-    quiet: !text,
-    node: <div aria-live="polite">{text}</div>,
-  });
+  const live = (text: string) => (
+    <Stacked key="live" quiet={!text}>
+      <div aria-live="polite">{text}</div>
+    </Stacked>
+  );
   const { container, rerender } = render(
     <NoticeStack label="Notices" notices={[live("")]} />,
   );
