@@ -104,7 +104,7 @@ impl super::SdkBridge {
         &self,
         bytes: &[u8],
     ) -> crate::acp::transport::CommandWirePath {
-        use crate::acp::transport::CommandWirePath::{Commands, Field, Other};
+        use crate::acp::transport::CommandWirePath::{Commands, Field, Other, Unread};
         let Ok(envelope) = serde_json::from_slice::<CatalogEnvelope>(bytes) else {
             return Other;
         };
@@ -113,7 +113,7 @@ impl super::SdkBridge {
                 Field("commands", &Commands)
             }
             "control_response"
-                if envelope.response.is_some_and(|response| {
+                if envelope.response.as_ref().is_some_and(|response| {
                     response.subtype == "success"
                         && matches!(
                             self.pending.get(&response.request_id),
@@ -125,6 +125,17 @@ impl super::SdkBridge {
                     "response",
                     &Field("response", &Field("commands", &Commands)),
                 )
+            }
+            // A reply Sage only waits for: its payload, such as the
+            // `get_settings` echo of a large managed policy, is never read.
+            "control_response"
+                if envelope.response.as_ref().is_some_and(|response| {
+                    self.pending
+                        .get(&response.request_id)
+                        .is_some_and(super::Pending::discards_reply)
+                }) =>
+            {
+                Field("response", &Field("response", &Unread))
             }
             _ => Other,
         }

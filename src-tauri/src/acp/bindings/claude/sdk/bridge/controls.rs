@@ -69,7 +69,10 @@ impl SdkBridge {
         }
         let mut pending = Pending::Control;
         let request = match control {
-            SessionControl::RewindConversation { .. } => json!({"subtype":"get_settings"}),
+            SessionControl::RewindConversation { .. } => {
+                pending = Pending::Barrier;
+                json!({"subtype":"get_settings"})
+            }
             SessionControl::ForkAt { .. } => return Err(BridgeError::Unsupported),
             SessionControl::UndoTurn { turn_id } => json!({
                 "subtype": "rewind_files",
@@ -139,6 +142,7 @@ impl SdkBridge {
             matches!(
                 pending,
                 Pending::Control
+                    | Pending::Barrier
                     | Pending::Restore
                     | Pending::Passive(_)
                     | Pending::Fork(_)

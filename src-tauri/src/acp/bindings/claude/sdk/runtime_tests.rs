@@ -331,6 +331,82 @@ fn sdk_catalog_ceiling_keeps_unrelated_arrays_and_uncorrelated_replies_bounded()
     }
 }
 
+/// A managed policy's 691-entry deny list, echoed in the `get_settings`
+/// reply Sage only waits for (session start, fork, fork at a turn, rewind),
+/// once failed the launch on the 512-entry array cap. Only a reply Sage
+/// asked for and discards is exempt.
+#[test]
+fn a_large_managed_policy_in_an_unread_reply_never_fails_a_launch() {
+    use sage_acp_protocol::session_control::{ConversationTarget, SessionControl};
+    let deny: Vec<String> = (0..700)
+        .map(|rule| format!("Bash(tool-{rule}:*)"))
+        .collect();
+    let policy = json!({"permissions":{"deny":deny},
+        "env":(0..300).map(|key| (format!("K{key}"), json!("v"))).collect::<serde_json::Map<_, _>>()});
+    let settings = |request: &Value| {
+        assert_eq!(request["request"]["subtype"], "get_settings");
+        frame(
+            json!({"type":"control_response","response":{"subtype":"success",
+            "request_id":request["request_id"],"response":{"effective":policy,"sources":[{"source":"policySettings","settings":policy}]}}}),
+        )
+    };
+    let taken = |runtime: &mut ClaudeSdkRuntime, incoming: &Frame| {
+        runtime.validate_ingress(incoming).unwrap();
+        runtime.ingest(incoming, &Mapper).unwrap().into_parts().0
+    };
+    let mut runtime = runtime();
+    let initialize = send(&mut runtime, AdapterCommand::Initialize);
+    reply(
+        &mut runtime,
+        &initialize,
+        json!({"commands":[],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
+    );
+    let session = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: "/w".into(),
+            model: None,
+        },
+    );
+    let foreign = settings(&json!({"request_id":"foreign","request":{"subtype":"get_settings"}}));
+    assert_eq!(
+        runtime.validate_ingress(&foreign),
+        Err(crate::acp::transport::StructuralError::ArrayTooLarge)
+    );
+    let events = taken(&mut runtime, &settings(&session));
+    assert!(
+        matches!(events.first(), Some(AdapterEvent::SessionReady { .. })),
+        "{events:?}"
+    );
+    let target = ConversationTarget {
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse(
+            "turn-0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90",
+        )
+        .unwrap(),
+        native_turn_id: None,
+        following_messages: 0,
+        prompt_digest: None,
+    };
+    let rewind = SessionControl::RewindConversation {
+        before: target.clone(),
+    };
+    let fork_at = SessionControl::ForkAt { target };
+    for start in 0..3 {
+        let egress = match start {
+            0 => runtime.fork_session(),
+            1 => runtime.session_control(&fork_at),
+            _ => runtime.session_control(&rewind),
+        }
+        .unwrap();
+        let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        taken(&mut runtime, &settings(&request));
+        assert!(runtime.take_native_rpc_reply().is_some(), "{request}");
+    }
+}
+
 #[test]
 fn a_claude_code_turn_reaches_the_store_as_shared_events() {
     let mut runtime = ready();

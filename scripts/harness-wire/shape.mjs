@@ -11,9 +11,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const MAX_DEPTH = 4;
+export const MAX_DEPTH = 4;
 // Subtrees whose keys are the model's or the user's data, not the protocol.
-const OPAQUE = new Set([
+export const OPAQUE = new Set([
   "input",
   "updatedInput",
   "arguments",

@@ -28,4 +28,6 @@ pub(crate) mod runtime;
 pub(crate) mod session_title;
 pub(crate) mod standard_acp;
 #[cfg(test)]
+pub(crate) mod wire_contract;
+#[cfg(test)]
 pub(crate) mod wire_replay;
