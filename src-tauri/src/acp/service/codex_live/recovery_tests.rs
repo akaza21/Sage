@@ -2506,26 +2506,27 @@ fn an_idle_chat_out_of_view_releases_its_runtime_after_two_minutes() {
 }
 
 #[test]
-fn an_idle_chat_in_view_is_released_only_after_fifteen_minutes() {
+fn an_idle_chat_in_view_is_released_only_after_five_minutes() {
     let (service, owner) = idle_release_fixture("idle-shown");
     let start = std::time::Instant::now();
     service.set_shown_chats([owner.chat_id.clone()]);
-    assert_eq!(service.release_idle_runtimes(start + 14 * MINUTE), Some(0));
+    assert_eq!(service.release_idle_runtimes(start + 4 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
-    assert_eq!(service.release_idle_runtimes(start + 15 * MINUTE), Some(1));
+    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     assert!(!runtime_epoch_is_live(&service, &owner));
     service.shutdown_blocking().unwrap();
 }
 
 #[test]
-fn before_any_view_report_only_the_fifteen_minute_rule_applies() {
+fn before_any_view_report_only_the_five_minute_rule_applies() {
     let (service, owner) = idle_release_fixture("idle-unreported");
     let start = std::time::Instant::now();
-    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
-    assert_eq!(service.release_idle_runtimes(start + 10 * MINUTE), Some(0));
+    // Past the hidden wait: an unreported Chat does not count as hidden.
+    assert_eq!(service.release_idle_runtimes(start + 3 * MINUTE), Some(0));
+    assert_eq!(service.release_idle_runtimes(start + 4 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
-    assert_eq!(service.release_idle_runtimes(start + 15 * MINUTE), Some(1));
+    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
 }
@@ -2615,7 +2616,7 @@ fn a_chat_shown_again_is_kept_and_sweeping_ends_at_shutdown() {
     service.set_shown_chats([]);
     assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
     service.set_shown_chats([owner.chat_id.clone()]);
-    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
+    assert_eq!(service.release_idle_runtimes(start + 4 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
 
     service.shutdown_blocking().unwrap();
