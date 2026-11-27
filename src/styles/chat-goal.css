@@ -1,7 +1,7 @@
 .chat-goal-entry {
   padding: var(--space-1) var(--space-3) 0;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
 }
 
 .chat-goal-entry summary {
@@ -26,7 +26,7 @@
 
 .chat-goal-strip {
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
 }
 
 .chat-goal-strip__row {

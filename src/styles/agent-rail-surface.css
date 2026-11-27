@@ -67,7 +67,7 @@
   align-items: center;
   justify-content: space-between;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .workbench--agent .project-sidebar__brand button {

@@ -343,7 +343,7 @@
   white-space: nowrap;
 }
 
-@media (max-width: 520px) {
+@container composer (max-width: 520px) {
   .composer__attachment-row {
     align-items: flex-start;
   }
