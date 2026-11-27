@@ -10,6 +10,9 @@ use std::{
 use sage_acp_protocol::{contract::SageChatId, scheduler::RuntimeOwner};
 
 use super::{AcpService, ActivationClaim, explicit_close_deadline};
+use crate::acp::{
+    background_terminals::TerminalAction, service::background_terminals::TerminalsError,
+};
 
 const HIDDEN_IDLE: Duration = Duration::from_secs(2 * 60);
 /// The Chat on screen keeps its runtime this long after its last turn, so a
@@ -165,7 +168,11 @@ impl AcpService {
                 .unwrap_or_else(PoisonError::into_inner)
                 .due(&owner.chat_id, idle_since, now)
         };
-        if !unchanged || !still_due() || !self.parks_resumably(index) {
+        if !unchanged
+            || !still_due()
+            || !self.parks_resumably(index)
+            || self.runs_background_work(owner)
+        {
             return false;
         }
         self.lane_at(index).park_or_reclaim(deadline);
@@ -178,6 +185,35 @@ impl AcpService {
             tracing::warn!("an idle Chat's runtime park did not settle");
         }
         released
+    }
+
+    /// Background work the runtime still runs after its turn keeps it: work
+    /// the session surface lists, or terminals the harness reports. The sweep
+    /// asks again each time, so the runtime is released once the work ends.
+    fn runs_background_work(&self, owner: &RuntimeOwner) -> bool {
+        // A surface that cannot be read may hide work, so it keeps the runtime.
+        let listed = crate::acp::store::session_surface::runs_background_work(
+            &self.database.connection(),
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+            owner.session_id.as_str(),
+        )
+        .unwrap_or(true);
+        if listed {
+            return true;
+        }
+        if !self
+            .session_capabilities(owner)
+            .is_some_and(|capabilities| capabilities.native_background_terminals)
+        {
+            return false;
+        }
+        match self.background_terminals(owner.clone(), TerminalAction::List) {
+            Ok(terminals) => !terminals.is_empty(),
+            // The listing may still be running; its outcome is unknown.
+            Err(TerminalsError::RecoveryRequired) => true,
+            Err(TerminalsError::Rejected | TerminalsError::Stale) => false,
+        }
     }
 }
 
