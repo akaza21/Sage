@@ -1978,6 +1978,11 @@ fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
     }
 }
 
+type TerminalListing = Result<
+    Vec<crate::acp::background_terminals::BackgroundTerminal>,
+    crate::acp::runtime::HostError,
+>;
+
 #[derive(Default)]
 struct TestRuntime {
     script: Option<(OperationFailure, Arc<std::sync::Mutex<OperationTrace>>)>,
@@ -1986,8 +1991,8 @@ struct TestRuntime {
     pending_steer: Option<Arc<Mutex<Option<crate::acp::runtime::SteerCompletionSink>>>>,
     steer_attempts: Option<Arc<AtomicUsize>>,
     pending_native: Option<Arc<Mutex<Option<crate::acp::runtime::NativeRpcCompletionSink>>>>,
-    /// Background terminals the harness answers a listing with.
-    terminals: Option<Arc<Mutex<Vec<crate::acp::background_terminals::BackgroundTerminal>>>>,
+    /// How the harness answers a background terminal listing.
+    terminals: Option<Arc<Mutex<TerminalListing>>>,
 }
 
 impl TestRuntime {
@@ -2097,9 +2102,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         ) = (&self.terminals, &intent.request)
         {
             let listed = terminals.lock().unwrap().clone();
-            completion.complete(Ok(crate::acp::goal::NativeRpcReply::BackgroundTerminals(
-                listed,
-            )));
+            completion.complete(listed.map(crate::acp::goal::NativeRpcReply::BackgroundTerminals));
             return Ok(());
         }
         match &self.pending_native {
@@ -2684,13 +2687,13 @@ fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
 
 #[test]
 fn a_running_background_terminal_keeps_an_idle_runtime_until_it_ends() {
-    let terminals = Arc::new(Mutex::new(vec![
+    let terminals = Arc::new(Mutex::new(Ok(vec![
         crate::acp::background_terminals::BackgroundTerminal {
             handle: "7".into(),
             command: "npm run dev".into(),
             cwd: None,
         },
-    ]));
+    ])));
     let runtime = TestRuntime {
         terminals: Some(Arc::clone(&terminals)),
         ..TestRuntime::default()
@@ -2708,7 +2711,7 @@ fn a_running_background_terminal_keeps_an_idle_runtime_until_it_ends() {
         assert!(service.lane_for(&owner).is_some());
         assert!(runtime_epoch_is_live(&service, &owner));
     }
-    terminals.lock().unwrap().clear();
+    *terminals.lock().unwrap() = Ok(Vec::new());
     assert_eq!(service.release_idle_runtimes(start + 31 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     assert!(!runtime_epoch_is_live(&service, &owner));
@@ -2762,4 +2765,35 @@ fn a_running_background_task_on_the_surface_keeps_an_idle_runtime_until_it_ends(
     assert_eq!(service.release_idle_runtimes(start + 11 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_refused_or_failed_terminal_listing_never_keeps_an_idle_runtime_but_an_unknown_one_does() {
+    use crate::acp::runtime::HostError;
+    for (label, answer, kept) in [
+        ("idle-list-refused", HostError::Intent, false),
+        ("idle-list-closed", HostError::Closed, false),
+        ("idle-list-unknown", HostError::DeliveryUnknown, true),
+    ] {
+        let runtime = TestRuntime {
+            terminals: Some(Arc::new(Mutex::new(Err(answer)))),
+            ..TestRuntime::default()
+        };
+        let (service, owner) = idle_runtime_fixture_with(label, true, true, runtime);
+        let start = std::time::Instant::now();
+        service.set_shown_chats([]);
+        assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+        assert_eq!(
+            service.release_idle_runtimes(start + 3 * MINUTE),
+            Some(usize::from(!kept)),
+            "{label}"
+        );
+        assert_eq!(service.lane_for(&owner).is_some(), kept, "{label}");
+        // The sweep's own listing never leaves recovery behind.
+        assert!(
+            service.lane_at(0).codex_recovery.lock().unwrap().is_none(),
+            "{label}"
+        );
+        service.shutdown_blocking().unwrap();
+    }
 }

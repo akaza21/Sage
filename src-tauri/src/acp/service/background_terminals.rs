@@ -49,6 +49,30 @@ impl AcpService {
         }
         terminals_reply(list, result)
     }
+
+    /// A listing for the idle sweep. It never retains recovery: a harness
+    /// that is gone runs no terminals, so its park still reclaims it. Only a
+    /// listing whose outcome is unknown answers `RecoveryRequired`.
+    pub(crate) fn idle_terminals(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Result<Vec<BackgroundTerminal>, TerminalsError> {
+        let Some(host) = self
+            .lane_for(owner)
+            .and_then(|lane| lane.runtime.for_owner(owner).ok())
+        else {
+            return Ok(Vec::new());
+        };
+        match host.native_rpc(NativeRpcIntent {
+            owner: owner.clone(),
+            request: NativeRpcRequest::BackgroundTerminals(TerminalAction::List),
+        }) {
+            Err(HostError::Unavailable | HostError::Closed | HostError::RecoveryRequired) => {
+                Ok(Vec::new())
+            }
+            result => terminals_reply(true, result),
+        }
+    }
 }
 
 /// A runtime that is gone runs no terminals, and a stop aimed at it reached

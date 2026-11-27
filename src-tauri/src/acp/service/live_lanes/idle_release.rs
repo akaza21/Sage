@@ -10,9 +10,7 @@ use std::{
 use sage_acp_protocol::{contract::SageChatId, scheduler::RuntimeOwner};
 
 use super::{AcpService, ActivationClaim, explicit_close_deadline};
-use crate::acp::{
-    background_terminals::TerminalAction, service::background_terminals::TerminalsError,
-};
+use crate::acp::service::background_terminals::TerminalsError;
 
 const HIDDEN_IDLE: Duration = Duration::from_secs(2 * 60);
 /// The Chat on screen keeps its runtime this long after its last turn, so a
@@ -147,6 +145,12 @@ impl AcpService {
         now: Instant,
         deadline: Instant,
     ) -> bool {
+        // Asked before the lane is claimed, so a prompt to this Chat never
+        // finds its lane busy while the harness answers. New work needs a
+        // turn, which changes `idle_since` and fails the check below.
+        if self.runs_background_work(owner) {
+            return false;
+        }
         let lane = &self.lanes[index];
         if lane
             .activating
@@ -168,11 +172,7 @@ impl AcpService {
                 .unwrap_or_else(PoisonError::into_inner)
                 .due(&owner.chat_id, idle_since, now)
         };
-        if !unchanged
-            || !still_due()
-            || !self.parks_resumably(index)
-            || self.runs_background_work(owner)
-        {
+        if !unchanged || !still_due() || !self.parks_resumably(index) {
             return false;
         }
         self.lane_at(index).park_or_reclaim(deadline);
@@ -191,16 +191,20 @@ impl AcpService {
     /// the session surface lists, or terminals the harness reports. The sweep
     /// asks again each time, so the runtime is released once the work ends.
     fn runs_background_work(&self, owner: &RuntimeOwner) -> bool {
-        // A surface that cannot be read may hide work, so it keeps the runtime.
         let listed = crate::acp::store::session_surface::runs_background_work(
             &self.database.connection(),
             owner.project_id.as_str(),
             owner.chat_id.as_str(),
             owner.session_id.as_str(),
-        )
-        .unwrap_or(true);
-        if listed {
-            return true;
+        );
+        match listed {
+            Ok(false) => {}
+            Ok(true) => return true,
+            Err(_) => {
+                // A surface that cannot be read may hide work.
+                tracing::warn!("an idle Chat's session surface is unreadable; keeping its runtime");
+                return true;
+            }
         }
         if !self
             .session_capabilities(owner)
@@ -208,7 +212,7 @@ impl AcpService {
         {
             return false;
         }
-        match self.background_terminals(owner.clone(), TerminalAction::List) {
+        match self.idle_terminals(owner) {
             Ok(terminals) => !terminals.is_empty(),
             // The listing may still be running; its outcome is unknown.
             Err(TerminalsError::RecoveryRequired) => true,
