@@ -7,6 +7,12 @@ export const REFRESH_DEBOUNCE_MS = 300;
 /** Caps the debounce so a busy build cannot hold a refresh back. */
 export const MAX_WAIT_MS = 1_500;
 export const STAMP_INTERVAL_MS = 500;
+/** With a watcher, Git's writes (commit, checkout, fetch, push, branch)
+ * arrive as a `.git` notice that asks for the stamp within a tick; this slow
+ * check covers what no notice reaches, such as a linked worktree's Git
+ * folder outside the watched roots. An idle window no longer asks twice a
+ * second. */
+export const WATCHED_STAMP_INTERVAL_MS = 5_000;
 export const MIN_POLL_MS = 2_000;
 export const MAX_POLL_MS = 15_000;
 export const MIN_IDLE_POLL_MS = 30_000;
@@ -54,6 +60,7 @@ export function startRepositoryAutoRefresh(
   let rerun = false;
   let stampInFlight = false;
   let lastStamp: string | null = null;
+  let gitStampSoon = false;
   let resyncPollUntil = -Infinity;
   const polling = () => deps.pollAlways || performance.now() < resyncPollUntil;
   let idlePolls = 0;
@@ -128,8 +135,14 @@ export function startRepositoryAutoRefresh(
     );
   };
 
+  const scheduleStamp = (delay: number) => {
+    stampTimer = clear(stampTimer);
+    stampTimer = setTimeout(() => void checkStamp(), delay);
+  };
+
   const checkStamp = async () => {
     stampTimer = null;
+    gitStampSoon = false;
     if (stopped || !visible()) return;
     if (!stampInFlight) {
       stampInFlight = true;
@@ -143,7 +156,12 @@ export function startRepositoryAutoRefresh(
       stampInFlight = false;
     }
     if (!stopped && visible() && stampTimer === null) {
-      stampTimer = setTimeout(() => void checkStamp(), STAMP_INTERVAL_MS);
+      // Git wrote while this read ran: read again within a tick.
+      scheduleStamp(
+        gitStampSoon || deps.pollAlways
+          ? STAMP_INTERVAL_MS
+          : WATCHED_STAMP_INTERVAL_MS,
+      );
     }
   };
 
@@ -172,6 +190,12 @@ export function startRepositoryAutoRefresh(
       if (!wasPolling) schedulePoll();
     }
     if (!isGitInternal(notice.relativePath)) request();
+    // Git wrote under `.git`: read the stamp soon, at most once a tick
+    // through a rebase's hundreds of writes.
+    else if (!gitStampSoon && visible()) {
+      gitStampSoon = true;
+      if (stampTimer !== null) scheduleStamp(STAMP_INTERVAL_MS);
+    }
   });
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("focus", onFocus);

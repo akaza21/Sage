@@ -113,6 +113,7 @@ pub(crate) async fn browser_hide(
             visibility.hide();
             if cover != Some(true) {
                 visibility.sleep();
+                super::memory_target::keep_less(&webview, true);
                 app.state::<crate::state::AppState>()
                     .acp
                     .suspend_browser_tab(&tab_id);

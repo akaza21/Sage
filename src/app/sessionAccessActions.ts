@@ -21,7 +21,7 @@ const store = useChatAccessStore;
 export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = ["fullAccess"];
 const MAX_CHAT_MODES = 32;
 
-export function withChatMode(
+function withChatMode(
   modes: Readonly<Record<string, SessionAccessMode | null>>,
   sessionId: string,
   mode: unknown,
