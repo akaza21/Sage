@@ -9,9 +9,8 @@
   flex: 0 1 auto;
   align-items: center;
   gap: var(--space-1);
-  color: inherit;
-  font: inherit;
   white-space: nowrap;
+  position: relative;
 }
 
 .project-scope__picker {
@@ -22,18 +21,15 @@
 .project-scope--inline {
   --picker-trigger-hover-color: var(--color-text-emphasis);
   --picker-trigger-hover-fill: var(--composer-control-hover);
-  position: relative;
   gap: var(--composer-location-icon-gap);
 }
 
-/* The clear button sits just after the project name, outside the chip's
-   box, so it neither leaves a hole when hidden nor moves anything when shown
-   (the next strip chip, or the centred home caption). */
-.project-scope--inline .project-scope__clear,
-.project-scope--caption .project-scope__clear {
-  position: absolute;
-  inset-inline-start: 100%;
-  width: var(--space-4);
+/* Hovered, the strip chip is one pill: its fill, the trigger's own colour,
+   reaches by a shadow over the clear button just after the name. */
+.project-scope--inline:has(.project-scope__clear):hover {
+  border-radius: var(--radius-picker-field);
+  background: var(--composer-control-hover);
+  box-shadow: var(--space-4) 0 var(--composer-control-hover);
 }
 
 /* The home caption is as wide as its name and centred, so its clear button
@@ -44,7 +40,6 @@
   --radius-picker-field: var(--radius-none);
   --picker-trigger-width: 100%;
   --picker-trigger-justify: center;
-  position: relative;
   display: flex;
   width: fit-content;
   margin-inline: auto;
@@ -100,10 +95,14 @@
 
 .project-scope__clear {
   display: inline-flex;
-  flex: none;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  /* Placed just after the name, outside the chip's box, so it neither leaves
+     a hole when hidden nor moves anything when shown (the next strip chip, or
+     the centred home caption). Only those two variants offer it. */
+  position: absolute;
+  inset-inline-start: 100%;
+  width: var(--space-4);
   height: 20px;
   padding: 0;
   border: 0;
@@ -116,9 +115,6 @@
 .project-scope:focus-within .project-scope__clear {
   visibility: visible;
 }
-.project-scope__clear:focus-visible {
-  outline: var(--focus-ring);
-}
 .project-scope__clear:hover {
-  background: var(--composer-control-hover);
+  color: var(--color-text-emphasis);
 }
