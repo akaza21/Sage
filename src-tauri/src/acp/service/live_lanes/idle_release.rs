@@ -214,7 +214,7 @@ impl AcpService {
         }
         match self.idle_terminals(owner) {
             Ok(terminals) => !terminals.is_empty(),
-            // The listing may still be running; its outcome is unknown.
+            // The runtime was busy, or the answer is late or lost.
             Err(TerminalsError::RecoveryRequired) => true,
             Err(TerminalsError::Rejected | TerminalsError::Stale) => false,
         }
