@@ -293,9 +293,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 3240,
+        "maxGzipBytes": 3225,
         "maxCssGzipBytes": 737,
-        "reason": "Session notices, activities, Undo, the prompt actions trigger with its rewind/fork check, the usage-limit banner. JS 3218 B, CSS 621 B; cap from ConversationActions; 795 B from QuickOpen."
+        "reason": "Session notices, activities, Undo, the prompt actions trigger with its rewind/fork check, the usage-limit banner. JS 3218 B, CSS 621 B; cap from ConversationActions; 780 B from QuickOpen."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 4708,
+        "maxGzipBytes": 4723,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 3452 B to T6, T11d, T6b, T6c, T10d-b, BG-TASKS, limit banner, Attach, WORK-STATES-B."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner, 767 Attach."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
