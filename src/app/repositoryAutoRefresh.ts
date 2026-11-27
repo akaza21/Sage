@@ -7,9 +7,11 @@ export const REFRESH_DEBOUNCE_MS = 300;
 /** Caps the debounce so a busy build cannot hold a refresh back. */
 export const MAX_WAIT_MS = 1_500;
 export const STAMP_INTERVAL_MS = 500;
-/** With a watcher, a `.git` notice asks for the stamp at once; this slow
- * check only covers a Git folder outside the watched roots (a linked
- * worktree's), so an idle window no longer asks twice a second. */
+/** With a watcher, Git's writes (commit, checkout, fetch, push, branch)
+ * arrive as a `.git` notice that asks for the stamp within a tick; this slow
+ * check covers what no notice reaches, such as a linked worktree's Git
+ * folder outside the watched roots. An idle window no longer asks twice a
+ * second. */
 export const WATCHED_STAMP_INTERVAL_MS = 5_000;
 export const MIN_POLL_MS = 2_000;
 export const MAX_POLL_MS = 15_000;
@@ -157,7 +159,8 @@ export function startRepositoryAutoRefresh(
       stampInFlight = false;
     }
     if (!stopped && visible() && stampTimer === null) {
-      scheduleStamp(stampInterval);
+      // Git wrote while this read ran: read again within a tick.
+      scheduleStamp(gitStampSoon ? STAMP_INTERVAL_MS : stampInterval);
     }
   };
 
@@ -188,9 +191,9 @@ export function startRepositoryAutoRefresh(
     if (!isGitInternal(notice.relativePath)) request();
     // Git wrote under `.git`: read the stamp soon, at most once a tick
     // through a rebase's hundreds of writes.
-    else if (stampTimer !== null && !gitStampSoon) {
+    else if (!gitStampSoon && visible()) {
       gitStampSoon = true;
-      scheduleStamp(STAMP_INTERVAL_MS);
+      if (stampTimer !== null) scheduleStamp(STAMP_INTERVAL_MS);
     }
   });
   document.addEventListener("visibilitychange", onVisibility);

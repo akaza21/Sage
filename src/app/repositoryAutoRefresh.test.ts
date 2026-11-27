@@ -149,13 +149,35 @@ describe("repository auto refresh", () => {
     // Idle with a watcher: only the slow check for Git folders it cannot see.
     await advance(WATCHED_STAMP_INTERVAL_MS * 3);
     expect(changeStamp.mock.calls.length - atStart).toBe(3);
-    // A commit in a terminal: Git writes under .git, Sage refreshes within a tick.
+    // A fetch in a terminal: native hands Git's ref writes on as `.git`
+    // repository notices, so Sage refreshes within a tick.
     stamp = "b";
-    for (let index = 0; index < 200; index += 1)
-      notice(`.git/objects/${index}`);
+    for (let index = 0; index < 200; index += 1) notice(".git", "repository");
     await advance(STAMP_INTERVAL_MS + 10);
     expect(changeStamp.mock.calls.length - atStart).toBe(4);
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the stamp again soon when Git writes during a read", async () => {
+    let finish: (value: string) => void = () => undefined;
+    changeStamp.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    start();
+    // The first read is still running when Git writes.
+    notice(".git", "repository");
+    stamp = "b";
+    finish("a");
+    await advance(STAMP_INTERVAL_MS + 10);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the twice-a-second stamp where no watcher covers edits", async () => {
+    start(true);
+    await advance(0);
+    const atStart = changeStamp.mock.calls.length;
+    await advance(STAMP_INTERVAL_MS * 4);
+    expect(changeStamp.mock.calls.length - atStart).toBe(4);
   });
 
   it("still sees a commit in a Git folder the watcher cannot see", async () => {
