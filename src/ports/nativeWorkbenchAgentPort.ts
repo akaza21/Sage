@@ -12,8 +12,8 @@ export const nativeWorkbenchAgentPort: AgentPort = {
   refreshHarnesses() {
     return invokeNative("refresh_harnesses");
   },
-  listHarnessModels(harnessId: string): Promise<ModelOption[]> {
-    return invokeNative("list_harness_models", { harnessId });
+  listHarnessModels(harnessId, remembered): Promise<ModelOption[]> {
+    return invokeNative("list_harness_models", { harnessId, remembered });
   },
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult> {
     return invokeNative("send_simulated_prompt", { ...request });

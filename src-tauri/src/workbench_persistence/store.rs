@@ -70,11 +70,18 @@ impl WorkbenchStore for Database {
             None => Vec::new(),
         };
         let mut definitions = restore_harnesses(&self.connection(), &project_id, &tabs, harnesses)?;
-        let selected_harness_id = match &session {
-            Some((_, binding_id, _)) => {
-                Some(harnesses.restore_binding(binding_id, &mut definitions))
-            }
-            None => HarnessCatalog::preferred_available_harness_id(&definitions),
+        let (selected_harness_id, selected_model_id) = match &session {
+            Some((_, binding_id, model_id)) => (
+                Some(harnesses.restore_binding(binding_id, &mut definitions)),
+                model_id.clone(),
+            ),
+            None => match last_used_harness(&self.connection(), harnesses, &definitions)? {
+                Some((harness_id, model_id)) => (Some(harness_id), model_id),
+                None => (
+                    HarnessCatalog::preferred_available_harness_id(&definitions),
+                    None,
+                ),
+            },
         };
         Ok(BootstrapSnapshot {
             transition_epoch: 0,
@@ -89,7 +96,7 @@ impl WorkbenchStore for Database {
             harnesses: definitions,
             session_id: session.as_ref().map(|value| value.0.clone()),
             selected_harness_id,
-            selected_model_id: session.and_then(|value| value.2),
+            selected_model_id,
             messages,
             repositories: ProjectRepositoryStatus {
                 roots: Vec::new(),
@@ -166,4 +173,35 @@ pub(crate) fn switch_project_in(
         )
         .db()?;
     Ok(())
+}
+
+/// The harness and model of the latest session started, for a new chat to
+/// start on again; `None` once that harness is gone from this computer. It
+/// is kept while discovery still checks it, so a slower harness answering
+/// first never takes its place.
+fn last_used_harness(
+    connection: &rusqlite::Connection,
+    harnesses: &HarnessCatalog,
+    definitions: &[sage_domain::harness::HarnessDefinition],
+) -> AppResult<Option<(String, Option<String>)>> {
+    let latest = connection
+        .query_row(
+            "SELECT binding_id, model_id FROM agent_sessions ORDER BY rowid DESC LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .db()?;
+    Ok(latest.and_then(|(binding_id, model_id)| {
+        let harness_id = harnesses.harness_serving_binding(&binding_id)?;
+        definitions
+            .iter()
+            .any(|definition| {
+                definition.id == harness_id
+                    && (definition.install_state == "available"
+                        || definition.install_state == "detecting"
+                        || definition.version_checking)
+            })
+            .then(|| (harness_id.to_owned(), model_id))
+    }))
 }

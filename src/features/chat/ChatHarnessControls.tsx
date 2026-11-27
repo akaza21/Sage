@@ -115,7 +115,9 @@ export function ChatHarnessControls({
   // consumed by the next native start. Only unsaved drafts control them here;
   // existing chats retain the native-bound chat access and effort stores.
   const drafting = !!(draftPickers || draftChatId);
-  const modelsLoading = drafting && (modelsPending || !knownModels);
+  // Remembered models name the choice while the live listing is asked.
+  const modelsLoading =
+    drafting && (!knownModels || (modelsPending && !models.length));
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||

@@ -9,7 +9,7 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { preferredAvailableHarness } from "../domain/harness";
+import { harnessSettling, preferredAvailableHarness } from "../domain/harness";
 import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
 import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
@@ -134,7 +134,7 @@ export const createHarnessSlice: StateCreator<
     );
     const usesAccountModelDiscovery =
       harness?.transport === "acp" && harness.accountModelDiscovery;
-    const detecting = harness?.installState === "detecting";
+    const detecting = !!harness && harnessSettling(harness);
     if (harness && !detecting && harness.installState !== "available") {
       set({
         selectedHarnessId: harnessId,
@@ -167,6 +167,20 @@ export const createHarnessSlice: StateCreator<
       harnessDiscoveryError: null,
       harnessAccount: null,
     });
+    // Last start's listing shows at once; the phase stays unsettled, so
+    // nothing sends with it before the live listing below confirms it.
+    if (!cached && !refresh)
+      desktop.listHarnessModels(harnessId, true).then((models) => {
+        if (
+          models.length &&
+          !get().models.length &&
+          current(generation, projectId, requestGeneration, harnessId)
+        )
+          set({
+            models,
+            selectedModelId: preferredModelId(models, previousModelId),
+          });
+      }, () => undefined);
     if (detecting) return;
     if (cached) {
       revalidate(harnessId, identity, generation, projectId, requestGeneration);

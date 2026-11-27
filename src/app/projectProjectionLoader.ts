@@ -57,16 +57,15 @@ export async function loadProjectProjection(
     get().loadDirectory(childResource(root.id)),
   );
   const selectedHarnessId = get().selectedHarnessId;
-  if (projectId && selectedHarnessId) {
-    projectionLoads.push(
-      get().loadHarnessModelsForProjection(
-        selectedHarnessId,
-        get().selectedModelId,
-        generation,
-        projectId,
-      ),
+  // A harness's live listing can take seconds; the project is usable (and
+  // the composer shows the remembered models) before it answers.
+  if (projectId && selectedHarnessId)
+    void get().loadHarnessModelsForProjection(
+      selectedHarnessId,
+      get().selectedModelId,
+      generation,
+      projectId,
     );
-  }
   await Promise.all(projectionLoads);
   if (projectId && !matchesProjectIntent(get(), generation, projectId)) {
     return;

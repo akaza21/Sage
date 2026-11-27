@@ -33,6 +33,7 @@ pub(crate) use claude::{
 };
 pub(crate) use display_versions::{
     DisplayVersionCache, discover_installed_harness_presence, enrich_installed_harness_versions,
+    enrich_installed_harness_versions_each,
 };
 #[cfg(all(test, windows))]
 pub(crate) use npm_package::npm_package_bin;

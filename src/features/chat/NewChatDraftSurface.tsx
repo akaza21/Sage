@@ -7,7 +7,10 @@ import { ChatHome } from "./ChatHome";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { preferredAvailableHarness } from "../../domain/harness";
+import {
+  harnessSettling,
+  preferredAvailableHarness,
+} from "../../domain/harness";
 
 const unchangedSession = () => Promise.resolve();
 // Images taken just before Send join the draft before it is sent: Send waits
@@ -89,7 +92,10 @@ export function NewChatDraftSurface({
       : draft.targetProjectId;
   // Only its name is shown.
   const shownProject = projects.find((item) => item.id === targetId);
-  const available = harness?.installState === "available";
+  // A remembered harness still being checked takes typing; sending waits.
+  const available =
+    harness?.installState === "available" ||
+    (!!harness && harnessSettling(harness));
   const choice = effectiveDraftChoice(draft, {
     harnesses,
     selectedHarnessId,
