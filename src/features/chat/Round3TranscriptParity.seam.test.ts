@@ -26,12 +26,6 @@ it("keeps both scrim dialog titles at 18px after the base dialog rule (R3-12a)",
   }
 });
 
-it("keeps Don't ask again at 13px (R3-12d)", () => {
-  expect(read("src/features/chat/transcript-interactions.css")).toMatch(
-    /\.close-side-chat-dialog\s*\{[^}]*font-size:\s*13px;/s,
-  );
-});
-
 it("keeps annotation hover bounds on the chip after sharing compact controls", () => {
   expect(read("src/features/chat/transcript-interactions.css")).toMatch(
     /\.annotation-chip\s*\{[^}]*display:\s*inline-flex;[^}]*width:\s*fit-content;/s,

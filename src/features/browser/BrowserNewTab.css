@@ -12,7 +12,7 @@
 .browser-new-tab h2 {
   margin: 0 0 var(--space-4);
   color: var(--browser-bright-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 .browser-new-tab__tools {
@@ -41,7 +41,7 @@
   background: var(--browser-chrome-fill);
   padding: var(--space-2);
   text-align: left;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-new-tab__tools svg {
   flex: none;
@@ -119,7 +119,7 @@
   color: var(--browser-bright-text);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-new-tab__suggestions span {
   display: grid;

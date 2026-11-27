@@ -18,7 +18,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   white-space: nowrap;
   cursor: default;
@@ -74,7 +74,7 @@
   background: var(--color-panel-raised);
   box-shadow: var(--chat-annotation-shadow);
   color: var(--color-status-foreground);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
 }
 
@@ -105,7 +105,7 @@
   border-radius: var(--radius-sm);
   color: var(--chat-annotation-muted);
   font-family: var(--font-family-mono);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
   line-height: 18px;
 }
 
@@ -141,7 +141,7 @@
 .browser-element-card .browser-element-card__page {
   overflow: hidden;
   color: var(--chat-annotation-muted);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

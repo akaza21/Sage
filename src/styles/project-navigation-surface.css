@@ -100,7 +100,7 @@
   color: var(--color-text-secondary);
   background: var(--color-plane-raised);
   box-shadow: var(--agent-shell-resource-shadow);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .agent-task-header__resource-panel section {

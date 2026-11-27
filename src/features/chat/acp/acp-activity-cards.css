@@ -321,7 +321,7 @@
 .acp-lifecycle-notice {
   margin: var(--space-1) 0;
   color: var(--composer-muted-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .acp-activity-row {

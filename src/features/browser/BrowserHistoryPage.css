@@ -6,7 +6,7 @@
   color: var(--browser-bright-text);
   /* The New tab page's 692 px column, so the two pages line up. */
   padding: 28px max(16px, calc((100% - 692px) / 2));
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-history__header {
   display: flex;
@@ -16,14 +16,14 @@
 }
 .browser-history h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 .browser-history h2 {
   margin: 0 0 4px;
   padding: 0 8px;
   color: var(--browser-muted-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 .browser-history button {

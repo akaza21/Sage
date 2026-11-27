@@ -282,6 +282,7 @@
   --font-family-mono:
     "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
+  --font-size-2xs: 11px;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;
@@ -710,15 +711,12 @@ textarea:disabled,
   );
 }
 
-/* A 1920px window at 200% zoom exposes roughly a 960 CSS-pixel viewport. */
+/* Window breakpoints are 960, 760 and 640px wide; a pane adapts to its own
+   width with a container query instead. A 1920px window at 200% zoom exposes
+   roughly a 960 CSS-pixel viewport. */
 @media (max-width: 960px) {
   :root {
     --reading-measure: var(--reading-measure-compact);
-  }
-}
-
-@media (max-width: 920px) {
-  :root {
     --sidebar-width: 225px;
     --project-sidebar-width: 215px;
   }
