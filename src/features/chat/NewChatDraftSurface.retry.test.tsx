@@ -63,10 +63,12 @@ it("offers Retry on the new-chat draft when its harness did not list models", as
   expect(screen.getByText(unlisted)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-  await waitFor(() => expect(screen.queryByText(unlisted)).toBeNull());
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      harnessDiscoveryPhase: "ready",
+      harnessDiscoveryError: null,
+    }),
+  );
+  expect(screen.queryByText(unlisted)).toBeNull();
   expect(listed).toHaveBeenCalledWith(claude.id);
-  expect(useWorkbenchStore.getState()).toMatchObject({
-    harnessDiscoveryPhase: "ready",
-    harnessDiscoveryError: null,
-  });
 });
