@@ -47,13 +47,12 @@ export function ComposerNoticeFrame(
     >
       {before}
       {children}
-      {problems.map(({ identity, message, severity }) => (
+      {problems.map((problem) => (
+        // A problem is the notice's own props; Notice ignores `subject`.
         <Notice
-          key={identity}
-          identity={identity}
-          message={message}
-          severity={severity}
-          progress={severity === "info"}
+          key={problem.identity}
+          {...problem}
+          progress={problem.severity === "info"}
         />
       ))}
       {after}
@@ -79,7 +78,8 @@ export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
 export interface ComposerProblem {
   /** Canonical identity built from problem kind and owning resource scope. */
   identity: string;
-  subject: "send" | "attachment";
+  /** An attachment problem keeps its own copy when channels merge. */
+  subject?: "attachment";
   message: ReactNode;
   severity: NoticeSeverity;
 }
@@ -90,7 +90,7 @@ export function composerProblem(
     | string
     | readonly [string | null | undefined, string | number | null | undefined],
   message: ReactNode,
-  subject: ComposerProblem["subject"] = "send",
+  subject?: ComposerProblem["subject"],
   severity: NoticeSeverity = "blocking",
 ): ComposerProblem | null {
   return message

@@ -27,16 +27,16 @@ import { useComposerPaste } from "./useComposerPaste";
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden = false,
+    hidden,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId = null,
+    sessionId,
     project,
-    newChat = false,
+    newChat,
     usage,
     onCompact,
     descriptionId,
@@ -47,7 +47,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked = false,
+    sendBlocked,
     actionBusy,
     activeTurn,
     queueAvailable,
@@ -72,7 +72,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onTextChange,
     onRemoveContext,
     imageInputAvailable = false,
-    imageInputDisabledReason = null,
+    imageInputDisabledReason,
     onAddImages,
     onCancelTurn,
     onStop,
@@ -240,9 +240,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 capabilities={goalCapabilities}
               />
             ) : null}
-            <label className="sr-only" htmlFor={fieldId}>
-              Message agent
-            </label>
             <span className="sr-only" id={descriptionId}>
               {queueing ? "Queue" : "Send"} a message to the selected harness
               and model
