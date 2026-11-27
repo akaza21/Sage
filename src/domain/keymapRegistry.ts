@@ -41,217 +41,86 @@ export interface KeymapChordEvent {
   getModifierState?: (key: "AltGraph") => boolean;
 }
 
-export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
-  ...(
-    [
-      ["agent.changes", "Changes", "g", "required", "forbidden"],
-      ["agent.files", "Files", "p", "forbidden", "forbidden"],
-      ["agent.sideChat", "Side chat", "s", "forbidden", "required"],
-    ] as const
-  ).map(([id, label, key, shift, alt]) => ({
+const MODIFIERS = {
+  f: "forbidden",
+  a: "allowed",
+  r: "required",
+} as const;
+
+type ModifierCode = keyof typeof MODIFIERS;
+
+/**
+ * One binding. `modifiers` spells Ctrl or Cmd, Shift and Alt in that order,
+ * each as f (forbidden), a (allowed) or r (required): "rfa" requires Ctrl or
+ * Cmd, forbids Shift and allows Alt.
+ */
+export function keymapChord<Extra extends object = object>(
+  id: string,
+  label: string,
+  scope: KeymapScope,
+  key: string,
+  modifiers: `${ModifierCode}${ModifierCode}${ModifierCode}`,
+  extra?: Extra,
+): KeymapBinding & Extra {
+  const [ctrlOrMeta, shift, alt] = [...modifiers].map(
+    (code) => MODIFIERS[code as ModifierCode],
+  );
+  return {
     id,
     label,
+    scope,
     key,
+    ctrlOrMeta,
     shift,
     alt,
-    scope: "Agent" as const,
-    ctrlOrMeta: "required" as const,
-  })),
-  {
-    id: "agent.terminal",
-    label: "Toggle terminal",
-    scope: "Global",
-    key: "`",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "newTask",
-    label: "New chat",
-    scope: "Global",
-    key: "n",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "toggleSidebar",
-    label: "Toggle sidebar",
-    scope: "Global",
-    key: "b",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "openSettings",
-    label: "Open settings",
-    scope: "Global",
-    key: ",",
-    ctrlOrMeta: "required",
-    shift: "allowed",
-    alt: "allowed",
-  },
-  {
-    id: "chatSearch",
-    label: "Search chats",
-    scope: "Agent",
-    key: "k",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "chat.findInChat",
-    label: "Find in chat",
-    scope: "Agent chat",
-    key: "f",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "focusComposer",
-    label: "Focus composer",
-    scope: "Agent",
-    key: "l",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "sendMessage",
-    label: "Send message",
-    scope: "Agent",
-    key: "enter",
-    ctrlOrMeta: "allowed",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "newline",
-    label: "Insert a line break",
-    scope: "Agent",
-    key: "enter",
-    ctrlOrMeta: "forbidden",
-    shift: "required",
-    alt: "forbidden",
-  },
-  {
-    id: "save",
-    label: "Save file",
-    scope: "Editor",
-    key: "s",
-    ctrlOrMeta: "required",
-    shift: "allowed",
-    alt: "forbidden",
-  },
-  {
-    // VS Code's Save All is the two-step Ctrl+K S; this keymap has no
-    // two-step chords, so it takes VS Code's macOS chord on every platform.
-    id: "saveAll",
-    label: "Save all files",
-    scope: "Editor",
-    key: "s",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "required",
-  },
-  {
-    id: "closeEditor",
-    label: "Close editor",
-    scope: "Editor",
-    key: "w",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "find",
-    label: "Find in file",
-    scope: "Editor",
-    key: "f",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "replace",
-    label: "Replace in file",
-    scope: "Editor",
-    key: "h",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
+    ...extra,
+  } as KeymapBinding & Extra;
+}
+
+export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
+  keymapChord("agent.changes", "Changes", "Agent", "g", "rrf"),
+  keymapChord("agent.files", "Files", "Agent", "p", "rff"),
+  keymapChord("agent.sideChat", "Side chat", "Agent", "s", "rfr"),
+  keymapChord("agent.terminal", "Toggle terminal", "Global", "`", "rff"),
+  keymapChord("newTask", "New chat", "Global", "n", "rff"),
+  keymapChord("toggleSidebar", "Toggle sidebar", "Global", "b", "rff"),
+  keymapChord("openSettings", "Open settings", "Global", ",", "raa"),
+  keymapChord("chatSearch", "Search chats", "Agent", "k", "rff"),
+  keymapChord("chat.findInChat", "Find in chat", "Agent chat", "f", "rff"),
+  keymapChord("focusComposer", "Focus composer", "Agent", "l", "rff"),
+  keymapChord("sendMessage", "Send message", "Agent", "enter", "aff"),
+  keymapChord("newline", "Insert a line break", "Agent", "enter", "frf"),
+  keymapChord("save", "Save file", "Editor", "s", "raf"),
+  // VS Code's Save All is the two-step Ctrl+K S; this keymap has no
+  // two-step chords, so it takes VS Code's macOS chord on every platform.
+  keymapChord("saveAll", "Save all files", "Editor", "s", "rfr"),
+  keymapChord("closeEditor", "Close editor", "Editor", "w", "rff"),
+  keymapChord("find", "Find in file", "Editor", "f", "rff"),
+  keymapChord("replace", "Replace in file", "Editor", "h", "rff", {
     apple: { key: "f", shift: "forbidden", alt: "required" },
-  },
-  {
-    id: "findNext",
-    label: "Find next",
-    scope: "Editor",
-    key: "f3",
-    ctrlOrMeta: "forbidden",
-    shift: "forbidden",
-    alt: "forbidden",
+  }),
+  keymapChord("findNext", "Find next", "Editor", "f3", "fff", {
     apple: {
       key: "g",
       ctrlOrMeta: "required",
       shift: "forbidden",
       alt: "forbidden",
     },
-  },
-  {
-    id: "findPrevious",
-    label: "Find previous",
-    scope: "Editor",
-    key: "f3",
-    ctrlOrMeta: "forbidden",
-    shift: "required",
-    alt: "forbidden",
+  }),
+  keymapChord("findPrevious", "Find previous", "Editor", "f3", "frf", {
     apple: {
       key: "g",
       ctrlOrMeta: "required",
       shift: "required",
       alt: "forbidden",
     },
-  },
-  {
-    id: "goToLine",
-    label: "Go to line",
-    scope: "Editor",
-    key: "g",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
+  }),
+  keymapChord("goToLine", "Go to line", "Editor", "g", "rff", {
     appleControl: true,
-  },
-  {
-    id: "quickOpen",
-    label: "Quick Open",
-    scope: "Editor",
-    key: "p",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "commandPalette",
-    label: "Show all commands",
-    scope: "Editor",
-    key: "p",
-    ctrlOrMeta: "required",
-    shift: "required",
-    alt: "forbidden",
-  },
-  {
-    id: "navigateBack",
-    label: "Go back",
-    scope: "Global",
-    key: "arrowleft",
-    ctrlOrMeta: "forbidden",
-    shift: "forbidden",
-    alt: "required",
+  }),
+  keymapChord("quickOpen", "Quick Open", "Editor", "p", "rff"),
+  keymapChord("commandPalette", "Show all commands", "Editor", "p", "rrf"),
+  keymapChord("navigateBack", "Go back", "Global", "arrowleft", "ffr", {
     appleControl: true,
     apple: {
       key: "-",
@@ -259,15 +128,8 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
       shift: "forbidden",
       alt: "forbidden",
     },
-  },
-  {
-    id: "navigateForward",
-    label: "Go forward",
-    scope: "Global",
-    key: "arrowright",
-    ctrlOrMeta: "forbidden",
-    shift: "forbidden",
-    alt: "required",
+  }),
+  keymapChord("navigateForward", "Go forward", "Global", "arrowright", "ffr", {
     appleControl: true,
     apple: {
       key: "-",
@@ -275,34 +137,10 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
       shift: "required",
       alt: "forbidden",
     },
-  },
-  {
-    id: "goToSymbol",
-    label: "Go to symbol",
-    scope: "Editor",
-    key: "f12",
-    ctrlOrMeta: "forbidden",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "dismiss",
-    label: "Dismiss",
-    scope: "Editor",
-    key: "escape",
-    ctrlOrMeta: "forbidden",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "commit",
-    label: "Commit staged changes",
-    scope: "Editor",
-    key: "enter",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
+  }),
+  keymapChord("goToSymbol", "Go to symbol", "Editor", "f12", "fff"),
+  keymapChord("dismiss", "Dismiss", "Editor", "escape", "fff"),
+  keymapChord("commit", "Commit staged changes", "Editor", "enter", "rff"),
 ]);
 
 export function keymapBinding(id: string): KeymapBinding {

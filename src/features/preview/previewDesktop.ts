@@ -40,7 +40,7 @@ type PreviewFailure = {
   resource?: string;
 };
 
-export const MAX_PREVIEW_TARGETS = 16;
+const MAX_PREVIEW_TARGETS = 16;
 
 export function previewDesktopAvailable(): boolean {
   return isTauriRuntime();
@@ -177,7 +177,7 @@ function safeFailure(value: unknown): PreviewFailure {
   return { kind: "internal", message: "The Preview request failed safely." };
 }
 
-export class PreviewDesktopError extends Error {
+class PreviewDesktopError extends Error {
   constructor(readonly failure: PreviewFailure) {
     super(failure.message);
     this.name = "PreviewDesktopError";
