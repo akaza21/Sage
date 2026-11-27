@@ -11,9 +11,10 @@ export async function subscribeGoalChanges(
 ): Promise<() => void> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window))
     return () => undefined;
-  const [{ listen }, { subscribeGoalChanges }] = await Promise.all([
-    import("@tauri-apps/api/event"),
-    import("./acpGoalSubscription"),
-  ]);
+  // Both chunks load together. Destructuring the event import where it is
+  // awaited lets the bundler leave out the event exports Sage never uses.
+  const subscription = import("./acpGoalSubscription");
+  const { listen } = await import("@tauri-apps/api/event");
+  const { subscribeGoalChanges } = await subscription;
   return subscribeGoalChanges(onChange, listen);
 }
