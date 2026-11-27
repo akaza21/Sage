@@ -13,6 +13,8 @@ import { safeSessionNotices } from "../../../services/acpSessionNotices";
 import { ChatComposerRegion } from "../ChatComposerRegion";
 import { SessionNoticeStrip } from "./SessionNoticeStrip";
 import { UsageLimitBanner } from "./SessionNoticeStripUsageBanner";
+import { composerProblem } from "../ComposerStatusNotices";
+import { settleLazyModules } from "../../../test/settleLazyModules";
 
 afterEach(cleanup);
 
@@ -70,6 +72,49 @@ it("shows the limit above the composer field and not in the transcript strip", a
   const strip = screen.getByRole("region", { name: "Session notices" });
   expect(within(strip).getByText("Sign in to calendar.")).toBeVisible();
   expect(within(strip).queryByText(/Claude weekly limit/)).toBeNull();
+});
+
+it("leads the composer's one ordered notice stack and stays dismissed through a sign-in refusal", async () => {
+  const page = { ...pageWith(wire("warning", 85)), turns: [] };
+  const props = {
+    ...(composerProps as ComponentProps<typeof ChatComposerRegion>),
+    chatAuth: { page, errorKind: null },
+    disabledReason: "Choose a model to send.",
+    workbenchError: composerProblem(
+      "workspace",
+      "project-a",
+      "Workspace could not be refreshed.",
+    ),
+  };
+  const { rerender } = render(<ChatComposerRegion {...props} />);
+  const banner = (await screen.findByText(weekly)).closest("li")!;
+  const stack = screen.getByRole("region", { name: "Composer notices" });
+  const field = screen.getByRole("combobox", { name: "Message agent" });
+  const follows = (a: Element, b: Element) =>
+    !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  // The visible reason comes first in source order; the error still leads.
+  expect([...stack.children].map((child) => child.textContent)).toEqual([
+    "Error: Workspace could not be refreshed.",
+    "Choose a model to send.",
+  ]);
+  expect(within(stack).getByRole("alert")).toBe(stack.children[0]);
+  expect(follows(banner, stack) && follows(stack, field)).toBe(true);
+
+  fireEvent.click(screen.getByRole("button", { name: /^Dismiss: 85% of/ }));
+  rerender(
+    <ChatComposerRegion
+      {...props}
+      chatAuth={{ page, errorKind: "signInRequired" }}
+      chatError={composerProblem(
+        "signInRequired",
+        "chat-a",
+        "The harness requires sign-in.",
+      )}
+    />,
+  );
+  await settleLazyModules();
+  expect(screen.getByText("The harness requires sign-in.")).toBeVisible();
+  expect(screen.queryByText(weekly)).toBeNull();
 });
 
 it("stays dismissed until the window's level changes, and a reached limit is an alert", () => {

@@ -14,7 +14,7 @@ import {
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
-import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
+import { composerAvailability } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows } from "./lazyParts";
@@ -27,16 +27,16 @@ import { useComposerPaste } from "./useComposerPaste";
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    hidden = false,
+    hidden,
     approvalSlot,
     onEditSummaryMount,
     composerRef,
     fieldId,
     dictationScope,
     commandChatId,
-    sessionId = null,
+    sessionId,
     project,
-    newChat = false,
+    newChat,
     usage,
     onCompact,
     descriptionId,
@@ -47,7 +47,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imagePreviews,
     imageUploading = false,
     enabled,
-    sendBlocked = false,
+    sendBlocked,
     actionBusy,
     activeTurn,
     queueAvailable,
@@ -72,7 +72,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onTextChange,
     onRemoveContext,
     imageInputAvailable = false,
-    imageInputDisabledReason = null,
+    imageInputDisabledReason,
     onAddImages,
     onCancelTurn,
     onStop,
@@ -137,6 +137,20 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
+  const [describedReason, notices] = composerAvailability({
+    reason: disabledReason,
+    id: disabledReasonId,
+    scope: dictationScope,
+    onRetry: onRetryLoad,
+    compact:
+      // A visible error explains the session's own refusal; a local reason
+      // (size, queue, access) stays visible.
+      (!!chatError && sessionPromptUnavailable) ||
+      missingBindingNotice ||
+      (!availableBinding && !canPrompt) ||
+      discoveryPhase === "checking" ||
+      SIGN_IN_PHASES.includes(discoveryPhase),
+  });
   const slashReady = useRef(false);
   const [slashArmed, setSlashArmed] = useState(false);
   return (
@@ -171,9 +185,27 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           }}
         >
           <div className="composer__slots">
+            {/* Usage limits lead, outside the sign-in surface's swap so
+                their dismissals survive a refusal; then the one notice stack.
+                Hidden, it drops status problems as before. */}
             {chatAuth?.page?.sessionNotices ? (
               <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
             ) : null}
+            <ComposerStatusNotices
+              {...notices}
+              {...(!hidden && {
+                workbenchError,
+                chatError,
+                chatAuth,
+                imageStatus: composerProblem(
+                  "image-input",
+                  dictationScope,
+                  imageInput.status,
+                  "attachment",
+                  "info",
+                ),
+              })}
+            />
             {otherContext.length < attachedContext.length ? (
               <TranscriptPart
                 part="ComposerAnnotations"
@@ -208,9 +240,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 capabilities={goalCapabilities}
               />
             ) : null}
-            <label className="sr-only" htmlFor={fieldId}>
-              Message agent
-            </label>
             <span className="sr-only" id={descriptionId}>
               {queueing ? "Queue" : "Send"} a message to the selected harness
               and model
@@ -304,21 +333,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               text={text}
               disabled={actionDisabled}
             />
-            <ComposerAvailabilityNotice
-              reason={disabledReason}
-              id={disabledReasonId}
-              scope={dictationScope}
-              onRetry={onRetryLoad}
-              compact={
-                // A visible error explains the session's own refusal; a local
-                // reason (size, queue, access) stays visible.
-                (!!chatError && sessionPromptUnavailable) ||
-                missingBindingNotice ||
-                (!availableBinding && !canPrompt) ||
-                discoveryPhase === "checking" ||
-                SIGN_IN_PHASES.includes(discoveryPhase)
-              }
-            />
+            {describedReason}
             {otherContext.length > 0 ? (
               <div className="composer__attachment-row">
                 <AttachmentsPart
@@ -331,20 +346,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               </div>
             ) : null}
             {files.parts}
-            {!hidden ? (
-              <ComposerStatusNotices
-                workbenchError={workbenchError}
-                chatError={chatError}
-                chatAuth={chatAuth}
-                imageStatus={composerProblem(
-                  "image-input",
-                  dictationScope,
-                  imageInput.status,
-                  "attachment",
-                  "info",
-                )}
-              />
-            ) : null}
           </div>
           <div className="composer__toolbar">
             {!hidden ? (

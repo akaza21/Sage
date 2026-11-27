@@ -418,7 +418,13 @@ describe("composer image input", () => {
     expect(notices).toHaveAttribute("tabindex", "0");
     notices.focus();
     expect(notices).toHaveFocus();
-    expect(body).toContainElement(notices);
+    // One stack above the field, with the composer's other slots.
+    expect(form.querySelector(".composer__slots")).toContainElement(notices);
+    expect(
+      notices.compareDocumentPosition(
+        screen.getByRole("combobox", { name: "Message agent" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(location.nextElementSibling).toContainElement(form);
     expect(form.closest(".chat-dock")).toContainElement(error);
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
