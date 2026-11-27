@@ -465,6 +465,39 @@ test("each project chip shows its clear button right after the name", async ({
   expect(
     Math.abs(caption.x + caption.width / 2 - (heading.x + heading.width / 2)),
   ).toBeLessThanOrEqual(1);
+  // Without a repository the strip has no branch chip, so the project chip
+  // is last. Squeezed by a long name in a narrow window, its clear button
+  // must still fit inside the clipping strip.
+  await page.setViewportSize({ width: 480, height: 880 });
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { repositories, project, projects } = useWorkbenchStore.getState();
+    const name = "A project whose name is far too long for the strip";
+    useWorkbenchStore.setState({
+      repositories: { ...repositories, roots: [] },
+      project: { ...project!, name },
+      projects: projects.map((entry) =>
+        entry.id === project!.id ? { ...entry, name } : entry,
+      ),
+    });
+  });
+  const strip = page.getByRole("group", { name: "Chat location" });
+  await expect(strip.locator(".composer-branch")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await strip.locator(".project-scope").hover();
+  const lastClear = strip.getByRole("button", {
+    name: "Remove project from this chat",
+  });
+  await expect(lastClear).toBeVisible();
+  const clearEnd = await lastClear.evaluate(
+    (button) => button.getBoundingClientRect().right,
+  );
+  const stripContentEnd = await strip.evaluate(
+    (element) =>
+      element.getBoundingClientRect().right -
+      parseFloat(getComputedStyle(element).paddingRight),
+  );
+  expect(clearEnd).toBeLessThanOrEqual(stripContentEnd);
 });
 
 test("a new chat's location sits on a tab joined to the top of its composer", async ({

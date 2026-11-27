@@ -26,6 +26,7 @@ test("allows popovers below their trigger and offsets inside the parent", () => 
       .menu { position: absolute; top: calc(100% + 6px); left: 0; }
       .badge { position: absolute; inset-inline-end: 4px; }
       .half { position: absolute; left: 50%; }
+      .edge { position: absolute; left: calc(100% - 8px); }
       .flow { left: 100%; }
       /* .old { position: absolute; left: 100%; } */
     `),
