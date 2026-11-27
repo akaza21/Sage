@@ -35,9 +35,11 @@ impl Default for PageVisibility {
 }
 
 impl PageVisibility {
-    pub(super) fn place(&self) {
-        self.1.store(false, Ordering::Release);
+    /// Answers whether the page was asleep, hidden rather than covered.
+    pub(super) fn place(&self) -> bool {
+        let woke = self.1.swap(false, Ordering::AcqRel);
         self.0.store(true, Ordering::Release);
+        woke
     }
 
     pub(super) fn hide(&self) {

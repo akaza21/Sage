@@ -33,6 +33,7 @@ mod favicon;
 mod history;
 pub(crate) mod ipc_guard;
 pub(crate) mod lifecycle;
+mod memory_target;
 #[cfg(all(windows, feature = "native-lane"))]
 pub mod native_lane;
 pub(crate) mod navigation;

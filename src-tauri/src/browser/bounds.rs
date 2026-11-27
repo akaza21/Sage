@@ -140,11 +140,14 @@ impl BoundsTarget for NativeTarget<'_> {
         let tab_id = self.tab_id.clone();
         app.clone()
             .run_on_main_thread(move || {
-                visibility.place();
+                let woke = visibility.place();
                 if app.state::<BrowserState>().annotate.placed(&tab_id)
                     && let Err(error) = shown.show()
                 {
                     eprintln!("browser show failed for {tab_id}: {error}");
+                }
+                if woke {
+                    super::memory_target::keep_less(&shown, false);
                 }
             })
             .map_err(|error| error.to_string())
