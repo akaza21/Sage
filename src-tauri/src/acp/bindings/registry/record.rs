@@ -136,6 +136,12 @@ impl BindingRecord {
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
     }
+    /// The curated harness this record serves, admitted or not; a
+    /// user-defined agent's id lives in its registration.
+    pub(crate) fn curated_harness_id(&self) -> Option<&'static str> {
+        (!matches!(self.admission, Admission::CustomAcp(_))).then_some(self.harness_id)
+    }
+
     pub(crate) fn binding_id(&self) -> &'static str {
         self.binding_id
     }

@@ -202,6 +202,6 @@ fn last_used_harness(
                         || definition.install_state == "detecting"
                         || definition.version_checking)
             })
-            .then(|| (harness_id.to_owned(), model_id))
+            .then_some((harness_id, model_id))
     }))
 }

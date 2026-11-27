@@ -146,7 +146,7 @@ impl DiscoveryState {
         let progress = self.read();
         match &progress.snapshot {
             DiscoverySnapshot::Presence(discovered) => {
-                !progress.admitted.iter().any(|id| *id == harness_id)
+                !progress.admitted.contains(&harness_id)
                     && discovered
                         .iter()
                         .any(|candidate| candidate.id == harness_id)

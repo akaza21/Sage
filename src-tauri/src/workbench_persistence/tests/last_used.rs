@@ -6,8 +6,8 @@ const CAPABILITIES: &str = r#"{"schemaVersion":1,"protocolVersion":"acp-1","newS
 /// itself without a session, as a new chat is.
 fn database_after_a_codex_chat() -> Database {
     let (database, project_id, chat_id) = database_with_project();
-    database
-        .connection()
+    let connection = database.connection();
+    connection
         .execute(
             "INSERT INTO agent_sessions(
                id,project_id,chat_id,ordinal,binding_id,binding_digest,model_id,
@@ -18,6 +18,21 @@ fn database_after_a_codex_chat() -> Database {
             params![project_id, chat_id, "a".repeat(64), CAPABILITIES],
         )
         .unwrap();
+    for ledger in [
+        "INSERT INTO acp_session_usage(
+           project_id,chat_id,session_id,turn_count,item_count,item_bytes,
+           fact_count,fact_bytes,payload_bytes,revision
+         ) VALUES (?1,?2,'ended',0,0,0,0,0,0,0)",
+        "UPDATE acp_project_usage SET session_count=session_count+1
+         WHERE project_id=?1 AND ?2 IS NOT NULL",
+        "UPDATE acp_store_usage SET session_count=session_count+1
+         WHERE singleton=1 AND ?1 IS NOT NULL AND ?2 IS NOT NULL",
+    ] {
+        connection
+            .execute(ledger, params![project_id, chat_id])
+            .unwrap();
+    }
+    drop(connection);
     database
 }
 
