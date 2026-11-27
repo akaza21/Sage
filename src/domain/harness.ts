@@ -119,12 +119,20 @@ export function harnessHasSignInCheck(
   );
 }
 
+/** Discovery is still checking this harness, so it may yet be available. */
+export const harnessSettling = (harness: HarnessDefinition) =>
+  harness.installState === "detecting" ||
+  (!!harness.versionChecking && harness.installState !== "available");
+
 export function preferredAvailableHarness(
   harnesses: readonly HarnessDefinition[],
   rememberedId?: string | null,
 ): HarnessDefinition | null {
   let best: HarnessDefinition | null = null;
   for (const harness of harnesses) {
+    // Kept while it is checked, so a harness answering first never takes
+    // the remembered one's place.
+    if (harness.id === rememberedId && harnessSettling(harness)) return harness;
     if (
       harness.installState !== "available" ||
       (harness.transport === "acp" && !harness.bindingId)

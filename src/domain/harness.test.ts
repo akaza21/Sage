@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
-import { harnessUnavailableReason } from "./harness";
+import { harnessUnavailableReason, preferredAvailableHarness } from "./harness";
 import type { HarnessDefinition, ModelOption } from "./harness";
 
 it("keeps native executable paths out of the WebView harness DTO", () => {
@@ -71,4 +71,37 @@ it.each([
   ["__proto__", "Codex can't start yet."],
 ] as const)("explains %s using the harness display name", (kind, message) => {
   expect(harnessUnavailableReason(kind as never, "Codex")).toBe(message);
+});
+
+it("holds a remembered harness discovery still checks, and falls back once it fails", () => {
+  const harness = (
+    id: string,
+    installState: HarnessDefinition["installState"],
+    versionChecking = false,
+  ) =>
+    ({
+      id,
+      name: id,
+      description: "",
+      source: "builtIn",
+      accountModelDiscovery: false,
+      transport: "acp",
+      installState,
+      bindingId: installState === "available" ? `${id}-binding` : null,
+      versionChecking,
+    }) as HarnessDefinition;
+  const fast = harness("fast", "available");
+  expect(
+    preferredAvailableHarness(
+      [fast, harness("slow", "unavailable", true)],
+      "slow",
+    )?.id,
+  ).toBe("slow");
+  expect(
+    preferredAvailableHarness([fast, harness("slow", "detecting")], "slow")?.id,
+  ).toBe("slow");
+  expect(
+    preferredAvailableHarness([fast, harness("slow", "unavailable")], "slow")
+      ?.id,
+  ).toBe("fast");
 });

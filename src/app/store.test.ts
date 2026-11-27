@@ -3816,7 +3816,7 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
-  it("restores persisted harness models inside a project switch", async () => {
+  it("restores persisted harness models after a project switch without holding the project", async () => {
     const restored = snapshotB();
     restored.selectedHarnessId = "saved-harness";
     restored.selectedModelId = "saved-model";
@@ -3836,25 +3836,19 @@ describe("workbench resource and project navigation", () => {
     const pending = deferred<ModelOption[]>();
     vi.spyOn(desktop, "listHarnessModels").mockReturnValue(pending.promise);
 
-    const switching = useWorkbenchStore.getState().switchProject("project-b");
-    await vi.waitFor(() =>
-      expect(useWorkbenchStore.getState()).toEqual(
-        expect.objectContaining({
-          projectTransitioning: true,
-          selectedHarnessId: "saved-harness",
-          selectedModelId: null,
-        }),
-      ),
-    );
-    pending.resolve([{ id: "saved-model", name: "Saved" }]);
-    await switching;
-
+    await useWorkbenchStore.getState().switchProject("project-b");
+    // The project is usable while the harness's live listing is asked.
     expect(useWorkbenchStore.getState()).toEqual(
       expect.objectContaining({
         projectTransitioning: false,
         selectedHarnessId: "saved-harness",
-        selectedModelId: "saved-model",
+        selectedModelId: null,
       }),
+    );
+    pending.resolve([{ id: "saved-model", name: "Saved" }]);
+
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().selectedModelId).toBe("saved-model"),
     );
   });
 
@@ -3931,26 +3925,22 @@ describe("workbench resource and project navigation", () => {
     discovery.mockReturnValue(pending.promise);
     restoreSwitchInto(savedHarness("2.0.0"), "saved-model");
 
-    const switching = useWorkbenchStore.getState().switchProject("project-b");
-    await vi.waitFor(() =>
-      expect(useWorkbenchStore.getState()).toEqual(
-        expect.objectContaining({
-          projectTransitioning: true,
-          selectedHarnessId: "saved-harness",
-          selectedModelId: null,
-        }),
-      ),
-    );
-    pending.resolve([{ id: "upgraded-model", name: "Upgraded" }]);
-    await switching;
-
-    expect(discovery).toHaveBeenCalledTimes(1);
+    await useWorkbenchStore.getState().switchProject("project-b");
     expect(useWorkbenchStore.getState()).toEqual(
       expect.objectContaining({
         projectTransitioning: false,
-        selectedModelId: "upgraded-model",
+        selectedHarnessId: "saved-harness",
+        selectedModelId: null,
       }),
     );
+    pending.resolve([{ id: "upgraded-model", name: "Upgraded" }]);
+
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().selectedModelId).toBe(
+        "upgraded-model",
+      ),
+    );
+    expect(discovery).toHaveBeenCalledTimes(1);
   });
 
   it("clears a vanished model when cached harness models revalidate", async () => {

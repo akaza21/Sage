@@ -386,13 +386,15 @@ it("uses an available harness for a draft after detecting bootstrap harnesses se
       .getState()
       .harnesses.map((candidate) => candidate.installState),
   ).toEqual(["detecting", "detecting"]);
-  expect(useWorkbenchStore.getState().selectedHarnessId).toBeNull();
+  // The restored harness is held while it is detected...
+  expect(useWorkbenchStore.getState().selectedHarnessId).toBe(harness.id);
   await useWorkbenchStore
     .getState()
     .applyHarnessDiscovery([
       { ...harness, installState: "unavailable" },
       otherHarness,
     ]);
+  // ...and gives way once discovery found it unavailable.
   expect(useWorkbenchStore.getState().selectedHarnessId).toBe(otherHarness.id);
   await useWorkbenchStore.getState().openNewChatDraft();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({

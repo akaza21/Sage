@@ -1,5 +1,10 @@
 import { expect, it } from "vitest";
-import { currentProjectLayout } from "./projectProjection";
+import type {
+  BootstrapSnapshot,
+  HarnessDefinition,
+  ModelOption,
+} from "../domain/workbench";
+import { currentProjectLayout, snapshotProjection } from "./projectProjection";
 import { useWorkbenchStore } from "./store";
 
 it("compacts stale tab positions before persisting layout for a chat send", () => {
@@ -61,4 +66,49 @@ it("preserves a valid gapped layout for authoritative transition comparisons", (
     tabs,
   });
   expect(layout?.tabs).toBe(tabs);
+});
+
+it("shows the remembered listing for a restored harness still being checked", () => {
+  const harness = (
+    id: string,
+    installState: HarnessDefinition["installState"],
+  ) =>
+    ({
+      id,
+      name: id,
+      description: "",
+      source: "builtIn",
+      accountModelDiscovery: false,
+      transport: "acp",
+      installState,
+      bindingId: installState === "available" ? `${id}-binding` : null,
+      versionChecking: installState !== "available",
+    }) as HarnessDefinition;
+  const snapshot = {
+    transitionEpoch: 0,
+    projects: [],
+    project: null,
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    selectedRootId: null,
+    selectedResource: null,
+    harnesses: [harness("fast", "available"), harness("slow", "unavailable")],
+    sessionId: null,
+    selectedHarnessId: "slow",
+    selectedModelId: "sonnet",
+    rememberedModels: [{ id: "sonnet", name: "Sonnet" }],
+    messages: [],
+    repositories: { roots: [], truncated: false, elapsedMs: 0 },
+    turnChanges: [],
+    recoveredBuffers: [],
+    recoveryNotice: null,
+  } as BootstrapSnapshot & { rememberedModels: ModelOption[] };
+  // Still being checked, the restored harness keeps its place and listing,
+  // though another harness already answered.
+  const restored = snapshotProjection(snapshot);
+  expect(restored.selectedHarnessId).toBe("slow");
+  expect(restored.selectedModelId).toBe("sonnet");
+  expect(restored.models).toEqual(snapshot.rememberedModels);
+  expect(restored.harnessDiscoveryPhase).toBe("idle");
 });

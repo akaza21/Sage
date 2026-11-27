@@ -31,7 +31,8 @@ pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefin
 
 /// A model probe can also learn the start mode the harness's own settings name, which moves its
 /// default access; the catalog is sent again when that changes what the WebView was told. What
-/// the probe read of the harness's commands is kept for its drafts.
+/// the probe read of the harness's commands is kept for its drafts, and a live listing is kept
+/// so the next start shows it before asking again.
 #[tauri::command]
 pub async fn list_harness_models(
     app: tauri::AppHandle,
@@ -48,6 +49,13 @@ pub async fn list_harness_models(
     let before = access(&state.harnesses);
     let models =
         list_harness_models_async(&state.harnesses, &harness_id, MODEL_LISTING_DEADLINE).await;
+    if let Ok(models) = &models {
+        let _ = state.settings.remember_harness_models(
+            &harness_id,
+            models,
+            sage_core::time::now_millis(),
+        );
+    }
     if access(&state.harnesses) != before {
         use tauri::Emitter;
         let _ = app.emit(

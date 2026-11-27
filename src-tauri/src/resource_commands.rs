@@ -23,10 +23,11 @@ use sage_domain::{
 };
 use sage_workspace::Workspace;
 
+mod bootstrap_reply;
+use bootstrap_reply::BootstrapReply;
+
 #[tauri::command]
-pub async fn get_bootstrap_snapshot(
-    state: State<'_, AppState>,
-) -> Result<BootstrapSnapshot, String> {
+pub async fn get_bootstrap_snapshot(state: State<'_, AppState>) -> Result<BootstrapReply, String> {
     let transition_epoch = *state.project_transitions.lock().await;
     let database = state.database.clone();
     let harnesses = state.harnesses.clone();
@@ -42,7 +43,7 @@ pub async fn get_bootstrap_snapshot(
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())?;
-    Ok(snapshot)
+    Ok(BootstrapReply::new(snapshot, &state.settings))
 }
 
 pub(crate) async fn build_bootstrap_snapshot(
