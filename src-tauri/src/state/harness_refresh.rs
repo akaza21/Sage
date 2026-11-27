@@ -125,8 +125,10 @@ impl AppState {
 }
 
 /// Whether `harness_id` lists its models through the generic listing the
-/// composer asks for; an account-model harness lists through its own
-/// discovery, which a prefetch would start for nothing.
+/// composer asks for. An account-model harness lists through its own
+/// discovery, which a prefetch would start for nothing. Only a harness whose
+/// listing probes its build (Claude Code) gains time; for the others the
+/// listing answers at once and the prefetch only keeps it.
 fn lists_generically(
     definitions: &[sage_domain::harness::HarnessDefinition],
     harness_id: &str,
