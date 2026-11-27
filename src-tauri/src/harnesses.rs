@@ -10,6 +10,8 @@ mod catalog_lifecycle;
 mod claude_auth;
 mod curated_entries;
 mod custom_acp;
+mod draft_commands;
+pub(crate) use draft_commands::record_draft_commands;
 mod discovery_state;
 mod install_state;
 mod model_options;

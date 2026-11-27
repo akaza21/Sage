@@ -21,7 +21,7 @@
   { "name": "context", "section": "usage", "control": "usagePanel" },
   { "name": "status", "section": "usage", "control": "usagePanel" },
   { "name": "clear", "section": "session", "control": "newChat" },
-  { "name": "agents", "section": "session" },
+  { "name": "agents", "section": "session", "removed": "2.1.330" },
   { "name": "hooks", "section": "addOns", "terminalOnly": true },
   { "name": "memory", "section": "session", "terminalOnly": true },
   { "name": "plugin", "section": "addOns", "terminalOnly": true },

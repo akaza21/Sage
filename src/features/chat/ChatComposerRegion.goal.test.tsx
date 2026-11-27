@@ -163,9 +163,7 @@ it("offers the + menu's Goal only once the Goal control is there to open", async
   render(<ChatComposerRegion {...props} />);
   await openOptions();
   // The Goal chunk is still loading, so there are no details to open.
-  expect(
-    screen.getByRole("menuitem", { name: "Files and folders" }),
-  ).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: "Attach" })).toBeVisible();
   expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
 

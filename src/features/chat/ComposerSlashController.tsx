@@ -9,7 +9,6 @@ import type {
   CuratedBindingId,
   CuratedModelId,
 } from "../../domain/acp";
-import { invokeNative } from "../../ports/nativeInvoke";
 import { AcpDesktopError } from "../../services/acpDesktop";
 import {
   currentContext,
@@ -118,10 +117,11 @@ export async function slashCommandTurn(
 
 /**
  * A new chat's first send. A `/command` stays pending, held (the composer
- * shows it working, with Stop), while Sage looks up the harness's curated
- * built-in commands (installation metadata only). One of those, or any
- * command when that lookup fails, waits for the session's catalog in
- * slashCommandTurn; anything else is sent now.
+ * shows it working, with Stop), while Sage looks up the commands the draft
+ * offered (the harness's last reported list, read from the settings store).
+ * One of those, or any command when that lookup fails, waits for the
+ * session's live catalog in slashCommandTurn, which refuses one the harness
+ * no longer lists; anything else is sent now.
  */
 async function sendFirstCommand(
   chatId: string,
@@ -143,14 +143,14 @@ async function sendFirstCommand(
   try {
     const runtime = await loadRuntime();
     const name = runtime.parseSlashCommand(pending.text.trim())?.name;
-    const builtins = name
-      ? await invokeNative<unknown>("list_builtin_commands", {
-          harnessId,
-        }).catch(() => [name])
+    const offered = name
+      ? ((await runtime.readDraftCommands(harnessId, pending.projectId)) ?? [
+          { name },
+        ])
       : null;
     // Stopped while looking: nothing is sent.
     if (!live()) return;
-    if (name && Array.isArray(builtins) && builtins.includes(name))
+    if (name && offered?.some((command) => command.name === name))
       return await submit({ chatId, name, live });
     store.setState({ pendingFirstSend: null });
     await submit();

@@ -24,14 +24,12 @@ import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { lazyParts } from "./lazyParts";
-import { useWorkbenchStore } from "../../app/store";
-import { useDraftBuiltinCommands } from "./draftBuiltinCommands";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 // A new-chat draft's image intake and handoff upload ride in this chunk:
-// "Add images" lives here, and a draft's drops and sends load it too.
+// the + menu's Attach lives here, and a draft's drops and sends load it too.
 // eslint-disable-next-line react-refresh/only-export-components -- the draft image actions, shared by this lazy chunk's importers
 export { addDraftImages } from "./draftImages";
 const PanelPart = lazyParts<typeof PanelChunk>(
@@ -306,17 +304,14 @@ export function ComposerSectionRows({
   );
 }
 
-/** The draft lists its harness's curated built-ins; a pick only inserts
- * `/name ` into the draft's text. */
+/** The draft lists its harness's last reported commands (see
+ * draftCommands.ts); a pick only inserts `/name ` into the draft's text. */
 function DraftOptionsBrowser(props: ComposerOptionsProps) {
-  const builtins = useDraftBuiltinCommands(
-    useWorkbenchStore((state) => state.newChatDraft?.harnessId ?? undefined),
-  );
-  return (
+  const browser = (rows: AvailableAcpCommand[]) => (
     <ComposerOptionsBrowser
       {...props}
       load={null}
-      draftBuiltins={builtins}
+      draftBuiltins={rows}
       // Through the field's editing commands, so Undo restores the text.
       insertCommand={(field, { name }) =>
         void import("./ComposerCommandRuntime").then((runtime) =>
@@ -325,10 +320,15 @@ function DraftOptionsBrowser(props: ComposerOptionsProps) {
       }
     />
   );
+  return (
+    <CatalogPart part="DraftCommandCatalog" fallback={browser([])}>
+      {browser}
+    </CatalogPart>
+  );
 }
 
 const CatalogPart = lazyParts<
-  Pick<typeof CommandRuntime, "ComposerCommandCatalog">
+  Pick<typeof CommandRuntime, "ComposerCommandCatalog" | "DraftCommandCatalog">
 >(() => import("./ComposerCommandRuntime"));
 export function ComposerSectionMenu(props: ComposerAddActionsProps) {
   const pinnedOwner = usePinnedAgentChatOwner();

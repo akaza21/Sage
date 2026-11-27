@@ -1,9 +1,14 @@
 use super::{
-    Resources, StagedFiles, attachment, draft::DraftOwner, read::read_paths, release_detached,
+    StagedFiles, attachment,
+    draft::DraftOwner,
+    picked_images::{self, DraftImage},
+    read::{Picked, read_picked},
+    release_detached,
 };
 use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
-use serde::Deserialize;
+use sage_images::attachment::ImageAttachedContext;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Window};
 use tauri_plugin_dialog::DialogExt;
 
@@ -49,6 +54,22 @@ pub(crate) struct StageFilesRequest {
     owner: StageOwner,
     pick: PickKind,
     expected_revision: Option<String>,
+    /// The harness takes images, so picked PNG and JPEG files go as image
+    /// content; otherwise they are staged as files. It only sorts what this
+    /// command's own dialog returned.
+    #[serde(default)]
+    images: bool,
+}
+/// A pick's outcome: the staged batch, `None` when the pick held only
+/// images; a chat's images as pending artifacts; a draft's images as bytes.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StagedPick {
+    files: Option<StagedFiles>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    images: Vec<ImageAttachedContext>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    draft_images: Vec<DraftImage>,
 }
 /// Composer text too long to type inline. The WebView supplies the text the
 /// person pasted, never a path, so nothing outside the paste is read.
@@ -99,13 +120,13 @@ pub(crate) async fn stage_prompt_files(
     window: Window,
     state: State<'_, AppState>,
     request: StageFilesRequest,
-) -> Result<Option<StagedFiles>, String> {
+) -> Result<Option<StagedPick>, String> {
     let dialog = app
         .dialog()
         .file()
         .set_parent(&window)
         .set_title("Attach to prompt");
-    let pick = request.pick;
+    let (pick, images) = (request.pick, request.images);
     stage_with(&state, request, move || {
         let picked = match pick {
             PickKind::Files => dialog.blocking_pick_files().unwrap_or_default(),
@@ -123,7 +144,7 @@ pub(crate) async fn stage_prompt_files(
                     .ok_or("Attachment path is not a UTF-8 local path.")
             })
             .collect::<Result<Vec<_>, _>>()?;
-        read_paths(&paths).map(Some)
+        read_picked(&paths, images).map(Some)
     })
     .await
 }
@@ -138,9 +159,9 @@ async fn stage_with<P>(
     state: &AppState,
     request: StageFilesRequest,
     pick_and_read: P,
-) -> Result<Option<StagedFiles>, String>
+) -> Result<Option<StagedPick>, String>
 where
-    P: FnOnce() -> Result<Option<Resources>, &'static str> + Send + 'static,
+    P: FnOnce() -> Result<Option<Picked>, &'static str> + Send + 'static,
 {
     let admission = std::sync::Arc::clone(&state.acp.file_stage_reader)
         .try_lock_owned()
@@ -150,35 +171,59 @@ where
         .key(state, *state.project_transitions.lock().await)?;
     // One native picker and reader at a time. No queued file buffers and no
     // filesystem I/O on the async runtime thread.
-    let resources = tauri::async_runtime::spawn_blocking(move || {
-        let _admission = admission;
-        pick_and_read()
-    })
-    .await
-    .map_err(|_| "Attachment reader failed.")??;
-    let Some(resources) = resources else {
+    let (picked, admission) =
+        tauri::async_runtime::spawn_blocking(move || (pick_and_read(), admission))
+            .await
+            .map_err(|_| "Attachment reader failed.")?;
+    let Some(Picked { files, images }) = picked? else {
         return Ok(None);
     };
+    // Picked images are read under the same admission, one at a time.
+    let images = picked_images::prepare(images).await?;
+    drop(admission);
     let transition = state.project_transitions.lock().await;
     if request.owner.key(state, *transition)? != attached {
         return Err("Attachment chat tab changed during selection.".into());
     }
     let (project, chat, attached) = attached;
-    release_detached(&state.acp.file_stages, &state.database);
-    state
-        .acp
-        .file_stages
-        .lock()
-        .map_err(|_| "Attachment state is unavailable.")?
-        .stage(
-            &project,
-            &chat,
-            attached,
-            request.expected_revision.as_deref(),
-            resources,
-        )
-        .map(Some)
-        .map_err(str::to_owned)
+    let (stored, draft_images) = match &request.owner {
+        StageOwner::Chat(_) if !images.is_empty() => {
+            let database = state.database.clone();
+            let (project, chat) = (project.clone(), chat.clone());
+            let stored = tauri::async_runtime::spawn_blocking(move || {
+                picked_images::store(&database, &project, &chat, &images)
+            })
+            .await
+            .map_err(|_| "Attachment reader failed.")??;
+            (stored, Vec::new())
+        }
+        _ => (Vec::new(), picked_images::for_draft(images)),
+    };
+    let files = files
+        .map(|resources| {
+            release_detached(&state.acp.file_stages, &state.database);
+            state
+                .acp
+                .file_stages
+                .lock()
+                .map_err(|_| "Attachment state is unavailable.")?
+                .stage(
+                    &project,
+                    &chat,
+                    attached,
+                    request.expected_revision.as_deref(),
+                    resources,
+                )
+                .map_err(str::to_owned)
+        })
+        .transpose()
+        .inspect_err(|_| picked_images::unstore(&state.database, &project, &chat, &stored))?;
+    drop(transition);
+    Ok(Some(StagedPick {
+        files,
+        images: stored,
+        draft_images,
+    }))
 }
 #[tauri::command]
 pub(crate) async fn stage_prompt_text(
@@ -291,6 +336,9 @@ pub(crate) fn release_draft_prompt_files(
 #[cfg(test)]
 #[path = "draft_tests.rs"]
 mod draft_tests;
+#[cfg(test)]
+#[path = "picked_images_tests.rs"]
+mod picked_images_tests;
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;

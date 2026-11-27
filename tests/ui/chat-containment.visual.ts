@@ -697,7 +697,7 @@ const emptyChatPickers = (_profile: ChatContainmentProfile) => [
   "Harness",
   // The model popover also holds the thinking level when one is advertised.
   "Model",
-  // Add always offers Files and folders; its menu keyboard and resize
+  // Add always offers Attach; its menu keyboard and resize
   // behaviour is covered with installModeActions.
   "Access options",
   "Project",

@@ -20,7 +20,8 @@ pub(crate) use admission::{
     launch_environment,
 };
 pub(crate) use probe::{
-    known_models, known_start_mode, launch_effort_option, listing_failed, models as probed_models,
+    known_commands as probed_commands, known_models, known_start_mode, launch_effort_option,
+    listing_failed, models as probed_models,
 };
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;
 pub(crate) use runtime::native::rewind_capability;

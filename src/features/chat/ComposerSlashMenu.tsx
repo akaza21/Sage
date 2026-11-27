@@ -277,9 +277,25 @@ function ComposerSlashList({
 const CatalogPart = lazyParts<
   Pick<typeof CommandRuntime, "ComposerCommandCatalog">
 >(() => import("./ComposerCommandRuntime"));
-export function ComposerSlashMenu(
-  props: Omit<ComponentProps<typeof ComposerSlashList>, "load">,
-) {
+export function ComposerSlashMenu({
+  draftCommands,
+  ...props
+}: Omit<ComponentProps<typeof ComposerSlashList>, "load"> & {
+  /** Before a session exists, the new-chat draft's commands, as its + menu
+   * lists them; a pick only inserts `/name `. */
+  draftCommands?: AvailableAcpCommand[];
+}) {
+  if (draftCommands)
+    return (
+      <ComposerSlashList
+        {...props}
+        load={{
+          kind: "ready",
+          owner: "",
+          list: { revision: 1, commands: draftCommands },
+        }}
+      />
+    );
   const owner = props.boundChatId;
   return (
     <CatalogPart

@@ -33,7 +33,11 @@ it("opens its menu where the press landed, and Files asks for the native pick", 
         chatId="chat-draft"
         presses={1}
         triggerRef={trigger}
-        imageAction={{ disabled: false, reason: null, onChoose: vi.fn() }}
+        imageAction={{
+          disabled: false,
+          reason: null,
+          accept: vi.fn(),
+        }}
         onPick={onPick}
       />
     </>,

@@ -18,6 +18,7 @@ mod browser_preferences;
 mod browser_site_permissions;
 mod chat_read_marks;
 mod custom_acp_agents;
+mod draft_commands;
 mod editor_settings;
 mod harness_model_listings;
 mod harness_update_check;
@@ -146,6 +147,7 @@ impl SettingsStore {
             terminal_dock::migrate(&migration)?;
             new_chat_defaults::migrate(&migration)?;
             custom_acp_agents::migrate(&migration).db()?;
+            draft_commands::migrate(&migration)?;
             migration.commit().db()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

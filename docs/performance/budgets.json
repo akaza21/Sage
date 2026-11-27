@@ -17,13 +17,13 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 5254,
+        "maxGzipBytes": 5344,
         "maxCssGzipBytes": 550,
-        "reason": "Live command catalog, composer command editing, terminal-only catch with its Open in terminal handoff (T6b +200 B, T6c +450 B from Quick Open); loads with + menu or slash controller."
+        "reason": "Live command catalog, command editing, terminal-only catch and its terminal handoff (T6b +200 B, T6c +450 B), draft commands (+90 B from section menu); loads with + menu or slash."
       },
       {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
-        "maxGzipBytes": 5500,
+        "maxGzipBytes": 5410,
         "maxCssGzipBytes": 500,
         "reason": "Shared capability and catalog section browser; loads only after the composer + menu opens, with bounded search and argument inputs. Existing startup and menu caps stay unchanged."
       },
@@ -110,8 +110,8 @@
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",
-        "maxGzipBytes": 828,
-        "reason": "Composer attach flow: the attach button's files/images menu and its refusals; the staged batch belongs to the paste part. Loads with the first press. Measured 774 B."
+        "maxGzipBytes": 1595,
+        "reason": "Composer Attach: its Files/Folder menu, refusals and natively picked images; the staged batch belongs to the paste part. Loads with the first press. Measured 1345 B; 767 B from Quick Open."
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 5490,
+        "maxGzipBytes": 4723,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner, 767 Attach."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
