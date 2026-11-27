@@ -211,7 +211,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(turn_json(&db)["signIn"], true);
-        db.execute("UPDATE turns SET state='cancelled'", []).unwrap();
+        db.execute("UPDATE turns SET state='cancelled'", [])
+            .unwrap();
         assert_eq!(turn_json(&db).get("signIn"), None);
         db.execute_batch(
             "UPDATE acp_turn_terminal_reasons SET kind='timeout';

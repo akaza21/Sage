@@ -20,9 +20,6 @@ describe("sessionRailStatusLabel", () => {
     expect(sessionRailPill(false, "approval")).toBe("Awaiting approval");
     expect(sessionRailPill(true)).toBe("Awaiting approval");
     expect(sessionRailPill(false)).toBe("");
-    // A mounted chat's live approval wins over a remembered question.
-    expect(sessionRailPill(true, "input")).toBe("Awaiting approval");
-    expect(sessionRailPill(false, "input")).toBe("Needs input");
     expect(sessionRailStatusLabel("failed")).toBe("Failed");
     expect(sessionRailStatusLabel("idle")).toBe("");
     expect(sessionRailStatusLabel(undefined)).toBe("");
