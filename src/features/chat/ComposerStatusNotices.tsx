@@ -5,11 +5,14 @@ import type { HarnessDefinition } from "../../domain/harness";
 import { Notice } from "../../ui/Notice";
 import type { NoticeSeverity } from "../../ui/Notice";
 
-export type ComposerStatusNoticeProps = Pick<
-  ChatComposerRegionProps,
-  "workbenchError" | "chatError" | "chatAuth"
+export type ComposerStatusNoticeProps = Partial<
+  Pick<ChatComposerRegionProps, "workbenchError" | "chatError" | "chatAuth">
 > & {
-  imageStatus: ComposerProblem | null;
+  imageStatus?: ComposerProblem | null;
+  /** The composer's own notices around its status: `before` is blocking,
+   * `after` is information. */
+  before?: ReactNode;
+  after?: ReactNode;
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   authRecovery?: {
     harnessId: string;
@@ -19,33 +22,40 @@ export type ComposerStatusNoticeProps = Pick<
   };
 };
 
-/** Errors remain available while the optional notice surface loads. */
+/**
+ * The composer's one notice stack, blocking first: a failed load's Retry,
+ * sign-in recovery, then errors and the image status (information), then
+ * the composer's information. Errors remain available while the optional
+ * notice surface loads.
+ */
 export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
-  const { workbenchError, chatError, imageStatus, children } = props;
+  const { workbenchError, chatError, imageStatus, before, after, children } =
+    props;
   const problems = resolveComposerProblems([
-    imageStatus,
     workbenchError,
     chatError,
+    imageStatus,
   ]);
-  return problems.length || children ? (
+  return problems.length || children || before || after ? (
     <div
       className="composer__notices"
       role="region"
       aria-label="Composer notices"
       tabIndex={0}
     >
+      {before}
       {children}
-      {problems.map(({ identity, message, severity }) => (
+      {problems.map((problem) => (
+        // A problem is the notice's own props; Notice ignores `subject`.
         <Notice
-          key={identity}
-          identity={identity}
-          message={message}
-          severity={severity}
-          progress={severity === "info"}
+          key={problem.identity}
+          {...problem}
+          progress={problem.severity === "info"}
         />
       ))}
+      {after}
     </div>
   ) : null;
 }
@@ -68,7 +78,8 @@ export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {
 export interface ComposerProblem {
   /** Canonical identity built from problem kind and owning resource scope. */
   identity: string;
-  subject: "send" | "attachment";
+  /** An attachment problem keeps its own copy when channels merge. */
+  subject?: "attachment";
   message: ReactNode;
   severity: NoticeSeverity;
 }
@@ -79,7 +90,7 @@ export function composerProblem(
     | string
     | readonly [string | null | undefined, string | number | null | undefined],
   message: ReactNode,
-  subject: ComposerProblem["subject"] = "send",
+  subject?: ComposerProblem["subject"],
   severity: NoticeSeverity = "blocking",
 ): ComposerProblem | null {
   return message

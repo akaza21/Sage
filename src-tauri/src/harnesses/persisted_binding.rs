@@ -5,6 +5,17 @@ use super::{
 use sage_domain::harness::{HarnessDefinition, HarnessInstallState, HarnessUnavailableReason};
 
 impl HarnessCatalog {
+    /// The harness a binding serves, whether or not discovery admitted it yet.
+    pub(crate) fn harness_serving_binding(&self, binding_id: &str) -> Option<String> {
+        self.harness_id_for_binding(binding_id).or_else(|| {
+            self.registry
+                .route(binding_id)
+                .ok()?
+                .curated_harness_id()
+                .map(Into::into)
+        })
+    }
+
     /// Restore display identity without granting launch authority or changing
     /// the durable binding. These entries never enter the curated registry.
     pub(crate) fn restore_binding(

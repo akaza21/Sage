@@ -90,7 +90,10 @@ export function NewChatDraftSurface({
       : draft.targetProjectId;
   // Only its name is shown.
   const shownProject = projects.find((item) => item.id === targetId);
-  const available = harness?.installState === "available";
+  // A remembered harness still being checked takes typing; sending waits.
+  const available =
+    !!harness &&
+    preferredAvailableHarness(harnesses, draft.harnessId) === harness;
   const choice = effectiveDraftChoice(draft, {
     harnesses,
     selectedHarnessId,

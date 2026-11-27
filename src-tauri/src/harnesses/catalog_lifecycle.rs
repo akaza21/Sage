@@ -72,6 +72,11 @@ impl HarnessCatalog {
         self.discovered.apply(&self.registry, claude, discovered);
     }
 
+    /// Admits one harness whose probe answered while the others still run.
+    pub(crate) fn apply_probed(&self, probed: &InstalledHarness) {
+        self.discovered.apply_probed(&self.registry, probed);
+    }
+
     pub(crate) fn apply_presence(&self, discovered: Vec<InstalledHarness>) {
         self.discovered.apply_presence(discovered);
     }

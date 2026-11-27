@@ -335,6 +335,11 @@
   line-height: var(--line-height-normal);
 }
 
+/* The stack already insets its notices. */
+.composer__notices .composer__disabled-reason {
+  padding-inline: 0;
+}
+
 .access-mode {
   display: inline-flex;
   min-width: 0;

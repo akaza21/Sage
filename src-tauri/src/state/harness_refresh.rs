@@ -65,9 +65,18 @@ impl AppState {
         );
         let (claude, discovered) = std::thread::scope(|scope| {
             let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
-            let discovered = crate::harness_discovery::enrich_installed_harness_versions(
+            // Each harness is admitted and shown as soon as its own probe
+            // answers; a slow one never holds back the rest.
+            let discovered = crate::harness_discovery::enrich_installed_harness_versions_each(
                 &presence,
                 &state.harness_version_cache,
+                |probed| {
+                    state.harnesses.apply_probed(probed);
+                    let _ = app.emit(
+                        "harness-discovery-changed-v1",
+                        state.harnesses.definitions(),
+                    );
+                },
             );
             let claude = claude.join().unwrap_or_else(|_| {
                 tracing::warn!("Claude launch discovery panicked");

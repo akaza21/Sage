@@ -1,7 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HarnessDefinition } from "../domain/harness";
+import type { ModelOption } from "../domain/workbench";
 import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
+import { desktop } from "../services/desktop";
+import {
+  harnessModelIdentity,
+  rememberHarnessModels,
+  resetHarnessModelCache,
+} from "./harnessModelCache";
+import { effectiveDraftChoice } from "./newChatDraftNavigation";
+import type { NewChatDraft } from "./newChatDraftSlice";
 import { useWorkbenchStore } from "./store";
 
 const discoverCodex = vi.fn();
@@ -175,5 +184,92 @@ describe("harness discovery reconciliation", () => {
     expect(state.models).toEqual([]);
     expect(state.selectedModelId).toBeNull();
     expect(state.harnessDiscoveryPhase).not.toBe("ready");
+  });
+});
+
+describe("startup before discovery and listings settle", () => {
+  const pi: HarnessDefinition = {
+    ...simulator,
+    id: "pi",
+    name: "Pi",
+    source: "builtIn",
+    transport: "acp",
+    bindingId: "pi-rpc",
+  };
+  const sonnet = { id: "sonnet", name: "Sonnet", isDefault: true };
+  const opus = { id: "opus", name: "Opus", isDefault: true };
+  const draft = { harnessId: "pi", modelId: "sonnet" } as NewChatDraft;
+  let answerLive: (models: ModelOption[]) => void = () => undefined;
+
+  afterEach(resetHarnessModelCache);
+
+  beforeEach(() => {
+    // As the bootstrap restores it: the harness used last and the listing
+    // it gave then.
+    seed({
+      harnesses: [simulator, pi],
+      selectedHarnessId: "pi",
+      selectedModelId: "sonnet",
+      models: [sonnet],
+    });
+    vi.spyOn(desktop, "listHarnessModels").mockImplementation(
+      () => new Promise((resolve) => (answerLive = resolve)),
+    );
+  });
+
+  it("shows the remembered models at once but sends only with a model the live listing confirms", async () => {
+    void useWorkbenchStore
+      .getState()
+      .loadHarnessModelsForProjection("pi", "sonnet", 0, "project-a");
+    expect(useWorkbenchStore.getState().models).toEqual([sonnet]);
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("sonnet");
+    expect(effectiveDraftChoice(draft, useWorkbenchStore.getState())).toBe(
+      null,
+    );
+    // The live listing no longer offers the remembered model.
+    answerLive([opus]);
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("ready"),
+    );
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("opus");
+    expect(
+      effectiveDraftChoice(draft, useWorkbenchStore.getState())?.modelId,
+    ).toBe("opus");
+  });
+
+  it("keeps the remembered harness while it is checked, though another answered first", async () => {
+    const checking = {
+      ...pi,
+      installState: "unavailable",
+      versionChecking: true,
+    };
+    await useWorkbenchStore
+      .getState()
+      .applyHarnessDiscovery([simulator, checking as HarnessDefinition]);
+    let state = useWorkbenchStore.getState();
+    expect(state.selectedHarnessId).toBe("pi");
+    expect(state.models).toEqual([sonnet]);
+    expect(state.harnessDiscoveryPhase).toBe("checking");
+    void useWorkbenchStore.getState().applyHarnessDiscovery([simulator, pi]);
+    answerLive([sonnet]);
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("ready"),
+    );
+    state = useWorkbenchStore.getState();
+    expect(state.selectedHarnessId).toBe("pi");
+    expect(state.selectedModelId).toBe("sonnet");
+  });
+
+  it("lets a retry show only a cached live listing, never the remembered one, as ready", async () => {
+    rememberHarnessModels(harnessModelIdentity(pi), [opus]);
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "error",
+      harnessDiscoveryError: "Pi did not list its models in time.",
+    });
+    await useWorkbenchStore.getState().retryHarnessDiscovery();
+    const state = useWorkbenchStore.getState();
+    expect(state.harnessDiscoveryPhase).toBe("ready");
+    expect(state.models).toEqual([opus]);
+    expect(effectiveDraftChoice(draft, state)?.modelId).toBe("opus");
   });
 });

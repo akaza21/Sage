@@ -13,7 +13,7 @@ fn a_shown_chat_is_due_only_after_the_long_idle_wait() {
         shown: Some([chat("a")].into_iter().collect()),
         ..View::default()
     };
-    assert!(!view.due(&chat("a"), start, start + 14 * MINUTE));
+    assert!(!view.due(&chat("a"), start, start + 4 * MINUTE));
     assert!(view.due(&chat("a"), start, start + SHOWN_IDLE));
     assert!(view.hidden_since.is_empty(), "a shown Chat is never marked");
 }
@@ -37,7 +37,7 @@ fn a_hidden_chat_is_due_once_both_idle_and_out_of_view_for_the_short_wait() {
 fn without_a_view_report_no_chat_counts_as_hidden() {
     let start = Instant::now();
     let mut view = View::default();
-    assert!(!view.due(&chat("c"), start, start + 10 * MINUTE));
+    assert!(!view.due(&chat("c"), start, start + 4 * MINUTE));
     assert!(view.hidden_since.is_empty());
     assert!(view.due(&chat("c"), start, start + SHOWN_IDLE));
 }

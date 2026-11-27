@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::*;
 use sage_core::limits::LIMITS;
 
+mod last_used;
 mod rollback;
 mod switch;
 mod unavailable_binding;
