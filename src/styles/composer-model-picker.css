@@ -54,7 +54,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--composer-muted-text);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -194,7 +194,7 @@
 .composer__capacity {
   flex: 0 0 auto;
   color: var(--composer-muted-text);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
   white-space: nowrap;
 }
 

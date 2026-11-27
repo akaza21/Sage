@@ -210,12 +210,10 @@ fn run(
     if let Some(stdout) = stdout {
         thread::spawn(move || {
             let lines = BufReader::new(stdout.take(PROBE_BYTES)).lines();
-            let mut seen = 0;
+            // Reads on past the answers (within the bound) so a CLI still finishing after
+            // them never blocks on a full or closed pipe.
             for answer in lines.map_while(Result::ok).filter_map(|line| answer(&line)) {
-                seen += 1;
-                if sender.send(answer).is_err() || seen == 2 {
-                    break;
-                }
+                let _ = sender.try_send(answer);
             }
         });
     }
@@ -227,11 +225,8 @@ fn run(
             .is_ok()
     });
     let reply = written.then(|| collect(&receiver)).flatten();
-    drop(stdin);
-    let _ = child.kill();
-    thread::spawn(move || {
-        let _ = child.wait();
-    });
+    // Never a bare kill: see `probe_exit`.
+    thread::spawn(move || super::probe_exit::retire(child, stdin, super::probe_exit::EXIT_GRACE));
     Some(reply)
 }
 

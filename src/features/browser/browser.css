@@ -142,7 +142,7 @@
   background: var(--browser-address-fill);
   color: var(--color-text-primary);
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   padding: 0 28px;
 }
 
@@ -153,7 +153,7 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--browser-muted-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-surface__page-actions {
   display: flex;
@@ -178,7 +178,7 @@
   background: var(--browser-control-fill);
   padding: 0 8px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
   white-space: nowrap;
 }
 .browser-surface__attachment button {
@@ -276,7 +276,7 @@
   background: var(--browser-control-fill);
   padding: 8px;
   box-shadow: var(--browser-popover-shadow);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .browser-surface__menu[hidden] {
@@ -350,7 +350,7 @@
   border-bottom: 1px solid var(--browser-control-hover);
   background: var(--browser-chrome-fill);
   padding: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-surface__drawer ul {
   margin: 4px 0;
@@ -386,7 +386,7 @@
 .browser-surface__agent-stop {
   padding: 0 var(--space-2);
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
 }
 .browser-surface__toolbar .browser-surface__agent-stop {
   width: 28px;
@@ -470,7 +470,7 @@
   border-radius: var(--radius-circle);
   color: var(--color-accent-foreground);
   background: var(--color-accent);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   line-height: 24px;
   text-align: center;
@@ -510,7 +510,7 @@
   outline: none;
   color: var(--browser-bright-text);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .browser-annotate__comment::placeholder {
   color: var(--browser-annotate-placeholder);
@@ -549,7 +549,7 @@
   color: var(--color-danger-surface-text);
   background: var(--color-danger-surface);
   border: 1px solid var(--color-danger-border);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-surface__frame--new-tab {
   display: none;
@@ -567,7 +567,7 @@
 .browser-site-permissions {
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   display: grid;
   gap: 4px;
   padding: 4px 8px;
@@ -624,7 +624,7 @@
   padding: 8px;
   box-shadow: var(--browser-popover-shadow);
   color: var(--browser-control-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .browser-downloads__popover:focus {
   outline: none;
