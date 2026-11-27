@@ -1036,7 +1036,7 @@ for (const error of await cssHygienePolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 const productionScriptFiles = sourceInventory.files
-  .filter((file) => /.tsx?$/u.test(file) && !/.test.tsx?$/u.test(file))
+  .filter((file) => /\.tsx?$/u.test(file) && !/\.test\.tsx?$/u.test(file))
   .map(canonicalRelative);
 for (const error of await cssTokenPolicyErrors(
   root,
