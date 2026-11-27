@@ -39,6 +39,17 @@ pub async fn list_harness_models(
     state: State<'_, AppState>,
     harness_id: String,
 ) -> Result<Vec<ModelOption>, String> {
+    list_and_remember(&app, &state, &harness_id).await
+}
+
+/// Lists `harness_id`'s models live, the composer's way: also from discovery
+/// for the harness used last, so its listing is ready (or under way) by the
+/// time a new chat asks.
+pub(crate) async fn list_and_remember(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    harness_id: &str,
+) -> Result<Vec<ModelOption>, String> {
     let access = |harnesses: &HarnessCatalog| {
         let definition = harnesses
             .definitions()
@@ -48,10 +59,10 @@ pub async fn list_harness_models(
     };
     let before = access(&state.harnesses);
     let models =
-        list_harness_models_async(&state.harnesses, &harness_id, MODEL_LISTING_DEADLINE).await;
+        list_harness_models_async(&state.harnesses, harness_id, MODEL_LISTING_DEADLINE).await;
     if let Ok(models) = &models {
         let _ = state.settings.remember_harness_models(
-            &harness_id,
+            harness_id,
             models,
             sage_core::time::now_millis(),
         );
@@ -63,7 +74,7 @@ pub async fn list_harness_models(
             state.harnesses.definitions(),
         );
     }
-    draft_commands::follow_probe(&app, &state, &harness_id);
+    draft_commands::follow_probe(app, state, harness_id);
     models
 }
 

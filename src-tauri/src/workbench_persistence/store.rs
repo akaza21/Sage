@@ -184,24 +184,32 @@ fn last_used_harness(
     harnesses: &HarnessCatalog,
     definitions: &[sage_domain::harness::HarnessDefinition],
 ) -> AppResult<Option<(String, Option<String>)>> {
-    let latest = connection
+    Ok(
+        latest_session_binding(connection)?.and_then(|(binding_id, model_id)| {
+            let harness_id = harnesses.harness_serving_binding(&binding_id)?;
+            definitions
+                .iter()
+                .any(|definition| {
+                    definition.id == harness_id
+                        && (definition.install_state == "available"
+                            || definition.install_state == "detecting"
+                            || definition.version_checking)
+                })
+                .then_some((harness_id, model_id))
+        }),
+    )
+}
+
+/// The binding and model of the latest session started.
+pub(crate) fn latest_session_binding(
+    connection: &rusqlite::Connection,
+) -> AppResult<Option<(String, Option<String>)>> {
+    connection
         .query_row(
             "SELECT binding_id, model_id FROM agent_sessions ORDER BY rowid DESC LIMIT 1",
             [],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )
         .optional()
-        .db()?;
-    Ok(latest.and_then(|(binding_id, model_id)| {
-        let harness_id = harnesses.harness_serving_binding(&binding_id)?;
-        definitions
-            .iter()
-            .any(|definition| {
-                definition.id == harness_id
-                    && (definition.install_state == "available"
-                        || definition.install_state == "detecting"
-                        || definition.version_checking)
-            })
-            .then_some((harness_id, model_id))
-    }))
+        .db()
 }

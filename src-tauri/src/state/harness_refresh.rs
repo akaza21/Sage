@@ -63,6 +63,7 @@ impl AppState {
             "harness-discovery-changed-v1",
             state.harnesses.definitions(),
         );
+        let last_used = Self::last_used_harness(&state);
         let (claude, discovered) = std::thread::scope(|scope| {
             let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
             // Each harness is admitted and shown as soon as its own probe
@@ -76,6 +77,9 @@ impl AppState {
                         "harness-discovery-changed-v1",
                         state.harnesses.definitions(),
                     );
+                    if last_used.as_deref() == Some(probed.id) {
+                        Self::prefetch_models(app, probed.id);
+                    }
                 },
             );
             let claude = claude.join().unwrap_or_else(|_| {
@@ -90,5 +94,62 @@ impl AppState {
             state.harnesses.definitions(),
         );
         discovered
+    }
+
+    /// The harness of the latest session, when it lists its models through
+    /// the generic listing (an account-model harness lists through its own
+    /// discovery) and discovery has a curated or admitted binding for it.
+    fn last_used_harness(state: &AppState) -> Option<String> {
+        let (binding_id, _) = crate::workbench_persistence::store::latest_session_binding(
+            &state.database.connection(),
+        )
+        .ok()
+        .flatten()?;
+        state.harnesses.harness_serving_binding(&binding_id)
+    }
+
+    /// Starts the live listing of the harness used last as soon as it is
+    /// admitted, off the startup path; the composer's own request then shares
+    /// it or finds it kept. Bounded by the listing's own deadline.
+    fn prefetch_models(app: &tauri::AppHandle, harness_id: &str) {
+        if !lists_generically(&app.state::<AppState>().harnesses.definitions(), harness_id) {
+            return;
+        }
+        let app = app.clone();
+        let harness_id = harness_id.to_owned();
+        tauri::async_runtime::spawn(async move {
+            let state = app.state::<AppState>();
+            let _ = crate::commands::list_and_remember(&app, &state, &harness_id).await;
+        });
+    }
+}
+
+/// Whether `harness_id` lists its models through the generic listing the
+/// composer asks for; an account-model harness lists through its own
+/// discovery, which a prefetch would start for nothing.
+fn lists_generically(
+    definitions: &[sage_domain::harness::HarnessDefinition],
+    harness_id: &str,
+) -> bool {
+    definitions
+        .iter()
+        .any(|definition| definition.id == harness_id && !definition.account_model_discovery)
+}
+
+#[cfg(test)]
+mod prefetch_tests {
+    use super::lists_generically;
+    use crate::harnesses::HarnessCatalog;
+
+    #[test]
+    fn only_a_harness_listed_generically_is_prefetched() {
+        let mut definitions = HarnessCatalog::default().definitions();
+        let pi = definitions.iter_mut().find(|h| h.id == "pi").unwrap();
+        pi.account_model_discovery = false;
+        assert!(lists_generically(&definitions, "pi"));
+        let pi = definitions.iter_mut().find(|h| h.id == "pi").unwrap();
+        pi.account_model_discovery = true;
+        assert!(!lists_generically(&definitions, "pi"));
+        assert!(!lists_generically(&definitions, "not-a-harness"));
     }
 }
