@@ -39,6 +39,9 @@ const staged = (revision: string, names: string[]) => ({
   revision,
   files: names.map((name, index) => ({ id: `f${index}`, name, bytes: 2048 })),
 });
+const picked = (revision: string, names: string[]) => ({
+  files: staged(revision, names),
+});
 
 function withSession(promptResources: boolean) {
   acpProjectionStoreFor("chat-a").setState({
@@ -127,14 +130,12 @@ async function openAttach() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
   await settleLazyModules();
   await act(async () => {
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Files and folders" }),
-    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Attach" }));
   });
   await settleLazyModules();
 }
 
-async function pick(name: "Files…" | "Folder…" | "Images…") {
+async function pick(name: "Files…" | "Folder…") {
   await openAttach();
   await act(async () => {
     fireEvent.click(screen.getByRole("menuitem", { name }));
@@ -147,7 +148,7 @@ describe("composer attach from the + menu", () => {
     native.mockImplementation(async (command: string) => {
       if (command === "list_prompt_files") return staged("r1", ["old.md"]);
       if (command === "stage_prompt_files")
-        return staged("r2", ["old.md", "notes.txt"]);
+        return picked("r2", ["old.md", "notes.txt"]);
       if (command === "remove_prompt_file") return staged("r3", ["notes.txt"]);
       throw new Error(command);
     });
@@ -163,7 +164,7 @@ describe("composer attach from the + menu", () => {
       "stage_prompt_files",
     ]);
     expect(native).toHaveBeenCalledWith("stage_prompt_files", {
-      request: { owner, pick: "files", expectedRevision: "r1" },
+      request: { owner, pick: "files", images: false, expectedRevision: "r1" },
     });
     expect(within(chips).getAllByRole("listitem")).toHaveLength(2);
     expect(
@@ -183,7 +184,7 @@ describe("composer attach from the + menu", () => {
   it("sends picked files by the batch revision the send names", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) =>
-      command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
+      command === "stage_prompt_files" ? picked("r1", ["a.md"]) : null,
     );
     const onSubmit = vi.fn((event: { preventDefault(): void }) =>
       event.preventDefault(),
@@ -199,13 +200,13 @@ describe("composer attach from the + menu", () => {
   it("stages a folder picked in native's folder dialog", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) =>
-      command === "stage_prompt_files" ? staged("r1", ["src/a.ts"]) : null,
+      command === "stage_prompt_files" ? picked("r1", ["src/a.ts"]) : null,
     );
     renderComposer();
     await pick("Folder…");
     expect(await screen.findByText("src/a.ts · 2 KB")).toBeInTheDocument();
     expect(native).toHaveBeenCalledWith("stage_prompt_files", {
-      request: { owner, pick: "folder", expectedRevision: null },
+      request: { owner, pick: "folder", images: false, expectedRevision: null },
     });
   });
 
@@ -222,7 +223,7 @@ describe("composer attach from the + menu", () => {
   it("starts another chat from its own batch without reopening the picker", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) =>
-      command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
+      command === "stage_prompt_files" ? picked("r1", ["a.md"]) : null,
     );
     const view = renderComposer();
     await pick("Files…");
@@ -236,12 +237,12 @@ describe("composer attach from the + menu", () => {
     ).toHaveLength(1);
   });
 
-  it("shows Files and folders disabled with its reason when the harness takes no files", async () => {
+  it("shows Attach disabled with its reason when the harness takes neither files nor images", async () => {
     withSession(false);
     native.mockResolvedValue(null);
     renderComposer();
     await openAttach();
-    const row = screen.getByRole("menuitem", { name: "Files and folders" });
+    const row = screen.getByRole("menuitem", { name: "Attach" });
     expect(row).toHaveAttribute("aria-disabled", "true");
     expect(row).toHaveAccessibleDescription(
       "This harness does not accept attached files (no embedded-context support).",
@@ -290,17 +291,12 @@ describe("composer attach from the + menu", () => {
       screen.getByRole("menuitemradio", { name: "Review" }),
     ).toBeDisabled();
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("menuitem", { name: "Files and folders" }),
-      );
+      fireEvent.click(screen.getByRole("menuitem", { name: "Attach" }));
     });
     await settleLazyModules();
     const menu = screen.getByRole("menu", { name: "Attach" });
     expect(
       within(menu).getByRole("menuitem", { name: "Files…" }),
-    ).toBeEnabled();
-    expect(
-      within(menu).getByRole("menuitem", { name: "Images…" }),
     ).toBeEnabled();
   });
 
@@ -319,31 +315,73 @@ describe("composer attach from the + menu", () => {
     expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
   });
 
-  it("keeps unavailable images in the attach menu, disabled with their reason", async () => {
+  it("offers only Files… and Folder…, with no separate image item", async () => {
     withSession(true);
     native.mockResolvedValue(null);
-    renderComposer({
-      imageInputDisabledReason: "This harness does not advertise image input.",
-      onAddImages: vi.fn(),
-    });
+    renderComposer({ imageInputAvailable: true, onAddImages: vi.fn() });
     await openAttach();
-    expect(screen.getByRole("menuitem", { name: "Files…" })).toBeEnabled();
-    const images = screen.getByRole("menuitem", { name: "Images…" });
-    expect(images).toBeDisabled();
-    expect(images).toHaveAttribute(
-      "title",
-      "This harness does not advertise image input.",
-    );
+    const menu = screen.getByRole("menu", { name: "Attach" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Files…", "Folder…"]);
   });
 
-  it("offers the image path beside files when the harness takes images", async () => {
+  it("attaches an image picked through Files… as image content", async () => {
     withSession(true);
-    native.mockResolvedValue(null);
+    const image = {
+      kind: "image" as const,
+      artifactId: "11111111-1111-4111-8111-111111111111",
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 68,
+      sha256: "a".repeat(64),
+      label: "shot.png",
+    };
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files"
+        ? { files: null, images: [image] }
+        : null,
+    );
+    const attached: unknown[] = [];
+    useWorkbenchStore.setState({
+      attachChatContext: (intent: unknown, context: unknown) =>
+        attached.push([intent, context]) > 0,
+    } as never);
     const onAddImages = vi.fn();
     renderComposer({ imageInputAvailable: true, onAddImages });
+    await pick("Files…");
+    await settleLazyModules();
+    expect(native).toHaveBeenCalledWith("stage_prompt_files", {
+      request: { owner, pick: "files", images: true, expectedRevision: null },
+    });
+    expect(attached).toEqual([
+      [
+        expect.objectContaining({ chatId: "chat-a", transitionEpoch: 3 }),
+        image,
+      ],
+    ]);
+    // Native already stored it: nothing is uploaded again or staged as a file.
+    expect(onAddImages).not.toHaveBeenCalled();
+    expect(screen.queryByText(/shot\.png ·/u)).toBeNull();
+    expect(
+      document.querySelector("#disabled-reason-paste [aria-live=polite]"),
+    ).toHaveTextContent("1 file attached to the next message.");
+  });
+
+  it("picks images only through Files… where the harness takes images but no files", async () => {
+    withSession(false);
+    native.mockResolvedValue(null);
+    renderComposer({ imageInputAvailable: true, onAddImages: vi.fn() });
+    await openAttach();
     const chooser = screen.getByLabelText<HTMLInputElement>("Choose images");
     const click = vi.spyOn(chooser, "click");
-    await pick("Images…");
+    expect(screen.getByRole("menuitem", { name: "Folder…" })).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Files…" }));
+    });
     expect(click).toHaveBeenCalledOnce();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",
@@ -359,7 +397,7 @@ describe("composer attach in a chat with no session yet", () => {
       page: { currentSessionId: null, sessions: [] } as never,
     });
     native.mockImplementation(async (command: string) =>
-      command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
+      command === "stage_prompt_files" ? picked("r1", ["a.md"]) : null,
     );
     renderComposer({ imageInputAvailable: true, onAddImages: vi.fn() });
     await openAttach();
@@ -372,7 +410,7 @@ describe("composer attach in a chat with no session yet", () => {
     });
     expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     expect(native).toHaveBeenCalledWith("stage_prompt_files", {
-      request: { owner, pick: "files", expectedRevision: null },
+      request: { owner, pick: "files", images: true, expectedRevision: null },
     });
   });
 });

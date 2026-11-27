@@ -1729,7 +1729,7 @@ describe("composer permission mode picker", () => {
       screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: "Files and folders" }),
+      screen.getByRole("menuitem", { name: "Attach" }),
     );
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -1786,7 +1786,7 @@ describe("composer permission mode picker", () => {
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
       const control = screen.getByRole("menuitem", {
-        name: "Files and folders",
+        name: "Attach",
       });
       expect(control).toHaveFocus();
       fireEvent.keyDown(control, { key: "Tab", shiftKey });
@@ -2669,7 +2669,7 @@ it("keeps the send binding's access modes when switching between Access and Add"
   fireEvent.click(add);
   expect(screen.queryByRole("menu", { name: "Access mode" })).toBeNull();
   expect(screen.getAllByRole("menu")).toHaveLength(1);
-  fireEvent.click(screen.getByRole("menuitem", { name: "Files and folders" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Attach" }));
   expect(onAttachFiles).toHaveBeenCalledOnce();
   expect(add).toHaveFocus();
   fireEvent.click(add);

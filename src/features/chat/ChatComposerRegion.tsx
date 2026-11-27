@@ -11,7 +11,6 @@ import {
   composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
-import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
@@ -347,13 +346,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             ) : null}
           </div>
           <div className="composer__toolbar">
-            {imageInputAvailable ? (
-              <ComposerImageInput
-                inputRef={imageInput.chooserRef}
-                disabled={composerDisabled || imageUploading}
-                onChoose={imageInput.accept}
-              />
-            ) : null}
             {!hidden ? (
               <ChatHarnessControls
                 {...harnessControls}

@@ -42,7 +42,7 @@ for (const width of [1888, 720, 480]) {
         name: "Composer options",
         exact: true,
       });
-      // Files and folders and the project live in Add, so it opens with or
+      // Attach and the project live in Add, so it opens with or
       // without session modes.
       const hasProjects = await page.evaluate(async () => {
         const { useWorkbenchStore } = await import("/src/app/store.ts");
@@ -70,7 +70,7 @@ for (const width of [1888, 720, 480]) {
         ),
       );
       await expect(
-        menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
+        menu.getByRole("menuitem", { name: "Attach", exact: true }),
       ).toHaveCount(1);
       for (const action of ["Plugins", "Sketch", "Goal", "Add images"]) {
         await expect(

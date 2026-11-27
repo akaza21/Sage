@@ -150,9 +150,7 @@ it.each([
       onSetSessionMode: async () => {},
       onSetSessionConfigOption: async () => {},
       onAttachFiles: capabilities ? noop : undefined,
-      imageAction: capabilities
-        ? { disabled: false, onChoose: noop }
-        : undefined,
+      imageAction: capabilities ? { disabled: false, accept: noop } : undefined,
       onOpenGoal: capabilities ? noop : undefined,
       onCompact: capabilities ? noop : undefined,
       onOpenUsage: capabilities ? noop : undefined,
@@ -175,9 +173,10 @@ it.each([
     ).toEqual(expected);
     const more = screen.queryByRole("group", { name: "More" });
     if (capabilities && !query) {
-      expect(
-        screen.getByRole("menuitem", { name: "Add images" }),
-      ).toBeEnabled();
+      // Images are just files: one Attach row picks files, folders and images.
+      expect(screen.getByRole("menuitem", { name: "Attach" })).toBeEnabled();
+      for (const gone of ["Add images", "Files and folders"])
+        expect(screen.queryByRole("menuitem", { name: gone })).toBeNull();
       expect(
         screen.getByRole("menuitem", { name: "MCP servers" }),
       ).toBeVisible();
@@ -219,14 +218,14 @@ it.each([
 it.each([
   {
     sessionless: false,
-    rows: ["files", "images", "project", "goal", "plan", "mode:plan", "usage"],
+    rows: ["attach", "project", "goal", "plan", "mode:plan", "usage"],
     commands: ["link", "recipe", "tune", "status"],
   },
   // Fails closed: rows that do not declare needing nothing and
   // every catalog command stay hidden before a session exists; only the
   // draft's curated built-ins show. Files stage in the draft's own native
   // slot.
-  { sessionless: true, rows: ["files", "images", "plan"], commands: ["fast"] },
+  { sessionless: true, rows: ["attach", "plan"], commands: ["fast"] },
 ])(
   "before a session exists keeps only rows declaring they need none (sessionless $sessionless)",
   ({ sessionless, rows, commands }) => {
@@ -248,7 +247,7 @@ it.each([
       onSetSessionMode: async () => {},
       onSetSessionConfigOption: async () => {},
       onAttachFiles: noop,
-      imageAction: { disabled: false, onChoose: noop },
+      imageAction: { disabled: false, accept: noop },
       planAccess: {
         bindingId: "binding",
         capabilities: [],

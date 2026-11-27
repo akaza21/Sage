@@ -7,6 +7,9 @@ import { acpDesktop } from "../../../src/services/acpDesktop";
 import { acpCommandsDesktop } from "../../../src/services/acpCommandsDesktop";
 
 const MAX_CAPTURED = 16;
+// A 1×1 PNG, as native hands a draft's picked image back.
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 const deferred = () => {
   let release = () => {};
@@ -16,7 +19,7 @@ const deferred = () => {
 
 /**
  * On the agent-single scenario: gives its ACP harness a Plan access mode,
- * answers native image uploads and chat access writes, and lets a new-chat
+ * answers native image picks and uploads and chat access writes, and lets a new-chat
  * draft create a chat with no session. Its first send starts a session and
  * sends a turn; both are captured on `window.draftPlus`, with switches to
  * hold or fail uploads and to hold the created chat's page.
@@ -36,6 +39,8 @@ export function installDraftPlusFixture() {
     started: 0,
     chatId: null as string | null,
     uploads: [] as string[],
+    // Image names the next Attach → Files… pick returns.
+    picks: [] as string[],
     failUpload: null as string | null,
     uploadHold: null as ReturnType<typeof deferred> | null,
     pageHold: null as ReturnType<typeof deferred> | null,
@@ -194,10 +199,27 @@ export function installDraftPlusFixture() {
       invoke: async (
         command: string,
         args: {
-          request?: { label?: string; dataBase64?: string; mode?: string };
+          request?: {
+            label?: string;
+            dataBase64?: string;
+            mode?: string;
+            images?: boolean;
+          };
         },
       ) => {
         if (command === "list_builtin_commands") return control.builtins;
+        // Native hands a draft's picked images back as bytes.
+        if (command === "stage_prompt_files") {
+          if (!args.request?.images) throw "The pick did not ask for images.";
+          return {
+            files: null,
+            draftImages: control.picks.splice(0).map((label) => ({
+              mediaType: "image/png",
+              label,
+              dataBase64: PNG_BASE64,
+            })),
+          };
+        }
         if (command === "set_chat_access") {
           bounded(control.access);
           control.access.push(args.request);

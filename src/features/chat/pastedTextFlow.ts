@@ -9,6 +9,7 @@ import type {
   StagedPromptFiles,
 } from "../../ports/promptAttachments";
 import { draftEnded } from "./draftFileHandoff";
+import type { PickedImages } from "./pastedTextTypes";
 import {
   lineCount,
   pasteAttachmentRefusal,
@@ -141,12 +142,14 @@ export async function pasteOver(
   }
 }
 
-// Native stages the picked files in Rust: the WebView never sees a path or the bytes.
+// Native stages the picked files in Rust: the WebView never sees a path or
+// a file's bytes. With `images`, picked images go as images, attached there.
 export async function pickFiles(
   staged: StagedOwner,
   announce: Announce,
   sending: boolean,
   pick: PromptPick,
+  images?: PickedImages,
 ) {
   if (sending)
     return announce(
@@ -161,13 +164,16 @@ export async function pickFiles(
     const result = await port.stagePromptFiles({
       owner: target,
       pick,
+      images: !!images,
       expectedRevision: staged.ref.current.revision,
     });
     if (!result) return;
     // A draft discarded while its picker was open keeps nothing.
     if (staged.draft && draftEnded(staged.chatId)) return;
-    apply(staged, result);
-    const count = result.files.length;
+    if (result.files) apply(staged, result.files);
+    // Images are files too.
+    const count =
+      (result.files?.files.length ?? 0) + ((await images?.(result)) ?? 0);
     announce(
       `${count} ${count === 1 ? "file" : "files"} attached to the next message.`,
     );
