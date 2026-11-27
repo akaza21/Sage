@@ -1,0 +1,40 @@
+{
+  "harness": "pi",
+  "scenarios": {
+    "commands": {
+      "outcome": "completed",
+      "firstFrameMs": 782,
+      "frames": 8,
+      "bytes": 2507,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "auth-fail": {
+      "outcome": "completed",
+      "firstFrameMs": 739,
+      "frames": 10,
+      "bytes": 3166,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    }
+  },
+  "version": "1.5.0",
+  "gaps": {
+    "subagent": "Pi has no built-in subagent tool",
+    "plan-approve": "Pi has no plan mode",
+    "plan-decline": "Pi has no plan mode",
+    "shell": "the prompt was refused: No API key found for the selected model.",
+    "edit": "the prompt was refused: No API key found for the selected model.",
+    "image": "the prompt was refused: No API key found for the selected model."
+  },
+  "args": [
+    "--mode",
+    "rpc"
+  ]
+}

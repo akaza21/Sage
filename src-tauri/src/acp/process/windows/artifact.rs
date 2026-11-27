@@ -45,6 +45,12 @@ impl VerifiedArtifact {
     }
 
     pub(super) fn open(spec: &LaunchSpec) -> Result<Self, LaunchError> {
+        Self::open_checked(spec, true)
+    }
+
+    /// `hash` reads and hashes the whole file; without it the recorded digest
+    /// stands for a file this process already verified and still holds.
+    fn open_checked(spec: &LaunchSpec, hash: bool) -> Result<Self, LaunchError> {
         let canonical =
             std::fs::canonicalize(&spec.artifact.canonical_absolute_path).map_err(|_| {
                 identity_mismatch("recorded binding canonical path", expected(spec), None)
@@ -114,8 +120,12 @@ impl VerifiedArtifact {
             );
             return Err(LaunchError::IdentityMismatch);
         }
-        let digest = hash_file(&mut file, bytes)
-            .map_err(|_| identity_mismatch("recorded binding SHA-256", expected(spec), None))?;
+        let digest = if hash {
+            hash_file(&mut file, bytes)
+                .map_err(|_| identity_mismatch("recorded binding SHA-256", expected(spec), None))?
+        } else {
+            spec.artifact.sha256
+        };
         if digest != spec.artifact.sha256 {
             identity_mismatch(
                 "recorded binding SHA-256",
@@ -161,13 +171,17 @@ impl VerifiedArtifact {
 
     /// A batch launcher cannot be held exclusively because `cmd.exe` must
     /// reopen it. Recheck the observed launcher immediately before spawn and
-    /// again while the host is suspended.
+    /// again while the host is suspended. A native executable is held without
+    /// write or delete sharing from its verification on, so it cannot change:
+    /// the same file, size and path prove it without hashing a large build
+    /// again (that took most of a slow first launch's window).
     pub(super) fn revalidate(
         &self,
         spec: &LaunchSpec,
         checkpoint: &'static str,
     ) -> Result<(), LaunchError> {
-        let current = Self::open(spec)?;
+        let held = spec.artifact.entrypoint_kind == EntryPointKind::NativeExecutable;
+        let current = Self::open_checked(spec, !held)?;
         (current.identity == self.identity
             && current.bytes == self.bytes
             && current.digest == self.digest)
@@ -432,3 +446,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "artifact_held_tests.rs"]
+mod held_tests;

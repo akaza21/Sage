@@ -33,3 +33,15 @@ pub(crate) static DISPATCH_OVER: Message = LazyLock::new(|| {
         kb(DISPATCH_BYTES)
     )
 });
+pub(crate) static IMAGE_OVER_COUNT: Message = LazyLock::new(|| {
+    format!(
+        "A message can include at most {} images.",
+        sage_core::limits::PROMPT_IMAGE_COUNT
+    )
+});
+pub(crate) static IMAGE_OVER: Message = LazyLock::new(|| {
+    format!(
+        "Choose PNG or JPEG images no larger than {} each.",
+        sage_images::byte_size(sage_core::limits::IMAGE_UPLOAD_BYTES)
+    )
+});

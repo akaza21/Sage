@@ -380,10 +380,16 @@ fn a_turn_codex_starts_that_sage_refuses_is_shown_before_the_session_fails_close
 /// taken into that Turn, which keeps workspace-write and wrote to the
 /// workspace. The `turn/started` that arrives before Codex answers the
 /// prompt is refused, so the prompt never runs under the wider access.
-/// A `/compact` or `/review` raced the same way gets the goal Turn's
-/// `turn/started` before its answer, so it is refused too. A compact
-/// answered first binds its own `turn/started`, whatever the thread's
-/// access, and an answered review leaves the thread's access as it was.
+/// A `/compact` raced the same way gets the goal Turn's `turn/started`
+/// before its answer, so it is refused too. A compact answered first binds
+/// its own `turn/started`, whatever the thread's access. A review runs its
+/// reviewer under the thread's access (Codex recorded workspace-write for
+/// it), so a read-only chat's review is refused before its Turn is
+/// prepared: no `review/start` is written and the session runs on, and a
+/// workspace-write chat's review runs and leaves the thread's access as it
+/// was. Its frames are the recorded shape: the answer names the review Turn
+/// with no root, its `turn/started` names a new Turn rooted at the answer,
+/// and its items and end name the answer's Turn.
 #[test]
 fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
     use crate::acp::bindings::adapter::{AdapterRuntimeError, HarnessTurnAuthority};
@@ -391,18 +397,20 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
     use sage_acp_protocol::access_mode::SessionAccessMode;
     const FIRST: &str = "01a2152a-48c9-7ab1-8af4-951391e0316a";
     const GOAL: &str = "01a2152a-5858-7b42-8c45-f03f0fd8f5b6";
-    const REVIEW: &str = "01a2155e-a7cf-77e1-bf7a-4525903a99e8";
+    const REVIEW: &str = "01a217ed-bd70-7490-8fb7-c05f6ba923e9";
+    const REVIEWER: &str = "01a217ed-bdeb-7dc3-8cd9-2b9ad503eb63";
     let turn_object = |id: &str| {
         serde_json::json!({"id":id,"rootTurnId":id,"items":[],"itemsView":"notLoaded",
             "status":"inProgress","error":null,"startedAt":null,"completedAt":null,
             "durationMs":null})
     };
-    let started = |id: &str| {
+    let nested = |id: &str, root: &str| {
         codex_line(serde_json::json!({"method":"turn/started","params":{
-            "threadId":"thread-1","turn":{"id":id,"rootTurnId":id,"items":[],
+            "threadId":"thread-1","turn":{"id":id,"rootTurnId":root,"items":[],
             "itemsView":"notLoaded","status":"inProgress","error":null,
             "startedAt":1795651426,"completedAt":null,"durationMs":null}}}))
     };
+    let started = |id: &str| nested(id, id);
     let completed = |id: &str| {
         codex_line(serde_json::json!({"method":"turn/completed","params":{
             "threadId":"thread-1","turn":{"id":id,"status":"completed"}}}))
@@ -422,11 +430,12 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
         })
     };
     runtime().block_on(async {
-        for (action, answered_first) in [
-            (None, false),
-            (review(), false),
-            (compact(), true),
-            (review(), true),
+        let read_only = SessionAccessMode::ReadOnly;
+        for (action, answered_first, access) in [
+            (None, false, read_only),
+            (compact(), false, read_only),
+            (compact(), true, read_only),
+            (review(), true, SessionAccessMode::WorkspaceWrite),
         ] {
             let is_review = matches!(action, Some(SessionAction::Review { .. }));
             let mut codex = ready_codex();
@@ -456,6 +465,17 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 .ok()
                 .expect("the workspace-write prompt ends");
 
+            let prompt = joined(action);
+            if is_review {
+                assert_eq!(
+                    parts.validate_command_prompt(&prompt, read_only),
+                    Err(crate::acp::runtime::HostError::PromptRefused(
+                        crate::acp::runtime::REVIEW_ACCESS_REFUSED
+                    )),
+                    "a read-only chat's review is refused before its Turn is prepared"
+                );
+            }
+            parts.validate_command_prompt(&prompt, access).unwrap();
             let next = ActiveTurnIntent {
                 turn_id: turn("two"),
                 external_turn_id: None,
@@ -465,12 +485,8 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 .bind_turn(next.clone())
                 .ok()
                 .expect("a prompt may follow");
-            pump.queue_prompt(
-                joined(action),
-                &next.client_message_id,
-                SessionAccessMode::ReadOnly,
-            )
-            .unwrap();
+            pump.queue_prompt(prompt, &next.client_message_id, access)
+                .unwrap();
             let mut transport = CaptureTransport(Vec::new());
             assert_eq!(
                 pump.flush_one(&mut transport).unwrap(),
@@ -485,7 +501,7 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                             AdapterRuntimeError::HarnessTurnRefused
                         ))
                     ),
-                    "review={is_review}: {refused:?}"
+                    "{refused:?}"
                 );
                 continue;
             }
@@ -511,13 +527,23 @@ fn a_narrower_prompt_codex_takes_into_its_own_wider_turn_is_refused() {
                 assert!(bound, "the compact's own Turn binds to the chat's Turn");
                 continue;
             }
+            let mut review = turn_object(REVIEW);
+            review["rootTurnId"] = serde_json::Value::Null;
             let answer = codex_line(
-                serde_json::json!({"id":id,"result":{"turn":turn_object(REVIEW),
-                    "reviewThreadId":"thread-1"}}),
+                serde_json::json!({"id":id,"result":{"turn":review,"reviewThreadId":"thread-1"}}),
             );
-            for frame in [answer, started(REVIEW), completed(REVIEW)] {
+            let message = codex_line(serde_json::json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":REVIEW,"item":{"id":"review-message",
+                "type":"agentMessage","text":"nothing to review"}}}));
+            for frame in [answer, nested(REVIEWER, REVIEW), message, completed(REVIEW)] {
                 pump.push_stdout_chunk(&frame, 3).await.unwrap();
             }
+            assert!(
+                durable_items(&shared)
+                    .iter()
+                    .any(|item| item == "review-message"),
+                "the review's items land in the chat's Turn"
+            );
             let mut parts = pump
                 .try_into_completed_parts()
                 .ok()

@@ -22,6 +22,7 @@ pub(crate) mod session_control;
 mod session_operations;
 mod session_routes;
 mod sign_in_evidence;
+mod start_recovery;
 pub(crate) use sign_in_evidence::send_acp_turn_inner;
 pub(crate) mod slash_commands;
 pub(crate) mod turn_workspace;
@@ -109,12 +110,20 @@ pub async fn start_acp_session(
     start_acp_session_inner(&state, request).await
 }
 
+/// A start that ends needing recovery is driven on in the background, so its
+/// session returns to one the next send starts without the chat being closed.
 #[tauri::command]
 pub async fn activate_acp_session(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: ActivateAcpSessionRequest,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
-    activate_acp_session_inner(&state, request).await
+    let (project, chat) = (request.project_id.clone(), request.chat_id.clone());
+    let activated = activate_acp_session_inner(&state, request).await;
+    if matches!(activated, Err(AcpIpcError::RecoveryRequired { .. })) {
+        start_recovery::drive_in_background(app, project, chat);
+    }
+    activated
 }
 
 #[tauri::command]

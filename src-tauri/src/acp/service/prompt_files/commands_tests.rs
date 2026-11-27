@@ -1,4 +1,4 @@
-use super::super::Resource;
+use super::super::{Resource, Resources};
 use super::*;
 use crate::project_registry::create::ProjectCreateStore;
 use crate::workbench_persistence::store::WorkbenchStore;
@@ -95,7 +95,7 @@ fn slow_picks_release_the_project_guard_and_stale_snapshots_are_not_staged() {
             let pick_and_read = move || {
                 started.send(()).unwrap();
                 released.recv().unwrap();
-                Ok(Some(snapshot()))
+                Ok(Some(snapshot().into()))
             };
             let transition = async {
                 read_started.await.unwrap();
@@ -134,7 +134,7 @@ fn a_closed_tab_releases_its_batch_and_a_reopened_tab_never_inherits_it() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();
         let state = &fixture.state;
-        let stage = || stage_with(state, fixture.request(), || Ok(Some(snapshot())));
+        let stage = || stage_with(state, fixture.request(), || Ok(Some(snapshot().into())));
         assert!(stage().await.unwrap().is_some());
         let (tab, attached_at): (String, i64) = state
             .database

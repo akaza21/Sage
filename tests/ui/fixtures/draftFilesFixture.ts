@@ -62,7 +62,7 @@ export function installDraftFilesFixture() {
         ],
       };
       batches.set(owner, next);
-      return next;
+      return { files: next };
     }
     if (command === "hand_off_prompt_files") {
       const [from, to] = [key(request.from), key(request.to)];

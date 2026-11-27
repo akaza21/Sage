@@ -173,34 +173,6 @@ impl SdkBridge {
         }
     }
 
-    pub(super) fn rate_limit(sdk: &Value, inbound: &mut Inbound) {
-        let info = &sdk["rate_limit_info"];
-        let level = match info.get("status").and_then(Value::as_str) {
-            Some("allowed_warning") => SessionNoticeLevel::Warning,
-            Some("rejected") => SessionNoticeLevel::Error,
-            _ => return,
-        };
-        let window = match info.get("rateLimitType").and_then(Value::as_str) {
-            Some("five_hour") => "5-hour",
-            Some("seven_day") => "weekly",
-            Some("seven_day_opus") => "weekly Opus",
-            Some("seven_day_sonnet") => "weekly Sonnet",
-            Some("overage" | "seven_day_overage_included") => "extra usage",
-            _ => "usage",
-        };
-        let used = info
-            .get("utilization")
-            .and_then(Value::as_f64)
-            .map(|used| format!(" ({:.0}% used)", used * 100.0))
-            .unwrap_or_default();
-        let text = if level == SessionNoticeLevel::Error {
-            format!("You've reached your Claude {window} limit{used}.")
-        } else {
-            format!("You're close to your Claude {window} limit{used}.")
-        };
-        notice(inbound, level, &text);
-    }
-
     pub(super) fn end_retry(&mut self, inbound: &mut Inbound) {
         if std::mem::take(&mut self.retrying) {
             let label = "Retrying the request to Claude";
@@ -251,6 +223,7 @@ fn notice(inbound: &mut Inbound, level: SessionNoticeLevel, text: &str) {
     inbound
         .session
         .push(SessionScopedEvent::Notice(SessionNotice {
+            usage_limit: None,
             identity: None,
             diagnostic: false,
             level,

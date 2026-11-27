@@ -32,16 +32,36 @@
 //! interrupts its Turn and runs the action in a Turn of its own. Until the
 //! answer, that `turn/started` would bind to the action, so the same rule
 //! holds against the access the chat had when the action was sent. Once
-//! answered, an action asks nothing: compact answers `{}` before its own
-//! `turn/started`, which must bind, and neither action sets the policy.
+//! answered, a compact asks nothing: it answers `{}` before its own
+//! `turn/started`, which must bind. Neither action sets the policy.
 //!
-//! Two limits remain. An answered action's own Turn runs under
-//! `thread_access` with no check: a read-only chat's `/review` after a
-//! workspace-write prompt runs the reviewer under workspace-write. And a
-//! goal `turn/started` that arrives after a compact's `{}` answer binds to
-//! the compact unchecked, under the same frame-order assumption.
+//! An answered review runs under the thread's access (recorded with
+//! codex-cli 0.167.1): `review/start` takes no policy, and on a thread last
+//! prompted under workspace-write the reviewer ran under workspace-write
+//! even when the request carried a read-only policy. So a review that rule
+//! would refuse is refused before its Turn is prepared, and `review/start`
+//! is never sent. The outcome is already known then, so the thread's access
+//! cannot change before the review is answered: `prompt_with_settings`
+//! refuses while a `turn/start` is pending, and the reusable path fences
+//! stdout between the check and the write (the first-turn path has no
+//! fence, but no `turn/start` precedes it). For the same reason a raced `turn/started` is never refused
+//! against a sent review; that refusal still guards prompts and compacts.
+//!
+//! Two limits remain. A goal `turn/started` that arrives after a compact's
+//! `{}` answer binds to the compact unchecked: the compaction's own
+//! `turn/started` and a goal continuation's carry the same fields (a new id
+//! that is its own root, no items), and only the later `contextCompaction`
+//! item tells them apart. With a goal set right after that answer, Codex
+//! ran the compaction first and the goal only after it ended. And a review
+//! raced with Codex's own Turn is answered with a new Turn, not the raced
+//! one, so when the raced `turn/started` is not refused it binds to the
+//! review and the answer stays an identity conflict.
 use sage_acp_protocol::{
     access_mode::SessionAccessMode, contract::RequiredText, intent::ExternalId,
+};
+
+use crate::acp::{
+    runtime::REVIEW_ACCESS_REFUSED, session_action::SessionAction, transcript_quote::Prompt,
 };
 
 use super::super::{AdapterError, CodexAdapter, ExternalKind, RequestKind, ScopedExternalId};
@@ -128,9 +148,26 @@ impl CodexAdapter {
             .is_some_and(|(request_id, asked)| {
                 self.pending_kind(request_id).is_some()
                     && self.turn_start_correlations.is_pending(request_id)
-                    && self.native_turn.thread_access != SessionAccessMode::ReadOnly
-                    && self.native_turn.thread_access != asked
+                    && self.thread_access_overrides(asked)
             })
+    }
+
+    /// Whether a Turn under the thread's access runs wider than `asked`.
+    fn thread_access_overrides(&self, asked: SessionAccessMode) -> bool {
+        self.native_turn.thread_access != SessionAccessMode::ReadOnly
+            && self.native_turn.thread_access != asked
+    }
+
+    /// The refusal of `prompt` asked under `access`, before its Turn is
+    /// prepared: a review whose reviewer would run under other access.
+    pub(crate) fn prompt_refusal(
+        &self,
+        prompt: &Prompt,
+        access: SessionAccessMode,
+    ) -> Option<&'static str> {
+        (matches!(prompt.action, Some(SessionAction::Review { .. }))
+            && self.thread_access_overrides(access))
+        .then_some(REVIEW_ACCESS_REFUSED)
     }
 
     /// Codex answered `request_id`. A `turn/start` it accepted sets the

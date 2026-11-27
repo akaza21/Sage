@@ -11,19 +11,14 @@ import {
   composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
-import { ComposerImageInput } from "./ComposerImageInput";
-import type * as LocationChunk from "./ComposerLocationStrip";
-const LocationPart = lazyParts<typeof LocationChunk>(
-  () => import("./ComposerLocationStrip"),
-);
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { composerProblem } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { ComposerAvailabilityNotice } from "./ComposerAvailabilityNotice";
 import { SIGN_IN_PHASES } from "./composerDisabledReason";
 import { useComposerFiles } from "./useComposerFiles";
-import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
-import { NoticePart, SlashPart } from "./composerLazyParts";
+import { AttachmentsPart, GoalPart, QueuedRows } from "./lazyParts";
+import { LocationPart, NoticePart, SlashPart } from "./composerLazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -176,6 +171,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           }}
         >
           <div className="composer__slots">
+            {chatAuth?.page?.sessionNotices ? (
+              <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
+            ) : null}
             {otherContext.length < attachedContext.length ? (
               <TranscriptPart
                 part="ComposerAnnotations"
@@ -252,7 +250,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 {...(sessionFeatures
                   ? paste.field
                   : { onChange: (event) => onTextChange(event.target.value) })}
-                onFocus={() => sessionFeatures && setSlashArmed(true)}
+                onFocus={() => setSlashArmed(true)}
                 onBlur={dictation.cancel}
                 onKeyDown={(event) => {
                   // An IME composition owns its keys, Enter included.
@@ -260,7 +258,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   // While suggestions load, Enter must not send a half-typed
                   // command.
                   if (
-                    sessionFeatures &&
+                    slashArmed &&
                     !slashReady.current &&
                     event.key === "Enter" &&
                     !event.shiftKey &&
@@ -283,12 +281,13 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   }
                 }}
               />
-              {sessionFeatures && slashArmed ? (
+              {slashArmed ? (
                 <SlashPart
                   part="ComposerSlashController"
                   fieldRef={composerRef}
                   readyRef={slashReady}
                   boundChatId={commandChatId}
+                  draft={!sessionFeatures}
                   disabled={hidden || composerDisabled}
                   fieldId={fieldId}
                   text={text}
@@ -348,13 +347,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             ) : null}
           </div>
           <div className="composer__toolbar">
-            {imageInputAvailable ? (
-              <ComposerImageInput
-                inputRef={imageInput.chooserRef}
-                disabled={composerDisabled || imageUploading}
-                onChoose={imageInput.accept}
-              />
-            ) : null}
             {!hidden ? (
               <ChatHarnessControls
                 {...harnessControls}

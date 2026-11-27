@@ -1,0 +1,79 @@
+{
+  "harness": "codex",
+  "scenarios": {
+    "commands": {
+      "outcome": "completed",
+      "firstFrameMs": 915,
+      "frames": 14,
+      "bytes": 21077,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "shell": {
+      "outcome": "completed",
+      "firstFrameMs": 471,
+      "frames": 63,
+      "bytes": 28460,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "edit": {
+      "outcome": "completed",
+      "firstFrameMs": 695,
+      "frames": 71,
+      "bytes": 31994,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "image": {
+      "outcome": "completed",
+      "firstFrameMs": 1011,
+      "frames": 29,
+      "bytes": 13351,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "subagent": {
+      "outcome": "completed",
+      "firstFrameMs": 483,
+      "frames": 42,
+      "bytes": 19850,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": ""
+    },
+    "auth-fail": {
+      "outcome": "completed",
+      "firstFrameMs": 652,
+      "frames": 28,
+      "bytes": 13498,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "stderrTail": "onnect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2026-11-26T17:00:03.877648Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2026-11-26T17:00:05.589822Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2026-11-26T17:00:08.915858Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n"
+    }
+  },
+  "version": "codex-cli 0.167.1",
+  "gaps": {
+    "plan-approve": "Sage's Codex binding admits no plan access mode",
+    "plan-decline": "Sage's Codex binding admits no plan access mode"
+  },
+  "args": [
+    "app-server"
+  ]
+}

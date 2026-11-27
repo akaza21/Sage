@@ -1,0 +1,51 @@
+.usage-limit-banners {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.usage-limit-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-warning-muted);
+  font-size: var(--font-size-sm);
+}
+
+.usage-limit-banner > svg {
+  flex: none;
+  color: var(--color-warning);
+}
+
+.usage-limit-banner--error {
+  background: var(--color-danger-muted);
+}
+
+.usage-limit-banner--error > svg {
+  color: var(--color-danger);
+}
+
+.usage-limit-banner__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usage-limit-banner__dismiss {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 0;
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+}
+
+.usage-limit-banner__dismiss:focus-visible {
+  outline: var(--focus-ring);
+}

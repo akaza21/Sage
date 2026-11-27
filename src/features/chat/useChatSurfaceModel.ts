@@ -150,7 +150,7 @@ export function useChatSurfaceModel({
                 : "Ready"));
     return {
       selectedHarness,
-      useNativeAcp: Boolean(useNativeAcp),
+      useNativeAcp,
       bindingId,
       selectedSession,
       sessionHarnessId,
@@ -172,6 +172,11 @@ export function useChatSurfaceModel({
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
+  // A session the next send starts (a new one, or one whose slow first start
+  // was abandoned with the pending capabilities) learns them on that start.
+  const sessionRefusesPrompts =
+    model.selectedSession?.capabilities.prompt === false &&
+    !model.selectedSession.nextRuntimeEpoch;
   const turnEligibility = useMemo(() => {
     const activeAcpTurn = model.useNativeAcp
       ? currentNonterminalTurn(page)
@@ -203,8 +208,7 @@ export function useChatSurfaceModel({
           page &&
           model.harnessAvailable &&
           model.bindingId &&
-          discoveryPhase === "ready" &&
-          (!model.selectedSession || model.selectedSession.capabilities.prompt),
+          discoveryPhase === "ready",
         )
       : model.harnessAvailable;
     const usage =
@@ -235,7 +239,8 @@ export function useChatSurfaceModel({
     canPrompt: protocolCanPrompt,
     usage,
   } = turnEligibility;
-  const canPrompt = protocolCanPrompt && !accessReason;
+  const canPrompt =
+    protocolCanPrompt && !accessReason && !sessionRefusesPrompts;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
   const sendBlocked =
@@ -247,7 +252,7 @@ export function useChatSurfaceModel({
       !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
-    !!activeAcpTurn &&
+    activeAcpTurn &&
     liveTurnStates.has(activeAcpTurn.state) &&
     canPrompt &&
     !actionBusy &&
@@ -281,9 +286,7 @@ export function useChatSurfaceModel({
   // The session's own refusal: it lacks prompts and no other reason applies,
   // so a session or launch error explains it; a local reason never hides.
   const sessionPromptUnavailable =
-    !reason &&
-    !queueAvailable &&
-    model.selectedSession?.capabilities.prompt === false;
+    !reason && !queueAvailable && sessionRefusesPrompts;
   const submit = useCallback(
     // The composer names the batch it staged; a queued message never does.
     (event: FormEvent, stagedRevision?: string | null) => {
@@ -361,6 +364,8 @@ export function useChatSurfaceModel({
     },
     [],
   );
+  // A chat with no head session: the next send starts one.
+  const headless = page && !page.currentSessionId ? page : undefined;
   return {
     ...model,
     // Access and effort are drafted for the session the next send starts,
@@ -368,8 +373,8 @@ export function useChatSurfaceModel({
     // binding or model refuses a start.
     accessTarget: {
       bindingId: accessBindingId,
-      draftChatId: page && !page.currentSessionId ? page.chatId : undefined,
-      endedPage: page && !page.currentSessionId ? page : undefined,
+      draftChatId: headless?.chatId,
+      endedPage: headless,
     },
     foregroundError: acpActions.error ?? chatError,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,

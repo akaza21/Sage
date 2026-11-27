@@ -58,6 +58,7 @@ mod skills_journey_tests;
 mod steer_journey_tests;
 mod title_request_tests;
 mod usage_tests;
+mod wire_replay_tests;
 
 struct Mapper;
 

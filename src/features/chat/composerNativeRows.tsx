@@ -7,6 +7,7 @@ import {
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { attachRefusal } from "./composerAttachRefusal";
+import { imagesOffered } from "./useComposerImageInput";
 import { ComposerPlanAccess } from "./ComposerPlanAccess";
 import type { ComposerAddActionsProps } from "./ComposerAddActions";
 import type { ComposerNativeRow } from "./composerMenuSections";
@@ -70,27 +71,30 @@ export function composerNativeRows(
       control,
     );
   };
-  if (props.onAttachFiles) {
+  // One row for files, folders and images: usable when either can attach.
+  const attach = props.onAttachFiles;
+  if (attach || imagesOffered(props.imageAction)) {
     const refusal =
       props.attachRefusalChatId !== undefined
         ? attachRefusal(props.attachRefusalChatId)
         : null;
     add(
-      "files",
+      "attach",
       "addToMessage",
-      "Files and folders",
+      "Attach",
       composerMenuRow(
         {
-          "aria-label": "Files and folders",
+          "aria-label": "Attach",
           "aria-disabled": refusal !== null,
+          disabled: !attach,
           onClick: () => {
             if (refusal !== null) return;
             onClose();
-            props.onAttachFiles?.();
+            attach?.();
           },
         },
         {
-          text: "Files and folders",
+          text: "Attach",
           description: refusal ?? undefined,
           icon: <Paperclip size={14} aria-hidden="true" />,
         },
@@ -101,26 +105,6 @@ export function composerNativeRows(
       "none",
     );
   }
-  const imageAction = props.imageAction;
-  if (imageAction && !imageAction.reason)
-    add(
-      "images",
-      "addToMessage",
-      "Add images",
-      composerMenuRow(
-        {
-          disabled: disabled || imageAction.disabled,
-          onClick: () => {
-            onClose();
-            imageAction.onChoose();
-          },
-        },
-        { text: "Add images" },
-      ),
-      undefined,
-      undefined,
-      "none",
-    );
   if (props.projectAction)
     add("project", "addToMessage", "Work in a project", props.projectAction);
   action(

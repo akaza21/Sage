@@ -120,6 +120,32 @@ impl BindingRecord {
         }
     }
 
+    /// Whether the binding probes its build for models and the latest probe
+    /// listed none, so an empty listing is a failure rather than a build
+    /// without models.
+    pub(crate) fn launch_models_unlisted(&self) -> bool {
+        match &self.admission {
+            Admission::ClaudeSdk(registration) => registration
+                .admitted()
+                .is_some_and(|binding| crate::acp::bindings::claude::sdk::listing_failed(&binding)),
+            _ => false,
+        }
+    }
+
+    /// The commands the binding's latest passive probe read, for a new-chat
+    /// draft before any session reports the live list; `None` for a binding
+    /// whose probe reads none.
+    pub(crate) fn probed_commands(
+        &self,
+    ) -> Option<Vec<crate::acp::slash_commands::AvailableCommand>> {
+        match &self.admission {
+            Admission::ClaudeSdk(registration) => registration
+                .admitted()
+                .and_then(|binding| crate::acp::bindings::claude::sdk::probed_commands(&binding)),
+            _ => None,
+        }
+    }
+
     #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id

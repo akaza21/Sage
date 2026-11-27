@@ -1,4 +1,7 @@
 pub(crate) mod acp;
+pub(crate) mod draft_commands;
+
+use std::time::Duration;
 
 use tauri::State;
 
@@ -26,15 +29,9 @@ pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefin
         .map_err(|error| error.to_string())
 }
 
-/// The curated built-in commands the new-chat draft offers for a harness.
-/// Metadata only: no harness process starts.
-#[tauri::command]
-pub fn list_builtin_commands(state: State<'_, AppState>, harness_id: String) -> Vec<String> {
-    state.harnesses.draft_builtin_commands(&harness_id)
-}
-
 /// A model probe can also learn the start mode the harness's own settings name, which moves its
-/// default access; the catalog is sent again when that changes what the WebView was told.
+/// default access; the catalog is sent again when that changes what the WebView was told. What
+/// the probe read of the harness's commands is kept for its drafts.
 #[tauri::command]
 pub async fn list_harness_models(
     app: tauri::AppHandle,
@@ -49,7 +46,8 @@ pub async fn list_harness_models(
         definition.and_then(|definition| serde_json::to_value(definition.access_modes).ok())
     };
     let before = access(&state.harnesses);
-    let models = list_harness_models_async(&state.harnesses, &harness_id).await;
+    let models =
+        list_harness_models_async(&state.harnesses, &harness_id, MODEL_LISTING_DEADLINE).await;
     if access(&state.harnesses) != before {
         use tauri::Emitter;
         let _ = app.emit(
@@ -57,28 +55,47 @@ pub async fn list_harness_models(
             state.harnesses.definitions(),
         );
     }
+    draft_commands::follow_probe(&app, &state, &harness_id);
     models
 }
 
 trait HarnessModelLookup: Clone + Send + Sync + 'static {
     fn list_models(&self, harness_id: &str) -> Result<Vec<ModelOption>, String>;
+    /// The name the WebView shows for the harness, for an error about it.
+    fn harness_name(&self, harness_id: &str) -> String;
 }
 
 impl HarnessModelLookup for HarnessCatalog {
     fn list_models(&self, harness_id: &str) -> Result<Vec<ModelOption>, String> {
         list_harness_models_inner(self, harness_id)
     }
+
+    fn harness_name(&self, harness_id: &str) -> String {
+        self.definitions()
+            .into_iter()
+            .find(|definition| definition.id == harness_id)
+            .map_or_else(|| harness_id.to_owned(), |definition| definition.name)
+    }
 }
+
+/// Above a probe's own bound plus one probe queued ahead of it. A lookup
+/// that outlasts it still ends in an error the composer offers Retry on,
+/// never in a listing that stays "Loading…".
+const MODEL_LISTING_DEADLINE: Duration = Duration::from_secs(45);
 
 async fn list_harness_models_async(
     lookup: &impl HarnessModelLookup,
     harness_id: &str,
+    deadline: Duration,
 ) -> Result<Vec<ModelOption>, String> {
+    let name = lookup.harness_name(harness_id);
     let lookup = lookup.clone();
     let harness_id = harness_id.to_owned();
-    tauri::async_runtime::spawn_blocking(move || lookup.list_models(&harness_id))
-        .await
-        .map_err(|error| error.to_string())?
+    let listing = tauri::async_runtime::spawn_blocking(move || lookup.list_models(&harness_id));
+    match tokio::time::timeout(deadline, listing).await {
+        Ok(joined) => joined.map_err(|error| error.to_string())?,
+        Err(_) => Err(models_unlisted_message(&name)),
+    }
 }
 
 fn list_harness_models_inner(
@@ -88,9 +105,19 @@ fn list_harness_models_inner(
     if harness_id == "codex" {
         let _ = harnesses.refresh_codex_registration();
     }
-    harnesses
+    let models = harnesses
         .models(harness_id)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    match harnesses.models_unlisted(harness_id) {
+        Some(name) if models.is_empty() => Err(models_unlisted_message(&name)),
+        _ => Ok(models),
+    }
+}
+
+/// A build that should list models and did not answer in time; the first
+/// start after an update can take that long, so a retry usually lists them.
+fn models_unlisted_message(name: &str) -> String {
+    format!("{name} did not list its models in time. Retry in a moment.")
 }
 
 #[tauri::command]
@@ -166,9 +193,13 @@ mod model_lookup_tests {
 
     #[tokio::test]
     async fn model_lookup_returns_the_two_simulator_models() {
-        let actual = list_harness_models_async(&HarnessCatalog::default(), "sage-simulator")
-            .await
-            .unwrap();
+        let actual = list_harness_models_async(
+            &HarnessCatalog::default(),
+            "sage-simulator",
+            MODEL_LISTING_DEADLINE,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             serde_json::to_value(actual).unwrap(),
             expected_simulator_models()
@@ -179,14 +210,14 @@ mod model_lookup_tests {
     async fn model_lookup_distinguishes_unknown_harness_from_no_account_models() {
         let harnesses = HarnessCatalog::default();
         assert_eq!(
-            list_harness_models_async(&harnesses, "missing-harness")
+            list_harness_models_async(&harnesses, "missing-harness", MODEL_LISTING_DEADLINE)
                 .await
                 .unwrap_err(),
             "unknown harness: missing-harness"
         );
         assert_eq!(
             serde_json::to_value(
-                list_harness_models_async(&harnesses, "codex")
+                list_harness_models_async(&harnesses, "codex", MODEL_LISTING_DEADLINE)
                     .await
                     .unwrap()
             )
@@ -212,6 +243,28 @@ mod model_lookup_tests {
                 .unwrap();
             list_harness_models_inner(&self.harnesses, harness_id)
         }
+
+        fn harness_name(&self, harness_id: &str) -> String {
+            self.harnesses.harness_name(harness_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_lookup_that_never_answers_ends_in_an_error_naming_the_harness() {
+        let (entered_tx, _entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        let lookup = HeldLookup {
+            harnesses: HarnessCatalog::default(),
+            entered: entered_tx,
+            release: Arc::new(Mutex::new(release_rx)),
+        };
+        let started = std::time::Instant::now();
+        let listed =
+            list_harness_models_async(&lookup, "sage-simulator", Duration::from_millis(200)).await;
+        let _ = release_tx.send(());
+        let name = lookup.harness_name("sage-simulator");
+        assert_eq!(listed.unwrap_err(), models_unlisted_message(&name));
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
@@ -236,7 +289,12 @@ mod model_lookup_tests {
                         tokio::task::yield_now().await;
                         progress_tx.send(()).unwrap();
                     });
-                    let models = list_harness_models_async(&lookup, "sage-simulator").await;
+                    let models = list_harness_models_async(
+                        &lookup,
+                        "sage-simulator",
+                        MODEL_LISTING_DEADLINE,
+                    )
+                    .await;
                     unrelated.await.unwrap();
                     models
                 })

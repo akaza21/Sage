@@ -10,6 +10,7 @@ pub const SESSION_ACTIVITY_KIND_BYTES: usize = 64;
 pub const SESSION_ACTIVITY_LABEL_BYTES: usize = 256;
 pub const SESSION_ACTIVITY_PROGRESS_BYTES: usize = 512;
 pub const SESSION_NOTICES_MAX: usize = 16;
+pub const USAGE_LIMIT_LABEL_BYTES: usize = 128;
 /// Live activity rows kept per session; terminal rows are evicted first.
 pub const SESSION_ACTIVITIES_MAX: usize = 16;
 
@@ -37,6 +38,30 @@ pub struct SessionNotice {
     pub diagnostic: bool,
     pub text: RequiredText<SESSION_NOTICE_TEXT_BYTES>,
     pub source: Option<RequiredText<SESSION_NOTICE_SOURCE_BYTES>>,
+    /// Set when the notice reports a usage or rate limit; such notices show
+    /// above the composer, not in the transcript. `Info` says the window is
+    /// no longer near its limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_limit: Option<UsageLimitNotice>,
+}
+
+/// One usage window of the harness's account, as the harness reported it.
+/// Its notice's `identity` names the window, so the latest report wins.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageLimitNotice {
+    /// Whose limit it is, as the user knows it.
+    pub provider: RequiredText<USAGE_LIMIT_LABEL_BYTES>,
+    /// What the window covers when it is narrower than the whole plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<RequiredText<USAGE_LIMIT_LABEL_BYTES>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_percent: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_minutes: Option<u32>,
+    /// Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,18 +271,24 @@ impl SessionSurface {
     }
 
     fn push_notice(&mut self, notice: &SessionNotice) -> bool {
+        let all_clear = notice.usage_limit.is_some() && notice.level == SessionNoticeLevel::Info;
         if let Some(existing) = self
             .notices
             .iter_mut()
             .find(|stored| notice.identity.is_some() && stored.identity == notice.identity)
         {
-            if existing == notice || existing.level > notice.level {
+            // A usage window's latest report wins, even at a lower level; a
+            // cleared window ignores further all-clears.
+            let lower = existing.level > notice.level && notice.usage_limit.is_none();
+            let cleared = all_clear && existing.level == SessionNoticeLevel::Info;
+            if existing == notice || lower || cleared {
                 return false;
             }
             *existing = notice.clone();
             return true;
         }
-        if self.notices.contains(notice) {
+        // An all-clear for a window never warned about says nothing.
+        if all_clear || self.notices.contains(notice) {
             return false;
         }
         if self.notices.len() == SESSION_NOTICES_MAX {

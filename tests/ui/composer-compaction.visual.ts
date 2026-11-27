@@ -259,14 +259,14 @@ for (const width of [1888, 720, 480]) {
         return useWorkbenchStore.getState().projects.length > 0;
       });
       const menu = page.getByRole("menu", { name: "Composer options menu" });
-      // Files and folders needs a composer that can prompt; without access
+      // Attach needs a composer that can prompt; without access
       // modes it stays disabled, so the project keeps Add open.
       await add.click();
       await expect(
         menu.getByText("Add to message", { exact: true }),
       ).toBeVisible();
       await expect(
-        menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
+        menu.getByRole("menuitem", { name: "Attach", exact: true }),
       ).toHaveCount(profile.access ? 1 : 0);
       await expect(
         menu.getByRole("menuitem", { name: "Work in a project", exact: true }),

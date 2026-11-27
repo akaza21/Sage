@@ -6,7 +6,7 @@ import {
   PROMPT_ATTACHMENT_TOTAL_BYTES,
   type PromptPick,
 } from "../../ports/promptAttachments";
-import type { HeldInput } from "./pastedTextTypes";
+import type { HeldInput, PickedImages } from "./pastedTextTypes";
 
 const MAX_UTF8_BYTES_PER_UNIT = 3;
 
@@ -38,7 +38,8 @@ export function useComposerPasteSignal() {
     seq,
     take: useCallback(() => queue.current.splice(0), []),
     holdPick: useCallback(
-      (pick: PromptPick) => hold({ kind: "pick", pick }),
+      (pick: PromptPick, images?: PickedImages) =>
+        hold({ kind: "pick", pick, images }),
       [hold],
     ),
     holdEdit(next: string) {

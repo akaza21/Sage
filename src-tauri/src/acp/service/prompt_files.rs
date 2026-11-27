@@ -9,6 +9,7 @@ mod draft;
 pub(crate) mod images;
 mod inline;
 pub(crate) mod limits;
+mod picked_images;
 mod read;
 pub(crate) use read::file_is_excluded;
 #[cfg(test)]

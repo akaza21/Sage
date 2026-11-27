@@ -60,6 +60,9 @@ struct KnownCommand {
     section: CommandSection,
     control: Option<NativeControl>,
     since: Option<String>,
+    /// The release that retired the command; only a draft reads it, since a
+    /// live list leaves a retired command out itself.
+    removed: Option<String>,
     terminal_only: Option<bool>,
 }
 
@@ -91,11 +94,14 @@ impl KnownCommandTable {
         for entry in &entries {
             if entry.aliases.len() > 8
                 || entry.terminal_only == Some(false)
-                || entry.since.as_ref().is_some_and(|version| {
-                    version.len() > 96
-                        || version.split_ascii_whitespace().count() != 1
-                        || ReleaseVersion::parse(version).is_none()
-                })
+                || [&entry.since, &entry.removed]
+                    .into_iter()
+                    .flatten()
+                    .any(|version| {
+                        version.len() > 96
+                            || version.split_ascii_whitespace().count() != 1
+                            || ReleaseVersion::parse(version).is_none()
+                    })
                 || std::iter::once(&entry.name)
                     .chain(&entry.aliases)
                     .any(|name| !valid_name(name) || !names.insert(name.as_str()))
@@ -139,9 +145,23 @@ impl KnownCommandTable {
                             .zip(installed)
                             .is_some_and(|(since, installed)| installed >= &since)
                     })
+                    && entry.removed.as_deref().is_none_or(|removed| {
+                        ReleaseVersion::parse(removed)
+                            .zip(installed)
+                            .is_some_and(|(removed, installed)| installed < &removed)
+                    })
             })
             .map(|entry| entry.name.as_str())
             .take(MAX_DRAFT_BUILTINS)
+    }
+
+    /// Whether the curated entry for `name` (or an alias) is a native control
+    /// or terminal-only: it needs a started chat, so a draft leaves it out.
+    pub(crate) fn needs_session(&self, name: &str) -> bool {
+        self.0.iter().any(|entry| {
+            (entry.name == name || entry.aliases.iter().any(|alias| alias == name))
+                && (entry.control.is_some() || entry.terminal_only.is_some())
+        })
     }
 }
 

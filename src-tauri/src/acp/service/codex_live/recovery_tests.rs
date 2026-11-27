@@ -107,6 +107,64 @@ fn retained_activation_recovery_releases_capacity_before_another_live_admission(
     });
 }
 
+/// The drain a stuck start is driven by: releasing the chat's runtime completes
+/// the retained start recovery and leaves a session the next send starts.
+#[test]
+fn releasing_the_chat_completes_a_retained_start_and_leaves_it_sendable() {
+    tauri::async_runtime::block_on(async {
+        let (service, owner, lease) = activating_session_fixture("start-recovery").await;
+        let lane = service.lane_at(0);
+        lane.runtime.reserve_start(owner.clone()).unwrap();
+        lane.runtime.mark_recovery(&owner).unwrap();
+        lane.retain_codex_recovery(PendingCodexRecovery::Abort {
+            abort: ActivationAbortIntent {
+                owner: owner.clone(),
+                binding_digest: "11".repeat(32),
+                artifact_digest: "22".repeat(32),
+            },
+            category: ActivationAbortCategory::LaunchFailure,
+            lease,
+            proof: ZeroProcessProof::confirmed(owner.clone()),
+        });
+        let stuck = |service: &AcpService| {
+            service
+                .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+                .unwrap()
+                .sessions
+                .as_slice()
+                .iter()
+                .find(|session| session.id == owner.session_id)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(stuck(&service).next_runtime_epoch, None);
+        assert!(service.chat_holds_recovery(&owner.project_id, &owner.chat_id));
+
+        service
+            .release_chat_runtime_until(
+                &owner.project_id,
+                &owner.chat_id,
+                Instant::now() + Duration::from_secs(5),
+                || true,
+            )
+            .await
+            .unwrap();
+
+        assert!(lane.codex_recovery.lock().unwrap().is_none());
+        assert!(!service.chat_holds_recovery(&owner.project_id, &owner.chat_id));
+        let session = stuck(&service);
+        assert_eq!(
+            session.state,
+            sage_acp_protocol::lifecycle::SessionState::Created
+        );
+        assert_eq!(
+            session.next_runtime_epoch,
+            Some(RuntimeEpoch::new(owner.runtime_epoch.get() + 1).unwrap())
+        );
+        service.shutdown_blocking().unwrap();
+    });
+}
+
 async fn activating_session_fixture(
     label: &str,
 ) -> (

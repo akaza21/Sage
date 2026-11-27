@@ -17,13 +17,13 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 5254,
+        "maxGzipBytes": 5344,
         "maxCssGzipBytes": 550,
-        "reason": "Live command catalog, composer command editing, terminal-only catch with its Open in terminal handoff (T6b +200 B, T6c +450 B from Quick Open); loads with + menu or slash controller."
+        "reason": "Live command catalog, command editing, terminal-only catch and its terminal handoff (T6b +200 B, T6c +450 B), draft commands (+90 B from section menu); loads with + menu or slash."
       },
       {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
-        "maxGzipBytes": 5500,
+        "maxGzipBytes": 5410,
         "maxCssGzipBytes": 500,
         "reason": "Shared capability and catalog section browser; loads only after the composer + menu opens, with bounded search and argument inputs. Existing startup and menu caps stay unchanged."
       },
@@ -110,8 +110,8 @@
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",
-        "maxGzipBytes": 828,
-        "reason": "Composer attach flow: the attach button's files/images menu and its refusals; the staged batch belongs to the paste part. Loads with the first press. Measured 774 B."
+        "maxGzipBytes": 1595,
+        "reason": "Composer Attach: its Files/Folder menu, refusals and natively picked images; the staged batch belongs to the paste part. Loads with the first press. Measured 1345 B; 767 B from Quick Open."
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
@@ -293,9 +293,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 2450,
+        "maxGzipBytes": 3225,
         "maxCssGzipBytes": 737,
-        "reason": "Session notices, activities, Undo and the prompt actions trigger with its rewind/fork eligibility check. Measured JS 2310 B, CSS 449 B; cap moved from ConversationActions; 5 B from QuickOpen."
+        "reason": "Session notices, activities, Undo, the prompt actions trigger with its rewind/fork check, the usage-limit banner. JS 3218 B, CSS 621 B; cap from ConversationActions; 780 B from QuickOpen."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 6265,
+        "maxGzipBytes": 4723,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (ED-2a); loads idle or on first open. JS 3205 B, CSS 698 B; 1895 B moved to other entries (T6, T11d, T6b, T6c, T10d-b, BG-TASKS, WORK-STATES-B)."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner, 767 Attach."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
@@ -594,7 +594,7 @@
         "entry": "src/features/chat/ConversationActions.tsx",
         "maxGzipBytes": 5150,
         "maxCssGzipBytes": 1250,
-        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo, fork history, background tasks. JS 4957 B; 600 B to SessionNoticeStrip, 750 B from QuickOpen (T11d, BG-TASKS); 250 B CSS to AgentSettings."
+        "reason": "Prompt rewind/fork menus, confirmations, last-turn Undo, fork history, background tasks. JS 4957 B; 600 B to SessionNoticeStrip; from QuickOpen 300 B T11d, 450 B BG-TASKS; 250 B CSS to AgentSettings."
       }
     ],
     "windowsInstallerMb": 45,

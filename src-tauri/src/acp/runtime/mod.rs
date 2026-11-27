@@ -40,7 +40,7 @@ pub(crate) use adapter_pump::steer::steered_prompt_item;
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
     EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, QueueDisposition,
-    SessionPumpIntent,
+    REVIEW_ACCESS_REFUSED, SessionPumpIntent,
 };
 #[cfg(test)]
 pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, TurnScope};

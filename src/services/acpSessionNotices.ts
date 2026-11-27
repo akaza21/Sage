@@ -11,7 +11,8 @@ import {
 
 const LEVELS = ["info", "warning", "error"] as const;
 
-/** Bound and group display-only records; malformed notices never reject a page. */
+/** Bound display-only records; malformed notices never reject a page. The
+ * native store keeps one notice per identity, so a repeat keeps the latest. */
 export function safeSessionNotices(value: unknown): SessionNotice[] {
   if (!Array.isArray(value)) return [];
   const notices = new Map<string, SessionNotice>();
@@ -22,7 +23,7 @@ export function safeSessionNotices(value: unknown): SessionNotice[] {
     const diagnostic = record.diagnostic ?? false;
     const identity =
       record.identity == null
-        ? `legacy-record:${index}`
+        ? `legacy:${index}`
         : safeText(record.identity, 1024);
     if (
       !text ||
@@ -31,18 +32,14 @@ export function safeSessionNotices(value: unknown): SessionNotice[] {
       !identity
     )
       continue;
-    const previous = notices.get(identity);
-    if (
-      !previous ||
-      LEVELS.indexOf(record.level) >= LEVELS.indexOf(previous.level)
-    )
-      notices.set(identity, {
-        identity,
-        level: record.level,
-        text,
-        source,
-        diagnostic,
-      });
+    notices.set(identity, {
+      identity,
+      level: record.level,
+      text,
+      source,
+      diagnostic,
+      usageLimit: record.usageLimit,
+    });
   }
   return [...notices.values()];
 }

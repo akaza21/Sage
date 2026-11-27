@@ -329,7 +329,7 @@ it("keeps configuration choices on the same surface and project selection in Add
 
 it.each([
   ["ArrowDown", "Goal", "ArrowUp"],
-  ["ArrowUp", "Files and folders", "ArrowDown"],
+  ["ArrowUp", "Attach", "ArrowDown"],
 ])(
   "keeps project selection closed while %s moves between Add items",
   async (key, sibling, returnKey) => {
@@ -541,7 +541,7 @@ it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();
     for (const action of [
-      "Files and folders",
+      "Attach",
       "Work in a project",
       "Goal",
       "Plan mode",

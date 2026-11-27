@@ -17,6 +17,12 @@ use super::admission::{AdmittedClaudeSdkBinding, SDK_ARGS, launch_environment};
 use sage_core::limits::LIMITS;
 use sage_domain::harness::ModelOption;
 
+use crate::acp::{
+    bindings::standard_acp::surface::command_list::{MAX_COMMANDS, parse_acp},
+    command_placement::place_commands,
+    slash_commands::AvailableCommand,
+};
+
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Startup output before the reply is small; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
@@ -24,7 +30,9 @@ const REQUEST_ID: &str = "sage-model-probe";
 const SETTINGS_ID: &str = "sage-settings-probe";
 const MAX_EFFORT_LEVELS: usize = 16;
 const MAX_EFFORT_BYTES: usize = 64;
-const RETRY_AFTER: Duration = Duration::from_secs(60);
+/// A failed probe is most often a CLI still starting (the first launch after an update can
+/// take longer than [`PROBE_TIMEOUT`]), so the person's Retry soon asks again.
+const RETRY_AFTER: Duration = Duration::from_secs(10);
 /// How long the settings reply may trail the `initialize` one.
 const SETTINGS_TIMEOUT: Duration = Duration::from_secs(2);
 /// Only the probe's own request runs: no MCP server starts and no hook runs.
@@ -35,9 +43,18 @@ const PROBE_ARGS: [&str; 3] = [
 ];
 
 enum Probed {
-    /// The models, and the permission mode the person's settings start a session in.
-    Models(Vec<ModelOption>, Option<&'static str>),
-    Failed(Instant),
+    /// The models, the permission mode the person's settings start a session in, and the
+    /// commands Claude Code lists outside any project.
+    Models(
+        Vec<ModelOption>,
+        Option<&'static str>,
+        Vec<AvailableCommand>,
+    ),
+    /// When it failed, and whether a started CLI gave no answer in time (or
+    /// refused): only then is the empty listing a failure the person sees.
+    /// A build that could not be started, or answered with no models,
+    /// offers none as before.
+    Failed(Instant, bool),
 }
 
 static PROBED: Mutex<Option<([u8; 32], Probed)>> = Mutex::new(None);
@@ -49,8 +66,8 @@ static PROBING: Mutex<()> = Mutex::new(());
 pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     let digest = binding.binding_digest();
     let ready = || match lock(&PROBED).as_ref() {
-        Some((key, Probed::Models(models, _))) if *key == digest => Some(Some(models.clone())),
-        Some((key, Probed::Failed(at))) if *key == digest && at.elapsed() < RETRY_AFTER => {
+        Some((key, Probed::Models(models, ..))) if *key == digest => Some(Some(models.clone())),
+        Some((key, Probed::Failed(at, _))) if *key == digest && at.elapsed() < RETRY_AFTER => {
             Some(None)
         }
         _ => None,
@@ -62,39 +79,82 @@ pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOpti
     if let Some(known) = ready() {
         return known;
     }
-    let probed = binding
+    let started = binding
         .revalidate()
         .ok()
         .and(binding.probe_executable())
-        .and_then(|executable| run(executable, &launch_environment()))
-        .map(|(reply, settings)| (model_options(&reply), configured_mode(settings.as_ref())))
-        .filter(|(models, _)| !models.is_empty());
+        .and_then(|executable| run(executable, &launch_environment()));
+    let unanswered = matches!(started, Some(None));
+    let probed = started
+        .flatten()
+        .map(|(reply, settings)| {
+            let commands = catalog(&reply);
+            (
+                model_options(&reply),
+                configured_mode(settings.as_ref()),
+                commands,
+            )
+        })
+        .filter(|(models, ..)| !models.is_empty());
     *lock(&PROBED) = Some((
         digest,
         probed.clone().map_or_else(
-            || Probed::Failed(Instant::now()),
-            |(models, mode)| Probed::Models(models, mode),
+            || Probed::Failed(Instant::now(), unanswered),
+            |(models, mode, commands)| Probed::Models(models, mode, commands),
         ),
     ));
-    probed.map(|(models, _)| models)
+    probed.map(|(models, ..)| models)
 }
 
 pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     match lock(&PROBED).as_ref() {
-        Some((key, Probed::Models(models, _))) if *key == binding.binding_digest() => {
+        Some((key, Probed::Models(models, ..))) if *key == binding.binding_digest() => {
             Some(models.clone())
         }
         _ => None,
     }
 }
 
+/// Whether the latest probe of this build started the CLI and got no answer in time (or a
+/// refusal), so an empty listing is a failure to report rather than a build that offers none.
+pub(crate) fn listing_failed(binding: &AdmittedClaudeSdkBinding) -> bool {
+    matches!(
+        lock(&PROBED).as_ref(),
+        Some((key, Probed::Failed(_, true))) if *key == binding.binding_digest()
+    )
+}
+
 /// The permission mode `permissions.defaultMode` in the person's settings names, once a probe
 /// has read it; `manual` is Claude Code's other name for `default`.
 pub(crate) fn known_start_mode(binding: &AdmittedClaudeSdkBinding) -> Option<&'static str> {
     match lock(&PROBED).as_ref() {
-        Some((key, Probed::Models(_, mode))) if *key == binding.binding_digest() => *mode,
+        Some((key, Probed::Models(_, mode, _))) if *key == binding.binding_digest() => *mode,
         _ => None,
     }
+}
+
+/// The commands the latest probe of this build read from its `initialize` reply.
+pub(crate) fn known_commands(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<AvailableCommand>> {
+    match lock(&PROBED).as_ref() {
+        Some((key, Probed::Models(_, _, commands))) if *key == binding.binding_digest() => {
+            Some(commands.clone())
+        }
+        _ => None,
+    }
+}
+
+/// The reply's commands as a session lists them, with retired ones left out. Run from the
+/// profile folder, the probe sees no project's own commands.
+fn catalog(reply: &Value) -> Vec<AvailableCommand> {
+    let Ok(commands) = parse_acp(&super::bridge::catalog_rows(reply)) else {
+        return Vec::new();
+    };
+    place_commands(
+        commands.into_iter().take(MAX_COMMANDS).collect(),
+        crate::acp::bindings::claude::manifest::known_commands(),
+        None,
+        &|_| false,
+    )
 }
 
 fn configured_mode(settings: Option<&Value>) -> Option<&'static str> {
@@ -122,8 +182,12 @@ fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
         .filter(|path| path.is_absolute() && path.is_dir())
 }
 
-/// The `initialize` reply, and the `get_settings` reply when Claude Code gave one.
-fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value, Option<Value>)> {
+/// `None` when the CLI could not be started; otherwise the `initialize` reply, and the
+/// `get_settings` reply when Claude Code gave one, or `None` when it gave no answer in time.
+fn run(
+    executable: &Path,
+    environment: &[(OsString, OsString)],
+) -> Option<Option<(Value, Option<Value>)>> {
     let mut command = Command::new(executable);
     command
         .args(SDK_ARGS)
@@ -168,7 +232,7 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<(Value
     thread::spawn(move || {
         let _ = child.wait();
     });
-    reply
+    Some(reply)
 }
 
 type Answer = (&'static str, Option<Value>);
@@ -396,7 +460,10 @@ mod tests {
             {"value": "default", "supportsEffort": true, "supportedEffortLevels": ["low", "high"]},
             {"value": "haiku"},
         ]}));
-        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models, None)));
+        *lock(&PROBED) = Some((
+            binding.binding_digest(),
+            Probed::Models(models, None, Vec::new()),
+        ));
         let known = known_models(&binding).unwrap();
         let launched = |model| ModelOption::launched(&known, model);
         assert_eq!(launched(Some("haiku")).unwrap().id, "haiku");
@@ -436,10 +503,21 @@ mod tests {
         assert!(models(&binding).is_none());
         assert!(matches!(
             lock(&PROBED).as_ref(),
-            Some((key, Probed::Failed(_))) if *key == binding.binding_digest()
+            Some((key, Probed::Failed(_, false))) if *key == binding.binding_digest()
         ));
         assert!(models(&binding).is_none());
         assert!(known_models(&binding).is_none());
+        // Nothing was started (here the build cannot even be read), so there is no
+        // listing failure to report: the harness offers no models, as before.
+        assert!(!listing_failed(&binding));
+        // A started CLI that gave no answer in time is reported, for that build only.
+        *lock(&PROBED) = Some((
+            binding.binding_digest(),
+            Probed::Failed(Instant::now(), true),
+        ));
+        assert!(listing_failed(&binding));
+        let other = AdmittedClaudeSdkBinding::for_test_with_digest([8; 32]);
+        assert!(!listing_failed(&other));
     }
 
     #[cfg(unix)]
@@ -466,11 +544,34 @@ mod tests {
             (OsString::from("PATH"), OsString::from("/usr/bin:/bin")),
         ];
         let started = std::time::Instant::now();
-        let (reply, settings) = run(&script, &environment).unwrap();
+        let (reply, settings) = run(&script, &environment).unwrap().unwrap();
         assert_eq!(reply["models"][0]["value"], "default");
         assert!(settings.is_none(), "unanswered settings stay unknown");
         assert!(started.elapsed() < Duration::from_secs(10));
+        // A CLI that starts but never answers is abandoned at the deadline as unanswered;
+        // one that cannot start is told apart from it.
+        let silent = directory.join("silent");
+        sage_test_support::test_executable::write(&silent, "#!/bin/sh\nsleep 60\n").unwrap();
+        std::fs::set_permissions(&silent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(run(&silent, &environment), Some(None));
+        assert!(started.elapsed() < PROBE_TIMEOUT + Duration::from_secs(5));
         assert!(run(&directory.join("missing"), &environment).is_none());
         let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn the_probe_keeps_the_reply_commands_a_session_would_list_and_drops_retired_ones() {
+        let reply = json!({"commands": [
+            {"name": "agents", "description": "(removed) Use the Agent tool", "builtin": true},
+            {"name": "compact", "description": "Compact the conversation", "builtin": true},
+            {"name": "review-pr", "description": "Review a pull request", "argumentHint": "<pr>"},
+            {"name": "deploy:ship", "description": "Ship it"},
+        ]});
+        let listed = catalog(&reply);
+        let names: Vec<&str> = listed.iter().map(|command| command.name.as_str()).collect();
+        assert_eq!(names, ["compact", "review-pr", "deploy:ship"]);
+        assert_eq!(listed[1].input_hint.as_deref(), Some("<pr>"));
+        assert!(catalog(&json!({})).is_empty());
     }
 }

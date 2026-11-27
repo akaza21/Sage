@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type ClipboardEvent } from "react";
+import { useState, type DragEvent, type ClipboardEvent } from "react";
 import type { AcpChatPage, AgentSessionProjection } from "../../domain/acp";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
@@ -38,7 +38,8 @@ export function composerImageAvailability(
 export interface ImageAction {
   disabled: boolean;
   reason?: string | null;
-  onChoose: () => void;
+  /** Images picked through Attach join through the same checks. */
+  accept: (files: File[]) => void;
 }
 
 /** Images can be chosen for the draft, so the attach menu has a use. */
@@ -68,7 +69,6 @@ export function useComposerImageInput({
   // Dropped, not hidden, so it cannot return if availability flips back.
   if (raised && raised[1] !== available) setRaised(null);
   const error = raised?.[1] === available ? raised[0] : null;
-  const chooserRef = useRef<HTMLInputElement>(null);
   const images = contexts.filter((context) => context.kind === "image");
   const count = images.length;
   const sendBlocked = count > 0 && !available;
@@ -93,13 +93,12 @@ export function useComposerImageInput({
     onAddImages?.(files);
   };
   return {
-    chooserRef,
     action: onAddImages
       ? ({
           disabled:
             !available || disabled || uploading || count >= MAX_PROMPT_IMAGES,
           reason: available ? null : reason,
-          onChoose: () => chooserRef.current?.click(),
+          accept,
         } satisfies ImageAction)
       : undefined,
     count,

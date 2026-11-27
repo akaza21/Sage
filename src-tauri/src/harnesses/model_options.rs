@@ -20,6 +20,20 @@ impl HarnessCatalog {
         self.models_for(harness_id, SIMULATOR_IN_CATALOG, false)
     }
 
+    /// The harness's name when its build should list models and its latest
+    /// probe listed none (it may still have been starting).
+    pub fn models_unlisted(&self, harness_id: &str) -> Option<String> {
+        self.registry
+            .for_harness(harness_id)
+            .filter(|record| record.launch_models_unlisted())?;
+        self.definitions()
+            .into_iter()
+            .find(|definition| {
+                definition.id == harness_id && definition.install_state == "available"
+            })
+            .map(|definition| definition.name)
+    }
+
     fn models_for(
         &self,
         harness_id: &str,

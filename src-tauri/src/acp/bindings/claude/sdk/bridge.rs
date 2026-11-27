@@ -11,10 +11,12 @@ use super::config::SessionSettings;
 use crate::acp::bindings::standard_acp::surface::AUTH_REQUIRED_MESSAGE;
 
 mod commands;
+pub(super) use commands::commands as catalog_rows;
 mod controls;
 pub(super) use controls::message_uuid;
 mod goal;
 mod inbound;
+mod limits;
 mod notices;
 mod outbound;
 mod permission;

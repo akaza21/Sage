@@ -94,6 +94,9 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         crate::acp::service::CodexSessionError::RepositoryBusy(pause) => AcpIpcError::Rejected {
             message: safe_message(pause.message()),
         },
+        crate::acp::service::CodexSessionError::PromptRefused(reason) => AcpIpcError::Rejected {
+            message: safe_message(reason),
+        },
         crate::acp::service::CodexSessionError::CapacityAnswering => AcpIpcError::Capacity {
             resource: AcpCapacityResource::LiveTree,
             limit: sage_core::limits::LIMITS.process.operational_live_trees,

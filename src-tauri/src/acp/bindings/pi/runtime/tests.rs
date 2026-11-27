@@ -24,6 +24,7 @@ mod steer;
 mod store_ingress;
 #[cfg(feature = "acp-fixture")]
 mod title_retry;
+mod wire_replay_tests;
 
 use super::*;
 use crate::acp::{

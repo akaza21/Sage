@@ -617,7 +617,7 @@ describe("ChatSurface ACP resource integration", () => {
     // Images can be chosen before the first session, so the attach menu
     // stays reachable and refuses only its file picks.
     expect(
-      within(menu).getByRole("menuitem", { name: "Files and folders" }),
+      within(menu).getByRole("menuitem", { name: "Attach" }),
     ).toHaveAttribute("aria-disabled", "false");
   });
 
@@ -2257,11 +2257,12 @@ describe("ChatSurface ACP resource integration", () => {
       screen
         .getAllByRole("menuitem")
         .map((item) => item.getAttribute("aria-label") ?? item.textContent),
-    ).toEqual(["Files and folders"]);
+    ).toEqual(["Attach"]);
     // Neither files nor images can be attached here, so Add says why in place.
-    expect(
-      screen.getByRole("menuitem", { name: "Files and folders" }),
-    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: "Attach" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -2386,6 +2387,45 @@ describe("ChatSurface ACP resource integration", () => {
         "The selected harness cannot accept prompts in this session.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("lets a session whose slow first start was abandoned be sent to again", () => {
+    // Native abort of a start that timed out before initialize returns the
+    // session to created/cold with the pending (all-false) capabilities.
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: null,
+          nextRuntimeEpoch: "2",
+          state: "created",
+          residency: "cold",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: null,
+          capabilities: { prompt: false, closeSession: false },
+          revision: "3",
+          projectionRevision: "4",
+        },
+      ],
+    } as unknown as AcpChatPage;
+
+    render(<ChatSurface />);
+
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
+    expect(composer).toBeEnabled();
+    expect(composer).not.toHaveAttribute(
+      "placeholder",
+      "This session cannot accept prompts.",
+    );
+    expect(
+      screen.queryByText(
+        "The selected harness cannot accept prompts in this session.",
+      ),
+    ).toBeNull();
   });
 
   it("shows the selected harness even when the current session uses another", () => {
@@ -6153,7 +6193,7 @@ describe("ChatSurface composer context", () => {
     // The running turn leaves "+" for attaching to a queued follow-up.
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      await screen.findByRole("menuitem", { name: "Files and folders" }),
+      await screen.findByRole("menuitem", { name: "Attach" }),
     ).toBeInTheDocument();
   });
 

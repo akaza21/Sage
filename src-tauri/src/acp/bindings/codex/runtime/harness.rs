@@ -60,6 +60,13 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.project_terminal_handoff();
         self.inner.skills()
     }
+    fn prompt_refusal(
+        &self,
+        prompt: &crate::acp::transcript_quote::Prompt,
+        access: sage_acp_protocol::access_mode::SessionAccessMode,
+    ) -> Option<&'static str> {
+        self.inner.prompt_refusal(prompt, access)
+    }
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let wanted = self.inner.skills_wanted();
         wanted
