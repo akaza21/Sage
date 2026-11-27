@@ -484,3 +484,63 @@ describe("TurnActivityItem", () => {
     expect(container.querySelector("details")).toBeNull();
   });
 });
+
+it("shows no running tool in the plan of a failed turn", () => {
+  const plan = item("plan", {
+    entries: [{ label: "Implement", state: "inProgress" }],
+  });
+  const stuck = {
+    ...item("error", { code: "unused", message: "unused", recoverable: false }),
+    id: "tool-stuck",
+    kind: "toolCall" as const,
+    lifecycle: "streaming" as const,
+    terminalAt: null,
+    toolState: "inProgress" as const,
+    payload: {
+      presentation: {
+        kind: "other" as const,
+        rawKind: null,
+        label: "Run tool",
+        summary: null,
+      },
+      inputSummary: "Checking current state",
+    },
+  } as unknown as Extract<AcpItem, { kind: "toolCall" }>;
+  const page = {
+    projectId: "project-1",
+    chatId: "chat-1",
+    title: "Plan detail",
+    projectionRevision: "1",
+    currentSessionId: "session-1",
+    sessions: [],
+    turns: [
+      {
+        id: "turn-1",
+        sessionId: "session-1",
+        runtimeEpoch: "1",
+        ordinal: 1,
+        state: "failed",
+        revision: "1",
+        createdAt: 1,
+        updatedAt: 2,
+        terminalAt: 2,
+        items: [plan, stuck],
+        activities: [],
+      },
+    ],
+    nextCursor: null,
+  } as unknown as AcpChatPage;
+  render(
+    <AcpChatPresentation
+      page={page}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+  const region = screen.getByRole("region", { name: "Agent plan" });
+  expect(within(region).queryByLabelText("Current activity")).toBeNull();
+});

@@ -48,3 +48,15 @@ it("uses the narrow native command and rejects a foreign owner", async () => {
     "Invalid bounded ACP chat status",
   );
 });
+
+it("decodes the native sign-in and background flags, only when exactly true", () => {
+  const flagged = (signIn: unknown, background: unknown) =>
+    safeChatStatus({
+      ...response,
+      latestTurn: { ...response.latestTurn, signIn, background },
+    })?.latestTurn;
+  expect(flagged(true, true)).toMatchObject({ signIn: true, background: true });
+  const loose = flagged("yes", 1);
+  expect(loose?.signIn).toBeUndefined();
+  expect(loose?.background).toBeUndefined();
+});

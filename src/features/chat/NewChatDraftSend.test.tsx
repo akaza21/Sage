@@ -679,7 +679,7 @@ it.each([
   "Codex discovery is already running; retry it.",
   "Account unavailable.",
 ])(
-  "says in one visible line why a failed discovery blocks the Home draft (%s)",
+  "says in one visible line, with Retry, why a failed discovery blocks the Home draft (%s)",
   async (reason) => {
     useWorkbenchStore.setState({
       models: [],
@@ -691,7 +691,8 @@ it.each([
     fireEvent.change(composer(), { target: { value: "Keep my first prompt" } });
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(screen.getAllByText(reason)).toHaveLength(1);
-    expect(screen.getByText(reason)).toHaveClass("composer__disabled-reason");
+    // The one visible line is the draft notice, with a Retry that asks again.
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
     fireEvent.keyDown(composer(), { key: "Enter" });
     expect(prompts).toEqual([]);
     expect(composer()).toHaveValue("Keep my first prompt");

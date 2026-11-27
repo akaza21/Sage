@@ -44,6 +44,7 @@ export function NewChatDraftSurface({
     updateNewChatDraft: update,
     selectDraftHarness: chooseHarness,
     selectDraftModel: chooseModel,
+    retryHarnessDiscovery,
   } = useWorkbenchStore.getState();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
@@ -114,6 +115,19 @@ export function NewChatDraftSurface({
             Reload chats
           </button>
         ) : null}
+      </>
+    ) : available && discoveryError ? (
+      // A harness that did not list its models in time is asked again.
+      <>
+        {discoveryError}
+        <button
+          type="button"
+          className="button button--compact"
+          disabled={transitioning}
+          onClick={() => void retryHarnessDiscovery()}
+        >
+          Retry
+        </button>
       </>
     ) : null;
   return (
@@ -215,9 +229,12 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={!available}
           disabledReason={
-            available
-              ? discoveryError
-              : "Choose an available harness before sending."
+            // The notice above already shows a discovery error with Retry.
+            !available
+              ? "Choose an available harness before sending."
+              : draft.error || unconfirmed
+                ? discoveryError
+                : null
           }
           project={shownProject}
           newChat
