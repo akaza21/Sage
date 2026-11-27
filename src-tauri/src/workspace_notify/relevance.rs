@@ -24,6 +24,9 @@ pub(super) enum Relevance {
     Resync,
     /// The topmost ignored folder above the record.
     IgnoredBelow(String),
+    /// Git moved a ref or fetched: handed on as the root's `.git` record,
+    /// which tells the WebView to read the change stamp.
+    GitRefs,
 }
 
 pub(super) struct NoticeRelevance {
@@ -62,6 +65,9 @@ impl NoticeRelevance {
                 return Relevance::Resync;
             }
             return Relevance::Drop;
+        }
+        if root_git_refs(relative) {
+            return Relevance::GitRefs;
         }
         let parent = relative.rsplit_once('/').map_or("", |(parent, _)| parent);
         if skipped(parent) {
@@ -178,6 +184,24 @@ fn repository_of_exclude(relative: &str) -> Option<&str> {
         "" => Some(""),
         prefix => prefix.strip_suffix('/'),
     }
+}
+
+/// Branch, remote-branch, packed-ref and fetch records of the root's own
+/// repository: a fetch, push or `git branch` changes nothing else Windows
+/// reports in `.git` itself. Objects and logs stay dropped.
+fn root_git_refs(relative: &str) -> bool {
+    let Some(inside) = relative
+        .get(..5)
+        .filter(|git| git.eq_ignore_ascii_case(".git/"))
+        .map(|_| &relative[5..])
+    else {
+        return false;
+    };
+    inside.eq_ignore_ascii_case("FETCH_HEAD")
+        || inside.eq_ignore_ascii_case("packed-refs")
+        || inside
+            .get(..5)
+            .is_some_and(|refs| refs.eq_ignore_ascii_case("refs/"))
 }
 
 fn is_named(relative: &str, name: &str) -> bool {
