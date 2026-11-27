@@ -110,8 +110,8 @@
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",
-        "maxGzipBytes": 1389,
-        "reason": "Composer Attach: its Files/Folder menu, refusals and natively picked images; the staged batch belongs to the paste part. Loads with the first press. Measured 1139 B; 561 B from Quick Open."
+        "maxGzipBytes": 1595,
+        "reason": "Composer Attach: its Files/Folder menu, refusals and natively picked images; the staged batch belongs to the paste part. Loads with the first press. Measured 1345 B; 767 B from Quick Open."
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
@@ -539,9 +539,9 @@
       },
       {
         "entry": "src/features/quickOpen/QuickOpen.tsx",
-        "maxGzipBytes": 4929,
+        "maxGzipBytes": 4723,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner, 561 Attach."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list; loads idle or on first open. JS 3205 B, CSS 698 B; gave 404 T6, 300 T11d, 200 T6b, 450 T6c, 86 T10d-b, 450 BG-TASKS, 780 limit banner, 767 Attach."
       },
       {
         "entry": "src/features/chat/composerDictationRuntime.ts",
