@@ -17,13 +17,13 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ComposerCommandRuntime.tsx",
-        "maxGzipBytes": 5254,
+        "maxGzipBytes": 5344,
         "maxCssGzipBytes": 550,
-        "reason": "Live command catalog, composer command editing, terminal-only catch with its Open in terminal handoff (T6b +200 B, T6c +450 B from Quick Open); loads with + menu or slash controller."
+        "reason": "Live command catalog, command editing, terminal-only catch and its terminal handoff (T6b +200 B, T6c +450 B), draft commands (+90 B from section menu); loads with + menu or slash."
       },
       {
         "entry": "src/features/chat/ComposerSectionMenu.tsx",
-        "maxGzipBytes": 5500,
+        "maxGzipBytes": 5410,
         "maxCssGzipBytes": 500,
         "reason": "Shared capability and catalog section browser; loads only after the composer + menu opens, with bounded search and argument inputs. Existing startup and menu caps stay unchanged."
       },

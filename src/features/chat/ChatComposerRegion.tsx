@@ -250,7 +250,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 {...(sessionFeatures
                   ? paste.field
                   : { onChange: (event) => onTextChange(event.target.value) })}
-                onFocus={() => sessionFeatures && setSlashArmed(true)}
+                onFocus={() => setSlashArmed(true)}
                 onBlur={dictation.cancel}
                 onKeyDown={(event) => {
                   // An IME composition owns its keys, Enter included.
@@ -258,7 +258,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   // While suggestions load, Enter must not send a half-typed
                   // command.
                   if (
-                    sessionFeatures &&
+                    slashArmed &&
                     !slashReady.current &&
                     event.key === "Enter" &&
                     !event.shiftKey &&
@@ -281,12 +281,13 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                   }
                 }}
               />
-              {sessionFeatures && slashArmed ? (
+              {slashArmed ? (
                 <SlashPart
                   part="ComposerSlashController"
                   fieldRef={composerRef}
                   readyRef={slashReady}
                   boundChatId={commandChatId}
+                  draft={!sessionFeatures}
                   disabled={hidden || composerDisabled}
                   fieldId={fieldId}
                   text={text}

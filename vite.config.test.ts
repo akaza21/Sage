@@ -958,17 +958,20 @@ describe("desktop-native chunk topology", () => {
         );
       }
     }
-    // A new-chat draft's image intake and built-in commands ride in the +
-    // menu's section chunk.
-    for (const module of [
-      "src/features/chat/draftImages.ts",
-      "src/features/chat/draftBuiltinCommands.ts",
-    ])
-      expect(groupedGraph.moduleFiles.get(module), module).toBe(
-        groupedGraph.moduleFiles.get(
-          "src/features/chat/ComposerSectionMenu.tsx",
-        ),
-      );
+    // A new-chat draft's image intake rides in the + menu's section chunk;
+    // its commands ride with the command runtime both of its menus load.
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/draftImages.ts"),
+    ).toBe(
+      groupedGraph.moduleFiles.get("src/features/chat/ComposerSectionMenu.tsx"),
+    );
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/draftCommands.ts"),
+    ).toBe(
+      groupedGraph.moduleFiles.get(
+        "src/features/chat/ComposerCommandRuntime.tsx",
+      ),
+    );
     // Its file handoff rides with the composer's staging part, which stages
     // the draft's files; the send path carries neither.
     expect(

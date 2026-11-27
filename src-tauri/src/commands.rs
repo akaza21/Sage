@@ -1,4 +1,5 @@
 pub(crate) mod acp;
+pub(crate) mod draft_commands;
 
 use std::time::Duration;
 
@@ -28,15 +29,9 @@ pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefin
         .map_err(|error| error.to_string())
 }
 
-/// The curated built-in commands the new-chat draft offers for a harness.
-/// Metadata only: no harness process starts.
-#[tauri::command]
-pub fn list_builtin_commands(state: State<'_, AppState>, harness_id: String) -> Vec<String> {
-    state.harnesses.draft_builtin_commands(&harness_id)
-}
-
 /// A model probe can also learn the start mode the harness's own settings name, which moves its
-/// default access; the catalog is sent again when that changes what the WebView was told.
+/// default access; the catalog is sent again when that changes what the WebView was told. What
+/// the probe read of the harness's commands is kept for its drafts.
 #[tauri::command]
 pub async fn list_harness_models(
     app: tauri::AppHandle,
@@ -60,6 +55,7 @@ pub async fn list_harness_models(
             state.harnesses.definitions(),
         );
     }
+    draft_commands::follow_probe(&app, &state, &harness_id);
     models
 }
 
