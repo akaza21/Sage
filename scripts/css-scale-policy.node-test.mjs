@@ -13,7 +13,10 @@ test("flags px font sizes outside the type scale authority", () => {
     "2 font-size 12px; use a var(--font-size-*) token",
   ]);
   assert.deepEqual(
-    scan("src/a.css", ".a { font-size: var(--font-size-xs); font: inherit; }"),
+    scan(
+      "src/a.css",
+      ".a { font-size: var(--font-size-xs); --chip-font-size: 12px; }",
+    ),
     [],
   );
   assert.deepEqual(
