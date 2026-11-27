@@ -35,7 +35,14 @@ mod tests {
         let catalog = HarnessCatalog::default();
         // Before, between and after the releases Claude's `since` rows name:
         // those rows are native controls, so no discovered release admits them.
-        for version in [None, Some("2.1.151"), Some("2.1.200"), Some("2.1.300")] {
+        // `agents` is retired from 2.1.330, and an unknown release guesses nothing.
+        for (version, offered) in [
+            (None, &["fast"][..]),
+            (Some("2.1.151"), &["fast", "agents"]),
+            (Some("2.1.300"), &["fast", "agents"]),
+            (Some("2.1.330"), &["fast"]),
+            (Some("2.1.332"), &["fast"]),
+        ] {
             catalog.discovered.replace(vec![InstalledHarness {
                 id: "claude-code",
                 executable: "claude".into(),
@@ -43,7 +50,7 @@ mod tests {
             }]);
             assert_eq!(
                 catalog.draft_builtin_commands("claude-code"),
-                ["fast", "agents"],
+                offered,
                 "{version:?}"
             );
         }

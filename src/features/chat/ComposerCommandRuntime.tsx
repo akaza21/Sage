@@ -40,6 +40,8 @@ export { slashCommandTurn, parseSlashCommand } from "./slashCommandTurn";
 // For the facade's first-send hold.
 // eslint-disable-next-line react-refresh/only-export-components -- the chunk's command port and picks
 export { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
+// eslint-disable-next-line react-refresh/only-export-components -- the first send checks a draft pick against it
+export { readDraftCommands } from "./draftCommands";
 // eslint-disable-next-line react-refresh/only-export-components -- see above
 export { setPickedCommand };
 // The new-chat draft's built-in rows insert through it, for Undo.
@@ -71,6 +73,7 @@ function setAttribute(field: HTMLElement, name: string, value: string | null) {
 export function ComposerSlashController({
   fieldRef,
   boundChatId,
+  draft,
   disabled,
   fieldId,
   onTextChange,
@@ -79,6 +82,8 @@ export function ComposerSlashController({
 }: {
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   boundChatId?: string;
+  /** The new-chat draft: its harness's last reported commands, no session. */
+  draft?: boolean;
   disabled: boolean;
   fieldId: string;
   onTextChange: (text: string) => void;
@@ -221,6 +226,7 @@ export function ComposerSlashController({
           part="ComposerSlashMenu"
           anchorRef={anchorRef}
           boundChatId={boundChatId}
+          draft={draft}
           keyHandlerRef={keyHandlerRef}
           listboxId={listboxId}
           onActiveOptionChange={setActiveOptionId}

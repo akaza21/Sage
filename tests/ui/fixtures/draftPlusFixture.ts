@@ -46,6 +46,8 @@ export function installDraftPlusFixture() {
     // null until a harness reports one (revision 0); undefined leaves the
     // desktop command port alone.
     builtins: [] as string[],
+    // A reported list the draft offers in place of the built-ins.
+    commands: null as unknown[] | null,
     catalog: undefined as string[] | null | undefined,
     ran: [] as string[],
     lists: 0,
@@ -197,7 +199,17 @@ export function installDraftPlusFixture() {
           request?: { label?: string; dataBase64?: string; mode?: string };
         },
       ) => {
-        if (command === "list_builtin_commands") return control.builtins;
+        if (command === "list_draft_commands")
+          return (
+            control.commands ??
+            control.builtins.map((name) => ({
+              name,
+              description: "Built-in",
+              inputHint: null,
+              source: "builtin",
+              placement: { section: "skillsAndCommands" },
+            }))
+          );
         if (command === "set_chat_access") {
           bounded(control.access);
           control.access.push(args.request);

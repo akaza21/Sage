@@ -10,6 +10,7 @@ const captureDir =
 
 interface Fixture {
   builtins: string[];
+  commands: unknown[] | null;
   catalog: string[] | null | undefined;
   ran: string[];
   sent: unknown[];
@@ -17,28 +18,31 @@ interface Fixture {
 }
 
 /** The draft fixture with curated built-ins and a session catalog that is
- * still unreported (revision 0) unless `catalog` is given. */
+ * still unreported (revision 0) unless `catalog` is given; `commands` is a
+ * reported list the draft offers in place of the built-ins. */
 async function openDraft(
   page: Page,
   builtins: string[],
   catalog: string[] | null = null,
+  commands: unknown[] | null = null,
 ) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(
-    async ([names, reported]) => {
+    async ([names, reported, rows]) => {
       const { installDraftPlusFixture } =
         await import("/tests/ui/fixtures/draftPlusFixture.ts");
       installDraftPlusFixture();
       const fixture = (window as never as { draftPlus: Fixture }).draftPlus;
       fixture.builtins = names;
       fixture.catalog = reported;
+      fixture.commands = rows;
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const state = useWorkbenchStore.getState();
       await state.openNewChatDraft(state.project!.id);
     },
-    [builtins, catalog] as const,
+    [builtins, catalog, commands] as const,
   );
   const draft = page.getByRole("region", { name: "New chat draft" });
   await expect(draft).toBeVisible();
@@ -229,4 +233,64 @@ test("a built-in command with images sends nothing", async ({ page }) => {
     opened.chat.getByRole("combobox", { name: "Message agent" }),
   ).toHaveValue("/fast");
   expect(await fixture(page)).toMatchObject({ ran: [], sent: 0 });
+});
+
+const reported = [
+  {
+    name: "review-pr",
+    description: "Review a pull request",
+    inputHint: "<pr>",
+    source: "skill",
+    placement: { section: "skillsAndCommands" },
+  },
+  {
+    name: "deploy:ship",
+    description: "Ship the build",
+    inputHint: null,
+    source: "plugin",
+    sourceLabel: "deploy",
+    placement: { section: "skillsAndCommands" },
+  },
+];
+
+test("before any session the draft offers the harness's reported commands in both menus", async ({
+  page,
+}) => {
+  const { plus, menu, field } = await openDraft(page, ["fast"], null, reported);
+  await plus.click();
+  await expect(
+    menu.getByRole("menuitem", { name: "/review-pr", exact: true }),
+  ).toContainText("Review a pull request");
+  await expect(
+    menu.getByRole("menuitem", { name: "/deploy:ship", exact: true }),
+  ).toBeVisible();
+  // The reported list replaces the curated built-ins.
+  await expect(
+    menu.getByRole("menuitem", { name: "/fast", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({ path: `${captureDir}/draft-reported-commands.png` });
+  await page.keyboard.press("Escape");
+  await field.fill("/rev");
+  const option = page.getByRole("option", { name: /\/review-pr/ });
+  await expect(option).toBeVisible();
+  await page.screenshot({ path: `${captureDir}/draft-slash-commands.png` });
+  await option.click();
+  await expect(field).toHaveValue("/review-pr ");
+  expect(await fixture(page)).toEqual({ ran: [], sent: 0, sessions: 0 });
+});
+
+test("a reported command the session no longer lists is refused, not sent as text", async ({
+  page,
+}) => {
+  const opened = await openDraft(page, [], ["compact"], reported);
+  await sendFirst(opened, "/review-pr 42");
+  await expect(
+    opened.chat.getByText(
+      "/review-pr is not available in this session. Nothing was sent.",
+    ),
+  ).toBeVisible();
+  await expect(
+    opened.chat.getByRole("combobox", { name: "Message agent" }),
+  ).toHaveValue("/review-pr 42");
+  expect(await fixture(page)).toEqual({ ran: [], sent: 0, sessions: 1 });
 });

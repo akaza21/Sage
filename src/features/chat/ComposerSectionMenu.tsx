@@ -25,7 +25,7 @@ import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 import { lazyParts } from "./lazyParts";
 import { useWorkbenchStore } from "../../app/store";
-import { useDraftBuiltinCommands } from "./draftBuiltinCommands";
+import { useDraftCommands } from "./draftCommands";
 import type * as PanelChunk from "./ComposerCommandPanel";
 import type * as AddActionsChunk from "./ComposerAddActions";
 import type { pickComposerSlashCommand } from "./insertSlashCommand";
@@ -306,11 +306,12 @@ export function ComposerSectionRows({
   );
 }
 
-/** The draft lists its harness's curated built-ins; a pick only inserts
- * `/name ` into the draft's text. */
+/** The draft lists its harness's last reported commands (see
+ * draftCommands.ts); a pick only inserts `/name ` into the draft's text. */
 function DraftOptionsBrowser(props: ComposerOptionsProps) {
-  const builtins = useDraftBuiltinCommands(
+  const builtins = useDraftCommands(
     useWorkbenchStore((state) => state.newChatDraft?.harnessId ?? undefined),
+    useWorkbenchStore((state) => state.newChatDraft?.projectId ?? null),
   );
   return (
     <ComposerOptionsBrowser
