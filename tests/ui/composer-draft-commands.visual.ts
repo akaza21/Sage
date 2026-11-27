@@ -72,6 +72,12 @@ async function sendFirst(
   text: string,
 ) {
   await field.fill(text);
+  // A bare `/name` opens the draft's `/` menu, where Enter picks; close it.
+  if (/^\/\S*$/u.test(text)) {
+    await expect(draft.page().getByRole("listbox")).toBeVisible();
+    await field.press("Escape");
+    await expect(draft.page().getByRole("listbox")).toHaveCount(0);
+  }
   await field.press("Enter");
   await expect(draft).toHaveCount(0);
 }
