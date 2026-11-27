@@ -45,7 +45,11 @@ const PROBE_ARGS: [&str; 3] = [
 enum Probed {
     /// The models, the permission mode the person's settings start a session in, and the
     /// commands Claude Code lists outside any project.
-    Models(Vec<ModelOption>, Option<&'static str>, Vec<AvailableCommand>),
+    Models(
+        Vec<ModelOption>,
+        Option<&'static str>,
+        Vec<AvailableCommand>,
+    ),
     /// When it failed, and whether a started CLI gave no answer in time (or
     /// refused): only then is the empty listing a failure the person sees.
     /// A build that could not be started, or answered with no models,
@@ -85,7 +89,11 @@ pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOpti
         .flatten()
         .map(|(reply, settings)| {
             let commands = catalog(&reply);
-            (model_options(&reply), configured_mode(settings.as_ref()), commands)
+            (
+                model_options(&reply),
+                configured_mode(settings.as_ref()),
+                commands,
+            )
         })
         .filter(|(models, ..)| !models.is_empty());
     *lock(&PROBED) = Some((
@@ -452,7 +460,10 @@ mod tests {
             {"value": "default", "supportsEffort": true, "supportedEffortLevels": ["low", "high"]},
             {"value": "haiku"},
         ]}));
-        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models, None, Vec::new())));
+        *lock(&PROBED) = Some((
+            binding.binding_digest(),
+            Probed::Models(models, None, Vec::new()),
+        ));
         let known = known_models(&binding).unwrap();
         let launched = |model| ModelOption::launched(&known, model);
         assert_eq!(launched(Some("haiku")).unwrap().id, "haiku");

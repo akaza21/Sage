@@ -122,28 +122,57 @@ mod tests {
         let (folder, settings) = store();
         let catalog = HarnessCatalog::default();
         // Nothing reported yet: the curated built-ins.
-        assert_eq!(names(&catalog.draft_commands(&settings, "codex", Some("p1"))), ["skills"]);
+        assert_eq!(
+            names(&catalog.draft_commands(&settings, "codex", Some("p1"))),
+            ["skills"]
+        );
         let reported = [
-            command("review-pr", CommandSource::Skill, CommandDispatch::Skill { path: "/s".into() }),
-            command("deploy:ship", CommandSource::Plugin, CommandDispatch::Prompt),
+            command(
+                "review-pr",
+                CommandSource::Skill,
+                CommandDispatch::Skill { path: "/s".into() },
+            ),
+            command(
+                "deploy:ship",
+                CommandSource::Plugin,
+                CommandDispatch::Prompt,
+            ),
             command("compact", CommandSource::Builtin, CommandDispatch::Action),
-            command("status", CommandSource::Builtin, CommandDispatch::Panel(
-                crate::acp::slash_commands::CommandPanel::Status,
-            )),
+            command(
+                "status",
+                CommandSource::Builtin,
+                CommandDispatch::Panel(crate::acp::slash_commands::CommandPanel::Status),
+            ),
             command("review", CommandSource::Builtin, CommandDispatch::Prompt),
         ];
-        assert!(record_draft_commands(&settings, "codex", Some("p1"), &reported));
-        assert!(!record_draft_commands(&settings, "codex", Some("p1"), &reported));
+        assert!(record_draft_commands(
+            &settings,
+            "codex",
+            Some("p1"),
+            &reported
+        ));
+        assert!(!record_draft_commands(
+            &settings,
+            "codex",
+            Some("p1"),
+            &reported
+        ));
         let rows = catalog.draft_commands(&settings, "codex", Some("p1"));
         // `review` is a curated native control: it needs a started chat.
         assert_eq!(names(&rows), ["review-pr", "deploy:ship"]);
         assert_eq!(rows[1]["source"], "plugin");
         assert!(rows[0].get("sourceInfo").is_none());
         // Another project, or none, borrows the latest list until its own is reported.
-        assert_eq!(names(&catalog.draft_commands(&settings, "codex", None)), names(&rows));
+        assert_eq!(
+            names(&catalog.draft_commands(&settings, "codex", None)),
+            names(&rows)
+        );
         // An empty report keeps what was stored.
         assert!(!record_draft_commands(&settings, "codex", Some("p1"), &[]));
-        assert_eq!(names(&catalog.draft_commands(&settings, "codex", Some("p1"))).len(), 2);
+        assert_eq!(
+            names(&catalog.draft_commands(&settings, "codex", Some("p1"))).len(),
+            2
+        );
         let _ = std::fs::remove_dir_all(folder);
     }
 }

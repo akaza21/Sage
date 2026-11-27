@@ -33,6 +33,9 @@ import {
   type PickedSlashCommand,
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
+import { useDraftCommands } from "./draftCommands";
+import { useWorkbenchStore } from "../../app/store";
+import type { AvailableAcpCommand } from "../../services/acpCommandsDesktop";
 
 // Menus and typed sends share one lazy catalog entry and transport.
 // eslint-disable-next-line react-refresh/only-export-components -- the chunk's command action, shared by its parts
@@ -93,6 +96,7 @@ export function ComposerSlashController({
   const keyHandlerRef = useRef<((event: SuggestionKeyEvent) => boolean) | null>(
     null,
   );
+  const draftRows = useNewChatDraftCommands(!!draft);
   const anchorRef = useRef<HTMLElement | null>(null);
   const [scope, setScope] = useState(boundChatId);
   const [dismissed, setDismissed] = useState(false);
@@ -226,7 +230,7 @@ export function ComposerSlashController({
           part="ComposerSlashMenu"
           anchorRef={anchorRef}
           boundChatId={boundChatId}
-          draft={draft}
+          draftCommands={draft ? draftRows : undefined}
           keyHandlerRef={keyHandlerRef}
           listboxId={listboxId}
           onActiveOptionChange={setActiveOptionId}
@@ -266,6 +270,25 @@ export function ComposerSlashController({
       )}
     </>
   );
+}
+
+/** The new-chat draft's commands (see draftCommands.ts); none when `on` is false. */
+function useNewChatDraftCommands(on: boolean) {
+  return useDraftCommands(
+    useWorkbenchStore((state) =>
+      on ? (state.newChatDraft?.harnessId ?? undefined) : undefined,
+    ),
+    useWorkbenchStore((state) => state.newChatDraft?.projectId ?? null),
+  );
+}
+
+/** The draft's + menu rows, read in this chunk with the rest of the catalog. */
+export function DraftCommandCatalog({
+  children,
+}: {
+  children: (rows: AvailableAcpCommand[]) => ReactNode;
+}) {
+  return children(useNewChatDraftCommands(true));
 }
 
 export function ComposerCommandCatalog({

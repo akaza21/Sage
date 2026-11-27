@@ -94,11 +94,14 @@ impl KnownCommandTable {
         for entry in &entries {
             if entry.aliases.len() > 8
                 || entry.terminal_only == Some(false)
-                || [&entry.since, &entry.removed].into_iter().flatten().any(|version| {
-                    version.len() > 96
-                        || version.split_ascii_whitespace().count() != 1
-                        || ReleaseVersion::parse(version).is_none()
-                })
+                || [&entry.since, &entry.removed]
+                    .into_iter()
+                    .flatten()
+                    .any(|version| {
+                        version.len() > 96
+                            || version.split_ascii_whitespace().count() != 1
+                            || ReleaseVersion::parse(version).is_none()
+                    })
                 || std::iter::once(&entry.name)
                     .chain(&entry.aliases)
                     .any(|name| !valid_name(name) || !names.insert(name.as_str()))

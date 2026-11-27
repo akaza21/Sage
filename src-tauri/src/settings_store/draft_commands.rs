@@ -134,15 +134,44 @@ mod tests {
     fn a_project_list_wins_and_another_projects_list_stands_in_for_it() {
         let (_folder, store) = store();
         assert_eq!(store.draft_commands("claude-code", "p1").unwrap(), None);
-        assert!(store.record_draft_commands("claude-code", "", "[1]").unwrap());
-        assert!(!store.record_draft_commands("claude-code", "", "[1]").unwrap());
-        store.record_draft_commands("claude-code", "p2", "[2]").unwrap();
+        assert!(
+            store
+                .record_draft_commands("claude-code", "", "[1]")
+                .unwrap()
+        );
+        assert!(
+            !store
+                .record_draft_commands("claude-code", "", "[1]")
+                .unwrap()
+        );
+        store
+            .record_draft_commands("claude-code", "p2", "[2]")
+            .unwrap();
         // No list for p1: the most recent one stands in.
-        assert_eq!(store.draft_commands("claude-code", "p1").unwrap().as_deref(), Some("[2]"));
-        store.record_draft_commands("claude-code", "p1", "[3]").unwrap();
-        store.record_draft_commands("claude-code", "", "[4]").unwrap();
-        assert_eq!(store.draft_commands("claude-code", "p1").unwrap().as_deref(), Some("[3]"));
-        assert_eq!(store.draft_commands("claude-code", "").unwrap().as_deref(), Some("[4]"));
+        assert_eq!(
+            store
+                .draft_commands("claude-code", "p1")
+                .unwrap()
+                .as_deref(),
+            Some("[2]")
+        );
+        store
+            .record_draft_commands("claude-code", "p1", "[3]")
+            .unwrap();
+        store
+            .record_draft_commands("claude-code", "", "[4]")
+            .unwrap();
+        assert_eq!(
+            store
+                .draft_commands("claude-code", "p1")
+                .unwrap()
+                .as_deref(),
+            Some("[3]")
+        );
+        assert_eq!(
+            store.draft_commands("claude-code", "").unwrap().as_deref(),
+            Some("[4]")
+        );
         assert_eq!(store.draft_commands("codex", "p1").unwrap(), None);
     }
 
@@ -150,14 +179,21 @@ mod tests {
     fn the_store_keeps_the_most_recent_lists_within_its_bounds() {
         let (_folder, store) = store();
         for index in 0..=MAX_DRAFT_CATALOGS {
-            store.record_draft_commands("pi", &format!("p{index}"), "[]").unwrap();
+            store
+                .record_draft_commands("pi", &format!("p{index}"), "[]")
+                .unwrap();
         }
-        assert_eq!(store.draft_commands("pi", "p0").unwrap().as_deref(), Some("[]"));
+        assert_eq!(
+            store.draft_commands("pi", "p0").unwrap().as_deref(),
+            Some("[]")
+        );
         let count: i64 = store
             .0
             .lock()
             .unwrap()
-            .query_row("SELECT COUNT(*) FROM draft_command_catalogs", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM draft_command_catalogs", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, MAX_DRAFT_CATALOGS as i64);
         let oldest: i64 = store

@@ -26,8 +26,6 @@ import { SlashCommandIcon } from "./SlashCommandIcon";
 import type { PickedSlashCommand } from "./composerSlashCommand";
 
 import type { SessionCommandsLoad } from "./useSessionCommands";
-import { useDraftCommands } from "./draftCommands";
-import { useWorkbenchStore } from "../../app/store";
 /**
  * Rows each section shows before typing, so every source stays in view:
  * seven sources of seven rows fit the list's 50 rendered rows.
@@ -279,30 +277,25 @@ function ComposerSlashList({
 const CatalogPart = lazyParts<
   Pick<typeof CommandRuntime, "ComposerCommandCatalog">
 >(() => import("./ComposerCommandRuntime"));
-/** Before a session exists, the new-chat draft's harness's last reported
- * commands, as its + menu lists them; a pick only inserts `/name `. */
-function DraftSlashMenu(
-  props: Omit<ComponentProps<typeof ComposerSlashList>, "load">,
-) {
-  const commands = useDraftCommands(
-    useWorkbenchStore((state) => state.newChatDraft?.harnessId ?? undefined),
-    useWorkbenchStore((state) => state.newChatDraft?.projectId ?? null),
-  );
-  return (
-    <ComposerSlashList
-      {...props}
-      load={{ kind: "ready", owner: "", list: { revision: 1, commands } }}
-    />
-  );
-}
-
 export function ComposerSlashMenu({
-  draft,
+  draftCommands,
   ...props
 }: Omit<ComponentProps<typeof ComposerSlashList>, "load"> & {
-  draft?: boolean;
+  /** Before a session exists, the new-chat draft's commands, as its + menu
+   * lists them; a pick only inserts `/name `. */
+  draftCommands?: AvailableAcpCommand[];
 }) {
-  if (draft) return <DraftSlashMenu {...props} />;
+  if (draftCommands)
+    return (
+      <ComposerSlashList
+        {...props}
+        load={{
+          kind: "ready",
+          owner: "",
+          list: { revision: 1, commands: draftCommands },
+        }}
+      />
+    );
   const owner = props.boundChatId;
   return (
     <CatalogPart

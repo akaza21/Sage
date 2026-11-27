@@ -135,7 +135,9 @@ impl BindingRecord {
     /// The commands the binding's latest passive probe read, for a new-chat
     /// draft before any session reports the live list; `None` for a binding
     /// whose probe reads none.
-    pub(crate) fn probed_commands(&self) -> Option<Vec<crate::acp::slash_commands::AvailableCommand>> {
+    pub(crate) fn probed_commands(
+        &self,
+    ) -> Option<Vec<crate::acp::slash_commands::AvailableCommand>> {
         match &self.admission {
             Admission::ClaudeSdk(registration) => registration
                 .admitted()
