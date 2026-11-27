@@ -214,3 +214,27 @@ fn a_moved_folder_is_decided_again() {
         Relevance::Keep
     );
 }
+
+#[test]
+fn hands_on_the_root_repositorys_ref_and_fetch_records_only() {
+    let root = Root::new();
+    let mut relevance = NoticeRelevance::new(&root.0);
+    for (relative, expected) in [
+        (".git/FETCH_HEAD", Relevance::GitRefs),
+        (".git/packed-refs", Relevance::GitRefs),
+        (".git/refs/remotes/origin/main.lock", Relevance::GitRefs),
+        (".git/refs/heads", Relevance::GitRefs),
+        (".GIT/Refs/heads/topic", Relevance::GitRefs),
+        (".git/objects/ab/cdef", Relevance::Drop),
+        (".git/logs/HEAD", Relevance::Drop),
+        (".git/refsx/a", Relevance::Drop),
+        ("packages/app/.git/refs/heads/main", Relevance::Drop),
+        (".github/refs/a", Relevance::Keep),
+    ] {
+        assert_eq!(
+            relevance.classify(relative, CHANGED),
+            expected,
+            "{relative}"
+        );
+    }
+}

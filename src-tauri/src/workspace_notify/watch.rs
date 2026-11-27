@@ -64,6 +64,9 @@ pub fn deliver_workspace_notify_action(
     watch.session.classify(root_id, relative, action)
 }
 
+/// The "changed" action Windows reports for the `.git` folder itself.
+const GIT_FOLDER_CHANGED: u32 = 3;
+
 /// Lost records always pass, and make the filter reload.
 pub(super) fn root_delivery(
     project_id: String,
@@ -86,7 +89,7 @@ pub(super) fn root_delivery(
             relevance = NoticeRelevance::new(&root_path).with_excludes(excludes);
         }
         // Git judges the original path, captured before Explorer folds it.
-        let original = relative.clone();
+        let mut original = relative.clone();
         let directory = root_path.join(&relative).is_dir();
         let moved = matches!(super::kind_for_action(action), Some("created" | "deleted"));
         let (relative, action) = if action == OVERFLOW_NOTIFY_ACTION {
@@ -101,6 +104,10 @@ pub(super) fn root_delivery(
                     OVERFLOW_NOTIFY_ACTION,
                 ),
                 Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),
+                Relevance::GitRefs => {
+                    original = ".git".to_string();
+                    (original.clone(), GIT_FOLDER_CHANGED)
+                }
             }
         };
         if let Ok(Some(notice)) =
