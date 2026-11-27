@@ -28,9 +28,7 @@ export function offScaleDeclarations(files) {
   for (const { relativePath, source } of files) {
     const css = stripComments(source);
     if (relativePath !== TYPE_SCALE_AUTHORITY) {
-      for (const match of css.matchAll(
-        /font-size\s*:\s*(-?[\d.]+px)\b/giu,
-      )) {
+      for (const match of css.matchAll(/font-size\s*:\s*(-?[\d.]+px)\b/giu)) {
         if (FONT_SIZE_EXCEPTIONS.has(`${relativePath}:${match[1]}`)) continue;
         findings.push({
           line: lineAt(css, match.index),

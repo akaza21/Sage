@@ -9,6 +9,7 @@ import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
 import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
 import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
+import { cssScalePolicyErrors } from "./css-scale-policy.mjs";
 import { cssTokenPolicyErrors } from "./css-token-policy.mjs";
 import {
   cssHighlightPolicyErrors,
@@ -1033,6 +1034,9 @@ for (const error of await cssHighlightPolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 for (const error of await cssHygienePolicyErrors(root, productionCssFiles)) {
+  fail(error);
+}
+for (const error of await cssScalePolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 const productionScriptFiles = sourceInventory.files
