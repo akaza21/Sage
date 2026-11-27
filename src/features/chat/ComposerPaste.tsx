@@ -1,24 +1,13 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import { Stacked } from "../../ui/NoticeStack";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
   heldInputMessage,
   pasteAttachmentRefusal,
   type PasteAttachability,
 } from "./composerPasteText";
-import {
-  ComposerPasteNotices,
-  type PasteNotices,
-} from "./ComposerPasteNotices";
+import { ComposerPasteNotices } from "./ComposerPasteNotices";
 // Also registers the draft's file handoff on the draft port.
 import { noteDraftFiles } from "./draftFileHandoff";
 import { PastedTextChips } from "./PastedTextChips";
@@ -47,7 +36,6 @@ export function ComposerPaste({
   text,
   disabled,
   noticeId,
-  onNotices,
   onStaged,
 }: {
   chatId: string | undefined;
@@ -60,8 +48,6 @@ export function ComposerPaste({
   text: string;
   disabled: boolean;
   noticeId: string;
-  /** The composer shows these in its notice stack. */
-  onNotices(next: PasteNotices | undefined): void;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
@@ -155,27 +141,19 @@ export function ComposerPaste({
     activeTurn && state.items.length
       ? "Attached text goes with the next message you send, not a queued one. Send it once the turn finishes."
       : "";
-  // Before paint, so the stack never shows a notice a frame late.
-  useLayoutEffect(
-    () =>
-      onNotices(
-        <Stacked key={noticeId} quiet={!transient && !reason}>
-          <ComposerPasteNotices
-            id={noticeId}
-            notice={transient}
-            reason={reason}
-          />
-        </Stacked>,
-      ),
-    [onNotices, noticeId, transient, reason],
+  return (
+    <>
+      <ComposerPasteNotices id={noticeId} notice={transient} reason={reason} />
+      {state.items.length > 0 ? (
+        <PastedTextChips
+          items={state.items}
+          // A removal racing a paste is refused by revision natively.
+          disabled={disabled || state.busy}
+          onRemove={(id, label) =>
+            void removeStaged(owner, id, label, announce)
+          }
+        />
+      ) : null}
+    </>
   );
-  useLayoutEffect(() => () => onNotices(undefined), [onNotices]);
-  return state.items.length > 0 ? (
-    <PastedTextChips
-      items={state.items}
-      // A removal racing a paste is refused by revision natively.
-      disabled={disabled || state.busy}
-      onRemove={(id, label) => void removeStaged(owner, id, label, announce)}
-    />
-  ) : null;
 }

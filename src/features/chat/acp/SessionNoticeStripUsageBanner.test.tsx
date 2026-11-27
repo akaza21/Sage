@@ -93,9 +93,7 @@ it("leads the composer's one ordered notice stack and stays dismissed through a 
   const follows = (a: Element, b: Element) =>
     !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   // The visible reason comes first in source order; the error still leads.
-  // (The paste part's live region waits, empty, in the info band.)
-  const shown = [...stack.children].filter((child) => child.textContent);
-  expect(shown.map((child) => child.textContent)).toEqual([
+  expect([...stack.children].map((child) => child.textContent)).toEqual([
     "Error: Workspace could not be refreshed.",
     "Choose a model to send.",
   ]);

@@ -137,7 +137,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
-  const availability = composerAvailability({
+  const [describedReason, notices] = composerAvailability({
     reason: disabledReason,
     id: disabledReasonId,
     scope: dictationScope,
@@ -185,6 +185,27 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           }}
         >
           <div className="composer__slots">
+            {/* Usage limits lead, outside the sign-in surface's swap so
+                their dismissals survive a refusal; then the one notice stack.
+                Hidden, it drops status problems as before. */}
+            {chatAuth?.page?.sessionNotices ? (
+              <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
+            ) : null}
+            <ComposerStatusNotices
+              {...notices}
+              {...(!hidden && {
+                workbenchError,
+                chatError,
+                chatAuth,
+                imageStatus: composerProblem(
+                  "image-input",
+                  dictationScope,
+                  imageInput.status,
+                  "attachment",
+                  "info",
+                ),
+              })}
+            />
             {otherContext.length < attachedContext.length ? (
               <TranscriptPart
                 part="ComposerAnnotations"
@@ -205,28 +226,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
           <div className="composer__body">
-            {/* One stack above the field: usage limits lead (outside the
-                sign-in surface's swap, so dismissals survive a refusal), then
-                blocking, warning and info notices. Hidden, it drops status
-                problems as before; the rest stay mounted. */}
-            {chatAuth?.page?.sessionNotices ? (
-              <NoticePart part="UsageLimitBanner" page={chatAuth.page} />
-            ) : null}
-            <ComposerStatusNotices
-              notices={[paste.notices, ...availability]}
-              {...(!hidden && {
-                workbenchError,
-                chatError,
-                chatAuth,
-                imageStatus: composerProblem(
-                  "image-input",
-                  dictationScope,
-                  imageInput.status,
-                  "attachment",
-                  "info",
-                ),
-              })}
-            />
             {goal?.kind === "goal" ||
             (goalCapabilities &&
               (!goalCapabilities.observes ||
@@ -337,6 +336,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               text={text}
               disabled={actionDisabled}
             />
+            {describedReason}
             {otherContext.length > 0 ? (
               <div className="composer__attachment-row">
                 <AttachmentsPart

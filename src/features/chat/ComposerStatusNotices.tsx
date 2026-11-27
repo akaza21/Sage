@@ -4,14 +4,15 @@ import type { ReactNode } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 import { Notice } from "../../ui/Notice";
 import type { NoticeSeverity } from "../../ui/Notice";
-import { NoticeStack, Stacked, type StackEntry } from "../../ui/NoticeStack";
 
 export type ComposerStatusNoticeProps = Partial<
   Pick<ChatComposerRegionProps, "workbenchError" | "chatError" | "chatAuth">
 > & {
   imageStatus?: ComposerProblem | null;
-  /** The composer's other notices, ahead of its status in source order. */
-  notices?: readonly StackEntry[];
+  /** The composer's own notices around its status: `before` is blocking,
+   * `after` is information. */
+  before?: ReactNode;
+  after?: ReactNode;
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   authRecovery?: {
     harnessId: string;
@@ -21,44 +22,43 @@ export type ComposerStatusNoticeProps = Partial<
   };
 };
 
-/** The composer's one notice stack; errors remain available while the
- * optional notice surface loads. */
+/**
+ * The composer's one notice stack, blocking first: a failed load's Retry,
+ * sign-in recovery, then errors and the image status (information), then
+ * the composer's information. Errors remain available while the optional
+ * notice surface loads.
+ */
 export function ComposerNoticeFrame(
   props: ComposerStatusNoticeProps & { children?: ReactNode },
 ) {
-  const {
+  const { workbenchError, chatError, imageStatus, before, after, children } =
+    props;
+  const problems = resolveComposerProblems([
     workbenchError,
     chatError,
     imageStatus,
-    notices = [],
-    children,
-  } = props;
-  return (
-    <NoticeStack
-      label="Composer notices"
-      notices={[
-        ...notices,
-        !!children && (
-          <Stacked key="sign-in" severity="blocking">
-            {children}
-          </Stacked>
-        ),
-        ...resolveComposerProblems([
-          imageStatus,
-          workbenchError,
-          chatError,
-        ]).map(({ identity, message, severity }) => (
-          <Notice
-            key={identity}
-            identity={identity}
-            message={message}
-            severity={severity}
-            progress={severity === "info"}
-          />
-        )),
-      ]}
-    />
-  );
+  ]);
+  return problems.length || children || before || after ? (
+    <div
+      className="composer__notices"
+      role="region"
+      aria-label="Composer notices"
+      tabIndex={0}
+    >
+      {before}
+      {children}
+      {problems.map(({ identity, message, severity }) => (
+        <Notice
+          key={identity}
+          identity={identity}
+          message={message}
+          severity={severity}
+          progress={severity === "info"}
+        />
+      ))}
+      {after}
+    </div>
+  ) : null;
 }
 
 export function ComposerStatusNotices(props: ComposerStatusNoticeProps) {

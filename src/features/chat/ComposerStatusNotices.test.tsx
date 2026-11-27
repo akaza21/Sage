@@ -117,3 +117,32 @@ it("preserves unrelated errors while recovery loads and fails", async () => {
   });
   expectNoticesVisible();
 });
+
+it("stacks a failed load's Retry and errors before information, in one region", () => {
+  render(
+    <ComposerStatusNotices
+      {...props}
+      before={<p>Retry the chat</p>}
+      imageStatus={composerProblem(
+        "image",
+        "chat-a",
+        "Image upload failed.",
+        "attachment",
+        "info",
+      )}
+      workbenchError={composerProblem(
+        "workspace",
+        "project-a",
+        "Workspace could not be refreshed.",
+      )}
+      after={<p>Choose a model to send.</p>}
+    />,
+  );
+  const stack = screen.getByRole("region", { name: "Composer notices" });
+  expect([...stack.children].map((child) => child.textContent)).toEqual([
+    "Retry the chat",
+    "Error: Workspace could not be refreshed.",
+    "Image upload failed.",
+    "Choose a model to send.",
+  ]);
+});

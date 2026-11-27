@@ -127,8 +127,7 @@
   overscroll-behavior: contain;
 }
 
-.composer__notices,
-.notice-stack {
+.composer__notices {
   min-height: 0;
   max-block-size: min(10rem, 20vh);
   padding-inline: var(--space-3);
@@ -136,8 +135,7 @@
   overscroll-behavior: contain;
 }
 
-.composer__notices:empty,
-.notice-stack:empty {
+.composer__notices:empty {
   display: none;
 }
 
@@ -338,7 +336,7 @@
 }
 
 /* The stack already insets its notices. */
-.notice-stack .composer__disabled-reason {
+.composer__notices .composer__disabled-reason {
   padding-inline: 0;
 }
 
