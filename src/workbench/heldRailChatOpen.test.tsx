@@ -42,18 +42,18 @@ async function privateChat(): Promise<Row> {
   return row;
 }
 
-/** Holds the model discovery that keeps a Project switch transitioning. */
-function holdDiscovery() {
-  const discover = store().loadHarnessModelsForProjection;
+/** Holds the root listing that keeps a Project switch transitioning. */
+function holdSwitch() {
+  const list = store().loadDirectory;
   let release!: () => void;
   let entered!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   const started = new Promise<void>((resolve) => (entered = resolve));
   useWorkbenchStore.setState({
-    loadHarnessModelsForProjection: async (...args) => {
+    loadDirectory: async (...args) => {
       entered();
       await gate;
-      return discover(...args);
+      return list(...args);
     },
   });
   return { started, release };
@@ -127,7 +127,7 @@ afterEach(() => {
 
 it("opens a rail chat clicked during a project switch once the switch settles", async () => {
   const view = render(<Rail rows={[first, second]} />);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   click(view, first);
   await held.started;
   expect(store().projectTransitioning).toBe(true);
@@ -142,7 +142,7 @@ it("opens a rail chat clicked during a project switch once the switch settles", 
 it("opens only the latest rail chat clicked during a project switch", async () => {
   const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
   const view = render(<Rail rows={[real, first, second]} />);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   click(view, first);
   await held.started;
   click(view, real);
@@ -157,14 +157,14 @@ it("opens only the latest rail chat clicked during a project switch", async () =
 it("drops a held rail chat that was archived before the switch settled", async () => {
   const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
   const view = render(<Rail rows={[real, first, second]} />);
-  let held = holdDiscovery();
+  let held = holdSwitch();
   click(view, first);
   await held.started;
   click(view, second);
   held.release();
   await opened(second.project, second.chat.id);
 
-  held = holdDiscovery();
+  held = holdSwitch();
   click(view, real);
   await held.started;
   click(view, first);
@@ -195,7 +195,7 @@ it("drops a held rail chat that was archived before the switch settled", async (
 it("cancels a held rail chat on a later rail action or when the rail unmounts", async () => {
   const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
   const view = render(<Rail rows={[real, first, second]} />);
-  let held = holdDiscovery();
+  let held = holdSwitch();
   click(view, first);
   await held.started;
   click(view, second);
@@ -206,7 +206,7 @@ it("cancels a held rail chat on a later rail action or when the rail unmounts", 
   await idle();
   expect(store().project?.id).toBe(first.project);
 
-  held = holdDiscovery();
+  held = holdSwitch();
   click(view, second);
   await held.started;
   click(view, first);
@@ -273,7 +273,7 @@ async function notify(row: Row) {
 it("opens only a notification clicked after a held rail chat, as the latest action", async () => {
   const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
   const view = await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   click(view, second);
@@ -295,7 +295,7 @@ it("opens only a notification clicked after a held rail chat, as the latest acti
 it("drops a notification clicked during a switch once a project row is clicked", async () => {
   const switches = vi.spyOn(getWorkbenchPorts().project, "switchProject");
   const view = await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   click(view, first);
   await held.started;
   await notify(second);
@@ -311,7 +311,7 @@ it("drops a notification clicked during a switch once a project row is clicked",
 
 it("opens a notification clicked during a switch once the switch settles", async () => {
   await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   await notify(second);
@@ -322,7 +322,7 @@ it("opens a notification clicked during a switch once the switch settles", async
 
 it("opens a held notification for a chat the truncated rail does not list", async () => {
   await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   await notify(second);
@@ -358,7 +358,7 @@ it("restores a held notification chat archived before the click but past the cap
   expect(await store().archiveChat(second.chat.id)).toBe(true);
   await store().switchProject(real.project);
   await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   // Both bounded lists leave out this older archived chat.
@@ -372,7 +372,7 @@ it("restores a held notification chat archived before the click but past the cap
 
 it("drops a held notification chat archived during the hold with the generic error", async () => {
   await desktopRail([first, second]);
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   await notify(second);
@@ -432,7 +432,7 @@ it("drops a held notification once the notification listener unmounts", async ()
     </>,
   );
   await idle();
-  const held = holdDiscovery();
+  const held = holdSwitch();
   void store().switchProject(first.project);
   await held.started;
   await notify(second);
