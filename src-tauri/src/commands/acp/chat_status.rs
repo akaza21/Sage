@@ -146,13 +146,15 @@ fn background_work(
     let Some(epoch) = epoch.and_then(|epoch| u64::try_from(epoch).ok()) else {
         return Ok(false);
     };
+    // Display decoration: a surface that cannot be read means no background work.
     let view = crate::acp::store::session_surface::view(
         connection,
         project.as_str(),
         chat.as_str(),
         session,
         Some(epoch),
-    )?;
+    )
+    .unwrap_or(None);
     Ok(view.is_some_and(|view| {
         view.activities.iter().any(|activity| {
             !activity.state.is_terminal()
@@ -209,6 +211,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(turn_json(&db)["signIn"], true);
+        db.execute("UPDATE turns SET state='cancelled'", []).unwrap();
+        assert_eq!(turn_json(&db).get("signIn"), None);
         db.execute_batch(
             "UPDATE acp_turn_terminal_reasons SET kind='timeout';
           UPDATE turns SET state='completed';
@@ -248,8 +252,12 @@ mod tests {
             surface("backgroundTask", SessionActivityState::Completed, false),
             None
         );
-        // Nor is a task whose runtime has ended.
+        // A turn that has not settled reports its own state instead.
         surface("backgroundTask", running, false);
+        db.execute("UPDATE turns SET terminal_at=NULL", []).unwrap();
+        assert_eq!(turn_json(&db).get("background"), None);
+        db.execute("UPDATE turns SET terminal_at=2", []).unwrap();
+        // Nor is a task whose runtime has ended.
         db.execute("UPDATE session_runtime_epochs SET state='exited'", [])
             .unwrap();
         assert_eq!(turn_json(&db).get("background"), None);
