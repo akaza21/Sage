@@ -39,6 +39,7 @@ function useCollapsedProjectState(
   for (const chat of chats) {
     const state = agentRailTrailingState({
       status: parentChatStatus(chat.id, chat.status),
+      attention: interactions.attention.get(chat.id),
       unread:
         interactions.unread.has(chat.id) ||
         sessionRailUnreadVisible({

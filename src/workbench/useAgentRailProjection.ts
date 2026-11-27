@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatStatus, TurnState } from "../domain/acp";
 import type { SessionStatus } from "../domain/workbench";
-import { setAgentRailApproval } from "./agentRailInteractions";
+import { setAgentRailAttention } from "./agentRailInteractions";
 
 export function railStatusForTurn(state?: TurnState): SessionStatus {
   if (!state) return "idle";
@@ -21,8 +21,16 @@ export function mirrorAgentRailStatus(page: AcpChatStatus) {
   );
   if (!tab) return;
   const turn = page.latestTurn;
-  const status = railStatusForTurn(turn?.state);
-  setAgentRailApproval(page.chatId, turn?.state === "waitingApproval");
+  // A settled turn whose background work still runs reads as working.
+  const status = turn?.background ? "working" : railStatusForTurn(turn?.state);
+  setAgentRailAttention(
+    page.chatId,
+    turn?.state === "waitingApproval"
+      ? "approval"
+      : turn?.state === "waitingUser"
+        ? "input"
+        : turn?.signIn && "signIn",
+  );
   const metadataChanged = tab.title !== page.title || tab.status !== status;
   const updatedAt = turn
     ? Math.max(
@@ -35,7 +43,7 @@ export function mirrorAgentRailStatus(page: AcpChatStatus) {
   // The latest Turn's finish time is the read watermark; a running Turn
   // keeps the last one so the chat cannot turn Unread mid-run.
   const finishedAt =
-    turn?.terminalAt != null
+    turn?.terminalAt != null && !turn.background
       ? Math.max(tab.finishedAt ?? 0, turn.terminalAt)
       : tab.finishedAt;
   if (

@@ -10,6 +10,7 @@ import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
 import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import { cssInlineControlPolicyErrors } from "./css-inline-control-policy.mjs";
+import { cssTokenPolicyErrors } from "./css-token-policy.mjs";
 import {
   cssHighlightPolicyErrors,
   discoverSourceFilesWithCssBound,
@@ -1033,6 +1034,16 @@ for (const error of await cssHighlightPolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 for (const error of await cssHygienePolicyErrors(root, productionCssFiles)) {
+  fail(error);
+}
+const productionScriptFiles = sourceInventory.files
+  .filter((file) => /\.tsx?$/u.test(file) && !/\.test\.tsx?$/u.test(file))
+  .map(canonicalRelative);
+for (const error of await cssTokenPolicyErrors(
+  root,
+  productionCssFiles,
+  productionScriptFiles,
+)) {
   fail(error);
 }
 for (const error of await cssInlineControlPolicyErrors(
