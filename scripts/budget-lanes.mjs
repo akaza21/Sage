@@ -69,6 +69,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
   "css-token-policy.node-test.mjs",
+  "css-inline-control-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
   "gate.node-test.mjs",
   "hr6-access-mode.node-test.mjs",
@@ -412,6 +413,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "css-token-policy.node-test.mjs",
     reason:
       "Portable checks that every var() without a fallback names a defined or script-set custom property; reads in-memory sources only.",
+  },
+  {
+    file: "css-inline-control-policy.node-test.mjs",
+    reason:
+      "Portable checks that no absolute box is placed beside its parent on the inline axis; reads in-memory sources only.",
   },
   {
     file: "synthetic-tree.node-test.mjs",

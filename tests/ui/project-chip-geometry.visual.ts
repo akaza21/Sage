@@ -465,6 +465,39 @@ test("each project chip shows its clear button right after the name", async ({
   expect(
     Math.abs(caption.x + caption.width / 2 - (heading.x + heading.width / 2)),
   ).toBeLessThanOrEqual(1);
+  // Without a repository the strip has no branch chip, so the project chip
+  // is last. Squeezed by a long name in a narrow window, its clear button
+  // must still fit inside the clipping strip.
+  await page.setViewportSize({ width: 480, height: 880 });
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { repositories, project, projects } = useWorkbenchStore.getState();
+    const name = "A project whose name is far too long for the strip";
+    useWorkbenchStore.setState({
+      repositories: { ...repositories, roots: [] },
+      project: { ...project!, name },
+      projects: projects.map((entry) =>
+        entry.id === project!.id ? { ...entry, name } : entry,
+      ),
+    });
+  });
+  const strip = page.getByRole("group", { name: "Chat location" });
+  await expect(strip.locator(".composer-branch")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await strip.locator(".project-scope").hover();
+  const lastClear = strip.getByRole("button", {
+    name: "Remove project from this chat",
+  });
+  await expect(lastClear).toBeVisible();
+  const clearEnd = await lastClear.evaluate(
+    (button) => button.getBoundingClientRect().right,
+  );
+  const stripContentEnd = await strip.evaluate(
+    (element) =>
+      element.getBoundingClientRect().right -
+      parseFloat(getComputedStyle(element).paddingRight),
+  );
+  expect(clearEnd).toBeLessThanOrEqual(stripContentEnd);
 });
 
 test("a new chat's location sits on a tab joined to the top of its composer", async ({
@@ -567,26 +600,22 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   expect(await branchLeft()).toBe(idleBranch);
   const clearBox = (await clear.boundingBox())!;
   expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(idleBranch);
-  // The hover fill is one pill around the name and the clear button.
-  // The chip paints the fill and a same-coloured shadow shifted by its
-  // offset; their union is the pill.
+  // The hover fill is one pill: the chip's own filled box holds the name
+  // and the clear button, with nothing painted outside it.
   const pill = await strip.locator(".project-scope").evaluate((chip) => {
     const box = chip.getBoundingClientRect();
     const style = getComputedStyle(chip);
-    const shadow = /^(rgba?\([^)]*\)) (-?[\d.]+)px (-?[\d.]+)px/.exec(
-      style.boxShadow,
-    );
     return {
       left: box.left,
-      right: box.right + Number(shadow?.[2]),
+      right: box.right,
       top: box.top,
-      bottom: box.bottom + Number(shadow?.[3]),
+      bottom: box.bottom,
       background: style.backgroundColor,
-      shadow: shadow?.[1],
+      shadow: style.boxShadow,
     };
   });
   expect(pill.background).not.toBe("rgba(0, 0, 0, 0)");
-  expect(pill.shadow).toBe(pill.background);
+  expect(pill.shadow).toBe("none");
   const projectBox = (await project.boundingBox())!;
   for (const box of [clearBox, projectBox]) {
     expect(box.x).toBeGreaterThanOrEqual(pill.left);
