@@ -20,6 +20,7 @@ use sage_domain::harness::ModelOption;
 use crate::acp::{
     bindings::standard_acp::surface::command_list::{MAX_COMMANDS, parse_acp},
     command_placement::place_commands,
+    process::graceful_exit,
     slash_commands::AvailableCommand,
 };
 
@@ -225,8 +226,13 @@ fn run(
             .is_ok()
     });
     let reply = written.then(|| collect(&receiver)).flatten();
-    // Never a bare kill: see `probe_exit`.
-    thread::spawn(move || super::probe_exit::retire(child, stdin, super::probe_exit::EXIT_GRACE));
+    // Never a bare kill: closing stdin ends Claude Code's stream-json input,
+    // and `graceful_exit` leaves it the grace to save a refreshed sign-in.
+    thread::spawn(move || {
+        let mut child = child;
+        drop(stdin);
+        graceful_exit::exit_or_kill(&mut child, Instant::now() + graceful_exit::EXIT_GRACE)
+    });
     Some(reply)
 }
 

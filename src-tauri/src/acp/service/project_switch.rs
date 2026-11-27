@@ -53,8 +53,7 @@ impl AcpService {
         self.revoke_browser_other_projects(active_project);
         // P-02 has no live adapter pump, but its conformance receivers are
         // owner-bound native work and must not survive a project replacement.
-        let deadline = Instant::now()
-            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let deadline = Instant::now() + crate::acp::process::graceful_exit::close_budget();
         coordinate_project_switch(
             deadline,
             Instant::now,

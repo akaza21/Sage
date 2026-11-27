@@ -4,7 +4,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crate::acp::runtime::{JournalHandle, ProjectionPublisher, RuntimeHost, SessionCoordinator};
@@ -19,7 +19,7 @@ use super::{
 pub(crate) const LIVE_RUNTIME_LANES: usize = LIMITS.process.operational_live_trees as usize;
 
 pub(crate) fn explicit_close_deadline() -> Instant {
-    Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close)
+    Instant::now() + crate::acp::process::graceful_exit::close_budget()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

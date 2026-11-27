@@ -1,7 +1,4 @@
-use std::{
-    sync::atomic::Ordering,
-    time::{Duration, Instant},
-};
+use std::{sync::atomic::Ordering, time::Instant};
 
 use super::host::{
     HOST_AWAITING_EXIT, HOST_JOINED, HOST_RUNNING, HOST_SHUTDOWN_ACKNOWLEDGED, RuntimeHost,
@@ -10,8 +7,7 @@ use super::types::{HostCommand, HostError, HostOutcome};
 
 impl RuntimeHost {
     pub(crate) fn close_deadline() -> Instant {
-        Instant::now()
-            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
+        Instant::now() + crate::acp::process::graceful_exit::close_budget()
     }
 
     pub(crate) fn shutdown(&self, deadline: Instant) -> Result<(), HostError> {

@@ -150,7 +150,7 @@ where
         }
         if candidate
             .control
-            .request_termination(TreeExit::Cancelled)
+            .request_graceful_termination(TreeExit::Cancelled)
             .is_err()
         {
             return Err(failure(Self::Candidate(candidate), IdleCloseError::Driver));

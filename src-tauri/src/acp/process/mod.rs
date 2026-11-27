@@ -1,6 +1,7 @@
 // P1 defines the private process contract before P2 connects the runtime.
 
 mod capacity;
+pub(crate) mod graceful_exit;
 mod identity;
 mod manifest;
 mod platform;
@@ -20,7 +21,7 @@ pub(crate) use windows::{
 };
 
 #[cfg(all(test, not(windows)))]
-pub(crate) use unix::{launch_exiting_for_test, launch_fixture_for_test};
+pub(crate) use unix::{launch_exiting_for_test, launch_fixture_for_test, launch_shell_for_test};
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
 pub(crate) use identity::ProcessIdentityReceipt;
@@ -146,6 +147,12 @@ where
 /// A root that exits by itself with `code`, without Sage asking it to.
 #[cfg(all(test, windows))]
 pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTree {
+    launch_script_for_test(runtime_epoch, &format!("exit {code}"))
+}
+
+/// A `cmd /c` root running `script`, with only `SystemRoot` in its environment.
+#[cfg(all(test, windows))]
+pub(crate) fn launch_script_for_test(runtime_epoch: u64, script: &str) -> RunningTree {
     use std::ffi::OsString;
 
     let system_root =
@@ -154,7 +161,7 @@ pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTr
         executable: std::path::Path::new(&system_root)
             .join("System32")
             .join("cmd.exe"),
-        args: vec![OsString::from("/c"), OsString::from(format!("exit {code}"))],
+        args: vec![OsString::from("/c"), OsString::from(script)],
         environment: vec![(OsString::from("SystemRoot"), system_root)],
     }
     .canonicalized()
