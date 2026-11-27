@@ -80,23 +80,23 @@ fn configuration_begin_timeout_does_not_close_mailbox_or_terminate_tree() {
 fn worker_commands_use_the_frozen_operation_deadlines() {
     assert_eq!(
         WorkerCommand::WaitZero { owner: owner() }.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
     assert_eq!(
         WorkerCommand::AcceptLatestCompleted.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
     assert_eq!(
         WorkerCommand::BeginPark.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
     assert_eq!(
         WorkerCommand::ParkAfterZero { owner: owner() }.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
     assert_eq!(
         WorkerCommand::Shutdown.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
 }
 
