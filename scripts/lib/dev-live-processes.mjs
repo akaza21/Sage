@@ -6,6 +6,10 @@ import { spawn, spawnSync } from "node:child_process";
 const roots = [];
 
 export function launch(args, { cwd, env }) {
+  // The child's creation time lies between these two clock readings, which
+  // is how the Windows sweep tells this process from a later one given the
+  // same id.
+  const before = Date.now();
   const child = spawn(process.execPath, args, {
     cwd,
     env,
@@ -14,29 +18,42 @@ export function launch(args, { cwd, env }) {
     detached: process.platform !== "win32",
   });
   if (child.pid !== undefined)
-    roots.push({ pid: child.pid, started: Date.now() });
+    roots.push({ pid: child.pid, before, after: Date.now() });
   return child;
 }
 
 // Windows keeps a process's parent id after the parent exits, so the tree is
-// rebuilt from a process snapshot. A process counts only if it started after
-// its parent, which rules out a reused process id.
+// rebuilt from one process snapshot:
+// - a root is itself only if its creation time falls in its launch window;
+// - a live process's children are the processes naming it as parent;
+// - an exited root's orphans name its id and were created after it started
+//   and, if a newer process now holds that id, before that process started.
+// Not reached: orphans of an exited process below a root, and processes
+// started after the snapshot.
 const WINDOWS_SWEEP = `
 $ErrorActionPreference = 'SilentlyContinue'
 $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, CreationDate)
+$byId = @{}
+foreach ($process in $all) { $byId[[int]$process.ProcessId] = $process }
 $doomed = New-Object 'System.Collections.Generic.HashSet[int]'
 $queue = New-Object 'System.Collections.Generic.Queue[object]'
 foreach ($root in $roots) {
-  $since = [DateTimeOffset]::FromUnixTimeMilliseconds($root[1]).LocalDateTime
-  $self = $all | Where-Object { $_.ProcessId -eq $root[0] -and $_.CreationDate -ge $since.AddSeconds(-5) -and $_.CreationDate -le $since.AddSeconds(5) }
-  if ($self) { [void]$doomed.Add($root[0]) }
-  $queue.Enqueue(@($root[0], $since.AddSeconds(-5)))
+  $from = [DateTimeOffset]::FromUnixTimeMilliseconds($root[1] - 50).LocalDateTime
+  $to = [DateTimeOffset]::FromUnixTimeMilliseconds($root[2] + 50).LocalDateTime
+  $holder = $byId[[int]$root[0]]
+  if ($holder -and $holder.CreationDate -ge $from -and $holder.CreationDate -le $to) {
+    [void]$doomed.Add([int]$root[0])
+    $queue.Enqueue(@([int]$root[0], $holder.CreationDate, [datetime]::MaxValue))
+  } else {
+    $until = if ($holder) { $holder.CreationDate } else { [datetime]::MaxValue }
+    $queue.Enqueue(@([int]$root[0], $from, $until))
+  }
 }
 while ($queue.Count -gt 0) {
-  $parent, $since = $queue.Dequeue()
+  $parent, $from, $until = $queue.Dequeue()
   foreach ($process in $all) {
-    if ($process.ParentProcessId -eq $parent -and $process.CreationDate -ge $since -and $doomed.Add([int]$process.ProcessId)) {
-      $queue.Enqueue(@([int]$process.ProcessId, $process.CreationDate))
+    if ($process.ParentProcessId -eq $parent -and $process.CreationDate -ge $from -and $process.CreationDate -lt $until -and $doomed.Add([int]$process.ProcessId)) {
+      $queue.Enqueue(@([int]$process.ProcessId, $process.CreationDate, [datetime]::MaxValue))
     }
   }
 }
@@ -48,7 +65,7 @@ export function killTrees() {
   if (roots.length === 0) return;
   if (process.platform === "win32") {
     const list = roots.map(
-      ({ pid, started }) => `$roots += ,@(${pid}, ${started});`,
+      ({ pid, before, after }) => `$roots += ,@(${pid}, ${before}, ${after});`,
     );
     spawnSync(
       "powershell.exe",

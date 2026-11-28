@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -57,3 +57,43 @@ it("refuses a second launcher while the first runs, and takes over once it is go
   release();
   expect(existsSync(path.join(directory, "launcher.lock"))).toBe(false);
 });
+
+/** A launcher that waits for `go`, tries the lock, reports, then holds a while. */
+function contender(directory: string, go: string) {
+  const launcher = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const { existsSync } = await import("node:fs");
+       const { acquireLauncherLock } = await import(${JSON.stringify(lockModule)});
+       while (!existsSync(${JSON.stringify(go)})) await new Promise((r) => setTimeout(r, 5));
+       try { acquireLauncherLock(${JSON.stringify(directory)}); console.log("won"); }
+       catch { console.log("refused"); }
+       setTimeout(() => {}, 1500);`,
+    ],
+    { stdio: ["ignore", "pipe", "inherit"] },
+  );
+  launchers.push(launcher);
+  return new Promise<string>((resolve) =>
+    launcher.stdout!.once("data", (data: Buffer) =>
+      resolve(data.toString().trim()),
+    ),
+  );
+}
+
+it("lets exactly one of two launchers take over a stale lock at once", async () => {
+  // A process id that no longer runs.
+  const gone = spawn(process.execPath, ["-e", ""]);
+  await new Promise((exited) => gone.once("exit", exited));
+  for (let round = 0; round < 8; round++) {
+    const directory = mkdtempSync(path.join(tmpdir(), "sage-dev-lock-"));
+    directories.push(directory);
+    writeFileSync(path.join(directory, "launcher.lock"), `${gone.pid} 1\n`);
+    const go = path.join(directory, "go");
+    const outcomes = [contender(directory, go), contender(directory, go)];
+    await new Promise((settle) => setTimeout(settle, 400));
+    writeFileSync(go, "");
+    expect((await Promise.all(outcomes)).sort()).toEqual(["refused", "won"]);
+  }
+}, 60_000);

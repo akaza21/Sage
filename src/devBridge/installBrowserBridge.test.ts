@@ -547,6 +547,18 @@ describe("pairing from the run `npm run dev` publishes", () => {
     expect(credentials.at(-1)).toEqual({ session: sessionA });
   });
 
+  it("tells a second tab at once that another tab holds the run", async () => {
+    live["40001"] = sessionA;
+    // Another tab already spent the code; this tab has no session for the run.
+    server.record = { run: runA, bridgePort: 40001 };
+    const started = Date.now();
+    await expect(installBrowserBridge("", { reload })).rejects.toThrow(
+      "This backend is paired with another tab; close it or restart npm run dev.",
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(credentials).toEqual([]);
+  });
+
   it("returns to discovery when the published run's backend is gone and pairs with the next run", async () => {
     // The record outlived its backend: nothing listens on 40001 any more.
     server.record = { run: runA, bridgePort: 40001, code: codeA };

@@ -201,6 +201,22 @@ export default defineConfig(({ command, mode }) => ({
     port: 1420,
     strictPort: true,
     host: host ?? "127.0.0.1",
+    // Every page, the HMR client and the Tauri window load from the dev
+    // server's own origin; no other site may read its responses.
+    cors: false,
+    fs: {
+      // Replaces Vite 8's default list, so the defaults are repeated. An old
+      // throwaway profile left in a checkout (.sage-dev/) is never served.
+      deny: [
+        ".env",
+        ".env.*",
+        "*.{crt,pem,key,p12,pfx,cer,der}",
+        ".npmrc",
+        ".yarnrc.yml",
+        "**/.git/**",
+        "**/.sage-dev/**",
+      ],
+    },
     hmr: host
       ? {
           protocol: "ws",

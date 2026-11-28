@@ -6,15 +6,17 @@
 // Starts Vite on a free loopback port (or --port / SAGE_UI_PORT), then
 // `tauri dev --features browser-bridge` with a generated config that points
 // at that Vite and runs no beforeDevCommand. The backend uses a throwaway
-// profile under .sage-dev/ in this checkout, never the real Sage profile, and
-// publishes each run there; the dev server hands it to the tab, which pairs by
+// profile kept outside the checkout (devStateDirectory), never the real Sage
+// profile, and publishes each run there; the dev server hands it to the tab, which pairs by
 // itself and reloads after a Rust rebuild. Prints one URL. Both children run
 // at below-normal priority and stop together, with everything they started.
 // Cargo builds into this checkout's own target directory (or an explicit
 // CARGO_TARGET_DIR), so a gate holding a shared target never stalls a rebuild.
 // One launcher per checkout. Not on macOS: see refuseUnsupportedPlatform.
+import { createHash } from "node:crypto";
 import {
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readSync,
@@ -82,6 +84,21 @@ async function choosePort() {
   if (process.env.SAGE_UI_PORT !== undefined)
     return parsePort(process.env.SAGE_UI_PORT, "SAGE_UI_PORT");
   return listenOnce(0);
+}
+
+/**
+ * Per-checkout state (profile, launcher lock, generated config) lives outside
+ * the checkout, which is the dev server's root, so no request to the dev
+ * server can ever reach the pairing code or the profile's database.
+ */
+function devStateDirectory() {
+  const base =
+    process.platform === "win32" && process.env.LOCALAPPDATA
+      ? process.env.LOCALAPPDATA
+      : os.tmpdir();
+  const checkout = process.platform === "win32" ? root.toLowerCase() : root;
+  const key = createHash("sha256").update(checkout).digest("hex").slice(0, 16);
+  return path.join(base, "sage-dev", `${path.basename(root)}-${key}`);
 }
 
 function prepareProfile(devRoot) {
@@ -189,8 +206,12 @@ async function main() {
   const jobs = flag("jobs");
   if (jobs !== undefined && !/^[1-9]\d{0,2}$/.test(jobs))
     throw new Error("--jobs must be a positive integer");
-  const devRoot = path.join(root, ".sage-dev");
+  const devRoot = devStateDirectory();
   mkdirSync(devRoot, { recursive: true });
+  if (existsSync(path.join(root, ".sage-dev")))
+    console.log(
+      "[sage] .sage-dev/ in this checkout is an old throwaway profile that is no longer used; delete it",
+    );
   // Before anything touches the shared profile or its run record.
   const release = acquireLauncherLock(devRoot);
   process.on("exit", release);
@@ -253,6 +274,7 @@ async function main() {
   tauri.once("exit", (code) => stop(code ?? 1));
   watchRuns(runFile);
   console.log(`\n  Sage (live backend): ${origin}/\n`);
+  console.log(`[sage] throwaway profile: ${profile}`);
   console.log(
     `[sage] building the debug backend in ${tauriEnv.CARGO_TARGET_DIR}; the tab waits for it`,
   );

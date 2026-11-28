@@ -42,5 +42,5 @@ npm-debug.log*
 /.cargo/config.toml
 /.cargo/config
 
-# Throwaway profile and generated config for `npm run dev`
+# Old in-checkout throwaway profile from npm run dev (now kept outside the checkout)
 /.sage-dev/

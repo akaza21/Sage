@@ -95,7 +95,12 @@ async function pairPublishedRun(
         : code
           ? { pairingCode: code }
           : undefined;
-      if (!credential || tried >= RUN_ATTEMPTS) return undefined;
+      // The code is single-use: without it this tab can never pair with the run.
+      if (!credential)
+        throw new Error(
+          "This backend is paired with another tab; close it or restart npm run dev.",
+        );
+      if (tried >= RUN_ATTEMPTS) return undefined;
       tried++;
       const target = { port, run, credential };
       try {
