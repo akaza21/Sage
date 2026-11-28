@@ -3,12 +3,16 @@
 //! `scripts/harness-wire/capture.mjs` when Claude Code changes.
 
 use super::*;
-use crate::acp::bindings::wire_replay::{self, FixtureMapper, ROOT, Replay};
+use crate::acp::bindings::{
+    wire_contract,
+    wire_replay::{self, FixtureMapper, ROOT, Replay},
+};
 
 fn replayed(scenario: &str) -> Value {
     let mut runtime = runtime_at(ROOT);
     let records = wire_replay::load("claude", scenario);
     let replay = Replay::run(&mut runtime, "session-claude-sdk", &records, &FixtureMapper);
+    wire_contract::assert_conforms("claude", scenario, &replay.transcript);
     replay.summary(&runtime)
 }
 

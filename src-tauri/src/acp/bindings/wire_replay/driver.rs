@@ -82,11 +82,14 @@ pub(crate) struct Replay {
     unpaired: Vec<(String, String)>,
     answered: HashSet<String>,
     turns: usize,
+    /// Every frame as replayed, `true` for what the binding wrote.
+    pub(crate) transcript: Vec<(bool, Value)>,
 }
 
 impl Replay {
     fn written(&mut self, adapter: &mut dyn HarnessAdapter, egress: AdapterEgress) {
         let sent: Value = serde_json::from_slice(egress.frame().payload()).expect("egress JSON");
+        self.transcript.push((true, sent.clone()));
         self.live.push_back(sent);
         if egress.token().is_mandatory() {
             adapter
@@ -103,7 +106,8 @@ impl Replay {
 
     /// Idle work the pump writes straight to the transport.
     fn idle_write(&mut self, adapter: &mut dyn HarnessAdapter, egress: AdapterEgress) {
-        let sent = serde_json::from_slice(egress.frame().payload()).expect("JSON");
+        let sent: Value = serde_json::from_slice(egress.frame().payload()).expect("JSON");
+        self.transcript.push((true, sent.clone()));
         self.live.push_back(sent);
         adapter
             .resolve_egress(egress.into_token(), EgressResolution::Written)
@@ -283,6 +287,7 @@ impl Replay {
         }
         let start = self.events.len();
         let result = adapter.ingest(&frame(&value), resources);
+        self.transcript.push((false, value));
         self.batches(adapter, result);
         let new = &self.events[start..];
         let started = new

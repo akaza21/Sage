@@ -74,7 +74,9 @@ impl SdkBridge {
                 Pending::Commands => inbound.acp.push(self.update(
                     json!({"sessionUpdate":"available_commands_update","availableCommands":[]}),
                 )),
-                Pending::Control | Pending::Restore => Self::controlled(Err(message), inbound),
+                Pending::Control | Pending::Barrier | Pending::Restore => {
+                    Self::controlled(Err(message), inbound);
+                }
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
                 Pending::ForkAt(_, turn) => self.forked_at(None, turn.as_str(), inbound),
@@ -157,6 +159,7 @@ impl SdkBridge {
             Pending::Interrupt => self.interrupted_idle(inbound),
             Pending::Withdraw(uuid) => self.withdrawn(&uuid, Some(reply), inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
+            Pending::Barrier => Self::controlled(Ok(&Value::Null), inbound),
             Pending::Restore => super::controls::file_plan(reply, inbound),
             Pending::Passive(request) => request.answered(Ok(reply), inbound),
             Pending::Abandoned => {}
@@ -372,26 +375,6 @@ impl SdkBridge {
         self.interrupted = false;
         self.auth_failed = false;
         self.streamed.clear();
-    }
-}
-
-impl Pending {
-    fn acp_id(self) -> Option<Value> {
-        match self {
-            Self::Initialize(id)
-            | Self::Session(id)
-            | Self::Mode { id, .. }
-            | Self::Option { id, .. } => Some(id),
-            Self::Interrupt
-            | Self::Commands
-            | Self::Withdraw(_)
-            | Self::Control
-            | Self::Restore
-            | Self::Passive(_)
-            | Self::Abandoned
-            | Self::Fork(_)
-            | Self::ForkAt(..) => None,
-        }
     }
 }
 

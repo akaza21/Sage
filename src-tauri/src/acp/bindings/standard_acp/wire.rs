@@ -24,7 +24,14 @@ pub(crate) fn decode_frame_with_catalog(
     preflight_nesting(text)?;
     let (value, path) = match decode_value(raw, CommandWirePath::Other) {
         Ok(value) => (value, CommandWirePath::Other),
-        Err(error) if error.to_string().starts_with("array entry limit exceeded") => {
+        Err(error)
+            if [
+                "array entry limit exceeded",
+                "object key/member limit exceeded",
+            ]
+            .iter()
+            .any(|limit| error.to_string().starts_with(limit)) =>
+        {
             let path = catalog();
             (decode_value(raw, path).map_err(|_| WireError::Json)?, path)
         }
@@ -138,7 +145,7 @@ impl<'de> de::Visitor<'de> for UniqueVisitor {
         let mut keys = BTreeSet::new();
         while let Some(key) = map.next_key::<String>()? {
             if key.len() as u64 > LIMITS.wire.decoded_key_bytes
-                || keys.len() as u64 >= LIMITS.wire.object_members
+                || keys.len() as u64 >= self.path.member_limit()
             {
                 return Err(de::Error::custom("object key/member limit exceeded"));
             }
@@ -204,7 +211,7 @@ fn validate_value(
     }
     match value {
         Value::Object(object) => {
-            if object.len() as u64 > LIMITS.wire.object_members {
+            if object.len() as u64 > path.member_limit() {
                 return Err(WireError::ObjectMembers);
             }
             for (key, child) in object {
