@@ -3840,13 +3840,19 @@
       "id": [],
       "result": ["v2/ConsumeAccountRateLimitResetCreditResponse"]
     },
-    "result:account/rateLimits/read": { "id": [], "result": ["*"] },
+    "result:account/rateLimits/read": {
+      "id": [],
+      "result": ["v2/GetAccountRateLimitsResponse"]
+    },
     "result:account/read": { "id": [], "result": ["v2/GetAccountResponse"] },
     "result:account/sendAddCreditsNudgeEmail": {
       "id": [],
       "result": ["v2/SendAddCreditsNudgeEmailResponse"]
     },
-    "result:account/usage/read": { "id": [], "result": ["*"] },
+    "result:account/usage/read": {
+      "id": [],
+      "result": ["v2/GetAccountTokenUsageResponse"]
+    },
     "result:account/workspaceMessages/read": { "id": [], "result": ["*"] },
     "result:accountSession/list": { "id": [], "result": ["*"] },
     "result:accountSession/switch": {
@@ -4084,8 +4090,14 @@
       "result": ["v2/RemoteControlClientsListResponse"]
     },
     "result:remoteControl/client/revoke": { "id": [], "result": ["*"] },
-    "result:remoteControl/disable": { "id": [], "result": ["*"] },
-    "result:remoteControl/enable": { "id": [], "result": ["*"] },
+    "result:remoteControl/disable": {
+      "id": [],
+      "result": ["v2/RemoteControlDisableResponse"]
+    },
+    "result:remoteControl/enable": {
+      "id": [],
+      "result": ["v2/RemoteControlEnableResponse"]
+    },
     "result:remoteControl/pairing/start": {
       "id": [],
       "result": ["v2/RemoteControlPairingStartResponse"]
@@ -4332,6 +4344,14 @@
       "sessions": ["v2/AccountSession"]
     },
     "v2/AccountSessionsSwitchResponse#2": { "auth_url": [], "login_id": [] },
+    "v2/AccountTokenUsageDailyBucket": { "startDate": [], "tokens": [] },
+    "v2/AccountTokenUsageSummary": {
+      "currentStreakDays": [],
+      "lifetimeTokens": [],
+      "longestRunningTurnSec": [],
+      "longestStreakDays": [],
+      "peakDailyTokens": []
+    },
     "v2/AccountUpdatedNotification": { "authMode": [], "planType": [] },
     "v2/ActivePermissionProfile": { "extends": [], "id": [] },
     "v2/AdditionalFileSystemPermissions": {
@@ -5000,6 +5020,17 @@
       "excludeResetCreditDetails": [],
       "supportsLunaReserve": []
     },
+    "v2/GetAccountRateLimitsResponse": {
+      "accountId": [],
+      "ordinaryUsageAllowed": [],
+      "rateLimitResetCredits": ["v2/RateLimitResetCreditsSummary"],
+      "rateLimitUpsell": ["*"],
+      "rateLimits": ["v2/RateLimitSnapshot"],
+      "rateLimitsByLimitId": [
+        "v2/GetAccountRateLimitsResponse.rateLimitsByLimitId"
+      ]
+    },
+    "v2/GetAccountRateLimitsResponse.rateLimitsByLimitId": { "*": [] },
     "v2/GetAccountResponse": {
       "account": [
         "v2/Account#1",
@@ -5011,6 +5042,11 @@
       "workspaceRouting": ["v2/WorkspaceRouting"]
     },
     "v2/GetAccountTokenUsageParams": { "threadId": [] },
+    "v2/GetAccountTokenUsageResponse": {
+      "dailyUsageBuckets": ["v2/AccountTokenUsageDailyBucket"],
+      "summary": ["v2/AccountTokenUsageSummary"],
+      "threadUsage": ["v2/ThreadUsage"]
+    },
     "v2/GitInfo": { "branch": [], "originUrl": [], "sha": [] },
     "v2/GuardianApprovalReview": {
       "rationale": [],
@@ -5821,6 +5857,19 @@
     "v2/ProjectUpdateParams.metadata": { "*": [] },
     "v2/ProjectUpdateResponse": { "project": ["v2/Project"] },
     "v2/QueuedSubmission": { "clientUserMessageId": [], "id": [], "input": [] },
+    "v2/RateLimitResetCredit": {
+      "description": [],
+      "expiresAt": [],
+      "grantedAt": [],
+      "id": [],
+      "resetType": [],
+      "status": [],
+      "title": []
+    },
+    "v2/RateLimitResetCreditsSummary": {
+      "availableCount": [],
+      "credits": ["v2/RateLimitResetCredit"]
+    },
     "v2/RateLimitSnapshot": {
       "credits": ["v2/CreditsSnapshot"],
       "individualLimit": ["v2/SpendControlLimitSnapshot"],
@@ -5894,7 +5943,19 @@
       "environmentId": []
     },
     "v2/RemoteControlDisableParams": { "ephemeral": [] },
+    "v2/RemoteControlDisableResponse": {
+      "environmentId": [],
+      "installationId": [],
+      "serverName": [],
+      "status": []
+    },
     "v2/RemoteControlEnableParams": { "ephemeral": [] },
+    "v2/RemoteControlEnableResponse": {
+      "environmentId": [],
+      "installationId": [],
+      "serverName": [],
+      "status": []
+    },
     "v2/RemoteControlPairingStartParams": { "manualCode": [] },
     "v2/RemoteControlPairingStartResponse": {
       "environmentId": [],
@@ -7336,6 +7397,24 @@
     "v2/ThreadUnreadPosition#2": { "turnId": [], "type": [] },
     "v2/ThreadUnsubscribeParams": { "threadId": [] },
     "v2/ThreadUnsubscribeResponse": { "status": [] },
+    "v2/ThreadUsage": {
+      "estimatedUsageCreditsMicros": [],
+      "estimatedUsageUsdMicros": [],
+      "groups": ["v2/ThreadUsageBreakdownGroup"],
+      "nativeUsageUsdMicros": [],
+      "threadId": []
+    },
+    "v2/ThreadUsageBreakdownGroup": {
+      "cachedInputTokens": [],
+      "estimatedUsageCreditsMicros": [],
+      "inputTokens": [],
+      "model": [],
+      "netNewInputTokens": [],
+      "outputTokens": [],
+      "reasoningEffort": [],
+      "speed": [],
+      "totalTokens": []
+    },
     "v2/TokenUsageBreakdown": {
       "cacheWriteInputTokens": [],
       "cachedInputTokens": [],

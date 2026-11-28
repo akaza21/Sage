@@ -49,6 +49,9 @@ class Graph {
         id = `${owner}#${suffix}`;
       out.add(this.node(schema, id));
     } else if (
+      // An object the schema gives no fields (an empty response such as
+      // `TurnInterruptResponse`, or free-form data) stays open, as the
+      // schema leaves it; a map's keys are admitted and its values unchecked.
       types.includes("object") ||
       (!types.length &&
         !schema.$ref &&
@@ -103,9 +106,13 @@ export async function contract(version, work) {
     encoding: "utf8",
     shell: process.platform === "win32",
   });
-  const command = installed.includes(wanted)
-    ? ["codex"]
-    : ["npx", "-y", `@openai/codex@${wanted}`];
+  // The installed binary only when it is exactly that version.
+  const command =
+    installed.match(/\d+\.\d+\.\d+/)?.[0] === wanted
+      ? ["codex"]
+      : ["npx", "-y", `@openai/codex@${wanted}`];
+  // A Windows shell joins arguments unquoted; the temp path may hold a space.
+  const out = process.platform === "win32" ? `"${work}"` : work;
   execFileSync(
     command[0],
     [
@@ -114,11 +121,11 @@ export async function contract(version, work) {
       "generate-json-schema",
       "--experimental",
       "--out",
-      work,
+      out,
     ],
     {
       shell: process.platform === "win32",
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "inherit"],
     },
   );
   const schema = JSON.parse(fs.readFileSync(path.join(work, BUNDLE), "utf8"));
@@ -164,7 +171,14 @@ export async function contract(version, work) {
   const replies = (map, root) => {
     for (const entry of defs[root].oneOf) {
       const method = methodOf(entry);
-      const params = entry.properties.params?.$ref?.split("/").at(-1) ?? "";
+      // `params` is a `$ref`, or `anyOf: [{ $ref }, { type: "null" }]`
+      // where the params are optional.
+      const declared = entry.properties.params ?? {};
+      const params =
+        [declared, ...(declared.anyOf ?? []), ...(declared.oneOf ?? [])]
+          .find((schema) => schema.$ref)
+          ?.$ref.split("/")
+          .at(-1) ?? "";
       const answer = params.replace(/Params$/, "Response");
       const ref = Object.entries({ v2: defs.v2 ?? {}, "": defs })
         .map(([scope, list]) =>
