@@ -37,7 +37,7 @@ function parseRun(text: string): BridgeRun | undefined {
     return undefined;
   }
   if (!value || typeof value !== "object") return undefined;
-  const { run, bridgePort, code } = value as Record<string, unknown>;
+  const { run, bridgePort, code, pid } = value as Record<string, unknown>;
   if (typeof run !== "string" || !/^[a-f0-9]{32}$/.test(run)) return undefined;
   if (
     typeof bridgePort !== "number" ||
@@ -51,7 +51,19 @@ function parseRun(text: string): BridgeRun | undefined {
     (typeof code !== "string" || !/^[a-f0-9]{64}$/.test(code))
   )
     return undefined;
+  // A run whose backend has exited (a Rust rebuild) is no run at all.
+  if (typeof pid === "number" && Number.isInteger(pid) && !isAlive(pid))
+    return undefined;
   return code === undefined ? { run, bridgePort } : { run, bridgePort, code };
+}
+
+function isAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 function reply(response: ServerResponse, status: number, body: string) {

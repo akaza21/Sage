@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -151,5 +152,17 @@ it("refuses a record over 512 bytes, counted in bytes rather than characters", a
   const wide = sized("é", 512 + 2);
   expect(wide.length).toBeLessThan(512);
   writeFileSync(runFile, wide);
+  expect((await get(port, sameOrigin)).status).toBe(503);
+});
+
+it("hides a run whose backend process has exited, as during a Rust rebuild", async () => {
+  const sameOrigin = { "Sec-Fetch-Site": "same-origin" };
+  const port = await serve(runFile);
+  writeFileSync(runFile, JSON.stringify({ ...run, pid: process.pid }));
+  expect(JSON.parse((await get(port, sameOrigin)).body)).toEqual(run);
+
+  const exited = spawn(process.execPath, ["-e", ""]);
+  await new Promise((done) => exited.once("exit", done));
+  writeFileSync(runFile, JSON.stringify({ ...run, pid: exited.pid }));
   expect((await get(port, sameOrigin)).status).toBe(503);
 });

@@ -17,8 +17,12 @@ export function launch(args, { cwd, env }) {
     // POSIX: its own process group, which outlives an exited leader.
     detached: process.platform !== "win32",
   });
-  if (child.pid !== undefined)
-    roots.push({ pid: child.pid, before, after: Date.now() });
+  if (child.pid !== undefined) {
+    const root = { pid: child.pid, before, after: Date.now(), exited: 0 };
+    // Its orphans were all started before it exited.
+    child.once("exit", () => (root.exited = Date.now()));
+    roots.push(root);
+  }
   return child;
 }
 
@@ -26,8 +30,9 @@ export function launch(args, { cwd, env }) {
 // rebuilt from one process snapshot:
 // - a root is itself only if its creation time falls in its launch window;
 // - a live process's children are the processes naming it as parent;
-// - an exited root's orphans name its id and were created after it started
-//   and, if a newer process now holds that id, before that process started.
+// - an exited root's orphans name its id and were created after it started,
+//   before it exited (plus a second of slack) and, if a newer process now
+//   holds that id, before that process started.
 // Not reached: orphans of an exited process below a root, and processes
 // started after the snapshot.
 const WINDOWS_SWEEP = `
@@ -45,7 +50,8 @@ foreach ($root in $roots) {
     [void]$doomed.Add([int]$root[0])
     $queue.Enqueue(@([int]$root[0], $holder.CreationDate, [datetime]::MaxValue))
   } else {
-    $until = if ($holder) { $holder.CreationDate } else { [datetime]::MaxValue }
+    $until = if ($root[3] -gt 0) { [DateTimeOffset]::FromUnixTimeMilliseconds($root[3] + 1000).LocalDateTime } else { [datetime]::MaxValue }
+    if ($holder -and $holder.CreationDate -lt $until) { $until = $holder.CreationDate }
     $queue.Enqueue(@([int]$root[0], $from, $until))
   }
 }
@@ -65,7 +71,8 @@ export function killTrees() {
   if (roots.length === 0) return;
   if (process.platform === "win32") {
     const list = roots.map(
-      ({ pid, before, after }) => `$roots += ,@(${pid}, ${before}, ${after});`,
+      ({ pid, before, after, exited }) =>
+        `$roots += ,@(${pid}, ${before}, ${after}, ${exited});`,
     );
     spawnSync(
       "powershell.exe",
@@ -75,7 +82,8 @@ export function killTrees() {
         "-Command",
         `$roots = @(); ${list.join(" ")} ${WINDOWS_SWEEP}`,
       ],
-      { stdio: "ignore", windowsHide: true },
+      // A stuck snapshot must not hold the launcher open.
+      { stdio: "ignore", windowsHide: true, timeout: 10_000 },
     );
     return;
   }

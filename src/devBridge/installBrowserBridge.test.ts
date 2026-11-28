@@ -547,7 +547,7 @@ describe("pairing from the run `npm run dev` publishes", () => {
     expect(credentials.at(-1)).toEqual({ session: sessionA });
   });
 
-  it("tells a second tab at once that another tab holds the run", async () => {
+  it("tells a second tab that another tab holds the run once that run stays current", async () => {
     live["40001"] = sessionA;
     // Another tab already spent the code; this tab has no session for the run.
     server.record = { run: runA, bridgePort: 40001 };
@@ -555,8 +555,19 @@ describe("pairing from the run `npm run dev` publishes", () => {
     await expect(installBrowserBridge("", { reload })).rejects.toThrow(
       "This backend is paired with another tab; close it or restart npm run dev.",
     );
-    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(5_000);
     expect(credentials).toEqual([]);
+  }, 15_000);
+
+  it("a tab opened during a rebuild skips the old spent run and pairs with the next one", async () => {
+    // The old run's code was spent; its backend is rebuilding.
+    server.record = { run: runA, bridgePort: 40001 };
+    live["40002"] = sessionB;
+    const installing = installBrowserBridge("", { reload });
+    await new Promise((settle) => setTimeout(settle, 1_000));
+    server.record = { run: runB, bridgePort: 40002, code: codeB };
+    await installing;
+    expect(credentials).toEqual([{ pairingCode: codeB }]);
   });
 
   it("returns to discovery when the published run's backend is gone and pairs with the next run", async () => {

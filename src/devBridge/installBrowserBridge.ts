@@ -8,6 +8,8 @@ const RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 400;
 // Connection attempts per published run before the tab waits for another run.
 const RUN_ATTEMPTS = 5;
+// How long a code-less run may stay current before the tab gives up on it.
+const ANOTHER_TAB_WAIT_MS = 5_000;
 const BRIDGE_NAME = "SAGE_DEV_BROWSER_BRIDGE";
 const STORAGE_KEY = "sage-browser-bridge:session";
 
@@ -84,9 +86,10 @@ async function pairPublishedRun(
   const clear = showBridgeNotice("Waiting for the Sage backend to start…");
   let lastRun: string | undefined;
   let tried = 0;
+  let seenSince = Date.now();
   try {
     return await pollBridgeRuns(async ({ run, bridgePort, code }) => {
-      if (run !== lastRun) [lastRun, tried] = [run, 0];
+      if (run !== lastRun) [lastRun, tried, seenSince] = [run, 0, Date.now()];
       const port = String(bridgePort);
       const session = savedSession(port, run);
       // A reload of a paired tab resumes its session; a fresh run pairs by code.
@@ -95,11 +98,15 @@ async function pairPublishedRun(
         : code
           ? { pairingCode: code }
           : undefined;
-      // The code is single-use: without it this tab can never pair with the run.
-      if (!credential)
+      if (!credential) {
+        // The code is single-use, so this tab can never pair with this run. A
+        // rebuild may be about to publish the next one; past a short wait the
+        // run really belongs to another tab.
+        if (Date.now() - seenSince < ANOTHER_TAB_WAIT_MS) return undefined;
         throw new Error(
           "This backend is paired with another tab; close it or restart npm run dev.",
         );
+      }
       if (tried >= RUN_ATTEMPTS) return undefined;
       tried++;
       const target = { port, run, credential };

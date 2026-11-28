@@ -6,7 +6,8 @@
 
 use serde::Serialize;
 use std::{
-    fs, io,
+    fs,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -19,6 +20,9 @@ pub(super) const FILE_NAME: &str = "dev-bridge-run.json";
 struct Record<'a> {
     run: &'a str,
     bridge_port: u16,
+    /// Lets the dev server tell a run whose backend has exited (a rebuild)
+    /// from one another tab has paired with.
+    pid: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<&'a str>,
 }
@@ -51,13 +55,29 @@ impl RunRecord {
         let body = serde_json::to_vec(&Record {
             run: &self.run,
             bridge_port: self.port,
+            pid: std::process::id(),
             code,
         })?;
         // Readers see either the old record or the new one, never a torn write.
         let staged = self.path.with_extension("json.tmp");
-        fs::write(&staged, body)?;
+        match fs::remove_file(&staged) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        let mut file = private_file().open(&staged)?;
+        file.write_all(&body)?;
+        drop(file);
         fs::rename(&staged, &self.path)
     }
+}
+
+/// The record holds a pairing code: on unix only its owner may read it.
+fn private_file() -> fs::OpenOptions {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
 }
 
 #[cfg(test)]
@@ -79,9 +99,18 @@ mod tests {
         let path = directory.join(FILE_NAME);
         let published = read(&path);
         assert_eq!(published["bridgePort"], 34567);
+        assert_eq!(published["pid"], std::process::id());
         assert_eq!(published["code"], code.as_str());
         let run = published["run"].as_str().unwrap().to_owned();
         assert_eq!(run.len(), 32);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
 
         let mut pairing = Pairing::with_run_record(code.clone(), record);
         pairing
