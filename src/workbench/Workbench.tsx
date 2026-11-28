@@ -231,7 +231,10 @@ export function Workbench() {
   const bodyStyle = compact
     ? undefined
     : {
-        gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
+        // A hidden side bar gives its width back to the editor, as in VS Code.
+        gridTemplateColumns: sidebarOpen
+          ? `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`
+          : `${EDITOR_ACTIVITY_BAR_WIDTH}px 0 minmax(0, 1fr)`,
       };
   return (
     <main

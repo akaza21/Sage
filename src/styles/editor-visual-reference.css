@@ -28,6 +28,7 @@
   --title-bar-fill: var(--color-window);
   --workbench-card-margin: 0;
   --workbench-card-radius: var(--radius-none);
+  --workbench-card-fill: var(--color-card);
   --center-region-tabs-height: var(--tab-height);
   --active-canvas-fill: var(--color-card);
   --tab-strip-fill: var(--color-window);
@@ -37,7 +38,7 @@
   --radius-title-bar-search: var(--radius-sm);
   --placeholder-title-gap: var(--space-2);
   --placeholder-body-font-size: var(--font-size-sm);
-  --activity-rail-mode-inset: 0;
+  --activity-rail-mode-inset: 0px;
   --activity-rail-gap: 0;
   --activity-rail-width: var(--editor-activity-width);
   --activity-rail-fill: var(--color-window);
@@ -170,12 +171,24 @@
    card; one hairline parts the group from the side bar. */
 @media (forced-colors: none) {
   .workbench--editor .center-region {
+    --doc-canvas: var(--color-card);
+    --doc-panel: var(--color-card);
     --color-canvas: var(--color-card);
+    --color-panel: var(--color-card);
   }
 }
 
 .workbench--editor .center-region {
   border-width: 0 0 0 var(--border-width);
+}
+
+/* The file's path row reads as VS Code's 22 px breadcrumbs. */
+.workbench--editor .resource-document {
+  --resource-document-header-height: 22px;
+}
+
+.workbench--editor .file-header {
+  border-bottom-color: transparent;
 }
 
 .workbench--editor .tab__activate {
@@ -213,8 +226,8 @@
   background: var(--color-fill-soft);
 }
 
-/* The terminal is VS Code's bottom panel: a 35 px header of uppercase
-   titles, the selected one underlined in the text colour. */
+/* The terminal is VS Code's bottom panel: a 35 px header whose selected
+   tab (or the uppercase panel title) is underlined in the text colour. */
 .workbench--editor .terminal-dock {
   --terminal-dock-header-height: 35px;
 }
@@ -225,12 +238,17 @@
   background: var(--color-canvas);
 }
 
-.workbench--editor .terminal-dock__tab {
-  border-right: 0;
-  color: var(--color-text-muted);
+.workbench--editor .terminal-dock__title {
+  padding: 0 10px;
+  box-shadow: inset 0 -1px 0 var(--color-text-primary);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.workbench--editor .terminal-dock__tab {
+  border-right: 0;
+  color: var(--color-text-muted);
 }
 
 .workbench--editor .terminal-dock__tab-label {

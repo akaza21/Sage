@@ -1137,6 +1137,22 @@ describe("compact Workbench project tools", () => {
     expect(center).not.toHaveAttribute("aria-hidden");
   });
 
+  it("gives a hidden Editor side bar's width back to the editor group", () => {
+    compactViewport = false;
+    vi.stubGlobal("innerWidth", 1280);
+    const { container } = render(<Workbench />);
+    const body = container.querySelector<HTMLElement>(
+      ".workbench__body[data-editor-tools]",
+    );
+    expect(body?.style.gridTemplateColumns).toBe("48px 0 minmax(0, 1fr)");
+
+    act(() => useWorkbenchStore.getState().toggleSidebar());
+    expect(body?.style.gridTemplateColumns).toBe("320px 8px minmax(0, 1fr)");
+
+    act(() => useWorkbenchStore.getState().toggleSidebar());
+    expect(body?.style.gridTemplateColumns).toBe("48px 0 minmax(0, 1fr)");
+  });
+
   it("exposes bounded keyboard-resizable rails in each full workbench mode", async () => {
     seedResourceChat();
     compactViewport = false;

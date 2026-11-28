@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { IconButton } from "../ui/IconButton";
+import { X } from "../ui/leanIcons";
 import { usePortalHost } from "../ui/usePortalHost";
 
 import { useWorkbenchStore } from "../app/store";
@@ -77,14 +79,20 @@ export default function TerminalDockForWorkbench({
         open={open}
       />
     ) : visible ? (
-      <section className="terminal-dock" aria-label="Terminal" inert={inert}>
-        <div className="terminal-dock__header">Terminal</div>
-        <p className="terminal-dock__message" role="status">
-          Open a chat first.
-        </p>
-        <button type="button" onClick={onClose}>
-          Close terminal
-        </button>
+      <section
+        className="terminal-dock terminal-dock--collapsed"
+        aria-label="Terminal"
+        inert={inert}
+      >
+        <div className="terminal-dock__header">
+          <span className="terminal-dock__title">Terminal</span>
+          <p className="terminal-dock__message" role="status">
+            Open a chat first.
+          </p>
+          <IconButton aria-label="Close terminal" onClick={onClose}>
+            <X size={14} />
+          </IconButton>
+        </div>
       </section>
     ) : null,
   );

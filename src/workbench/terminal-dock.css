@@ -153,3 +153,18 @@
 .terminal-dock__viewport .xterm .xterm-viewport {
   background-color: var(--color-canvas);
 }
+
+/* With no chat to scope a terminal, the dock is one header row. */
+.terminal-dock__title {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 var(--space-3);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+}
+
+.terminal-dock__header > .terminal-dock__message {
+  min-width: 0;
+  flex: 1;
+}
