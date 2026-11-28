@@ -5,6 +5,8 @@ name: Harness protocol
 # every protocol change into the job summary. A red run means a harness
 # changed its protocol: run `node scripts/harness-wire/upgrade.mjs --write`,
 # recapture the corpus at that version and review both diffs in one PR.
+# It runs published harness packages, so the job holds no secrets and keeps
+# no Git credentials.
 
 on:
   schedule:
@@ -20,8 +22,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      - run: node scripts/harness-wire/upgrade.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+      # An explicit bash runs with pipefail, so the script's exit code, not
+      # tee's, decides the step.
+      - shell: bash
+        run: node scripts/harness-wire/upgrade.mjs 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"

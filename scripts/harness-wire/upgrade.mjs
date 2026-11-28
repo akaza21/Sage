@@ -18,6 +18,33 @@ import { CONTRACTS, contracts, diffContracts, generate } from "./contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// What a regenerated contract means against the checked one: its report
+// lines, and whether the protocol changed. A newer release that changed
+// nothing is not a change; the same release regenerating differently (a
+// corrected provider, a mis-generated contract) is one.
+export function report(before, after) {
+  const [header, ...changes] = diffContracts(before, after);
+  const same = before.version === after.version;
+  if (!changes.length)
+    return {
+      changed: false,
+      lines: [
+        same
+          ? `${after.harness}: no newer release`
+          : `${header}: no protocol changes`,
+      ],
+    };
+  return {
+    changed: true,
+    lines: [
+      same
+        ? `${after.harness} ${after.version}: the regenerated contract differs from the checked one`
+        : header,
+      ...changes,
+    ],
+  };
+}
+
 async function upgrade(target, write) {
   const [harness, asked] = target.split("@");
   const provider = await import(
@@ -32,8 +59,7 @@ async function upgrade(target, write) {
     : fs.mkdtempSync(path.join(os.tmpdir(), "sage-upgrade-"));
   try {
     const { contract } = await generate(harness, version, root);
-    if (contract.version === before.version) return [];
-    return diffContracts(before, contract);
+    return report(before, contract);
   } finally {
     if (!write) fs.rmSync(root, { recursive: true, force: true });
   }
@@ -49,19 +75,11 @@ async function main() {
         .readdirSync(CONTRACTS)
         .filter((harness) => contracts(harness).length)
         .sort();
-  let changed = 0;
+  let changed = false;
   for (const target of targets) {
-    const lines = await upgrade(target, write);
-    if (!lines.length) {
-      console.log(`${target.split("@")[0]}: no newer release`);
-      continue;
-    }
-    if (lines.length === 1) {
-      console.log(`${lines[0]}: no protocol changes`);
-      continue;
-    }
-    changed += 1;
-    for (const line of lines) console.log(line);
+    const result = await upgrade(target, write);
+    for (const line of result.lines) console.log(line);
+    changed ||= result.changed;
   }
   if (changed && !write) process.exit(1);
 }
