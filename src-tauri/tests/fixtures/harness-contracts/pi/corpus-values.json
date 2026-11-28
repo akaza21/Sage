@@ -14,10 +14,13 @@
     "get_available_models",
     "get_commands",
     "get_state",
+    "in",
+    "initialize",
     "model-1",
     "No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key. See:\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\providers.md\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\models.md",
     "off",
     "one-at-a-time",
+    "out",
     "pi",
     "Pi has no built-in subagent tool",
     "Pi has no plan mode",
@@ -31,6 +34,7 @@
     "Reply with the single word ok.",
     "response",
     "rpc",
+    "session",
     "temporary",
     "the prompt was refused: No API key found for the selected model.",
     "top-level"
@@ -51,16 +55,19 @@
     "cost",
     "data",
     "description",
+    "direction",
     "edit",
     "error",
     "exit",
     "firstFrameMs",
     "followUpMode",
+    "frame",
     "frames",
     "gaps",
     "harness",
     "id",
     "image",
+    "images",
     "input",
     "isCompacting",
     "isStreaming",
@@ -69,6 +76,7 @@
     "messageCount",
     "model",
     "models",
+    "ms",
     "name",
     "origin",
     "outcome",
@@ -89,8 +97,10 @@
     "sourceInfo",
     "stderrTail",
     "steeringMode",
+    "step",
     "subagent",
     "success",
+    "text",
     "thinkingLevel",
     "type",
     "version"
@@ -120,6 +130,9 @@
       8,
       10
     ],
+    "images": [
+      0
+    ],
     "input": [
       0
     ],
@@ -129,6 +142,19 @@
     "messageCount": [
       0
     ],
+    "ms": [
+      4,
+      14,
+      739,
+      753,
+      755,
+      756,
+      759,
+      782,
+      798,
+      803,
+      804
+    ],
     "output": [
       0
     ],
@@ -136,6 +162,25 @@
       0
     ]
   },
+  "booleans": {
+    "autoCompactionEnabled": [
+      true
+    ],
+    "isCompacting": [
+      false
+    ],
+    "isStreaming": [
+      false
+    ],
+    "reasoning": [
+      false
+    ],
+    "success": [
+      false,
+      true
+    ]
+  },
+  "contextFlags": [],
   "contextPaths": [
     "commands:[].description",
     "commands:[].name",

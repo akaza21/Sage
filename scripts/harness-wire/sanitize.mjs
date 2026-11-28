@@ -186,6 +186,9 @@ const OS_VERSION = /\b(Windows|Mac OS X|macOS|Darwin|Linux) \d+(?:\.\d+)+/g;
 // the capturing machine's.
 const LISTING =
   /^([-bcdlps][rwxsStT-]{9}[.+@]?\s+\d+\s+)\S+\s+\S+(\s+\d+\s+)[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4})/gm;
+// Fields that hold a process handle, and the synthetic form one takes.
+export const PROCESS_KEYS = new Set(["processId", "process_id"]);
+export const PROCESS_HANDLE = /^10\d\d$/;
 // A 16-hex-digit folder in a path.
 const HEX_SEGMENT = /(?<=[\\/])[0-9a-f]{16}(?=[\\/])/g;
 // Lists whose elements are model descriptors.
@@ -223,7 +226,12 @@ export const tokenCount = (key) =>
           ? 20
           : 100;
 const SIGNATURE_KEYS = new Set(["signature", "encrypted_content"]);
-export const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
+export const COST_KEYS = new Set([
+  "total_cost_usd",
+  "costUSD",
+  "cost_usd",
+  "total",
+]);
 // Absolute times move to a fixed epoch, one offset per unit for the whole
 // capture, so every interval between them holds.
 const TIME_KEY = /(?:At|Ms|_at|_time|Time|stamp)$/;
@@ -328,6 +336,7 @@ export function makeSanitizer({ roots }) {
   const keyNames = new Map();
   const signatures = new Map();
   const hexSegments = new Map();
+  const processes = new Map();
   const mcpServer = (server) =>
     PLACEHOLDER.test(server)
       ? server
@@ -771,6 +780,19 @@ export function makeSanitizer({ roots }) {
   const scrub = (value, key, inModel, opaque, account, catalog) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
+    // A process handle is the capturing machine's; each gets a stable
+    // synthetic one (1001, 1002, ...) so the frames that share it still do.
+    if (
+      PROCESS_KEYS.has(key) &&
+      (typeof value === "string" || typeof value === "number") &&
+      value !== ""
+    ) {
+      if (PROCESS_HANDLE.test(String(value))) return value;
+      if (!processes.has(String(value)))
+        processes.set(String(value), 1000 + processes.size + 1);
+      const handle = processes.get(String(value));
+      return typeof value === "number" ? handle : String(handle);
+    }
     if (!opaque && typeof value === "number") {
       if (TOKENS.test(key)) return tokenCount(key);
       if (COST_KEYS.has(key)) return 0.01;

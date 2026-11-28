@@ -44,11 +44,11 @@
     "00000000-0000-4000-8000-000000000005",
     "00000000-0000-4000-8000-000000000006",
     "00000000-0000-4000-8000-000000000007",
-    "2401",
-    "28220",
+    "1001",
+    "1002",
+    "1003",
+    "1004",
     "4",
-    "4963",
-    "6386",
     "A disposable repository.",
     "accept",
     "account/rateLimits/updated",
@@ -56,6 +56,7 @@
     "active",
     "agent",
     "agentMessage",
+    "allow",
     "app-server",
     "Append the line `bye` to the end of README.md by editing the file. Then reply with the single word ok.",
     "background-done",
@@ -107,6 +108,7 @@
     "I’ll run both commands and wait for them to finish.",
     "idle",
     "image",
+    "in",
     "initialize",
     "initialized",
     "inProgress",
@@ -155,8 +157,11 @@
     "on-request",
     "onnect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2027-01-15T08:01:24.401648Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2027-01-15T08:01:26.113822Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n\u001b[2m2027-01-15T08:01:29.439858Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to Responses WebSocket \u001b[3mstage\u001b[0m\u001b[2m=\u001b[0mUnknown\n",
     "openai",
+    "out",
     "paginated",
+    "permission",
     "pong",
+    "prompt",
     "read-only",
     "README.md",
     "readOnly",
@@ -176,6 +181,7 @@
     "Sage's Codex binding admits no plan access mode",
     "sage/0.167.1 (Windows 0.0.0; x86_64) unknown (sage; 0.1.0)",
     "serverRequest/resolved",
+    "session",
     "skill-1",
     "skill-2",
     "skill-3",
@@ -294,6 +300,7 @@
     "description",
     "detail",
     "developer_instructions",
+    "direction",
     "disabledPluginIds",
     "displayName",
     "durationMs",
@@ -318,6 +325,7 @@
     "firstFrameMs",
     "firstUnread",
     "forkedFromId",
+    "frame",
     "frames",
     "gaps",
     "generation",
@@ -337,6 +345,7 @@
     "iconSmallUrl",
     "id",
     "image",
+    "images",
     "IMG-C1",
     "IMG-C11",
     "IMG-C2",
@@ -379,6 +388,7 @@
     "modelLink",
     "modelProvider",
     "modelSpecialty",
+    "ms",
     "multiAgentMode",
     "multiAgentVersion",
     "name",
@@ -463,6 +473,7 @@
     "startedAtMs",
     "status",
     "stderrTail",
+    "step",
     "subagent",
     "summary",
     "supportedReasoningEfforts",
@@ -725,11 +736,171 @@
       3,
       4
     ],
+    "images": [
+      0,
+      1
+    ],
     "inputTokens": [
       100
     ],
     "modelContextWindow": [
       475000
+    ],
+    "ms": [
+      4,
+      5,
+      7,
+      18,
+      471,
+      483,
+      484,
+      652,
+      653,
+      695,
+      696,
+      915,
+      916,
+      917,
+      1011,
+      1012,
+      1016,
+      1088,
+      1115,
+      1170,
+      1622,
+      1674,
+      1675,
+      1692,
+      1710,
+      1714,
+      1715,
+      1725,
+      1728,
+      1729,
+      1736,
+      1745,
+      1761,
+      1872,
+      1958,
+      1975,
+      2003,
+      2176,
+      2177,
+      2194,
+      2215,
+      2310,
+      2391,
+      2464,
+      2509,
+      2510,
+      2523,
+      2524,
+      2530,
+      2532,
+      2654,
+      3000,
+      3011,
+      3118,
+      3310,
+      3634,
+      3791,
+      3880,
+      4033,
+      4310,
+      4325,
+      4501,
+      4520,
+      5014,
+      5304,
+      5722,
+      5746,
+      5809,
+      5949,
+      6112,
+      6156,
+      6205,
+      6541,
+      7127,
+      7154,
+      7166,
+      7169,
+      7175,
+      7178,
+      7179,
+      7219,
+      7220,
+      7393,
+      7509,
+      7515,
+      7516,
+      7556,
+      7653,
+      7654,
+      7694,
+      7695,
+      7712,
+      7713,
+      7739,
+      7740,
+      7807,
+      7955,
+      8307,
+      8502,
+      8503,
+      8505,
+      8507,
+      8751,
+      8860,
+      9073,
+      9553,
+      9555,
+      9679,
+      9843,
+      9921,
+      10258,
+      10307,
+      10475,
+      10545,
+      10556,
+      10592,
+      10607,
+      10618,
+      10633,
+      10658,
+      10801,
+      11838,
+      12935,
+      13038,
+      13433,
+      14276,
+      14392,
+      14393,
+      15871,
+      17822,
+      17951,
+      18207,
+      18209,
+      19137,
+      19313,
+      19366,
+      19481,
+      19606,
+      19607,
+      19631,
+      19725,
+      19726,
+      19751,
+      22125,
+      22438,
+      22776,
+      22777,
+      24280,
+      24281,
+      24342,
+      24504,
+      24527,
+      24742,
+      24768
     ],
     "outputTokens": [
       50
@@ -803,6 +974,199 @@
       10080
     ]
   },
+  "booleans": {
+    "A1": [
+      false
+    ],
+    "A2": [
+      false
+    ],
+    "A3": [
+      false
+    ],
+    "C1": [
+      false
+    ],
+    "C11": [
+      false
+    ],
+    "C2": [
+      false
+    ],
+    "canAcceptDirectInput": [
+      true
+    ],
+    "CBRN-B1+": [
+      false
+    ],
+    "E1": [
+      false
+    ],
+    "E2": [
+      false
+    ],
+    "E3": [
+      false
+    ],
+    "enabled": [
+      true
+    ],
+    "ephemeral": [
+      false
+    ],
+    "experimentalApi": [
+      true
+    ],
+    "H1": [
+      false
+    ],
+    "H2": [
+      false
+    ],
+    "H3": [
+      false
+    ],
+    "hasCredits": [
+      false
+    ],
+    "hidden": [
+      false
+    ],
+    "IMG-C1": [
+      false
+    ],
+    "IMG-C11": [
+      false
+    ],
+    "IMG-C2": [
+      false
+    ],
+    "IMG-S1": [
+      false
+    ],
+    "IMG-SH": [
+      false
+    ],
+    "IMG-V1": [
+      false
+    ],
+    "IMG-V2+": [
+      false
+    ],
+    "IMG-V4+": [
+      false
+    ],
+    "is_blocked": [
+      false
+    ],
+    "isDefault": [
+      false,
+      true
+    ],
+    "JB1": [
+      false
+    ],
+    "K1": [
+      false
+    ],
+    "K2": [
+      false
+    ],
+    "K3": [
+      false
+    ],
+    "K4": [
+      false
+    ],
+    "networkAccess": [
+      false
+    ],
+    "P1": [
+      false
+    ],
+    "P2": [
+      false
+    ],
+    "P3": [
+      false
+    ],
+    "P4": [
+      false
+    ],
+    "PD1": [
+      false
+    ],
+    "PD4": [
+      false
+    ],
+    "REFUSED": [
+      false
+    ],
+    "S1": [
+      false
+    ],
+    "S3+": [
+      false
+    ],
+    "S4": [
+      false
+    ],
+    "SH": [
+      false
+    ],
+    "supportsPersonality": [
+      false
+    ],
+    "TXT-C3": [
+      false
+    ],
+    "TXT-C4": [
+      false
+    ],
+    "unlimited": [
+      false
+    ],
+    "V1": [
+      false
+    ],
+    "V2+": [
+      false
+    ],
+    "V4+": [
+      false
+    ],
+    "willRetry": [
+      false,
+      true
+    ]
+  },
+  "contextFlags": [
+    "commands.jsonl:10.frame.result.data[0].skills[0].enabled=true",
+    "commands.jsonl:10.frame.result.data[0].skills[1].enabled=true",
+    "commands.jsonl:10.frame.result.data[0].skills[2].enabled=true",
+    "commands.jsonl:10.frame.result.data[0].skills[3].enabled=true",
+    "commands.jsonl:10.frame.result.data[0].skills[4].enabled=true",
+    "edit.jsonl:49.frame.params.rateLimits.credits.hasCredits=false",
+    "edit.jsonl:49.frame.params.rateLimits.credits.unlimited=false",
+    "edit.jsonl:61.frame.params.rateLimits.credits.hasCredits=false",
+    "edit.jsonl:61.frame.params.rateLimits.credits.unlimited=false",
+    "edit.jsonl:68.frame.params.rateLimits.credits.hasCredits=false",
+    "edit.jsonl:68.frame.params.rateLimits.credits.unlimited=false",
+    "image.jsonl:26.frame.params.rateLimits.credits.hasCredits=false",
+    "image.jsonl:26.frame.params.rateLimits.credits.unlimited=false",
+    "shell.jsonl:41.frame.params.rateLimits.credits.hasCredits=false",
+    "shell.jsonl:41.frame.params.rateLimits.credits.unlimited=false",
+    "shell.jsonl:53.frame.params.rateLimits.credits.hasCredits=false",
+    "shell.jsonl:53.frame.params.rateLimits.credits.unlimited=false",
+    "shell.jsonl:60.frame.params.rateLimits.credits.hasCredits=false",
+    "shell.jsonl:60.frame.params.rateLimits.credits.unlimited=false",
+    "subagent.jsonl:26.frame.params.rateLimits.credits.hasCredits=false",
+    "subagent.jsonl:26.frame.params.rateLimits.credits.unlimited=false",
+    "subagent.jsonl:35.frame.params.rateLimits.credits.hasCredits=false",
+    "subagent.jsonl:35.frame.params.rateLimits.credits.unlimited=false",
+    "subagent.jsonl:42.frame.params.rateLimits.credits.hasCredits=false",
+    "subagent.jsonl:42.frame.params.rateLimits.credits.unlimited=false"
+  ],
   "contextPaths": [
     "rateLimits:credits",
     "rateLimits:credits.balance",

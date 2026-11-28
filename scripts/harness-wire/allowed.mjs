@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // The corpus privacy property: every value in a committed harness-wire
-// corpus is one a person reviewed. Each harness's reviewed set is
+// corpus is one a person reviewed: whole records (envelope and frame,
+// references resolved) and each meta.json. Each harness's reviewed set is
 // harness-contracts/<harness>/corpus-values.json:
 //   strings       every string value (scripted prompts and replies, enums,
 //                 kinds, placeholders, fixture paths)
 //   keys          every object key
 //   numbers       every number, by the key it sits under
+//   booleans      every boolean, by the key it sits under
+//   contextFlags  every boolean under such an object (below), where it is
 //   contextPaths  every key path under an account, plan, usage, model,
 //                 catalog or org object, as `<root>:<path>`
 // A number under a scrubbed key (tokens, cost, usage, pid) must also equal
@@ -22,6 +25,8 @@ import {
   MODEL_KEYED,
   MODEL_LISTS,
   PLACEHOLDER,
+  PROCESS_HANDLE,
+  PROCESS_KEYS,
   TOKENS,
   tokenCount,
 } from "./sanitize.mjs";
@@ -52,6 +57,8 @@ export function corpusValues(dir) {
     strings: new Map(),
     keys: new Map(),
     numbers: new Map(),
+    booleans: new Map(),
+    contextFlags: new Map(),
     contextPaths: new Map(),
     fixed: [],
   };
@@ -59,22 +66,38 @@ export function corpusValues(dir) {
     if (!map.has(value)) map.set(value, at);
   };
   let detecting = true;
+  const byKey = (map, key, value, at) => {
+    if (!map.has(key)) map.set(key, new Map());
+    note(map.get(key), value, at);
+  };
   const walk = (value, at, key, context) => {
+    if (
+      PROCESS_KEYS.has(key) &&
+      value !== null &&
+      !PROCESS_HANDLE.test(String(value))
+    )
+      found.fixed.push(
+        `${at}: ${JSON.stringify(value)} is not a synthetic process handle`,
+      );
     if (typeof value === "string") note(found.strings, value, at);
-    else if (typeof value === "number") {
+    else if (typeof value === "boolean") {
+      byKey(found.booleans, key, value, at);
+      // Which entry of an account's catalog is the default, hidden or
+      // enabled is the account's own: each flag is reviewed where it is.
+      if (context) note(found.contextFlags, `${at}=${value}`, at);
+    } else if (typeof value === "number") {
       const rule = FIXED.find(([applies]) => applies(key));
       // 0 is the neutral value an account allow-list writes.
       if (rule && value !== 0 && value !== rule[1](key))
         found.fixed.push(
           `${at}: ${value} is neither 0 nor ${key}'s placeholder ${rule[1](key)}`,
         );
-      if (!found.numbers.has(key)) found.numbers.set(key, new Map());
-      note(found.numbers.get(key), value, at);
+      byKey(found.numbers, key, value, at);
     } else if (Array.isArray(value))
-      value.forEach((entry) =>
+      value.forEach((entry, index) =>
         walk(
           entry,
-          `${at}[]`,
+          `${at}[${index}]`,
           key,
           context && { ...context, path: `${context.path}[]` },
         ),
@@ -105,7 +128,7 @@ export function corpusValues(dir) {
     .filter((entry) => entry.endsWith(".jsonl"))
     .sort())
     readTranscript(path.join(dir, name)).forEach((record, line) =>
-      walk(record.frame, `${name}:${line + 1}`, "", null),
+      walk(record, `${name}:${line + 1}`, "", null),
     );
   const metaFile = path.join(dir, "meta.json");
   if (fs.existsSync(metaFile)) {
@@ -131,6 +154,13 @@ function serialize(found) {
         sorted(found.numbers.get(key).keys()),
       ]),
     ),
+    booleans: Object.fromEntries(
+      sorted(found.booleans.keys()).map((key) => [
+        key,
+        sorted(found.booleans.get(key).keys()),
+      ]),
+    ),
+    contextFlags: sorted(found.contextFlags.keys()),
     contextPaths: sorted(found.contextPaths.keys()),
   };
 }
@@ -152,8 +182,19 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   missing("string", found.strings, new Set(allowed.strings));
   missing("key", found.keys, new Set(allowed.keys));
   missing("account path", found.contextPaths, new Set(allowed.contextPaths));
+  missing(
+    "account flag",
+    found.contextFlags,
+    new Set(allowed.contextFlags ?? []),
+  );
   for (const [key, values] of found.numbers)
     missing(`number under ${key}`, values, new Set(allowed.numbers[key] ?? []));
+  for (const [key, values] of found.booleans)
+    missing(
+      `boolean under ${key}`,
+      values,
+      new Set(allowed.booleans?.[key] ?? []),
+    );
   return out;
 }
 

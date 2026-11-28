@@ -295,7 +295,16 @@ test("an unreviewed string, key, number or account path fails with its path", as
         path.join(corpus, "x", "t.jsonl"),
         `${JSON.stringify({ direction: "in", frame })}\n`,
       );
-    write({ type: "ok", account: { type: "chatgpt" }, n: 1 });
+    write({
+      type: "ok",
+      account: { type: "chatgpt" },
+      n: 1,
+      models: [
+        { value: "model-1", isDefault: true },
+        { value: "model-2", isDefault: false },
+      ],
+      processId: "1001",
+    });
     writeReviewed("x", corpus, root);
     assert.deepEqual(unreviewed("x", corpus, root), []);
     write({
@@ -303,21 +312,35 @@ test("an unreviewed string, key, number or account path fails with its path", as
       account: { type: "chatgpt", plan: "pro" },
       n: 2,
       usage: { output_tokens: 7 },
+      models: [
+        { value: "model-1", isDefault: false },
+        { value: "model-2", isDefault: true },
+      ],
+      processId: "28220",
     });
     const problems = unreviewed("x", corpus, root).join("\n");
     assert.match(
       problems,
-      /t\.jsonl:1\.type: string "someone@private" is not reviewed/,
+      /t\.jsonl:1\.frame\.type: string "someone@private" is not reviewed/,
     );
     assert.match(
       problems,
-      /t\.jsonl:1\.account\.plan: account path "account:plan" is not reviewed/,
+      /t\.jsonl:1\.frame\.account\.plan: account path "account:plan" is not reviewed/,
     );
-    assert.match(problems, /t\.jsonl:1\.n: number under n 2 is not reviewed/);
+    assert.match(
+      problems,
+      /t\.jsonl:1\.frame\.n: number under n 2 is not reviewed/,
+    );
     assert.match(
       problems,
       /output_tokens: 7 is neither 0 nor output_tokens's placeholder 50/,
     );
+    // The default moved to another model: same values by key, new flags.
+    assert.match(
+      problems,
+      /account flag "t\.jsonl:1\.frame\.models\[0\]\.isDefault=false" is not reviewed/,
+    );
+    assert.match(problems, /"28220" is not a synthetic process handle/);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

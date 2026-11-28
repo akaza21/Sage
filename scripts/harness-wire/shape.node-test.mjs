@@ -1203,3 +1203,19 @@ test("a directory listing's owner, group and date and an OS build carry nothing 
     "sage/0.167.1 (Windows 0.0.0; x86_64) unknown (sage; 0.1.0)",
   );
 });
+
+test("a process handle gets a stable synthetic one, shared by every frame that names it", () => {
+  const [started, request] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: { item: { type: "commandExecution", processId: "28220" } },
+    },
+    {
+      direction: "out",
+      frame: { params: { processId: "28220" }, other: { processId: 4963 } },
+    },
+  ]);
+  assert.equal(started.frame.item.processId, "1001");
+  assert.equal(request.frame.params.processId, "1001");
+  assert.equal(request.frame.other.processId, 1002);
+});
