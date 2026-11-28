@@ -8,6 +8,8 @@
 #[cfg(any(windows, target_os = "macos"))]
 use std::sync::{Arc, Mutex};
 
+use std::collections::VecDeque;
+
 use serde::Serialize;
 use tauri::AppHandle;
 #[cfg(any(windows, target_os = "macos"))]
@@ -51,18 +53,21 @@ pub struct VoiceInputState(Mutex<VoiceSlot<engine::Active>>);
 #[derive(Default)]
 pub struct VoiceInputState;
 
+/// Stopped ids kept so a start whose worker runs late can be refused.
+const STOPPED_IDS: usize = 8;
+
 struct VoiceSlot<T> {
     active: Option<(String, T)>,
-    /// The one start still waiting on permission prompts. A newer start
-    /// supersedes it, and a stop withdraws it, so it stays bounded.
-    pending: Option<String>,
+    /// Recently stopped ids that held no session: starts still on their way or
+    /// waiting on permission prompts. Bounded; ids are validated first.
+    stopped: VecDeque<String>,
 }
 
 impl<T> Default for VoiceSlot<T> {
     fn default() -> Self {
         Self {
             active: None,
-            pending: None,
+            stopped: VecDeque::new(),
         }
     }
 }
@@ -88,29 +93,33 @@ impl<T> VoiceSlot<T> {
         self.take_if(id).is_some()
     }
 
-    fn begin(&mut self, id: &str) {
-        self.pending = Some(id.to_owned());
-    }
-
-    fn is_pending(&self, id: &str) -> bool {
-        self.pending.as_deref() == Some(id)
-    }
-
-    /// True only for the newest start that was not stopped while it waited.
-    fn claim(&mut self, id: &str) -> bool {
-        let current = self.is_pending(id);
-        if current {
-            self.pending = None;
-        }
-        current
-    }
-
     fn stop(&mut self, id: &str) -> Option<T> {
-        if self.is_pending(id) {
-            self.pending = None;
+        let active = self.take_if(id);
+        if active.is_none() && !self.is_stopped(id) {
+            if self.stopped.len() == STOPPED_IDS {
+                self.stopped.pop_front();
+            }
+            self.stopped.push_back(id.to_owned());
         }
-        self.take_if(id)
+        active
     }
+
+    /// A stopped id never opens the microphone, whenever its start runs.
+    fn is_stopped(&self, id: &str) -> bool {
+        self.stopped.iter().any(|stopped| stopped == id)
+    }
+}
+
+/// Runs one permission flow at a time, so unanswered prompts never pile up
+/// blocked threads; a second start fails fast instead.
+fn coalesced(
+    lock: &std::sync::Mutex<()>,
+    authorize: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let _held = lock
+        .try_lock()
+        .map_err(|_| "Answer the permission prompt that is already open.".to_string())?;
+    authorize()
 }
 
 /// Orders an engine's callbacks against shutdown: deliveries run one at a time,
@@ -250,14 +259,14 @@ fn stop_inner(_app: &AppHandle, _id: &str, _cancel: bool) -> Result<(), String> 
 
 #[cfg(any(windows, target_os = "macos"))]
 fn start_inner(app: &AppHandle, id: String) -> Result<(), String> {
+    static AUTHORIZING: Mutex<()> = Mutex::new(());
     let state = app.state::<VoiceInputState>();
-    let unavailable = |_| "Voice input is unavailable.";
-    state.0.lock().map_err(unavailable)?.begin(&id);
-    // Permission prompts can wait on the user, so they run outside the lock and
-    // stop asking once this start is stopped or superseded.
-    let authorized = engine::authorize(&|| state.0.lock().is_ok_and(|slot| slot.is_pending(&id)));
-    let mut guard = state.0.lock().map_err(unavailable)?;
-    if !guard.claim(&id) {
+    let wanted = || state.0.lock().is_ok_and(|slot| !slot.is_stopped(&id));
+    // Permission prompts can wait on the user, so they run outside the slot
+    // lock and stop asking once this id is stopped.
+    let authorized = coalesced(&AUTHORIZING, || engine::authorize(&wanted));
+    let mut guard = state.0.lock().map_err(|_| "Voice input is unavailable.")?;
+    if guard.is_stopped(&id) {
         return Ok(());
     }
     authorized?;

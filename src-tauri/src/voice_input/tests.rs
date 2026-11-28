@@ -1,5 +1,6 @@
 use super::{
-    Gate, MAX_MESSAGE_CHARS, MAX_TRANSCRIPT_CHARS, Signal, VoiceEvent, VoiceSlot, valid_id,
+    Gate, MAX_MESSAGE_CHARS, MAX_TRANSCRIPT_CHARS, STOPPED_IDS, Signal, VoiceEvent, VoiceSlot,
+    coalesced, valid_id,
 };
 use serde_json::{Value, json};
 use std::sync::{
@@ -95,32 +96,62 @@ fn stop_and_completion_race_releases_only_the_matching_session() {
 }
 
 #[test]
-fn only_the_newest_unstopped_start_may_open_the_microphone() {
+fn a_stopped_id_is_refused_whenever_its_start_runs_and_memory_stays_bounded() {
     let mut slot = VoiceSlot::<CloseProbe>::default();
-    slot.begin("a");
-    slot.begin("b");
-    assert!(!slot.is_pending("a"), "a newer start supersedes a");
+    // The stop overtakes its own start, then a newer start goes ahead.
     assert!(slot.stop("a").is_none());
-    assert!(slot.stop("b").is_none());
-    assert!(!slot.claim("a"));
-    assert!(!slot.claim("b"));
-    assert!(slot.pending.is_none(), "stops never record ids");
-
-    slot.begin("c");
-    assert!(slot.is_pending("c"));
-    assert!(slot.claim("c"));
-    assert!(!slot.claim("c"), "a start is admitted once");
+    assert!(slot.is_stopped("a"));
+    assert!(!slot.is_stopped("b"));
+    assert!(slot.stop("a").is_none());
+    assert_eq!(slot.stopped.len(), 1, "a repeated stop is kept once");
+    for n in 0..20 {
+        slot.stop(&format!("x{n}"));
+    }
+    assert_eq!(slot.stopped.len(), STOPPED_IDS);
+    assert!(slot.is_stopped("x19"));
+    assert!(!slot.is_stopped("a"), "the oldest stop is evicted");
 }
 
 #[test]
-fn stopping_a_live_session_releases_it_and_leaves_a_pending_start_alone() {
+fn stopping_a_live_session_releases_it_without_refusing_its_id_later() {
     let closed = Arc::new(AtomicUsize::new(0));
     let mut slot = VoiceSlot::default();
     slot.replace("live".into(), CloseProbe(closed.clone()));
-    slot.begin("next");
     drop(slot.stop("live"));
     assert_eq!(closed.load(Ordering::SeqCst), 1);
-    assert!(slot.claim("next"));
+    assert!(slot.stopped.is_empty());
+}
+
+#[test]
+fn only_one_permission_flow_waits_at_a_time() {
+    use std::sync::{Mutex, mpsc};
+    let lock = Arc::new(Mutex::new(()));
+    let (entered_tx, entered) = mpsc::channel();
+    let (release, wait) = mpsc::channel::<()>();
+    let first = {
+        let lock = lock.clone();
+        std::thread::spawn(move || {
+            coalesced(&lock, || {
+                entered_tx.send(()).unwrap();
+                wait.recv().unwrap();
+                Ok(())
+            })
+        })
+    };
+    entered.recv().unwrap();
+    let mut ran = false;
+    let second = coalesced(&lock, || {
+        ran = true;
+        Ok(())
+    });
+    assert_eq!(
+        second.unwrap_err(),
+        "Answer the permission prompt that is already open."
+    );
+    assert!(!ran);
+    release.send(()).unwrap();
+    assert!(first.join().unwrap().is_ok());
+    assert!(coalesced(&lock, || Ok(())).is_ok());
 }
 
 #[test]
