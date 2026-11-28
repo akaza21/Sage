@@ -149,7 +149,7 @@ fn a_released_chat_gets_nothing_more_and_its_slot_serves_the_next_chat() {
     // The next chat reuses the slot; the released chat cannot act as it.
     let next = router.admit().unwrap();
     assert_ne!(next, a);
-    assert_eq!(router.bind_thread(next, A), Ok(Routed::default()));
+    assert_eq!(router.bind_thread(next, A), Ok(()));
     assert_eq!(router.bind_thread(b, A), Err(RouterError::ThreadOwned));
     only(router.inbound(approval(30, A)).unwrap());
     let answer = json!({"id": 30, "result": {"decision": "decline"}});
@@ -295,39 +295,6 @@ fn a_server_request_naming_no_thread_is_refused_and_shown_to_no_chat() {
 }
 
 #[test]
-fn frames_that_beat_the_thread_start_response_reach_the_chat_once_it_owns_the_thread() {
-    let mut router = HostRouter::new(CodexScope);
-    let a = router.admit().unwrap();
-    let start = json!({"id": 2, "method": "thread/start", "params": {}});
-    let host = written(router.outbound(a, start))["id"].clone();
-    let early = json!({"method": "thread/started", "params": {"thread": {"id": A}}});
-    assert_eq!(router.inbound(early.clone()).unwrap(), Routed::default());
-    let mut reply = thread_started(A);
-    reply["id"] = host;
-    let routed = router.inbound(reply).unwrap();
-    let methods: Vec<_> = routed
-        .deliveries
-        .iter()
-        .map(|(slot, frame)| (*slot, frame.get("method").cloned()))
-        .collect();
-    assert_eq!(methods, vec![(a, None), (a, Some(json!("thread/started")))]);
-}
-
-#[test]
-fn an_approval_for_a_thread_no_chat_ever_takes_is_refused_by_the_second_sweep() {
-    let (mut router, _, _) = two_threads();
-    let child = "01a22200-0000-7000-8000-0000000000ff";
-    assert_eq!(
-        router.inbound(approval(21, child)).unwrap(),
-        Routed::default()
-    );
-    assert!(router.sweep_unowned().is_empty());
-    let refusals = router.sweep_unowned();
-    assert_eq!(refusals.len(), 1);
-    assert_eq!(refusals[0]["id"], json!(21));
-}
-
-#[test]
 fn answers_to_the_hosts_own_requests_go_to_the_host_not_a_chat() {
     let (mut router, _, _) = two_threads();
     let id = router.host_request_id().unwrap();
@@ -342,44 +309,29 @@ fn answers_to_the_hosts_own_requests_go_to_the_host_not_a_chat() {
 }
 
 #[test]
-fn a_grandchild_announced_before_its_parent_is_bound_still_follows_the_chat() {
-    let (mut router, a, _) = two_threads();
-    let child = "01a22200-0000-7000-8000-0000000000c1";
-    let grandchild = "01a22200-0000-7000-8000-0000000000c2";
-    let announce = |thread: &str, agent: &str| {
-        json!({"method": "item/started", "params": {"threadId": thread, "turnId": "t",
-            "item": {"type": "subAgentActivity", "id": "sa", "agentThreadId": agent}}})
-    };
-    // The child announces its own child before A announces the child.
-    assert_eq!(
-        router.inbound(announce(child, grandchild)).unwrap(),
-        Routed::default()
-    );
-    let routed = router.inbound(announce(A, child)).unwrap();
-    assert_eq!(routed.deliveries.len(), 2);
-    assert_eq!(router.owner(grandchild), Some(a));
-    assert_eq!(only(router.inbound(approval(40, grandchild)).unwrap()).0, a);
+fn a_server_request_for_a_thread_no_chat_owns_is_refused_at_once() {
+    let (mut router, _, _) = two_threads();
+    let child = "01a22200-0000-7000-8000-0000000000ff";
+    let routed = router.inbound(approval(21, child)).unwrap();
+    assert!(routed.deliveries.is_empty());
+    assert_eq!(refused_ids(&routed), vec![json!(21)]);
 }
 
 #[test]
-fn what_no_chat_owns_yet_is_held_only_within_its_byte_bounds() {
-    let (mut router, _, _) = two_threads();
+fn what_the_router_would_have_to_keep_is_refused_when_oversized() {
+    let (mut router, a, _) = two_threads();
     let long_thread = "t".repeat(513);
     assert_eq!(
         refused_ids(&router.inbound(approval(50, &long_thread)).unwrap()),
         vec![json!(50)]
     );
-    let mut huge = approval(51, "01a22200-0000-7000-8000-0000000000aa");
-    huge["params"]["reason"] = json!("x".repeat(300 * 1024));
-    assert_eq!(refused_ids(&router.inbound(huge).unwrap()), vec![json!(51)]);
-    // Two large held approvals: the older is refused when the second exceeds the budget.
-    let mut first = approval(52, "01a22200-0000-7000-8000-0000000000ab");
-    first["params"]["reason"] = json!("x".repeat(200 * 1024));
-    assert_eq!(router.inbound(first).unwrap(), Routed::default());
-    let mut second = approval(53, "01a22200-0000-7000-8000-0000000000ac");
-    second["params"]["reason"] = json!("x".repeat(100 * 1024));
     assert_eq!(
-        refused_ids(&router.inbound(second).unwrap()),
-        vec![json!(52)]
+        router.bind_thread(a, &long_thread),
+        Err(RouterError::Malformed)
     );
+    let mut long_id = approval(0, A);
+    long_id["id"] = json!("i".repeat(200));
+    let routed = router.inbound(long_id).unwrap();
+    assert!(routed.deliveries.is_empty());
+    assert_eq!(refused_ids(&routed), vec![json!("i".repeat(200))]);
 }

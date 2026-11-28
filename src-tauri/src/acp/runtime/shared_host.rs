@@ -7,12 +7,11 @@
 //!
 //! Every server request the process sends gets exactly one answer: from the
 //! lease that owns its thread, or a refusal in `Routed::replies` when no lease
-//! can take it (unowned, over a bound, or its lease released).
+//! can take it (unowned, over a bound, or its lease released). Frames of a
+//! thread no lease owns are dropped, as each chat's adapter drops frames of a
+//! thread it does not know.
 
 use serde_json::{Value, json};
-
-mod unowned;
-use unowned::Unowned;
 
 /// Chats one process serves, so a crash reaches at most this many.
 pub(crate) const MAX_LEASES: usize = 4;
@@ -26,6 +25,8 @@ const MAX_SERVER_REQUESTS_PER_LEASE: usize = 64;
 const MAX_HOST_PENDING: usize = 16;
 /// Longest thread id the router keeps; a longer one names no thread.
 const MAX_THREAD_ID_BYTES: usize = 512;
+/// Longest serialized server-request id the router keeps.
+const MAX_SERVER_REQUEST_ID_BYTES: usize = 128;
 /// JSON-RPC error a server request gets when no lease can answer it.
 const NO_OWNER_CODE: i64 = -32001;
 
@@ -122,7 +123,6 @@ pub(crate) struct HostRouter<P> {
     next_host_id: u64,
     host_pending: Vec<u64>,
     handshake: Option<Value>,
-    unowned: Unowned,
 }
 
 fn slot_of(index: usize, lease: &Lease) -> LeaseSlot {
@@ -144,7 +144,6 @@ impl<P: ScopePolicy> HostRouter<P> {
             next_host_id: 1,
             host_pending: Vec::new(),
             handshake: None,
-            unowned: Unowned::default(),
         }
     }
 
@@ -199,9 +198,6 @@ impl<P: ScopePolicy> HostRouter<P> {
         let lease = self.leases[usize::from(slot.index)]
             .take()
             .ok_or(RouterError::UnknownLease)?;
-        for thread in &lease.threads {
-            self.unowned.retire(thread);
-        }
         let refusals = lease.server_requests.into_iter().map(refusal).collect();
         Ok((lease.threads, refusals))
     }
@@ -215,13 +211,9 @@ impl<P: ScopePolicy> HostRouter<P> {
         })
     }
 
-    /// Gives `thread` to `slot` and returns what arrived for it before. Used
-    /// when a thread opens and when a lease resumes a still-loaded thread.
-    pub(crate) fn bind_thread(
-        &mut self,
-        slot: LeaseSlot,
-        thread: &str,
-    ) -> Result<Routed, RouterError> {
+    /// Gives `thread` to `slot`. Used when a thread opens and when a lease
+    /// resumes a still-loaded thread.
+    pub(crate) fn bind_thread(&mut self, slot: LeaseSlot, thread: &str) -> Result<(), RouterError> {
         if thread.len() > MAX_THREAD_ID_BYTES {
             return Err(RouterError::Malformed);
         }
@@ -235,13 +227,7 @@ impl<P: ScopePolicy> HostRouter<P> {
             }
             lease.threads.push(thread.to_owned());
         }
-        let mut routed = Routed::default();
-        // Replayed through the same path as live frames, so a held frame that
-        // announces a child or closes a thread still does so.
-        for frame in self.unowned.claim(thread) {
-            self.dispatch(&mut routed, frame);
-        }
-        Ok(routed)
+        Ok(())
     }
 
     pub(crate) fn outbound(
@@ -349,18 +335,11 @@ impl<P: ScopePolicy> HostRouter<P> {
             self.unscoped(routed, frame);
             return;
         };
-        if thread.len() > MAX_THREAD_ID_BYTES {
-            // Not a thread id this router keeps: no chat can take it.
+        let Some(slot) = self.owner(&thread) else {
+            // Nobody's: a server request is refused, a notification dropped.
             if let Some(id) = frame.get("id") {
                 routed.replies.push(refusal(id.clone()));
             }
-            return;
-        }
-        let Some(slot) = self.owner(&thread) else {
-            let closed = self.policy.thread_closed(&frame) == Some(thread.as_str());
-            routed
-                .replies
-                .extend(self.unowned.hold(&thread, frame, closed));
             return;
         };
         let child = self.policy.child_announced(&frame).map(str::to_owned);
@@ -386,20 +365,17 @@ impl<P: ScopePolicy> HostRouter<P> {
         routed.replies.push(refusal(id));
     }
 
-    /// Drops frames held for unbound threads since before the previous sweep.
-    /// The host calls this on a short timer; returns the refusals to write.
-    pub(crate) fn sweep_unowned(&mut self) -> Vec<Value> {
-        self.unowned.sweep()
-    }
-
     /// Hands `frame` to `slot`, recording a server request it must answer, or
-    /// refuses it when the lease has too many open.
+    /// refuses it when the lease has too many open or its id is oversized.
     fn deliver(&mut self, routed: &mut Routed, slot: LeaseSlot, frame: Value) {
         let Ok(lease) = self.lease_mut(slot) else {
             return;
         };
         if let Some(id) = frame.get("id").filter(|_| frame.get("method").is_some()) {
-            if lease.server_requests.len() >= MAX_SERVER_REQUESTS_PER_LEASE {
+            let id_bytes = serde_json::to_vec(id).map_or(usize::MAX, |bytes| bytes.len());
+            if lease.server_requests.len() >= MAX_SERVER_REQUESTS_PER_LEASE
+                || id_bytes > MAX_SERVER_REQUEST_ID_BYTES
+            {
                 routed.replies.push(refusal(id.clone()));
                 return;
             }
@@ -409,12 +385,8 @@ impl<P: ScopePolicy> HostRouter<P> {
     }
 
     fn bind_into(&mut self, routed: &mut Routed, slot: LeaseSlot, thread: &str) {
-        match self.bind_thread(slot, thread) {
-            Ok(held) => {
-                routed.deliveries.extend(held.deliveries);
-                routed.replies.extend(held.replies);
-            }
-            Err(error) => routed.fault = Some((slot, error)),
+        if let Err(error) = self.bind_thread(slot, thread) {
+            routed.fault = Some((slot, error));
         }
     }
 
