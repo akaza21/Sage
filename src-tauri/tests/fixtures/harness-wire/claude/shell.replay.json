@@ -94,7 +94,7 @@
     "Item {\"id\":\"#7\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<195 chars>\"}}} x3",
     "Item {\"id\":\"#7\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<224 chars>\"}}} x2",
     "Absorbed x4",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":26733,\"outputTokens\":0,\"contextWindow\":1000000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":400,\"outputTokens\":0,\"contextWindow\":1000000}}}",
     "Item {\"id\":\"#7\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<260 chars>\"}}}",
     "Turn {\"id\":\"#2\",\"state\":\"completed\"}",
     "TurnStarted {\"id\":\"#1\"}",
@@ -103,7 +103,7 @@
     "Turn {\"id\":\"#9\",\"state\":\"running\"}",
     "Item {\"id\":\"#10\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<0 chars>\"}}}",
     "Absorbed x4",
-    "Usage {\"turn_id\":\"#9\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":27286,\"outputTokens\":0,\"contextWindow\":1000000}}}",
+    "Usage {\"turn_id\":\"#9\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":400,\"outputTokens\":0,\"contextWindow\":1000000}}}",
     "Item {\"id\":\"#10\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<2 chars>\"}}}",
     "Turn {\"id\":\"#9\",\"state\":\"completed\"}"
   ]

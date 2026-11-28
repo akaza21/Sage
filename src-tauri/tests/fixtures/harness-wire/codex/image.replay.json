@@ -27,7 +27,7 @@
     "Item {\"id\":\"#3\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<8 chars>\"}}} x2",
     "IgnoredLate",
     "Item {\"id\":\"#3\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<13 chars>\"}}}",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":17068,\"outputTokens\":8,\"contextWindow\":475000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":100,\"outputTokens\":100,\"contextWindow\":475000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:codex:300\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":300,\"resetsAt\":1800018000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:codex:10080\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":10080,\"resetsAt\":1800604800}}}",
     "IgnoredLate x2",

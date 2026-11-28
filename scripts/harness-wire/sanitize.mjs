@@ -28,7 +28,6 @@ const IDENTITY_KEYS = new Set([
   "orgId",
   "user_id",
   "userId",
-  "display_name",
   "displayName",
   "subscription_id",
   "chatgpt_account_id",
@@ -36,7 +35,6 @@ const IDENTITY_KEYS = new Set([
   // The account's plan says who captured, not how the protocol behaves.
   "subscriptionType",
   "subscription_type",
-  "planType",
   "plan_type",
 ]);
 const SECRET =
@@ -44,8 +42,8 @@ const SECRET =
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // A provider's request and edge ids tie a capture to its logs and location.
 const REQUEST_IDS = [
-  [/\bcf-ray: [0-9a-f]+(?:-[A-Z]{3})?/g, "cf-ray: 0000000000000000-XXX"],
-  [/\breq_[0-9A-Za-z]{16,}/g, "req_00000000000000000000000000000000"],
+  [/\bcf-ray: ([0-9a-f]+(?:-[A-Z]{3})?)/g, "cf-ray: "],
+  [/\breq_([0-9A-Za-z]{16,})/g, "req_"],
 ];
 // A model's id or display name wherever it appears, keys and free text
 // included: a family and a version, so a command such as `claude-api` is not
@@ -72,13 +70,8 @@ const ACCOUNT_OBJECTS = new Set([
 const ACCOUNT_KEEP = new Set([
   // Model catalogs (Claude Code, Codex, Pi).
   "value",
-  "id",
-  "name",
   "model",
   "modelId",
-  "displayName",
-  "description",
-  "provider",
   "contextWindow",
   "supportsEffort",
   "supportedEffortLevels",
@@ -93,13 +86,11 @@ const ACCOUNT_KEEP = new Set([
   "rateLimitType",
   "utilization",
   "resetsAt",
-  "resets_at",
   "usedPercent",
   "windowDurationMins",
   "rateLimitReachedType",
   "spendControlReached",
   "limitId",
-  "limitName",
   "planType",
   "ordinaryUsageAllowed",
   "rate_limits_available",
@@ -132,6 +123,26 @@ const MODEL_KEYS = new Set([
   "modelSlug",
   "normalModelSlug",
 ]);
+// Token counts and costs of the captured turns, as fixed synthetic values.
+const TOKEN_KEYS = new Set([
+  "input_tokens",
+  "output_tokens",
+  "cache_read_input_tokens",
+  "cache_creation_input_tokens",
+  "ephemeral_5m_input_tokens",
+  "ephemeral_1h_input_tokens",
+  "inputTokens",
+  "outputTokens",
+  "cachedInputTokens",
+  "cacheReadInputTokens",
+  "cacheCreationInputTokens",
+  "reasoningOutputTokens",
+  "totalTokens",
+  "total_tokens",
+  "cacheRead",
+  "cacheWrite",
+]);
+const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
 // The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
 const USAGE_EPOCH = 1800000000;
 // When the account's stored sign-in expires.
@@ -196,6 +207,7 @@ export function makeSanitizer({ roots }) {
   // A provider's message, tool-use and call ids map to stable placeholders,
   // so references between frames hold but provider records cannot be found.
   const providerIds = new Map();
+  const requestIds = new Map();
 
   const text = (value) => {
     let out = value;
@@ -205,8 +217,22 @@ export function makeSanitizer({ roots }) {
     out = out
       .replace(SECRET, "[redacted-secret]")
       .replace(EMAIL, "user@example.invalid");
-    for (const [pattern, target] of REQUEST_IDS)
-      out = out.replace(pattern, target);
+    for (const [pattern, prefix] of REQUEST_IDS)
+      out = out.replace(pattern, (match, id) => {
+        // Placeholders (all zeros but the count) stay as they are.
+        if (/^0+\d*(?:-XXX)?$/.test(id)) return match;
+        if (!requestIds.has(match)) {
+          const count =
+            [...requestIds.keys()].filter((seen) => seen.startsWith(prefix))
+              .length + 1;
+          const ray = prefix !== "req_";
+          requestIds.set(
+            match,
+            `${prefix}${String(count).padStart(ray ? 16 : 32, "0")}${ray ? "-XXX" : ""}`,
+          );
+        }
+        return requestIds.get(match);
+      });
     out = out
       .replace(MODEL_NAME, (match) => {
         // A version that ends a sentence keeps its full stop.
@@ -219,6 +245,11 @@ export function makeSanitizer({ roots }) {
         );
       })
       .replace(MODEL_ID, (match) => modelPlaceholder(match, "model-"));
+    // A model id or name a catalog taught, wherever else it is written. Only
+    // a model-like string (a digit, space or hyphen in it) is matched in free
+    // text, so a catalog id that is also a protocol word stays a word.
+    const learned = learnedModels();
+    if (learned) out = out.replace(learned, (match) => models.get(match));
     out = out.replace(PROVIDER_ID, (match, prefix) => {
       if (!providerIds.has(match))
         providerIds.set(
@@ -278,6 +309,28 @@ export function makeSanitizer({ roots }) {
   // (`text`) is never touched.
   const models = new Map();
   let modelCount = 0;
+  // One pattern for every model-like id or name learned so far, rebuilt
+  // when the catalog grows.
+  let learnedSize = -1;
+  let learnedPattern = null;
+  function learnedModels() {
+    if (learnedSize === models.size) return learnedPattern;
+    learnedSize = models.size;
+    const names = [...models.keys()]
+      .filter(
+        (name) =>
+          name.length >= 4 &&
+          /[\d\s-]/.test(name) &&
+          !/^(?:model-|Model )\d+$/.test(name),
+      )
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    learnedPattern = names.length
+      ? new RegExp(`(?<![\\w-])(?:${names.join("|")})(?![\\w-])`, "g")
+      : null;
+    return learnedPattern;
+  }
+
   // The placeholder for a model id or name, new on first sight.
   function modelPlaceholder(found, kind) {
     const key = kind === "model-" ? found.toLowerCase() : found;
@@ -369,6 +422,10 @@ export function makeSanitizer({ roots }) {
   const scrub = (value, key, inModel, opaque, inAccount) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
+    if (!opaque && typeof value === "number") {
+      if (TOKEN_KEYS.has(key)) return 100;
+      if (COST_KEYS.has(key)) return 0.01;
+    }
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
       return CREDENTIAL_EXPIRY;
     if (typeof value === "string") {

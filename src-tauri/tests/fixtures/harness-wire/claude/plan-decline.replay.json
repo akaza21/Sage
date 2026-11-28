@@ -102,7 +102,7 @@
     "Item {\"id\":\"#9\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<299 chars>\"}}} x5",
     "Item {\"id\":\"#9\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<363 chars>\"}}} x3",
     "Absorbed x4",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":28444,\"outputTokens\":0,\"contextWindow\":1000000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":400,\"outputTokens\":0,\"contextWindow\":1000000}}}",
     "Item {\"id\":\"#9\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<380 chars>\"}}}",
     "Turn {\"id\":\"#2\",\"state\":\"completed\"}"
   ]

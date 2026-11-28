@@ -109,7 +109,7 @@
     "Item {\"id\":\"#17\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<265 chars>\"}}} x3",
     "Item {\"id\":\"#17\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<314 chars>\"}}} x3",
     "Absorbed x4",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":29420,\"outputTokens\":0,\"contextWindow\":1000000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":400,\"outputTokens\":0,\"contextWindow\":1000000}}}",
     "Item {\"id\":\"#17\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<331 chars>\"}}}",
     "Turn {\"id\":\"#2\",\"state\":\"completed\"}"
   ]

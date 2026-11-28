@@ -75,8 +75,8 @@ for (const harness of harnesses) {
       // The account's usage, its sign-in's expiry, and the provider's
       // request, edge, message and tool-use ids.
       for (const pattern of [
-        /cf-ray: (?!0{16}-XXX)/,
-        /req_(?!0{32})[0-9A-Za-z]{16}/,
+        /cf-ray: (?!0{8,}\d+-XXX)/,
+        /req_(?!0{20,}\d+\b)[0-9A-Za-z]{16}/,
         /\b(?:msg|toolu|srvtoolu|call|resp)_(?!0{12})[0-9A-Za-z]{12}/,
         /"credential_expires_at":"(?!2027-01-01T00:00:00\.000Z)/,
         // Normalized, or neutral (0) where the field is undeclared.
@@ -364,7 +364,7 @@ test("the account's usage and the provider's request ids are normalized", () => 
   });
   assert.equal(
     failure.frame.params.error.additionalDetails,
-    "401 Unauthorized, cf-ray: 0000000000000000-XXX, request id: req_00000000000000000000000000000000",
+    "401 Unauthorized, cf-ray: 0000000000000001-XXX, request id: req_00000000000000000000000000000001",
   );
 });
 
@@ -623,4 +623,66 @@ test("inside an account, rate-limit or catalog object only the keys a binding re
   assert.deepEqual(reply.commands, [
     { name: "review", description: "Review the branch" },
   ]);
+});
+
+test("an account object keeps no id, name or date of its own, distinct request ids stay distinct, and turns cost a fixed amount", () => {
+  const [account, catalog, turn] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        account: {
+          id: "acct_private_918",
+          name: "Private Company",
+          resets_at: "2026-12-01T00:00:00Z",
+          type: "chatgpt",
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        result: {
+          data: [
+            {
+              id: "private-codex",
+              model: "private-codex",
+              displayName: "P",
+              serviceTiers: [
+                {
+                  id: "tier-private",
+                  name: "Private tier",
+                  description: "Private",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        type: "result",
+        result:
+          "Ran private-codex twice: req_aaaaaaaaaaaaaaaaaaaaaaaa, req_bbbbbbbbbbbbbbbbbbbbbbbb, req_aaaaaaaaaaaaaaaaaaaaaaaa",
+        usage: { input_tokens: 5123, output_tokens: 77 },
+        total_cost_usd: 0.37,
+      },
+    },
+  ]);
+  assert.deepEqual(account.frame.account, {
+    id: "redacted",
+    name: "redacted",
+    resets_at: "redacted",
+    type: "chatgpt",
+  });
+  assert.deepEqual(catalog.frame.result.data[0].serviceTiers, [
+    { id: "redacted", name: "redacted", description: "redacted" },
+  ]);
+  const [first, second, again] = turn.frame.result.match(/req_\w+/g);
+  assert.notEqual(first, second);
+  assert.equal(first, again);
+  assert.doesNotMatch(turn.frame.result, /private|aaaa|bbbb/);
+  assert.deepEqual(turn.frame.usage, { input_tokens: 100, output_tokens: 100 });
+  assert.equal(turn.frame.total_cost_usd, 0.01);
 });

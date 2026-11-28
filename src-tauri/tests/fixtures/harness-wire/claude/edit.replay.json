@@ -82,7 +82,7 @@
     "Absorbed x3",
     "Item {\"id\":\"#9\",\"lifecycle\":\"streaming\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<0 chars>\"}}}",
     "Absorbed x4",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":29201,\"outputTokens\":0,\"contextWindow\":1000000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":400,\"outputTokens\":0,\"contextWindow\":1000000}}}",
     "Item {\"id\":\"#9\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<2 chars>\"}}}",
     "Turn {\"id\":\"#2\",\"state\":\"completed\"}"
   ]
