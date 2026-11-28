@@ -1978,6 +1978,8 @@ fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
     }
 }
 
+type TerminalListing = Result<crate::acp::goal::NativeRpcReply, crate::acp::runtime::HostError>;
+
 #[derive(Default)]
 struct TestRuntime {
     script: Option<(OperationFailure, Arc<std::sync::Mutex<OperationTrace>>)>,
@@ -1986,6 +1988,8 @@ struct TestRuntime {
     pending_steer: Option<Arc<Mutex<Option<crate::acp::runtime::SteerCompletionSink>>>>,
     steer_attempts: Option<Arc<AtomicUsize>>,
     pending_native: Option<Arc<Mutex<Option<crate::acp::runtime::NativeRpcCompletionSink>>>>,
+    /// How the harness answers a background terminal listing.
+    terminals: Option<Arc<Mutex<TerminalListing>>>,
 }
 
 impl TestRuntime {
@@ -1997,6 +2001,7 @@ impl TestRuntime {
             pending_steer: None,
             steer_attempts: None,
             pending_native: None,
+            terminals: None,
         }
     }
 
@@ -2012,6 +2017,7 @@ impl TestRuntime {
             pending_steer: None,
             steer_attempts: None,
             pending_native: None,
+            terminals: None,
         }
     }
 
@@ -2026,6 +2032,7 @@ impl TestRuntime {
             pending_steer: None,
             steer_attempts: None,
             pending_native: None,
+            terminals: None,
         }
     }
 
@@ -2080,10 +2087,21 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
 
     fn begin_native_rpc(
         &mut self,
-        _: &crate::acp::goal::NativeRpcIntent,
+        intent: &crate::acp::goal::NativeRpcIntent,
         _: Instant,
         completion: crate::acp::runtime::NativeRpcCompletionSink,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        if let (
+            Some(terminals),
+            crate::acp::goal::NativeRpcRequest::BackgroundTerminals(
+                crate::acp::background_terminals::TerminalAction::List,
+            ),
+        ) = (&self.terminals, &intent.request)
+        {
+            let listed = terminals.lock().unwrap().clone();
+            completion.complete(listed);
+            return Ok(());
+        }
         match &self.pending_native {
             Some(pending) => *pending.lock().unwrap() = Some(completion),
             None => completion.complete(Err(crate::acp::runtime::HostError::State)),
@@ -2455,6 +2473,7 @@ fn idle_runtime_fixture_with(
 ) -> (AcpService, RuntimeOwner) {
     let capabilities = sage_acp_protocol::intent::CapabilitySnapshotV1 {
         resume_session: resumable,
+        native_background_terminals: runtime.terminals.is_some(),
         ..test_capabilities()
     };
     let (service, owner) =
@@ -2661,4 +2680,124 @@ fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
     assert!(service.lane_for(&owner).is_some());
     assert!(runtime_epoch_is_live(&service, &owner));
     service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_running_background_terminal_keeps_an_idle_runtime_until_it_ends() {
+    let terminals = Arc::new(Mutex::new(Ok(
+        crate::acp::goal::NativeRpcReply::BackgroundTerminals(vec![
+            crate::acp::background_terminals::BackgroundTerminal {
+                handle: "7".into(),
+                command: "npm run dev".into(),
+                cwd: None,
+            },
+        ]),
+    )));
+    let runtime = TestRuntime {
+        terminals: Some(Arc::clone(&terminals)),
+        ..TestRuntime::default()
+    };
+    let (service, owner) = idle_runtime_fixture_with("idle-terminal", true, true, runtime);
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+    // Well past both idle rules, the dev server still runs.
+    for minutes in [3, 6, 30] {
+        assert_eq!(
+            service.release_idle_runtimes(start + minutes * MINUTE),
+            Some(0)
+        );
+        assert!(service.lane_for(&owner).is_some());
+        assert!(runtime_epoch_is_live(&service, &owner));
+    }
+    *terminals.lock().unwrap() = Ok(crate::acp::goal::NativeRpcReply::BackgroundTerminals(
+        Vec::new(),
+    ));
+    assert_eq!(service.release_idle_runtimes(start + 31 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    assert!(!runtime_epoch_is_live(&service, &owner));
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_running_background_task_on_the_surface_keeps_an_idle_runtime_until_it_ends() {
+    use sage_acp_protocol::intent::session_event::{
+        SessionActivity, SessionActivityState, SessionScopedEvent, SessionSurface,
+    };
+    let (service, owner) = idle_release_fixture("idle-task");
+    let mut surface = SessionSurface::default();
+    let mut report = |state| {
+        surface.apply(
+            owner.runtime_epoch.get(),
+            &SessionScopedEvent::Activity(SessionActivity {
+                id: sage_acp_protocol::intent::ExternalId::new("activity", "task-1").unwrap(),
+                kind: sage_acp_protocol::contract::RequiredText::new("kind", "backgroundTask")
+                    .unwrap(),
+                label: sage_acp_protocol::contract::RequiredText::new("label", "npm run dev")
+                    .unwrap(),
+                state,
+                progress: None,
+                in_previous_turn: false,
+                stoppable: true,
+            }),
+        );
+        service
+            .database
+            .connection()
+            .execute(
+                "INSERT OR REPLACE INTO acp_session_surfaces
+                 (session_id,project_id,chat_id,surface_json,revision,updated_at)
+                 VALUES(?1,?2,?3,?4,1,1)",
+                rusqlite::params![
+                    owner.session_id.as_str(),
+                    owner.project_id.as_str(),
+                    owner.chat_id.as_str(),
+                    serde_json::to_string(&surface).unwrap()
+                ],
+            )
+            .unwrap();
+    };
+    report(SessionActivityState::Running);
+    let start = std::time::Instant::now();
+    service.set_shown_chats([owner.chat_id.clone()]);
+    assert_eq!(service.release_idle_runtimes(start + 10 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+    report(SessionActivityState::Completed);
+    assert_eq!(service.release_idle_runtimes(start + 11 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_refused_or_gone_terminal_listing_never_keeps_an_idle_runtime_but_an_unknown_one_does() {
+    use crate::acp::{goal::NativeRpcReply, runtime::HostError};
+    for (label, answer, kept) in [
+        ("idle-list-refused", Ok(NativeRpcReply::Rejected), false),
+        ("idle-list-invalid", Err(HostError::Intent), false),
+        ("idle-list-closed", Err(HostError::Closed), false),
+        ("idle-list-busy", Err(HostError::State), true),
+        ("idle-list-late", Err(HostError::Deadline), true),
+        ("idle-list-unknown", Err(HostError::DeliveryUnknown), true),
+    ] {
+        let runtime = TestRuntime {
+            terminals: Some(Arc::new(Mutex::new(answer))),
+            ..TestRuntime::default()
+        };
+        let (service, owner) = idle_runtime_fixture_with(label, true, true, runtime);
+        let start = std::time::Instant::now();
+        service.set_shown_chats([]);
+        assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+        assert_eq!(
+            service.release_idle_runtimes(start + 3 * MINUTE),
+            Some(usize::from(!kept)),
+            "{label}"
+        );
+        assert_eq!(service.lane_for(&owner).is_some(), kept, "{label}");
+        // The sweep's own listing never leaves recovery behind.
+        assert!(
+            service.lane_at(0).codex_recovery.lock().unwrap().is_none(),
+            "{label}"
+        );
+        service.shutdown_blocking().unwrap();
+    }
 }

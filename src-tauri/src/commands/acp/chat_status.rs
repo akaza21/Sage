@@ -100,8 +100,16 @@ fn load(
             let session = row.6.as_deref().unwrap_or_default();
             Ok::<_, StoreError>(TurnStatus {
                 sign_in: state == TurnState::Failed && signed_out(connection, turn, session)?,
+                // Display decoration: a surface that cannot be read means
+                // no background work.
                 background: row.4.is_some()
-                    && background_work(connection, &project_id, &chat_id, session)?,
+                    && crate::acp::store::session_surface::runs_background_work(
+                        connection,
+                        project_id.as_str(),
+                        chat_id.as_str(),
+                        session,
+                    )
+                    .unwrap_or(false),
                 state,
                 updated_at: row.2.ok_or(StoreError::Corrupt("turn timestamp"))?,
                 created_at: row.3.ok_or(StoreError::Corrupt("turn timestamp"))?,
@@ -127,41 +135,6 @@ fn signed_out(connection: &Connection, turn: &str, session: &str) -> Result<bool
         )
         .optional()?
         .is_some())
-}
-
-/// The rows Resources lists as background processes: background tasks, and
-/// running subagents that can still be stopped, in the live runtime.
-fn background_work(
-    connection: &Connection,
-    project: &SageProjectId,
-    chat: &SageChatId,
-    session: &str,
-) -> Result<bool, StoreError> {
-    let epoch: Option<i64> = connection.query_row(
-        "SELECT MAX(runtime_epoch) FROM session_runtime_epochs
-         WHERE session_id=?1 AND state IN ('starting','running','terminating')",
-        params![session],
-        |row| row.get(0),
-    )?;
-    let Some(epoch) = epoch.and_then(|epoch| u64::try_from(epoch).ok()) else {
-        return Ok(false);
-    };
-    // Display decoration: a surface that cannot be read means no background work.
-    let view = crate::acp::store::session_surface::view(
-        connection,
-        project.as_str(),
-        chat.as_str(),
-        session,
-        Some(epoch),
-    )
-    .unwrap_or(None);
-    Ok(view.is_some_and(|view| {
-        view.activities.iter().any(|activity| {
-            !activity.state.is_terminal()
-                && (activity.kind.as_str() == "backgroundTask"
-                    || (activity.kind.as_str() == "subagent" && activity.stoppable))
-        })
-    }))
 }
 
 #[cfg(test)]
