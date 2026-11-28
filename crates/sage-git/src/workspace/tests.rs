@@ -188,6 +188,12 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
     );
 
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
+    // Same size, newer mtime: any status must read the file through the clean
+    // filter. Without this, Windows (no inode in the index stat) can find the
+    // checkout clean and never run the neighbouring repository's filter, so
+    // neither assert below would mean anything. A different size would not
+    // do: Git reports a size change as modified without filtering.
+    fs::write(linked.join("a.txt"), "b\n").unwrap();
     let moved = attacker.join("linked");
     let swapped = Arc::new(AtomicBool::new(false));
     let (hook_from, hook_to, hook_swapped) = (linked.clone(), moved.clone(), Arc::clone(&swapped));

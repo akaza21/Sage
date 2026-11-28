@@ -60,6 +60,13 @@ pub(super) fn await_request(
             let result = if method == Some("session/set_config_option") {
                 json!({"configOptions":config_options()})
             } else {
+                // claude-agent-acp announces the new mode before it answers.
+                let mode = request["params"]["modeId"].clone();
+                codex::emit_json(
+                    output,
+                    state,
+                    &json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":mode}}}),
+                )?;
                 json!({})
             };
             codex::emit_json(
@@ -142,7 +149,8 @@ pub(super) struct AcpConfig {
 
 const MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 const EFFORTS: [&str; 3] = ["low", "medium", "high"];
-const MODES: [&str; 3] = ["default", "acceptEdits", "plan"];
+// claude-agent-acp 0.76.0 always lists Auto (session-mode.js buildAvailableModes).
+const MODES: [&str; 4] = ["default", "acceptEdits", "plan", "auto"];
 
 impl AcpConfig {
     fn defaults() -> Self {
@@ -164,7 +172,7 @@ impl AcpConfig {
 
     fn session(&self) -> Value {
         json!({"sessionId":SESSION,"modes":{"currentModeId":self.mode,"availableModes":[
-            {"id":"default","name":"Default"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}
+            {"id":"default","name":"Default"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"}
         ]},"configOptions":self.options()})
     }
 
@@ -331,7 +339,7 @@ pub(super) fn emit(
                     session
                 }
                 "acpSession" => {
-                    json!({"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"}]},"configOptions":config_options()})
+                    json!({"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"}]},"configOptions":config_options()})
                 }
                 _ => json!({}),
             };

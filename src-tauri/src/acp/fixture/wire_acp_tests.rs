@@ -48,9 +48,13 @@ fn acp_replay_preserves_prompt_id_across_config_and_cancel() {
         .collect();
     assert_eq!(frames[0]["id"], 41);
     assert_eq!(frames[1]["id"], 42);
-    assert_eq!(frames[2]["id"], 44);
     assert_eq!(
-        frames[3],
+        frames[2],
+        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":"default"}}})
+    );
+    assert_eq!(frames[3]["id"], 44);
+    assert_eq!(
+        frames[4],
         json!({"jsonrpc":"2.0","id":43,"result":{"stopReason":"cancelled"}})
     );
 }
