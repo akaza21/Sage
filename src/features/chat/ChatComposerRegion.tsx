@@ -10,6 +10,7 @@ import {
   composerShortcutLabel,
   composerWorkspaceName,
   useComposerDictation,
+  usesMetaModifier,
 } from "./composerChrome";
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { composerProblem } from "./ComposerStatusNotices";
@@ -82,7 +83,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     ...harnessControls
   } = props;
   const sessionFeatures = !harnessControls.draftPickers;
-  const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
+  const shortcutLabel = composerShortcutLabel(usesMetaModifier());
   const composerDisabled = !enabled || projectTransitioning;
   const actionDisabled = actionBusy || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
