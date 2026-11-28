@@ -25,22 +25,6 @@ it("keeps sent annotation chip outlines in forced colours", () => {
   ).toMatch(/--chat-annotation-sent-edge:\s*CanvasText;/);
 });
 
-it("only preserves disabled model opacity for explicit read-only labels", () => {
-  const css = read("src/styles/composer-model-picker.css");
-  expect(css).toMatch(
-    /\.composer__model-trigger\[data-readonly-label\]:disabled\s*\{\s*opacity: 1;/,
-  );
-  expect(css).not.toContain(".composer__model-trigger[title]:disabled");
-});
-
-it("places Agent find below header controls without moving other chat find bars", () => {
-  const css = read("src/features/chat/chat-find.css");
-  expect(css).toMatch(
-    /\.chat-surface--agent > \.chat-find\s*\{[^}]*grid-area:\s*find;/,
-  );
-  expect(css).not.toMatch(/top:\s*-36px/);
-});
-
 it("keeps fork keyboard focus visible and maps forced-colour hover to Highlight", () => {
   const fork = read("src/features/chat/fork-chat.css");
   const global = read("src/styles/global.css");

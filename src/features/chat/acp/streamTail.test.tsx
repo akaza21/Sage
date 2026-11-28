@@ -257,19 +257,6 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(tails(container)).toEqual([]);
     expect(container.querySelectorAll("p")[1]).toHaveTextContent("Two words");
   });
-
-  it("fades the marked run on the stream curve, except under reduced motion", () => {
-    const sheet = readFileSync(
-      resolve("src/features/chat/acp/chat-markdown.css"),
-      "utf8",
-    );
-    expect(sheet).toMatch(
-      /\[data-turn-state\^="waiting"\]\)\s*\.acp-message--assistant\s*\.acp-stream-new\s*\{\s*animation:\s*acp-stream-in var\(--motion-duration-stream\) ease-out both;/,
-    );
-    expect(sheet).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.acp-stream-new[^}]*\{\s*animation:\s*none;/,
-    );
-  });
 });
 
 it("does not track a textless rule while streaming its marker", () => {

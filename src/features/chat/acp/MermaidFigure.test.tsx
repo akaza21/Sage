@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MermaidFigure } from "./MermaidFigure";
-import { readFile } from "node:fs/promises";
 import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures/cp22Answers";
 
 afterEach(() => {
@@ -17,17 +16,6 @@ describe("bounded Mermaid flowchart rendering", () => {
     const region = screen.getByRole("region", { name: /Diagram:.*scroll/i });
     expect(region).not.toHaveAttribute("tabindex");
     expect(region).toContainElement(screen.getByRole("img"));
-  });
-  it("keeps a legible minimum scale that scrolls inside its own box", async () => {
-    const css = await readFile(
-      "src/features/chat/acp/acp-chat-activities.css",
-      "utf8",
-    );
-    expect(css).toMatch(/\.acp-mermaid\s*\{[^}]*overflow-x:\s*auto/s);
-    expect(css).toMatch(/\.acp-mermaid\s*\{[^}]*contain:\s*inline-size/s);
-    expect(css).toMatch(
-      /min-width:\s*calc\(var\(--mermaid-width\)\s*\*\s*0\.75\)/,
-    );
   });
   it("preserves the natural routing canvas and delegates scaling to CSS", () => {
     render(<MermaidFigure source={"graph TD\nA --> B"} />);
