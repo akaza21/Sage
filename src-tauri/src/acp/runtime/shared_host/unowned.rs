@@ -87,7 +87,7 @@ impl Unowned {
             .collect()
     }
 
-    fn take(&mut self, thread: &str) -> Vec<(String, Value, u64)> {
+    fn take(&mut self, thread: &str) -> VecDeque<(String, Value, u64)> {
         let (taken, kept) = std::mem::take(&mut self.held)
             .into_iter()
             .partition(|(owner, _, _)| owner == thread);
