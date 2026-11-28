@@ -335,3 +335,21 @@ fn what_the_router_would_have_to_keep_is_refused_when_oversized() {
     assert!(routed.deliveries.is_empty());
     assert_eq!(refused_ids(&routed), vec![json!("i".repeat(200))]);
 }
+
+#[test]
+fn a_request_codex_resolves_itself_stops_counting_against_the_chat() {
+    let (mut router, a, _) = two_threads();
+    let resolved = |id: u64| json!({"method": "serverRequest/resolved", "params": {"threadId": A, "requestId": id}});
+    for id in 0..100 {
+        assert_eq!(only(router.inbound(approval(id, A)).unwrap()).0, a);
+        assert_eq!(only(router.inbound(resolved(id)).unwrap()).0, a);
+    }
+    // The chat may no longer answer a resolved request, and closing it owes
+    // Codex nothing for them.
+    let late = json!({"id": 99, "result": {"decision": "decline"}});
+    assert_eq!(router.outbound(a, late), Err(RouterError::ForeignAnswer));
+    only(router.inbound(approval(100, A)).unwrap());
+    let (_, refusals) = router.release(a).unwrap();
+    let ids: Vec<_> = refusals.iter().map(|reply| reply["id"].clone()).collect();
+    assert_eq!(ids, vec![json!(100)]);
+}

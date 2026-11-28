@@ -43,6 +43,13 @@ impl ScopePolicy for CodexScope {
         item.get("agentThreadId").and_then(Value::as_str)
     }
 
+    fn request_resolved<'a>(&self, frame: &'a Value) -> Option<&'a Value> {
+        if frame.get("method").and_then(Value::as_str) != Some("serverRequest/resolved") {
+            return None;
+        }
+        frame.get("params")?.get("requestId")
+    }
+
     fn thread_closed<'a>(&self, frame: &'a Value) -> Option<&'a str> {
         if frame.get("method").and_then(Value::as_str) != Some("thread/closed") {
             return None;

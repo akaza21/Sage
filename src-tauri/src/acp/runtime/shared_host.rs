@@ -42,6 +42,9 @@ pub(crate) trait ScopePolicy {
     fn thread_in_result<'a>(&self, result: &'a Value) -> Option<&'a str>;
     /// A child thread that a frame of an owned thread announces.
     fn child_announced<'a>(&self, frame: &'a Value) -> Option<&'a str>;
+    /// The server request a notification reports as resolved without the
+    /// chat's answer.
+    fn request_resolved<'a>(&self, frame: &'a Value) -> Option<&'a Value>;
     /// The thread a notification reports as unloaded.
     fn thread_closed<'a>(&self, frame: &'a Value) -> Option<&'a str>;
     /// The handshake request the host made once for every lease.
@@ -344,6 +347,11 @@ impl<P: ScopePolicy> HostRouter<P> {
         };
         let child = self.policy.child_announced(&frame).map(str::to_owned);
         let closed = self.policy.thread_closed(&frame) == Some(thread.as_str());
+        if let Some(resolved) = self.policy.request_resolved(&frame).cloned()
+            && let Ok(lease) = self.lease_mut(slot)
+        {
+            lease.server_requests.retain(|open| *open != resolved);
+        }
         self.deliver(routed, slot, frame);
         if let Some(child) = child {
             self.bind_into(routed, slot, &child);
