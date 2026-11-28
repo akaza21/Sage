@@ -138,15 +138,21 @@ function main(env = process.env) {
     repo,
     `repos/${repo}/actions/runs/${current.id}/attempts/${env.GITHUB_RUN_ATTEMPT}/jobs`,
   );
-  const completed = JSON.parse(
-    gh([
-      "api",
-      `repos/${repo}/actions/workflows/${current.workflow_id}/runs?branch=main&status=completed&per_page=50`,
-      "--jq",
-      `[.workflow_runs[] | ${runFields}]`,
-    ]),
-  )
-    .filter((run) => reportingEvents.has(run.event) && run.id !== current.id)
+  // Each reporting event is fetched on its own, so manual runs on main can
+  // never crowd the push and nightly history out of the window.
+  const completed = [...reportingEvents]
+    .flatMap((event) =>
+      JSON.parse(
+        gh([
+          "api",
+          `repos/${repo}/actions/workflows/${current.workflow_id}/runs?branch=main&event=${event}&status=completed&per_page=${historyRuns}`,
+          "--jq",
+          `[.workflow_runs[] | ${runFields}]`,
+        ]),
+      ),
+    )
+    .filter((run) => run.id !== current.id)
+    .sort((a, b) => b.run_number - a.run_number)
     .slice(0, historyRuns);
   for (const run of completed) {
     run.jobs = runJobs(repo, `repos/${repo}/actions/runs/${run.id}/jobs`);
