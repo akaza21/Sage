@@ -150,7 +150,7 @@ const CATALOG_KEEP = new Map(
 );
 // Values the sanitizer itself writes.
 export const PLACEHOLDER =
-  /^(?:redacted|(?:model|command|skill|agent|plugin|server|tool|key|field|run|task|signature)-\d+|Model \d+)$/;
+  /^(?:redacted|(?:model|command|skill|agent|plugin|server|tool|key|field|run|task|signature|process)-\d+|Model \d+)$/;
 const CATALOG_REFS = new Set([
   "command",
   "commandName",
@@ -188,7 +188,7 @@ const LISTING =
   /^([-bcdlps][rwxsStT-]{9}[.+@]?\s+\d+\s+)\S+\s+\S+(\s+\d+\s+)[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4})/gm;
 // Fields that hold a process handle, and the synthetic form one takes.
 export const PROCESS_KEYS = new Set(["processId", "process_id"]);
-export const PROCESS_HANDLE = /^10\d\d$/;
+export const PROCESS_HANDLE = /^(?:process-\d+|-\d+)$/;
 // A 16-hex-digit folder in a path.
 const HEX_SEGMENT = /(?<=[\\/])[0-9a-f]{16}(?=[\\/])/g;
 // Lists whose elements are model descriptors.
@@ -337,19 +337,6 @@ export function makeSanitizer({ roots }) {
   const signatures = new Map();
   const hexSegments = new Map();
   const processes = new Map();
-  const processSeen = new Set();
-  const findProcesses = (value) => {
-    if (Array.isArray(value)) value.forEach(findProcesses);
-    else if (value && typeof value === "object")
-      for (const [key, entry] of Object.entries(value))
-        if (
-          PROCESS_KEYS.has(key) &&
-          (typeof entry === "string" || typeof entry === "number") &&
-          entry !== ""
-        )
-          processSeen.add(String(entry));
-        else findProcesses(entry);
-  };
   const mcpServer = (server) =>
     PLACEHOLDER.test(server)
       ? server
@@ -800,14 +787,13 @@ export function makeSanitizer({ roots }) {
       (typeof value === "string" || typeof value === "number") &&
       value !== ""
     ) {
-      // Already synthetic only when every handle learned is: a fresh
-      // capture's `1001` is a real handle like any other.
-      if ([...processSeen].every((seen) => PROCESS_HANDLE.test(seen)))
-        return value;
+      // A synthetic handle has a form no real one can take (`process-N`, or
+      // -N for a number), so its provenance is never inferred from a value.
+      if (PROCESS_HANDLE.test(String(value))) return value;
       if (!processes.has(String(value)))
-        processes.set(String(value), 1000 + processes.size + 1);
-      const handle = processes.get(String(value));
-      return typeof value === "number" ? handle : String(handle);
+        processes.set(String(value), processes.size + 1);
+      const n = processes.get(String(value));
+      return typeof value === "number" ? -n : `process-${n}`;
     }
     if (!opaque && typeof value === "number") {
       if (TOKENS.test(key)) return tokenCount(key);
@@ -952,7 +938,6 @@ export function makeSanitizer({ roots }) {
       findTimes(record.frame);
       findRunIds(record.frame);
       findCatalogs(record.frame);
-      findProcesses(record.frame);
     });
 
   return {

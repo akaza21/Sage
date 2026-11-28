@@ -8,6 +8,7 @@
 //   keys          every object key
 //   numbers       every number, by the key it sits under
 //   flags         every boolean, where it is (file:line and indexed path)
+//   placeholders  every pseudonym (model-N, command-N, ...), where it is
 //   contextPaths  every key path under an account, plan, usage, model,
 //                 catalog or org object, as `<root>:<path>`
 // A number under a scrubbed key (tokens, cost, usage, pid) must also equal
@@ -57,6 +58,7 @@ export function corpusValues(dir) {
     keys: new Map(),
     numbers: new Map(),
     flags: new Map(),
+    placeholders: new Map(),
     contextPaths: new Map(),
     fixed: [],
   };
@@ -77,7 +79,13 @@ export function corpusValues(dir) {
       found.fixed.push(
         `${at}: ${JSON.stringify(value)} is not a synthetic process handle`,
       );
-    if (typeof value === "string") note(found.strings, value, at);
+    if (typeof value === "string") {
+      note(found.strings, value, at);
+      // A pseudonym says which model, command or id a field names, so moving
+      // one (pointing an alias at another reviewed model) fails too.
+      if (PLACEHOLDER.test(value) && value !== "redacted")
+        note(found.placeholders, `${at}=${value}`, at);
+    }
     // Which model is the default, or which entry is hidden or enabled, can
     // be the account's own wherever it is written: every boolean is
     // reviewed where it is (file:line and indexed path), so moving one fails.
@@ -153,6 +161,7 @@ function serialize(found) {
       ]),
     ),
     flags: sorted(found.flags.keys()),
+    placeholders: sorted(found.placeholders.keys()),
     contextPaths: sorted(found.contextPaths.keys()),
   };
 }
@@ -175,6 +184,11 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   missing("key", found.keys, new Set(allowed.keys));
   missing("account path", found.contextPaths, new Set(allowed.contextPaths));
   missing("flag", found.flags, new Set(allowed.flags ?? []));
+  missing(
+    "placeholder",
+    found.placeholders,
+    new Set(allowed.placeholders ?? []),
+  );
   for (const [key, values] of found.numbers)
     missing(`number under ${key}`, values, new Set(allowed.numbers[key] ?? []));
   return out;

@@ -189,6 +189,20 @@
     "commands.jsonl:6.frame.success=true",
     "commands.jsonl:8.frame.success=true"
   ],
+  "placeholders": [
+    "auth-fail.jsonl:2.frame.data.model.id=model-1",
+    "auth-fail.jsonl:2.frame.data.model.name=model-1",
+    "auth-fail.jsonl:6.frame.data.model.id=model-1",
+    "auth-fail.jsonl:6.frame.data.model.name=model-1",
+    "auth-fail.jsonl:8.frame.data.commands[0].name=command-1",
+    "auth-fail.jsonl:8.frame.data.commands[1].name=command-2",
+    "commands.jsonl:2.frame.data.model.id=model-1",
+    "commands.jsonl:2.frame.data.model.name=model-1",
+    "commands.jsonl:6.frame.data.model.id=model-1",
+    "commands.jsonl:6.frame.data.model.name=model-1",
+    "commands.jsonl:8.frame.data.commands[0].name=command-1",
+    "commands.jsonl:8.frame.data.commands[1].name=command-2"
+  ],
   "contextPaths": [
     "commands:[].description",
     "commands:[].name",

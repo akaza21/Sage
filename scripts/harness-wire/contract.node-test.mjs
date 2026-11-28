@@ -303,7 +303,7 @@ test("an unreviewed string, key, number or account path fails with its path", as
         { value: "model-1", isDefault: true },
         { value: "model-2", isDefault: false },
       ],
-      processId: "1001",
+      processId: "process-1",
     });
     writeReviewed("x", corpus, root);
     assert.deepEqual(unreviewed("x", corpus, root), []);
@@ -386,6 +386,40 @@ test("moving which Codex model is the default fails the reviewed-value check", a
     assert.match(
       unreviewed("x", corpus, root).join("\n"),
       /flag "t\.jsonl:1\.frame\.result\.data\[0\]\.isDefault=false" is not reviewed/,
+    );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("pointing a model alias at another reviewed model fails the reviewed-value check", async () => {
+  const { unreviewed, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-alias-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    const write = (resolved) =>
+      fs.writeFileSync(
+        path.join(corpus, "x", "t.jsonl"),
+        `${JSON.stringify({
+          direction: "in",
+          frame: {
+            models: [
+              { value: "default", resolvedModel: resolved },
+              { value: "model-1", resolvedModel: "model-1" },
+              { value: "model-3", resolvedModel: "model-3" },
+            ],
+          },
+        })}\n`,
+      );
+    write("model-1");
+    writeReviewed("x", corpus, root);
+    write("model-3");
+    assert.match(
+      unreviewed("x", corpus, root).join("\n"),
+      /placeholder "t\.jsonl:1\.frame\.models\[0\]\.resolvedModel=model-3" is not reviewed/,
     );
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
