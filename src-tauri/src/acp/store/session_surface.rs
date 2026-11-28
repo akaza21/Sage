@@ -213,6 +213,35 @@ pub(crate) fn view(
     Ok(read(connection, project, chat, session)?.map(|(surface, _)| surface.view(runtime_epoch)))
 }
 
+/// Whether the session's live runtime still runs background work: a
+/// background task, or a running subagent that can still be stopped, as
+/// Resources lists them. The rail status and the idle sweep both ask this.
+pub(crate) fn runs_background_work(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    session: &str,
+) -> Result<bool, StoreError> {
+    let epoch: Option<i64> = connection.query_row(
+        "SELECT MAX(runtime_epoch) FROM session_runtime_epochs
+         WHERE session_id=?1 AND state IN ('starting','running','terminating')",
+        params![session],
+        |row| row.get(0),
+    )?;
+    let Some(epoch) = epoch.and_then(|epoch| u64::try_from(epoch).ok()) else {
+        return Ok(false);
+    };
+    Ok(
+        view(connection, project, chat, session, Some(epoch))?.is_some_and(|view| {
+            view.activities.iter().any(|activity| {
+                !activity.state.is_terminal()
+                    && (activity.kind.as_str() == "backgroundTask"
+                        || (activity.kind.as_str() == "subagent" && activity.stoppable))
+            })
+        }),
+    )
+}
+
 /// The harness id of a live activity, named by its view key.
 pub(crate) fn activity_id(
     connection: &rusqlite::Connection,

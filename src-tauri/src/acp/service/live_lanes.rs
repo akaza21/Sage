@@ -411,12 +411,20 @@ impl AcpService {
     }
 
     fn can_resume(&self, owner: &RuntimeOwner) -> bool {
+        self.session_capabilities(owner)
+            .is_some_and(|capabilities| capabilities.resume_session)
+    }
+
+    /// The capabilities the session negotiated with its harness.
+    fn session_capabilities(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Option<sage_acp_protocol::intent::CapabilitySnapshotV1> {
         self.database.connection().query_row(
             "SELECT capabilities_json FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND external_session_id IS NOT NULL",
             rusqlite::params![owner.project_id.as_str(), owner.chat_id.as_str(), owner.session_id.as_str()],
             |row| row.get::<_, String>(0),
-        ).ok().and_then(|json| serde_json::from_str::<sage_acp_protocol::intent::CapabilitySnapshotV1>(&json).ok())
-            .is_some_and(|capabilities| capabilities.resume_session)
+        ).ok().and_then(|json| serde_json::from_str(&json).ok())
     }
 }
 
