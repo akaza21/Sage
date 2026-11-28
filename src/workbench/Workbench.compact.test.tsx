@@ -26,6 +26,7 @@ import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useSideChatState } from "./sideChatState";
 import { useAgentChangesState } from "./agentChangesState";
+import { useAgentPanelView } from "./agentPanelView";
 import { findWarning } from "../test/notice";
 
 vi.mock("../features/chat/ChatSurface", () => ({
@@ -123,6 +124,7 @@ beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 afterEach(() => {
   cleanup();
   useSideChatState.setState({ sides: [], pairedId: null });
+  useAgentPanelView.setState({ view: "home" });
   useAgentSettingsState.getState().close();
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -307,7 +309,7 @@ describe("compact Workbench project tools", () => {
     const pane = screen.getByRole("dialog", { name: "Agent artifacts" });
     expect(pane).toHaveAttribute("aria-modal", "true");
     expect(container.querySelector(".title-bar")).toHaveAttribute("inert");
-    expect(container.querySelector(".status-bar")).toHaveAttribute("inert");
+    expect(container.querySelector(".status-bar")).toBeNull();
     expect(container.querySelector(".project-sidebar")).toHaveAttribute(
       "inert",
     );
@@ -1376,5 +1378,53 @@ describe("compact Workbench project tools", () => {
     act(() => setCompactViewport(false));
     act(() => setCompactViewport(true));
     expect(drawerButton).toHaveFocus();
+  });
+});
+
+describe("Agent shell", () => {
+  it("puts the chat in the toolbar row, keeps the rail when the panel hides and has no status bar", async () => {
+    compactViewport = false;
+    vi.stubGlobal("innerWidth", 1280);
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Shell check",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+    const { container } = render(<Workbench />);
+    await selectWindowMode("Agent");
+    const toolbar = container.querySelector<HTMLElement>(".title-bar")!;
+    expect(within(toolbar).getByText("Shell check")).toBeVisible();
+    expect(
+      within(toolbar).getByRole("button", { name: /Show files and preview/ }),
+    ).toBeVisible();
+    expect(container.querySelector(".status-bar")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide projects and chats" }),
+    );
+    await settleLazyModules();
+    const rail = screen.getByRole("navigation", { name: "Sidebar sections" });
+    expect(screen.queryByRole("region", { name: "Projects" })).toBeNull();
+    fireEvent.click(within(rail).getByRole("button", { name: "Projects" }));
+    await settleLazyModules();
+    expect(
+      await screen.findByRole("region", { name: "Projects" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Hide projects and chats" }),
+    ).toBeVisible();
+
+    await selectWindowMode("Editor");
+    expect(container.querySelector(".status-bar")).not.toBeNull();
   });
 });

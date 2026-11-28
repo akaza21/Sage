@@ -1,11 +1,15 @@
+import type { ReactNode } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { ComposerStatusNoticeProps } from "./ComposerStatusNotices";
 import { ComposerStatusMessages } from "./ComposerStatusMessages";
 import { HarnessSignInPart } from "./lazyParts";
 import { clearChatSignInError } from "./chatSignInRecovery";
 
-export function HarnessAccountMenu({ avatar }: { avatar: string }) {
-  return <HarnessSignInPart part="HarnessAccountMenu" avatar={avatar} />;
+export function HarnessAccountMenu(props: {
+  avatar: ReactNode;
+  onShowHarnesses?: () => void;
+}) {
+  return <HarnessSignInPart part="HarnessAccountMenu" {...props} />;
 }
 
 export function ComposerNoticeSurface({

@@ -286,6 +286,7 @@ export function ProjectChatNavigation({
                   awaitingApproval={Boolean(approvalLabel)}
                   focused={focused}
                   state={trailingState}
+                  updatedAt={tab.updatedAt}
                 />
                 <div className="project-chat__quick-actions">
                   <button

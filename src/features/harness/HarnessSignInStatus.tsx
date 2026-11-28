@@ -92,7 +92,16 @@ export function HarnessSignInRecovery({
   );
 }
 
-export function HarnessAccountMenu({ avatar }: { avatar: string }) {
+/** With `onShowHarnesses` this is the Agent rail's harness button: a green
+ *  dot when no checked harness needs sign-in, amber with the sign-in menu
+ *  when one does. */
+export function HarnessAccountMenu({
+  avatar,
+  onShowHarnesses,
+}: {
+  avatar: ReactNode;
+  onShowHarnesses?: () => void;
+}) {
   useHarnessSignIn();
   const needsSignIn = harnessesNeedingSignIn();
   const [open, setOpen] = useState(false);
@@ -100,7 +109,18 @@ export function HarnessAccountMenu({ avatar }: { avatar: string }) {
   const menuId = useId();
   if (!needsSignIn.length) {
     if (open) setOpen(false);
-    return (
+    return onShowHarnesses ? (
+      <button
+        type="button"
+        className="account-avatar harness-account"
+        aria-label="Harnesses: signed in"
+        title="Harnesses: signed in"
+        onClick={onShowHarnesses}
+      >
+        {avatar}
+        <span className="harness-account__attention harness-account__attention--ok" />
+      </button>
+    ) : (
       <span className="account-avatar" aria-hidden="true">
         {avatar}
       </span>

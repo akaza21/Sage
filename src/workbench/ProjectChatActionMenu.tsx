@@ -17,7 +17,10 @@ import { MoreHorizontal } from "../ui/leanIcons";
 import type { MenuDismissReason } from "../ui/MenuPopover";
 import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 import { whenIdle } from "../ui/whenIdle";
-import type { AgentRailTrailingState } from "./agentRailStatusView";
+import {
+  railChatAge,
+  type AgentRailTrailingState,
+} from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
 import {
   AgentHeaderMenuPart as MenuPart,
@@ -232,11 +235,19 @@ export function ProjectChatTrailingState({
   awaitingApproval,
   focused,
   state,
+  updatedAt,
 }: {
   awaitingApproval: boolean;
   focused: boolean;
   state: AgentRailTrailingState | null;
+  updatedAt?: number;
 }) {
+  if (!awaitingApproval && !state) {
+    const age = railChatAge(updatedAt, Date.now());
+    return age ? (
+      <span className="project-chat__state project-chat__age">{age}</span>
+    ) : null;
+  }
   if (awaitingApproval)
     return (
       <span

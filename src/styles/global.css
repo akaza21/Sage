@@ -184,7 +184,12 @@
   --title-bar-search-width: 182px;
   --title-bar-search-height: 32px;
   --agent-shell-rail: var(--color-window);
-  --agent-icon-rail-width: 46px; /* AGENT_ICON_RAIL_WIDTH; owner Codex capture */
+  --agent-icon-rail-width: 48px; /* AGENT_ICON_RAIL_WIDTH */
+  --agent-toolbar-button: 28px;
+  --agent-card-edge: rgb(255 255 255 / 10%);
+  --agent-row-highlight: rgb(255 255 255 / 6.7%);
+  --agent-row-hover-solid: color-mix(in srgb, var(--color-window), #fff 4.2%);
+  --title-bar-seg-active: rgb(255 255 255 / 12%);
   /* Owner Codex capture, measured from a rail row's right edge. */
   --agent-rail-title-end: 33px;
   --agent-rail-title-end-hover: 58px; /* title clip beside Pin and Archive */
@@ -437,6 +442,8 @@
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
+  --radius-rail-button: 10px;
+  --radius-rail-box: 6px;
   --radius-none: 0;
   /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);

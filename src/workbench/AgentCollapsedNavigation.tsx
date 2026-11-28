@@ -1,14 +1,11 @@
 import { useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
-import {
-  CHAT_SEARCH_ALL_FOLDERS_ID,
-  requestChatSearchInFolder,
-} from "../features/chatSearch/chatSearchScope";
-import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
+import { AgentIconRail } from "./AgentIconRail";
 import { ChatSearchGate } from "./LeftSidebar";
-import { agentRailSectionSelectors } from "./agentRailNavigation";
 import { SquarePen } from "../ui/leanIcons";
 
+/** The rail alone, while the toggle hides the panel; a rail item brings the
+ *  panel back on that item's list. */
 export function AgentCollapsedNavigation({
   inert,
   onOpenSettings,
@@ -20,10 +17,6 @@ export function AgentCollapsedNavigation({
   onExpand: () => void;
   railRef?: (node: HTMLElement | null) => void;
 }) {
-  const project = useWorkbenchStore((state) => state.project);
-  const transitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   return (
     <aside
@@ -34,30 +27,10 @@ export function AgentCollapsedNavigation({
       aria-hidden={inert || undefined}
     >
       <ChatSearchGate triggerRef={triggerRef} />
-      <AgentPrimaryNavigation
-        onSearch={() => {
-          if (project) requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
-        }}
+      <AgentIconRail
+        inert={inert}
         onSettings={onOpenSettings}
-        searchDisabled={!project || transitioning}
-        onNavigate={(target) => {
-          onExpand();
-          requestAnimationFrame(() => {
-            const section = document
-              .querySelector(".project-sidebar")
-              ?.querySelector<HTMLElement>(agentRailSectionSelectors[target]);
-            const disclosure = section?.querySelector<HTMLButtonElement>(
-              ".agent-rail-section__disclosure",
-            );
-            if (disclosure?.getAttribute("aria-expanded") === "false")
-              disclosure.click();
-            section?.scrollIntoView?.();
-            (
-              disclosure ??
-              section?.querySelector<HTMLElement>(".agent-rail-section__label")
-            )?.focus();
-          });
-        }}
+        onShow={onExpand}
       />
     </aside>
   );

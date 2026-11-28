@@ -4,6 +4,7 @@ import type { AgentRailChat } from "../domain/workbench";
 import {
   agentRailTrailingState,
   compareAgentRailViewChats,
+  railChatAge,
 } from "./agentRailStatusView";
 
 function chat(id: string, position: number, updatedAt?: number): AgentRailChat {
@@ -42,5 +43,27 @@ describe("agent rail status view", () => {
         .map((entry) => entry.id);
     expect(ids("recency")).toEqual(["new", "mid", "old"]);
     expect(ids("manual")).toEqual(["old", "mid", "new"]);
+  });
+});
+
+describe("railChatAge", () => {
+  const now = Date.UTC(2026, 10, 28, 12);
+  it.each([
+    [now - 20_000, "now"],
+    [now - 3 * 60_000, "3m"],
+    [now - 59 * 60_000, "59m"],
+    [now - 2 * 3_600_000, "2h"],
+    [now - 26 * 3_600_000, "1d"],
+    [now - 6 * 86_400_000, "6d"],
+    [now - 22 * 86_400_000, "3w"],
+    [now + 60_000, "now"],
+  ])("shows %i as %s", (updatedAt, age) => {
+    expect(railChatAge(updatedAt, now)).toBe(age);
+  });
+
+  it("shows nothing without a usable time", () => {
+    expect(railChatAge(undefined, now)).toBeNull();
+    expect(railChatAge(0, now)).toBeNull();
+    expect(railChatAge(Number.NaN, now)).toBeNull();
   });
 });

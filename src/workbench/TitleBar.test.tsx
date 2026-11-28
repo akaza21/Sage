@@ -93,17 +93,18 @@ describe("TitleBar center chrome", () => {
     expect(onModeChange).toHaveBeenCalledWith("agent");
   });
 
-  it("anchors the mode chooser in the title bar for every mode and layout", () => {
+  it("anchors the mode chooser at the toolbar's end in Agent and its start in Editor", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
-    const start = () => document.querySelector(".title-bar__start");
+    const slot = (name: string) =>
+      document.querySelector(`.title-bar__${name}`);
 
     for (const mode of ["agent", "editor", "agent"] as const) {
       rerender(<TitleBar mode={mode} onModeChange={vi.fn()} />);
       const modes = screen.getByRole("radiogroup", { name: "Window mode" });
-      expect(start()).toContainElement(modes);
+      expect(slot(mode === "agent" ? "end" : "start")).toContainElement(modes);
       expect(screen.queryByText("Sage")).toBeNull();
     }
 
@@ -189,7 +190,7 @@ describe("TitleBar center chrome", () => {
     const titleSearch = within(screen.getByRole("banner")).getByRole("button", {
       name: "Search chats",
     });
-    expect(titleSearch).toHaveTextContent("Ctrl+K");
+    expect(titleSearch).toHaveAttribute("title", "Search chats (Ctrl+K)");
     expect(titleSearch).toHaveAttribute("aria-keyshortcuts", "Control+K");
     expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
 

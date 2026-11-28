@@ -1,0 +1,381 @@
+/* Agent shell: one 40 px toolbar row, the 48 px icon rail beside the 256 px
+   panel (both in the window colour, no divider), and the chat card. */
+
+.title-bar--agent {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-bottom: 0;
+}
+
+.title-bar--agent .title-bar__start {
+  flex: none;
+  gap: 2px;
+}
+
+.title-bar--agent .title-bar__chat-search {
+  width: var(--agent-toolbar-button);
+  height: var(--agent-toolbar-button);
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.title-bar--agent .title-bar__chat-search:hover:not(:disabled) {
+  background: var(--color-fill-soft);
+}
+
+/* The lone chat's header renders here; its children join the row so the
+   right-pane button can sit after the mode toggle. */
+.title-bar__chat,
+.title-bar__chat > .agent-chat-center__header {
+  display: contents;
+}
+
+.title-bar__chat .agent-task-header {
+  min-width: 0;
+  min-height: var(--chrome-row-height);
+  flex: 0 1 auto;
+  order: 1;
+  gap: var(--space-1);
+  padding: 0 0 0 var(--space-1);
+  border-bottom: 0;
+}
+
+.title-bar__chat .agent-task-header__breadcrumb {
+  gap: var(--space-2);
+}
+
+.title-bar__chat .agent-task-header__title {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-regular);
+}
+
+.title-bar__chat .agent-task-header__folder {
+  display: none;
+}
+
+.title-bar--agent .title-bar__end {
+  min-width: 0;
+  flex: none;
+  order: 2;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.title-bar__chat .agent-artifact-header-slot {
+  order: 3;
+  padding-inline-end: 0;
+  border-bottom: 0;
+}
+
+.title-bar--agent .title-bar__end > span[role="status"] {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-bar--agent .status-bar__terminal {
+  height: var(--agent-toolbar-button);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.title-bar--agent .status-bar__terminal:hover,
+.title-bar--agent .status-bar__terminal[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-fill-soft);
+}
+
+/* Agent / Editor: a pill segmented control. */
+.title-bar--agent .title-bar__modes {
+  height: 28px;
+  gap: 0;
+  margin: 0 var(--space-1);
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-hairline);
+}
+
+.title-bar--agent .title-bar__mode {
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+}
+
+.title-bar--agent .title-bar__mode--active {
+  background: var(--title-bar-seg-active);
+  box-shadow: none;
+}
+
+/* The chat card: card colour, 12 px radius, a half-pixel light edge in place
+   of a border, 8 px from the window edge. Beside an open right pane the two
+   cards join across the splitter. */
+.workbench--agent .agent-chat-center {
+  border: 0;
+  box-shadow: inset 0 0 0 0.5px var(--agent-card-edge);
+}
+
+.workbench--agent
+  .workbench__body:has(> .workbench-sidebar-splitter--trailing)
+  .agent-chat-center {
+  margin-right: 0;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* Rail: 48 px, 34 px buttons; the pressed one is the panel's list. */
+.workbench--agent .project-sidebar {
+  border-right: 0;
+}
+
+.workbench--agent .project-sidebar__icon-rail {
+  gap: var(--space-1);
+  padding: 6px 0 10px;
+  border-right: 0;
+}
+
+.workbench--agent .project-sidebar__icon-rail > button,
+.workbench--agent .project-sidebar__icon-rail > .account-avatar {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-rail-button);
+  color: var(--color-text-muted);
+  background: transparent;
+  transition:
+    background-color var(--motion-duration-fast) ease,
+    color var(--motion-duration-fast) ease;
+}
+
+.workbench--agent .project-sidebar__icon-rail > button[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-fill-active);
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
+}
+
+.project-sidebar__rail-gap {
+  flex: 1 1 auto;
+}
+
+.project-sidebar__icon-rail .harness-account__attention {
+  top: auto;
+  right: 5px;
+  bottom: 5px;
+  box-shadow: 0 0 0 2px var(--agent-shell-rail);
+}
+
+.harness-account__attention--ok {
+  background: var(--color-success);
+}
+
+/* Panel: New chat raised, Search beneath, then 11 px capped sections. */
+.workbench--agent .project-sidebar__actions {
+  display: grid;
+  gap: 0;
+  padding: var(--space-1) var(--space-2) 0;
+}
+
+.workbench--agent .project-sidebar__actions > .project-action {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.workbench--agent .project-sidebar__actions > .project-action:hover {
+  color: var(--color-text-primary);
+  background: var(--color-fill-hover);
+}
+
+.workbench--agent .project-sidebar__actions > .project-action--primary {
+  margin-bottom: var(--space-1);
+  color: var(--color-text-primary);
+  background: var(--color-fill-active);
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
+}
+
+.project-action__box {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: var(--radius-rail-box);
+  background: var(--color-fill-active);
+}
+
+.workbench--agent
+  :is(.agent-rail-section__disclosure, .agent-rail-section__label) {
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.workbench--agent .agent-rail-section + .agent-rail-section {
+  margin-top: var(--space-3);
+}
+
+/* Rows: 32 px, 8 px radius, soft hover fill; the selected row is a raised
+   chip. Pin, archive and more fade in over a gradient at the right edge. */
+.workbench--agent :is(.project-row, .project-chat-row, .project-chat) {
+  min-height: 32px;
+  height: 32px;
+}
+
+.workbench--agent .project-chat-row {
+  grid-template-rows: 32px;
+  margin-top: 1px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: background-color var(--motion-duration-fast)
+    var(--motion-ease-standard);
+}
+
+.workbench--agent .project-chat-row:hover {
+  background: var(--color-fill-hover);
+}
+
+.workbench--agent .project-chat-row--active,
+.workbench--agent .project-chat-row--active:hover {
+  background: var(--color-row-selected);
+  box-shadow:
+    inset 0 1px 0 var(--agent-row-highlight),
+    inset 0 0 0 1px var(--color-hairline);
+}
+
+.workbench--agent .project-entry__header:is(:hover, :has(:focus-visible)) {
+  background: var(--color-fill-hover);
+}
+
+.workbench--agent .project-chat__quick-actions {
+  padding-left: var(--space-4);
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--agent-row-solid) var(--space-4)
+  );
+}
+
+.workbench--agent .project-chat-row:is(:hover, :has(:focus-visible)) {
+  --agent-row-solid: var(--agent-row-hover-solid);
+}
+
+.workbench--agent .project-chat-row.project-chat-row--active {
+  --agent-row-solid: var(--color-row-selected);
+}
+
+/* "More" shows with pin and archive on hover, not only on focus. */
+.workbench--agent
+  .project-chat-row:hover
+  .project-chat__actions:not(:focus-visible, [aria-expanded="true"]) {
+  width: auto;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-chat__age {
+  padding-right: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench--agent
+  .project-chat-row:is(:hover, :has(:focus-visible))
+  .project-chat__age {
+  opacity: 0;
+}
+
+/* Needs you: a 4 px accent dot. */
+.workbench--agent .project-chat__state--unread::before,
+.workbench--agent .project-chat__state--waiting::before {
+  width: 4px;
+  height: 4px;
+  background: var(--color-accent);
+}
+
+/* Archived chats and Harnesses lists in the panel. */
+.agent-rail-panel__group-name {
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-rail-harnesses {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-rail-harness {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.agent-rail-harness__open {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-rail-button);
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-rail-harness__open:hover {
+  background: var(--color-fill-hover);
+}
+
+.agent-rail-harness__copy {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-rail-harness__status {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* With its header in the toolbar the card holds only the panes. */
+.agent-chat-center--bare {
+  grid-template-rows: minmax(0, 1fr);
+}

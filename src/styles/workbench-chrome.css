@@ -14,10 +14,12 @@
   background: var(--color-canvas);
 }
 .workbench--agent {
-  --workbench-card-radius: var(--radius-xl);
+  --workbench-card-radius: var(--radius-lg);
   --workbench-card-fill: var(--agent-shell-center);
-  --workbench-card-margin: var(--space-2);
+  --workbench-card-margin: 0 var(--space-2) var(--space-2) 0;
   font-family: var(--font-family-agent);
+  /* Agent has no status bar; the toolbar row carries its controls. */
+  grid-template-rows: var(--chrome-row-height) minmax(0, 1fr);
 }
 .title-bar {
   display: grid;

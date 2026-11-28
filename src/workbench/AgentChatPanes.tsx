@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "zustand";
 import {
   acpProjectionStoreFor,
@@ -59,11 +60,13 @@ export function AgentChatPanes({
   compact = false,
   navigationCollapsed = false,
   onArtifactHeaderMount,
+  toolbarNode = null,
 }: {
   visible?: boolean;
   compact?: boolean;
   navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
+  toolbarNode?: HTMLElement | null;
 }) {
   const draftOpened = useWorkbenchStore(
     (state) => state.agentCenter === "draft",
@@ -275,23 +278,31 @@ export function AgentChatPanes({
   }
 
   const split = displayedIds.length > 1;
+  const header = (
+    <AgentChatCenterHeader
+      tabs={tabs}
+      paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}
+      focusedId={focusedId}
+      focusedSnapshot={focusedSnapshot}
+      chatCount={chatIds.length}
+      sessionChromeById={sessionChromeById}
+      splitPercent={splitPercent}
+      onArtifactHeaderMount={onArtifactHeaderMount}
+      navigationCollapsed={navigationCollapsed}
+    />
+  );
+  // A lone chat's header joins the toolbar row; side-by-side chats keep
+  // one header cell over each pane.
+  const toolbarHeader = visible && !split ? toolbarNode : null;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
       <AcpProjectionOwnerContext value={projectionIds}>
         <ViewedChatReadMark chatIds={displayedIds} visible={visible} />
         <Activity mode={visible ? "visible" : "hidden"}>
-          <div className="agent-chat-center surface surface--card">
-            <AgentChatCenterHeader
-              tabs={tabs}
-              paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}
-              focusedId={focusedId}
-              focusedSnapshot={focusedSnapshot}
-              chatCount={chatIds.length}
-              sessionChromeById={sessionChromeById}
-              splitPercent={splitPercent}
-              onArtifactHeaderMount={onArtifactHeaderMount}
-              navigationCollapsed={navigationCollapsed}
-            />
+          <div
+            className={`agent-chat-center surface surface--card${toolbarHeader ? " agent-chat-center--bare" : ""}`}
+          >
+            {toolbarHeader ? createPortal(header, toolbarHeader) : header}
             <div
               ref={panesRef}
               id="agent-chat-panel"

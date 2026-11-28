@@ -44,3 +44,20 @@ export function compareAgentRailViewChats(
     left.position - right.position
   );
 }
+
+/** A chat row's age at `now`: "now" under a minute, then minutes, hours,
+ *  days and weeks ("3m", "2h", "1d", "3w"). Null without a usable time. */
+export function railChatAge(
+  updatedAt: number | undefined,
+  now: number,
+): string | null {
+  if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt)) return null;
+  if (updatedAt <= 0) return null;
+  const minutes = Math.floor(Math.max(0, now - updatedAt) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return days < 7 ? `${days}d` : `${Math.floor(days / 7)}w`;
+}

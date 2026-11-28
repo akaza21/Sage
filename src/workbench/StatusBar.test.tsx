@@ -148,16 +148,8 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByRole("button", { name: /word wrap/i })).toBeNull();
   });
 
-  it("keeps Editor-only appearance controls out of Agent mode", () => {
-    render(<StatusBar showEditorSettings={false} />);
-
-    expect(screen.queryByTitle("Indentation")).toBeNull();
-    expect(screen.queryByTitle("Caret position")).toBeNull();
-    expect(screen.queryByTitle("Editor language")).toBeNull();
-  });
-
   it("names the Editor tool rail as the left sidebar", () => {
-    render(<StatusBar railLeading />);
+    render(<StatusBar />);
     expect(screen.getByLabelText("Hide left sidebar")).toBeInTheDocument();
   });
 

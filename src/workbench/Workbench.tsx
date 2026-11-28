@@ -22,7 +22,7 @@ import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
-import { StatusBar } from "./StatusBar";
+import { StatusBar, WorkbenchNotices } from "./StatusBar";
 import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
@@ -171,6 +171,7 @@ export function Workbench() {
     setWindowMode("agent");
   }, []);
   useNotificationNavigation(enterNotificationChat);
+  const [chatToolbar, chatToolbarRef] = useRetainedElement<HTMLDivElement>();
   const [terminalContainer, terminalSlotRef] =
     useRetainedElement<HTMLDivElement>();
   const dockSlot = useMemo(
@@ -199,12 +200,14 @@ export function Workbench() {
       onAgentArtifactWidthChange: (width: number) =>
         changeAgentSidebarWidth("artifact", width),
       onEnterEditor: enterEditor,
+      chatToolbar,
     }),
     [
       agentArtifactExpanded,
       artifactMaximized,
       agentCenterVisible,
       agentLayout,
+      chatToolbar,
       changeAgentArtifact,
       changeAgentSidebarWidth,
       enterEditor,
@@ -244,6 +247,9 @@ export function Workbench() {
         inert={resourceModal}
         agentNavigationCollapsed={!agentNavigationShown}
         onToggleAgentNavigation={toggleAgentNavigation}
+        chatSlotRef={chatToolbarRef}
+        notices={<WorkbenchNotices />}
+        terminalControls={terminal.controls}
       />
       {isTauriRuntime() ? (
         <LazyModuleBoundary
@@ -357,13 +363,9 @@ export function Workbench() {
           )}
         />
       ) : null}
-      <StatusBar
-        inert={resourceModal}
-        railLeading={windowMode === "editor"}
-        showSidebarToggle={windowMode === "editor"}
-        showEditorSettings={windowMode === "editor"}
-        terminalControls={terminal.controls}
-      />
+      {windowMode === "editor" ? (
+        <StatusBar terminalControls={terminal.controls} />
+      ) : null}
       {pendingClose ? (
         <LazyModuleBoundary
           label="Unsaved file confirmation"

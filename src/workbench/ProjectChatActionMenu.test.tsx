@@ -8,13 +8,17 @@ import {
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import {
+  ProjectChatActionMenu,
+  ProjectChatTrailingState,
+} from "./ProjectChatActionMenu";
 
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
+  vi.restoreAllMocks();
 });
 
 function RetainedActions({
@@ -93,3 +97,37 @@ it.each(["close", "chat", "project"])(
     expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
   },
 );
+
+it("ends a chat row with its age, a spinner while running or a dot when it needs you", () => {
+  vi.spyOn(Date, "now").mockReturnValue(10 * 60_000);
+  const view = render(
+    <ProjectChatTrailingState
+      awaitingApproval={false}
+      focused={false}
+      state={null}
+      updatedAt={7 * 60_000}
+    />,
+  );
+  expect(view.container).toHaveTextContent(/^3m$/);
+  view.rerender(
+    <ProjectChatTrailingState
+      awaitingApproval={false}
+      focused={false}
+      state={{ kind: "working", label: "Working" }}
+      updatedAt={7 * 60_000}
+    />,
+  );
+  expect(screen.getByRole("img", { name: "Working" })).toBeInTheDocument();
+  expect(view.container).not.toHaveTextContent("3m");
+  view.rerender(
+    <ProjectChatTrailingState
+      awaitingApproval={false}
+      focused={false}
+      state={{ kind: "unread", label: "Unread" }}
+      updatedAt={7 * 60_000}
+    />,
+  );
+  expect(
+    screen.getByRole("img", { name: "Unread updates" }),
+  ).toBeInTheDocument();
+});

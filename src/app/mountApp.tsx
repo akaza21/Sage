@@ -29,6 +29,7 @@ import "../styles/composer-model-picker.css";
 import "../styles/composer-image.css";
 import "../styles/outline-surface.css";
 import "../styles/agent-rail-surface.css";
+import "../workbench/agent-shell.css";
 import "../styles/editor-visual-reference.css";
 import "../styles/editor-interactions.css";
 import "../styles/settings-surface.css";

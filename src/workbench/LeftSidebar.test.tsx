@@ -21,6 +21,7 @@ import { NewChatDraftSurface } from "../features/chat/NewChatDraftSurface";
 import { LeftSidebar } from "./LeftSidebar";
 import { MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS } from "./agentChatRail";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
+import { useAgentPanelView } from "./agentPanelView";
 import {
   resetAgentRailViewPrefs,
   setAgentRailOrganize,
@@ -236,6 +237,7 @@ afterEach(() => {
   clearChatSearchFolderRequest();
   resetChatReadMarks();
   resetAgentRailViewPrefs();
+  useAgentPanelView.setState({ view: "home" });
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -917,4 +919,68 @@ it("disambiguates colliding sidebar names with paths and removes suffixes for un
   expect(
     screen.getByRole("button", { name: "Project Sage" }),
   ).toHaveTextContent(/^Sage$/);
+});
+
+it("switches the panel's list from the rail and keeps one rail item pressed", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "sage", name: "Sage", roots: [] },
+    projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
+    tabs: [
+      {
+        id: "chat:a",
+        kind: "chat",
+        title: "Live task",
+        position: 0,
+        pinned: false,
+        dirty: false,
+        status: "idle",
+      },
+    ],
+    archivedChats: [{ id: "chat:old", title: "Old spike" }],
+    harnesses: [
+      {
+        id: "claude",
+        name: "Claude Code",
+        description: "",
+        source: "builtIn",
+        transport: "acp",
+        bindingId: "claude-binding",
+        accountModelDiscovery: false,
+        installState: "available",
+      },
+    ],
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  render(<LeftSidebar />);
+  const rail = screen.getByRole("navigation", { name: "Sidebar sections" });
+  const railButton = (name: string) =>
+    within(rail).getByRole("button", { name });
+  expect(railButton("Home")).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
+
+  fireEvent.click(railButton("Recent chats"));
+  expect(railButton("Recent chats")).toHaveAttribute("aria-pressed", "true");
+  expect(railButton("Home")).toHaveAttribute("aria-pressed", "false");
+  const recent = screen.getByRole("region", { name: "Recent chats" });
+  expect(
+    await within(recent).findByRole("button", { name: "Open chat Live task" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+
+  fireEvent.click(railButton("Projects"));
+  expect(screen.getByRole("region", { name: "Projects" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Recent chats" })).toBeNull();
+
+  fireEvent.click(railButton("Archived chats"));
+  expect(
+    await screen.findByRole("button", { name: "Restore chat Old spike" }),
+  ).toBeVisible();
+
+  fireEvent.click(railButton("Harnesses"));
+  expect(
+    await screen.findByRole("button", { name: /^Claude Code: / }),
+  ).toBeVisible();
+
+  fireEvent.click(railButton("Home"));
+  expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
 });

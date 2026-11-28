@@ -1,4 +1,4 @@
-import { Search, Settings, SquarePen } from "../ui/leanIcons";
+import { Plus, Search } from "../ui/leanIcons";
 
 import {
   useCallback,
@@ -10,12 +10,7 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { harnessHasSignInCheck } from "../domain/harness";
-import {
-  ChatSearchPart,
-  ComposerOptionsPart,
-  lazyParts,
-} from "../features/chat/lazyParts";
+import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
 import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
   hasChatSearchFolderRequest,
@@ -28,8 +23,10 @@ import {
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
+import { AgentIconRail } from "./AgentIconRail";
+import { useAgentPanelView } from "./agentPanelView";
 import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
-import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
+import type * as RailPanelsChunk from "./AgentRailPanels";
 import {
   pruneAgentRailInteractions,
   useAgentRailInteractions,
@@ -46,6 +43,9 @@ const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
 );
 const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
   () => import("./CreateProjectDialog"),
+);
+const RailPanelPart = lazyParts<typeof RailPanelsChunk>(
+  () => import("./AgentRailPanels"),
 );
 
 export function ChatSearchGate({
@@ -78,14 +78,12 @@ export function LeftSidebar({
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
-  const harnesses = useWorkbenchStore((state) => state.harnesses);
   const project = useWorkbenchStore((state) => state.project);
-  const namedProject = project?.isInternal ? null : project;
-  const avatar = (namedProject?.name.trim()[0] ?? "L").toLocaleUpperCase();
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createChat = useWorkbenchStore((state) => state.openNewChatDraft);
   const interactions = useAgentRailInteractions();
+  const view = useAgentPanelView((state) => state.view);
   const openSettings = useAgentSettingsState((state) => state.open);
   const loadRepositoryInventory = useWorkbenchStore(
     (state) => state.loadRepositoryInventory,
@@ -168,84 +166,71 @@ export function LeftSidebar({
     projectTransitioning,
   ]);
 
-  const navigation = (
-    <>
-      <div className="project-sidebar__actions">
-        <div className="project-sidebar__brand">
-          <strong>Sage</strong>
-          <button
-            ref={searchTriggerRef}
-            type="button"
-            aria-label="Search chats"
-            title="Search chats"
-            disabled={!project || projectTransitioning}
-            onClick={() => {
-              if (project)
-                requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
-            }}
-          >
-            <Search size={15} aria-hidden="true" />
-          </button>
-        </div>
-        <button
-          className="project-action project-action--primary"
-          type="button"
-          title="New chat"
-          aria-label="New chat"
-          aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
-          disabled={projectTransitioning}
-          onClick={() => void createChat(null)}
-        >
-          <SquarePen size={16} aria-hidden="true" />
-          <span>New chat</span>
-        </button>
-      </div>
-
+  const navigation =
+    view === "archived" || view === "harnesses" ? (
       <div className="project-sidebar__scroll">
-        <AgentRailSections
-          pinned={sections.pinned}
-          projects={sections.projects}
-          recent={sections.recent}
-          unscoped={sections.unscoped}
-          all={sections.all}
-          allOverflowProjectId={sections.allOverflowProjectId}
-          currentProjectId={project?.id ?? null}
-          currentChatId={railChatId}
-          prefs={prefs}
-          createChat={createChat}
-          onCreateProject={() => setCreatingProject(true)}
-          switchProject={switchProject}
-          onShowMore={requestChatSearchInFolder}
+        <RailPanelPart
+          part={
+            view === "archived" ? "AgentArchivedPanel" : "AgentHarnessPanel"
+          }
         />
-        {interactions.undo ? (
-          <ArchiveNoticePart part="AgentRailArchiveNotice" />
-        ) : null}
       </div>
-
-      <footer className="project-sidebar__account">
-        {!inert && harnesses.some(harnessHasSignInCheck) ? (
-          <ComposerOptionsPart part="HarnessAccountMenu" avatar={avatar} />
-        ) : (
-          <span className="account-avatar" aria-hidden="true">
-            {avatar}
-          </span>
-        )}
-        <span className="agent-rail-identity">
-          <strong>{namedProject?.name ?? "Local"}</strong>
-          <span>Local workspace</span>
-        </span>
-        <button
-          className="project-sidebar__settings"
-          type="button"
-          title="Open settings"
-          aria-label="Open settings"
-          onClick={() => openSettings()}
-        >
-          <Settings size={16} aria-hidden="true" />
-        </button>
-      </footer>
-    </>
-  );
+    ) : (
+      <>
+        {view === "home" ? (
+          <div className="project-sidebar__actions">
+            <button
+              className="project-action project-action--primary"
+              type="button"
+              title="New chat"
+              aria-label="New chat"
+              aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
+              disabled={projectTransitioning}
+              onClick={() => void createChat(null)}
+            >
+              <span className="project-action__box" aria-hidden="true">
+                <Plus size={14} />
+              </span>
+              <span>New chat</span>
+            </button>
+            <button
+              ref={searchTriggerRef}
+              className="project-action"
+              type="button"
+              disabled={!project || projectTransitioning}
+              onClick={() => {
+                if (project)
+                  requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID);
+              }}
+            >
+              <Search size={16} aria-hidden="true" />
+              <span>Search</span>
+            </button>
+          </div>
+        ) : null}
+        <div className="project-sidebar__scroll">
+          <AgentRailSections
+            view={view}
+            pinned={sections.pinned}
+            projects={sections.projects}
+            recent={sections.recent}
+            unscoped={sections.unscoped}
+            all={sections.all}
+            allOverflowProjectId={sections.allOverflowProjectId}
+            currentProjectId={project?.id ?? null}
+            currentChatId={railChatId}
+            prefs={prefs}
+            createChat={createChat}
+            onCreateProject={() => setCreatingProject(true)}
+            switchProject={switchProject}
+            onShowMore={requestChatSearchInFolder}
+          />
+          {interactions.undo ? (
+            <ArchiveNoticePart part="AgentRailArchiveNotice" />
+          ) : null}
+        </div>
+      </>
+    );
 
   return (
     <aside
@@ -262,7 +247,7 @@ export function LeftSidebar({
           onClose={() => setCreatingProject(false)}
         />
       ) : null}
-      <AgentPrimaryNavigation />
+      <AgentIconRail inert={inert} onSettings={() => openSettings()} />
       {navigation}
     </aside>
   );

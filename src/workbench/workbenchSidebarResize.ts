@@ -5,7 +5,7 @@ export type WorkbenchSidebarWidth = {
 };
 
 /** The Agent icon rail; matches --agent-icon-rail-width in global.css. */
-export const AGENT_ICON_RAIL_WIDTH = 46;
+export const AGENT_ICON_RAIL_WIDTH = 48;
 
 /** The chat and project panel beside the icon rail: 256 px by default,
  *  dragged up to 456 px. The one source of the panel's range. */

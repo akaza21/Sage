@@ -36,6 +36,7 @@ export default function AgentWorkbenchBodyView({
   onOpenTerminal,
   onPreviewTargetChange,
   bottomPanel,
+  chatToolbar = null,
 }: {
   layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
@@ -52,6 +53,8 @@ export default function AgentWorkbenchBodyView({
   onOpenArtifactInEditor: (tabId: string) => void;
   onOpenTerminal?: () => void;
   bottomPanel?: ReactNode;
+  /** The toolbar slot a lone chat's header renders into. */
+  chatToolbar?: HTMLElement | null;
   onPreviewTargetChange?: (target: PreviewTargetRef | null) => void;
 }) {
   const backgroundInert =
@@ -127,6 +130,7 @@ export default function AgentWorkbenchBodyView({
               compact={layout.compact}
               navigationCollapsed={navigationCollapsed}
               onArtifactHeaderMount={setArtifactHeader}
+              toolbarNode={chatToolbar}
             />
             {bottomPanel}
           </div>

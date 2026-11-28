@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
-import { StatusBar } from "../../workbench/StatusBar";
+import { WorkbenchNotices } from "../../workbench/StatusBar";
 import { BrowserClearData } from "./BrowserClearData";
 import { resetBrowserClearDataForTests } from "./browserClearProgress";
 
@@ -195,7 +195,7 @@ it("clears pending state when WebView2 succeeds later", async () => {
   ).toBeEnabled();
   expect(useWorkbenchStore.getState().error).toBeNull();
   view.unmount();
-  render(<StatusBar showEditorSettings={false} />);
+  render(<WorkbenchNotices />);
   expect(screen.getByRole("status")).toHaveTextContent(
     "Browsing data cleared.",
   );

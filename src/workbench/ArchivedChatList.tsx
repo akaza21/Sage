@@ -17,11 +17,13 @@ import ChatRowErrorNotice from "./ChatRowErrorNotice";
 export default function ArchivedChatList({
   projectId,
   chats,
+  open: openInitially = false,
 }: {
   projectId: string;
   chats: ArchivedChatSummary[];
+  open?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openInitially);
   const [deleting, setDeleting] = useState<ArchivedChatSummary | "all" | null>(
     null,
   );

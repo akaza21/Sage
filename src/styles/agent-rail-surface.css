@@ -2,9 +2,9 @@
 
 .workbench--agent .project-sidebar {
   grid-template-columns: var(--agent-icon-rail-width) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   background: var(--agent-shell-sidebar);
-  border-right-color: var(--agent-shell-divider);
+  border-right: 0;
 }
 
 /* The rail's own border is the edge; the splitter beside it lights only on
@@ -16,23 +16,23 @@
 .workbench--agent .project-sidebar__icon-rail {
   display: flex;
   grid-column: 1;
-  grid-row: 1 / 4;
+  grid-row: 1 / 3;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  border-right: 1px solid var(--agent-shell-rail-divider);
+  gap: var(--space-1);
+  padding: 6px 0 10px;
+  border-right: 0;
   background: var(--agent-shell-rail);
 }
 
-.workbench--agent .project-sidebar__icon-rail button {
+.workbench--agent .project-sidebar__icon-rail > :is(button, .account-avatar) {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-rail-button);
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
@@ -48,9 +48,16 @@
 }
 
 .workbench--agent .project-sidebar__actions,
-.workbench--agent .project-sidebar__scroll,
-.workbench--agent .project-sidebar__account {
+.workbench--agent .project-sidebar__scroll {
   grid-column: 2;
+}
+
+.workbench--agent .project-sidebar__actions {
+  grid-row: 1;
+}
+
+.workbench--agent .project-sidebar__scroll {
+  grid-row: 2;
 }
 
 /* The gutter is always reserved, so rows keep one box (and the "…" trigger
@@ -89,7 +96,7 @@
 }
 
 .workbench--agent .project-action--primary {
-  height: 28px;
+  height: 32px;
   padding: 0 8px;
   border: 0;
   color: var(--color-text-primary);
@@ -104,8 +111,8 @@
 
 .workbench--agent .project-row,
 .workbench--agent .project-chat-row {
-  min-height: 28px;
-  height: 28px;
+  min-height: 32px;
+  height: 32px;
 }
 
 .workbench--agent .project-chats,
@@ -114,7 +121,7 @@
 }
 
 .workbench--agent .project-chat {
-  min-height: 28px;
+  min-height: 32px;
   padding-block: 0;
 }
 
@@ -122,7 +129,7 @@
    hit-tests above the button's full-width box (project-navigation-surface.css);
    the row is its own stacking context. */
 .workbench--agent .project-chat-row {
-  grid-template-rows: 28px;
+  grid-template-rows: 32px;
   border: 0;
   background: transparent;
   box-shadow: none;

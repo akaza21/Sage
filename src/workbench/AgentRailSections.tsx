@@ -17,7 +17,11 @@ import {
 } from "./agentChatRail";
 import type * as ProjectMenuChunk from "./AgentProjectMenu";
 import { AgentRailOptionsMenu } from "./AgentRailOptionsMenu";
-import type { AgentRailOrdering } from "./agentRailStatusView";
+import type { AgentPanelView } from "./agentPanelView";
+import {
+  compareAgentRailViewChats,
+  type AgentRailOrdering,
+} from "./agentRailStatusView";
 import {
   agentRailSectionCollapsed,
   toggleAgentRailSection,
@@ -211,6 +215,7 @@ function FlatChatList({
 }
 
 export function AgentRailSections({
+  view = "home",
   pinned,
   projects,
   recent,
@@ -225,6 +230,7 @@ export function AgentRailSections({
   switchProject,
   onShowMore,
 }: {
+  view?: AgentPanelView;
   pinned: ReadonlyArray<AgentRailChatItem>;
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
@@ -265,6 +271,53 @@ export function AgentRailSections({
       </AgentRailSection>
     ) : null;
 
+  if (view === "recent") {
+    const byRecency = [...pinned, ...all].sort((left, right) =>
+      compareAgentRailViewChats(left.chat, right.chat, "recency"),
+    );
+    return (
+      <AgentRailSection
+        id="recent-all"
+        label="Recent chats"
+        collapsible={false}
+      >
+        <RecentChatsPart
+          part="AgentRecentChats"
+          items={byRecency}
+          currentProjectId={currentProjectId}
+          onSearchMore={
+            allOverflowProjectId === null
+              ? undefined
+              : () => onShowMore(allOverflowProjectId)
+          }
+        />
+      </AgentRailSection>
+    );
+  }
+
+  const projectsSection = (
+    <AgentRailSection id="projects" label="Projects" actions={actions}>
+      {projects.map((group) => (
+        <ProjectEntry
+          key={group.id}
+          group={group}
+          selected={group.id === currentProjectId}
+          currentChatId={currentChatId}
+          ordering={prefs.ordering}
+          createChat={createChat}
+          switchProject={switchProject}
+          onShowAll={onShowMore}
+        />
+      ))}
+      {projects.length === 0 ? (
+        <p className="project-empty-copy">
+          Create a project to group chats and work with your files.
+        </p>
+      ) : null}
+    </AgentRailSection>
+  );
+  if (view === "projects") return projectsSection;
+
   if (prefs.organize === "list") {
     return (
       <>
@@ -293,30 +346,9 @@ export function AgentRailSections({
 
   return (
     <>
-      <AgentRailSection id="projects" label="Projects" actions={actions}>
-        {projects.map((group) => (
-          <ProjectEntry
-            key={group.id}
-            group={group}
-            selected={group.id === currentProjectId}
-            currentChatId={currentChatId}
-            ordering={prefs.ordering}
-            createChat={createChat}
-            switchProject={switchProject}
-            onShowAll={onShowMore}
-          />
-        ))}
-        {projects.length === 0 ? (
-          <p className="project-empty-copy">
-            Create a project to group chats and work with your files.
-          </p>
-        ) : null}
-      </AgentRailSection>
-
       {pinnedSection}
-
       {recent.length === 0 && archived.length === 0 ? null : (
-        <AgentRailSection id="recent" label="Recents" collapsible={false}>
+        <AgentRailSection id="recent" label="Chats" collapsible={false}>
           <RecentChatsPart
             part="AgentRecentChats"
             items={recent}
@@ -326,6 +358,7 @@ export function AgentRailSections({
           />
         </AgentRailSection>
       )}
+      {projectsSection}
     </>
   );
 }
