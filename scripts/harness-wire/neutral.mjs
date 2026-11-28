@@ -9,19 +9,28 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { CONTRACTS, kinded } from "./contract.mjs";
+import { PLACEHOLDER } from "./sanitize.mjs";
 
-const PLACEHOLDER = /^(?:redacted|model-\d+|Model \d+)$/;
+// Keys an undeclared object may keep: a placeholder the sanitizer wrote, or
+// an id it already pseudonymized (so links to other frames hold).
+const KEPT_KEY =
+  /^(?:(?:msg|toolu|srvtoolu|call|resp)_0{12,}\d*|00000000-0000-4000-8000-\d{12}|field-\d+)$/;
 
-// A fixed value of the same type: "redacted", 0, false, or the same structure.
-export function neutral(value) {
+// A fixed value of the same type: "redacted", 0, false, or the same
+// structure under stable pseudonymous keys (`field-N`, one map per `keys`).
+export function neutral(value, keys = new Map()) {
   if (typeof value === "string")
     return PLACEHOLDER.test(value) ? value : "redacted";
   if (typeof value === "number") return 0;
   if (typeof value === "boolean") return false;
-  if (Array.isArray(value)) return value.map(neutral);
+  if (Array.isArray(value)) return value.map((entry) => neutral(entry, keys));
   if (value && typeof value === "object")
     return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, neutral(entry)]),
+      Object.entries(value).map(([key, entry]) => {
+        if (!PLACEHOLDER.test(key) && !KEPT_KEY.test(key) && !keys.has(key))
+          keys.set(key, `field-${keys.size + 1}`);
+        return [keys.get(key) ?? key, neutral(entry, keys)];
+      }),
     );
   return value;
 }
@@ -45,29 +54,31 @@ export function undeclaredPaths(harness, root = CONTRACTS) {
   return paths;
 }
 
-function neutralizeAt(value, segments) {
+function neutralizeAt(value, segments, keys) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const [segment, ...rest] = segments;
   const many = segment.endsWith("[]");
   const key = many ? segment.slice(0, -2) : segment;
   if (!(key in value)) return;
   if (!many) {
-    if (rest.length) neutralizeAt(value[key], rest);
-    else value[key] = neutral(value[key]);
+    if (rest.length) neutralizeAt(value[key], rest, keys);
+    else value[key] = neutral(value[key], keys);
     return;
   }
   if (!Array.isArray(value[key])) return;
-  if (rest.length) value[key].forEach((entry) => neutralizeAt(entry, rest));
-  else value[key] = neutral(value[key]);
+  if (rest.length)
+    value[key].forEach((entry) => neutralizeAt(entry, rest, keys));
+  else value[key] = neutral(value[key], keys);
 }
 
 // Neutralizes, in place, every undeclared field of each record's frame.
 export function neutralizeUndeclared(records, paths) {
   if (!paths.size) return records;
   const framed = records.filter((record) => record.frame);
+  const keys = new Map();
   [...kinded(framed)].forEach(({ direction, kind }, at) => {
     for (const segments of paths.get(`${direction} ${kind}`) ?? [])
-      neutralizeAt(framed[at].frame, segments);
+      neutralizeAt(framed[at].frame, segments, keys);
   });
   return records;
 }

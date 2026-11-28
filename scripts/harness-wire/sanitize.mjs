@@ -148,8 +148,8 @@ const CATALOG_KEEP = new Map(
   }).map(([key, values]) => [key, new Set(values)]),
 );
 // Values the sanitizer itself writes.
-const PLACEHOLDER =
-  /^(?:redacted|(?:model|command|skill|agent|plugin|server|key|run|task|signature)-\d+|Model \d+)$/;
+export const PLACEHOLDER =
+  /^(?:redacted|(?:model|command|skill|agent|plugin|server|tool|key|field|run|task|signature)-\d+|Model \d+)$/;
 const CATALOG_REFS = new Set([
   "command",
   "commandName",
@@ -164,6 +164,21 @@ const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
 const CATALOG_KEYED = new Map(Object.entries({ by_type: "agent" }));
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
+// An MCP tool an account configured, by its Claude Code name
+// (`mcp__<server>__<tool>`) or a Codex MCP tool call item: the server and
+// tool become stable pseudonyms, and the call's other names are redacted.
+const MCP_TOOL =
+  /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/g;
+const MCP_CALL = /^mcpToolCall/i;
+const MCP_CALL_NAMES = new Set([
+  "connectorId",
+  "connectorName",
+  "toolTitle",
+  "pluginId",
+  "mcpAppResourceUri",
+]);
+// Lists whose elements are model descriptors.
+const MODEL_LISTS = new Set(["models", "availableModels"]);
 // Fields of a model descriptor, and fields elsewhere that name a model.
 const MODEL_FIELDS = new Set([
   "id",
@@ -301,6 +316,25 @@ export function makeSanitizer({ roots }) {
   const catalogNames = new Map();
   const keyNames = new Map();
   const signatures = new Map();
+  const mcpServer = (server) =>
+    PLACEHOLDER.test(server)
+      ? server
+      : pseudonym(catalogNames, server, "server");
+  const mcpTool = (server, tool) =>
+    PLACEHOLDER.test(tool)
+      ? tool
+      : pseudonym(catalogNames, `mcp tool ${server} ${tool}`, "tool");
+  const mcpCall = (call) => {
+    const out = { ...call };
+    const server = typeof call.server === "string" ? call.server : "";
+    if (server) out.server = mcpServer(server);
+    for (const field of ["tool", "toolName"])
+      if (typeof call[field] === "string")
+        out[field] = mcpTool(server, call[field]);
+    for (const field of MCP_CALL_NAMES)
+      if (typeof call[field] === "string") out[field] = "redacted";
+    return out;
+  };
   const pseudonym = (map, original, kind) => {
     if (!map.has(original))
       map.set(
@@ -373,6 +407,11 @@ export function makeSanitizer({ roots }) {
         ? `${iso.slice(0, 23)}${fraction.slice(3)}Z`
         : `${iso.slice(0, 19)}Z`;
     });
+    out = out.replace(
+      MCP_TOOL,
+      (match, server, tool) =>
+        `mcp__${mcpServer(server)}__${mcpTool(server, tool)}`,
+    );
     const learned = learnedModels();
     if (learned) out = out.replace(learned, (match) => models.get(match));
     const runs = runIdPattern();
@@ -526,21 +565,25 @@ export function makeSanitizer({ roots }) {
       : typeof value?.value === "string" && value.value !== "default"
         ? value.value
         : undefined;
-  const isModel = (value) =>
+  // An element of a model list is a descriptor whatever else it carries.
+  const isModel = (value, key = "") =>
+    (MODEL_LISTS.has(key) &&
+      !Array.isArray(value) &&
+      modelId(value) !== undefined) ||
     (typeof value?.id === "string" &&
       ((typeof value.api === "string" && typeof value.provider === "string") ||
         (typeof value.model === "string" && "displayName" in value))) ||
     (typeof value?.value === "string" &&
       typeof value.resolvedModel === "string");
-  const findModels = (value) => {
-    if (Array.isArray(value)) value.forEach(findModels);
+  const findModels = (value, key = "") => {
+    if (Array.isArray(value)) value.forEach((entry) => findModels(entry, key));
     else if (value && typeof value === "object") {
       const id = modelId(value);
-      if (isModel(value) && id !== undefined && !models.has(id)) {
+      if (isModel(value, key) && id !== undefined && !models.has(id)) {
         modelCount += 1;
         models.set(id, `model-${modelCount}`);
       }
-      if (isModel(value)) {
+      if (isModel(value, key)) {
         const n = models.get(id)?.slice(6) ?? String((modelCount += 1));
         for (const [field, label] of [
           ["model", `model-${n}`],
@@ -556,7 +599,8 @@ export function makeSanitizer({ roots }) {
           )
             models.set(value[field], label);
       }
-      Object.values(value).forEach(findModels);
+      for (const [name, entry] of Object.entries(value))
+        findModels(entry, name);
     }
   };
 
@@ -662,7 +706,7 @@ export function makeSanitizer({ roots }) {
   // A key inside an account object that is not a plain identifier, or any key
   // of a map keyed by the account's own ids, gets a stable pseudonym.
   const accountKey = (name, base) =>
-    /^(?:model-|Model |key-)\d+$/.test(name) ||
+    PLACEHOLDER.test(name) ||
     (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
       !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
       ? name
@@ -757,7 +801,8 @@ export function makeSanitizer({ roots }) {
         );
     }
     if (value && typeof value === "object") {
-      const model = isModel(value);
+      if (!opaque && MCP_CALL.test(value.type ?? "")) value = mcpCall(value);
+      const model = isModel(value, key);
       const base =
         account ??
         (model

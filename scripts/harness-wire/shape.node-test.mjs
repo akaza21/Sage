@@ -1048,3 +1048,56 @@ test("a fixed sign-in expiry never moves the time base, so a second scrub change
   assert.deepEqual(scrub(structuredClone(once)), once);
   assert.equal(once[0].frame.timestamp, "2027-01-15T08:00:00.000Z");
 });
+
+test("configured MCP tools and every model list entry get pseudonyms, references included", () => {
+  const [init, call, codex] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        tools: ["Bash", "mcp__AcmePrivate_Project__deploy"],
+        models: [
+          { value: "default", displayName: "Default" },
+          {
+            value: "acme-deploy-7",
+            displayName: "Acme Deploy",
+            supportsEffort: false,
+          },
+        ],
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        content: [
+          { type: "tool_use", name: "mcp__AcmePrivate_Project__deploy" },
+        ],
+        model: "acme-deploy-7",
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        item: {
+          type: "mcpToolCall",
+          server: "AcmePrivate_Project",
+          tool: "deploy",
+          connectorName: "Acme",
+          status: "completed",
+        },
+      },
+    },
+  ]);
+  assert.deepEqual(init.frame.tools, ["Bash", "mcp__server-1__tool-1"]);
+  assert.equal(call.frame.content[0].name, "mcp__server-1__tool-1");
+  assert.equal(init.frame.models[0].value, "default");
+  assert.match(init.frame.models[1].value, /^model-\d+$/);
+  assert.equal(call.frame.model, init.frame.models[1].value);
+  assert.deepEqual(codex.frame.item, {
+    type: "mcpToolCall",
+    server: "server-1",
+    tool: "tool-1",
+    connectorName: "redacted",
+    status: "completed",
+  });
+  assert.doesNotMatch(JSON.stringify([init, call, codex]), /Acme|acme/);
+});

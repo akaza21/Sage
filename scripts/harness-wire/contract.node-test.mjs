@@ -75,7 +75,7 @@ test("a field a harness sends beyond its definitions keeps its key, not its valu
     type: "system",
     subtype: "init",
     served_by_anthropic: false,
-    memory_paths: { auto: "redacted" },
+    memory_paths: { "field-1": "redacted" },
     plugins: [{ name: "p", source: "redacted" }],
     model: "m",
   });
@@ -164,5 +164,19 @@ test("a comparison past a hard cap stops loudly instead of enumerating", () => {
     () =>
       diffContracts(contract("1.5.0", {}, {}), contract("1.7.0", added, {})),
     /report lines exceed 5000/,
+  );
+});
+
+test("a neutralized object keeps no key of its own, only pseudonyms and scrubbed ids", async () => {
+  const { neutral } = await import("./neutral.mjs");
+  assert.deepEqual(
+    neutral({
+      toolu_000000000000000000000002: { AcmeProject: "secret", count: 3 },
+      "acme-key": [true],
+    }),
+    {
+      toolu_000000000000000000000002: { "field-1": "redacted", "field-2": 0 },
+      "field-3": [false],
+    },
   );
 });

@@ -241,9 +241,28 @@ function resanitize(out, harnesses, work) {
       fs.writeFileSync(path.join(dir, `${file}.tmp`), body);
   // Scrubbing values leaves a shape as it was; when it does change one (a
   // synced skill dropped), the shape test says so: run `shape.mjs --write`.
-  for (const [dir, staged] of every)
-    for (const file of staged.keys())
-      fs.renameSync(path.join(dir, `${file}.tmp`), path.join(dir, file));
+  // The corpus is replaced as a unit: each file is kept as `.bak` until every
+  // staged file is in place, and a failed rename puts every original back.
+  const swapped = [];
+  try {
+    for (const [dir, staged] of every)
+      for (const file of staged.keys()) {
+        const target = path.join(dir, file);
+        fs.renameSync(target, `${target}.bak`);
+        swapped.push(target);
+        fs.renameSync(`${target}.tmp`, target);
+      }
+  } catch (error) {
+    for (const target of swapped.reverse()) {
+      fs.rmSync(target, { force: true });
+      fs.renameSync(`${target}.bak`, target);
+    }
+    for (const [dir, staged] of every)
+      for (const file of staged.keys())
+        fs.rmSync(path.join(dir, `${file}.tmp`), { force: true });
+    throw error;
+  }
+  for (const target of swapped) fs.rmSync(`${target}.bak`);
 }
 
 async function main() {
