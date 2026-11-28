@@ -94,7 +94,8 @@ import {
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane as Pane } from "./AgentArtifactPane";
-import { openAgentPaneView, useAgentPaneViews } from "./agentPaneViews";
+import { useAgentPaneViews } from "./agentPaneViews";
+import { openAgentPaneView } from "./agentPaneViewOpen";
 import { getWarning, queryWarning } from "../test/notice";
 function AgentArtifactPane(props: ComponentProps<typeof Pane>) {
   const publish = usePreviewTargetLifetime();

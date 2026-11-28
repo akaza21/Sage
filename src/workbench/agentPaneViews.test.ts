@@ -1,15 +1,11 @@
 import { afterEach, expect, it } from "vitest";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import { useAgentChangesState } from "./agentChangesState";
-import {
-  closeAgentPaneView,
-  MAX_PANE_VIEWS_PER_CHAT,
-  openAgentPaneView,
-  useAgentPaneViews,
-} from "./agentPaneViews";
+import { closeAgentPaneView, useAgentPaneViews } from "./agentPaneViews";
+import { MAX_PANE_VIEWS_PER_CHAT, openAgentPaneView } from "./agentPaneViewOpen";
 
 afterEach(() => {
-  useAgentPaneViews.setState({ views: [], selected: null, opened: 0 });
+  useAgentPaneViews.setState({ views: [], selected: null, tab: null, opened: 0 });
   useAgentChangesState.getState().close();
   useSubagentPaneStore.setState({ open: null, selected: false, list: false });
 });

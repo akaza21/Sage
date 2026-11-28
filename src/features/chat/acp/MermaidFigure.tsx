@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronRight, Copy, Workflow } from "../../../ui/leanIcons";
-import { openAgentPaneView } from "../../../workbench/agentPaneViews";
+import { openAgentPaneView } from "../../../workbench/agentPaneViewOpen";
 import {
   parseMermaidSource,
   type MermaidDiagram,
