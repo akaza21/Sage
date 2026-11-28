@@ -95,24 +95,32 @@ fn stop_and_completion_race_releases_only_the_matching_session() {
 }
 
 #[test]
-fn a_stop_during_the_permission_prompts_refuses_that_start_once() {
+fn only_the_newest_unstopped_start_may_open_the_microphone() {
     let mut slot = VoiceSlot::<CloseProbe>::default();
-    assert!(slot.stop("pending").is_none());
-    assert!(slot.is_stopped("pending"));
-    assert!(!slot.is_stopped("other"));
-    assert!(!slot.claim("pending"));
-    assert!(slot.claim("pending"));
-    assert!(slot.claim("other"));
+    slot.begin("a");
+    slot.begin("b");
+    assert!(!slot.is_pending("a"), "a newer start supersedes a");
+    assert!(slot.stop("a").is_none());
+    assert!(slot.stop("b").is_none());
+    assert!(!slot.claim("a"));
+    assert!(!slot.claim("b"));
+    assert!(slot.pending.is_none(), "stops never record ids");
+
+    slot.begin("c");
+    assert!(slot.is_pending("c"));
+    assert!(slot.claim("c"));
+    assert!(!slot.claim("c"), "a start is admitted once");
 }
 
 #[test]
-fn stopping_a_live_session_releases_it_without_refusing_later_starts() {
+fn stopping_a_live_session_releases_it_and_leaves_a_pending_start_alone() {
     let closed = Arc::new(AtomicUsize::new(0));
     let mut slot = VoiceSlot::default();
     slot.replace("live".into(), CloseProbe(closed.clone()));
+    slot.begin("next");
     drop(slot.stop("live"));
     assert_eq!(closed.load(Ordering::SeqCst), 1);
-    assert!(!slot.is_stopped("live"));
+    assert!(slot.claim("next"));
 }
 
 #[test]

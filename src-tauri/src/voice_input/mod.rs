@@ -53,16 +53,16 @@ pub struct VoiceInputState;
 
 struct VoiceSlot<T> {
     active: Option<(String, T)>,
-    /// The last id stopped while it held no session: a start still waiting on
-    /// permission prompts. One id, so it stays bounded.
-    stopped: Option<String>,
+    /// The one start still waiting on permission prompts. A newer start
+    /// supersedes it, and a stop withdraws it, so it stays bounded.
+    pending: Option<String>,
 }
 
 impl<T> Default for VoiceSlot<T> {
     fn default() -> Self {
         Self {
             active: None,
-            stopped: None,
+            pending: None,
         }
     }
 }
@@ -88,25 +88,28 @@ impl<T> VoiceSlot<T> {
         self.take_if(id).is_some()
     }
 
-    fn stop(&mut self, id: &str) -> Option<T> {
-        let active = self.take_if(id);
-        if active.is_none() {
-            self.stopped = Some(id.to_owned());
-        }
-        active
+    fn begin(&mut self, id: &str) {
+        self.pending = Some(id.to_owned());
     }
 
-    fn is_stopped(&self, id: &str) -> bool {
-        self.stopped.as_deref() == Some(id)
+    fn is_pending(&self, id: &str) -> bool {
+        self.pending.as_deref() == Some(id)
     }
 
-    /// False when this id was stopped before its start finished.
+    /// True only for the newest start that was not stopped while it waited.
     fn claim(&mut self, id: &str) -> bool {
-        if self.is_stopped(id) {
-            self.stopped = None;
-            return false;
+        let current = self.is_pending(id);
+        if current {
+            self.pending = None;
         }
-        true
+        current
+    }
+
+    fn stop(&mut self, id: &str) -> Option<T> {
+        if self.is_pending(id) {
+            self.pending = None;
+        }
+        self.take_if(id)
     }
 }
 
@@ -227,6 +230,9 @@ pub async fn start_voice_input(app: AppHandle, id: String) -> Result<(), String>
 
 #[tauri::command]
 pub async fn stop_voice_input(app: AppHandle, id: String, cancel: bool) -> Result<(), String> {
+    if !valid_id(&id) {
+        return Err("Invalid voice-input identity.".into());
+    }
     tauri::async_runtime::spawn_blocking(move || stop_inner(&app, &id, cancel))
         .await
         .map_err(|_| "Voice input could not stop.".to_string())?
@@ -245,13 +251,16 @@ fn stop_inner(_app: &AppHandle, _id: &str, _cancel: bool) -> Result<(), String> 
 #[cfg(any(windows, target_os = "macos"))]
 fn start_inner(app: &AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<VoiceInputState>();
+    let unavailable = |_| "Voice input is unavailable.";
+    state.0.lock().map_err(unavailable)?.begin(&id);
     // Permission prompts can wait on the user, so they run outside the lock and
-    // stop asking once this id is stopped.
-    engine::authorize(&|| state.0.lock().is_ok_and(|slot| !slot.is_stopped(&id)))?;
-    let mut guard = state.0.lock().map_err(|_| "Voice input is unavailable.")?;
+    // stop asking once this start is stopped or superseded.
+    let authorized = engine::authorize(&|| state.0.lock().is_ok_and(|slot| slot.is_pending(&id)));
+    let mut guard = state.0.lock().map_err(unavailable)?;
     if !guard.claim(&id) {
         return Ok(());
     }
+    authorized?;
     if let Some((previous_id, previous)) = guard.active.take() {
         let _ = engine::close(previous, true);
         ended(app, &previous_id);
