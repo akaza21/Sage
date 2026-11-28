@@ -203,20 +203,20 @@ it("renders in the app theme's canvas, text, selection and mono font", async () 
   const { container } = renderDock();
   const terminal = mountedTerminal();
   expect(terminal.options.theme).toEqual({
-    background: "#141414",
-    foreground: "#c5c5c5",
-    cursor: "#c5c5c5",
+    background: "#111114",
+    foreground: "#ffffff",
+    cursor: "#ffffff",
     selectionBackground: "#264f78",
   });
-  expect(rendered(".xterm-rows", "color")).toBe("#c5c5c5");
+  expect(rendered(".xterm-rows", "color")).toBe("#ffffff");
   expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
   await waitFor(() =>
     expect(
       (container.querySelector(".xterm-scrollable-element") as HTMLElement)
         .style.backgroundColor,
-    ).toBe("rgb(20, 20, 20)"),
+    ).toBe("rgb(17, 17, 20)"),
   );
-  expect(viewportBackground(container)).toBe("#141414");
+  expect(viewportBackground(container)).toBe("#111114");
   const faces = String(rendered(".xterm-rows", "font-family"))
     .split(",")
     .map((face) => face.trim());
@@ -250,19 +250,25 @@ it("follows the forced-colors palette while mounted and keeps its output", async
   expect(terminal.options.fontFamily).toBe(font);
   expect(viewportBackground(container)).toBe("Canvas");
   // jsdom has no canvas to resolve system colours, so the renderer can only
-  // show here that it stopped drawing the dark palette.
-  expect(rendered(".xterm-rows", "color")).not.toBe("#c5c5c5");
+  // show here that it stopped drawing the dark palette. The theme's text is
+  // white, which is also xterm's fallback, so the canvas fill shows it.
+  await waitFor(() =>
+    expect(
+      (container.querySelector(".xterm-scrollable-element") as HTMLElement)
+        .style.backgroundColor,
+    ).not.toBe("rgb(17, 17, 20)"),
+  );
   expect(rendered(".xterm-selection div", "background-color")).not.toBe(
     "#264f78",
   );
 
   setForcedColors(false, theme.sheet!);
-  expect(rendered(".xterm-rows", "color")).toBe("#c5c5c5");
-  expect(viewportBackground(container)).toBe("#141414");
+  expect(rendered(".xterm-rows", "color")).toBe("#ffffff");
+  expect(viewportBackground(container)).toBe("#111114");
   expect(
     (container.querySelector(".xterm-scrollable-element") as HTMLElement).style
       .backgroundColor,
-  ).toBe("rgb(20, 20, 20)");
+  ).toBe("rgb(17, 17, 20)");
   expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
   expect(opened).toHaveBeenCalledTimes(1);
   expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe(
