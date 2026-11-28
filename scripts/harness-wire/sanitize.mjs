@@ -417,6 +417,8 @@ export function makeSanitizer({ roots }) {
     );
     const learned = learnedModels();
     if (learned) out = out.replace(learned, (match) => models.get(match));
+    if (wordPattern && /\s/.test(out))
+      out = out.replace(wordPattern, (match) => models.get(match));
     const runs = runIdPattern();
     if (runs) out = out.replace(runs, (match) => runIds.get(match));
     out = out.replace(PROVIDER_ID, (match, prefix) => {
@@ -548,8 +550,23 @@ export function makeSanitizer({ roots }) {
     learnedPattern = names.length
       ? new RegExp(`(?<![\\w-])(?:${names.join("|")})(?![\\w-])`, "g")
       : null;
+    // A word-like id (`sonnet`, `o3`) could equal a protocol value, so it
+    // is replaced only as a whole word inside prose: a string with
+    // whitespace in it, never a bare value or a key.
+    const words = [...models.keys()]
+      .filter((name) =>
+        !/[\d\s-]/.test(name) || name.length < 4
+          ? !/^(?:model-|Model )\d+$/.test(name) && name !== "default"
+          : false,
+      )
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    wordPattern = words.length
+      ? new RegExp(`(?<![\\w-])(?:${words.join("|")})(?![\\w-])`, "g")
+      : null;
     return learnedPattern;
   }
+  let wordPattern = null;
 
   // The placeholder for a model id or name, new on first sight.
   function modelPlaceholder(found, kind) {

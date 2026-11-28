@@ -1153,3 +1153,24 @@ test("every model usage key is a model placeholder, and usage-like objects elsew
     resetsAt: 123,
   });
 });
+
+test("a word-like model id is replaced in prose but never as a bare value", () => {
+  const [catalog, turn] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        models: [
+          { id: "sonnet", name: "S", api: "messages", provider: "p" },
+          { id: "o3", name: "O", api: "messages", provider: "p" },
+        ],
+      },
+    },
+    {
+      direction: "in",
+      frame: { message: "Using sonnet today, then o3.", kind: "sonnet" },
+    },
+  ]);
+  const [sonnet, o3] = catalog.frame.models.map((model) => model.id);
+  assert.equal(turn.frame.message, `Using ${sonnet} today, then ${o3}.`);
+  assert.equal(turn.frame.kind, "sonnet");
+});
