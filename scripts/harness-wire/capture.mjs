@@ -203,6 +203,31 @@ function resanitize(out, harnesses, work) {
         );
       staged.set(file, `${after.join("\n")}\n`);
     }
+    // The capture's own notes (args, gaps, stderr tails) carry the same
+    // kinds of values, so they get the same text scrub.
+    const metaFile = path.join(dir, "meta.json");
+    if (fs.existsSync(metaFile)) {
+      const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+      const scrubText = (value) =>
+        typeof value === "string"
+          ? sanitizer.text(value)
+          : Array.isArray(value)
+            ? value.map(scrubText)
+            : value && typeof value === "object"
+              ? Object.fromEntries(
+                  Object.entries(value).map(([key, entry]) => [
+                    key,
+                    scrubText(entry),
+                  ]),
+                )
+              : value;
+      for (const key of ["args", "gaps"])
+        if (key in meta) meta[key] = scrubText(meta[key]);
+      for (const scenario of Object.values(meta.scenarios ?? {}))
+        if (typeof scenario.stderrTail === "string")
+          scenario.stderrTail = sanitizer.text(scenario.stderrTail);
+      staged.set("meta.json", `${JSON.stringify(meta, null, 2)}\n`);
+    }
     every.push([dir, staged]);
   }
   // Every selected harness is rewritten and checked before any file is

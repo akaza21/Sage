@@ -874,3 +874,105 @@ test("a map keyed by agent type uses the agents' pseudonyms", () => {
     "agent-2": 2,
   });
 });
+
+test("a catalog entry keeps only known enums at any depth, and references map even before their catalog", () => {
+  const [early, init, files] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: { subagent_type: "acme-expert", agent_id: "secret123" },
+    },
+    {
+      direction: "in",
+      frame: {
+        agents: ["acme-expert"],
+        skills: [
+          {
+            name: "acme-skill",
+            scope: "user",
+            source: "private-account-identifier",
+            settings: { prompt: "confidential-plan" },
+            input: { hint: "confidential-hint" },
+          },
+        ],
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        timestamp: "2026-11-26T17:01:08.000Z",
+        note: "Wrote agent-secret123.txt",
+        sessionFile: "/sessions/2026-11-26T17-01-09-628Z_x.jsonl",
+        path: "/sessions/2026/11/26/rollout-2026-11-26T17-01-10-00000000-0000-4000-8000-000000000001.jsonl",
+      },
+    },
+  ]);
+  assert.equal(early.frame.subagent_type, init.frame.agents[0]);
+  assert.equal(early.frame.agent_id, "agent-1");
+  assert.deepEqual(init.frame.skills, [
+    {
+      name: "skill-1",
+      scope: "user",
+      source: "redacted",
+      settings: { prompt: "redacted" },
+      input: { hint: "redacted" },
+    },
+  ]);
+  assert.equal(files.frame.note, "Wrote agent-agent-1.txt");
+  assert.equal(files.frame.timestamp, "2027-01-15T08:00:00.000Z");
+  assert.equal(
+    files.frame.sessionFile,
+    "/sessions/2027-01-15T08-00-00-000Z_x.jsonl",
+  );
+  assert.doesNotMatch(
+    JSON.stringify([early, init, files]),
+    /acme|secret123|confidential|private-account|2026-11/,
+  );
+});
+
+test("file-name times and their date folders move to the epoch on their own base, so a local time gives away no time zone", () => {
+  const [first, second] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        timestamp: "2026-11-26T10:00:00.000Z",
+        path: "/sessions/2026/11/26/rollout-2026-11-26T23-59-59-00000000-0000-4000-8000-000000000001.jsonl",
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        path: "/sessions/2026/11/27/rollout-2026-11-27T00-00-01-00000000-0000-4000-8000-000000000002.jsonl",
+      },
+    },
+  ]);
+  assert.equal(first.frame.timestamp, "2027-01-15T08:00:00.000Z");
+  assert.equal(
+    first.frame.path,
+    "/sessions/2027/01/15/rollout-2027-01-15T08-00-00-00000000-0000-4000-8000-000000000001.jsonl",
+  );
+  assert.equal(
+    second.frame.path,
+    "/sessions/2027/01/15/rollout-2027-01-15T08-00-02-00000000-0000-4000-8000-000000000002.jsonl",
+  );
+});
+
+test("an absolute time inside text moves with the capture's other times", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const [frame] = sanitizer.records([
+    {
+      direction: "in",
+      frame: {
+        timestamp: "2026-11-26T17:00:00.000Z",
+        message: "\u001b[2m2026-11-26T17:00:03.877648Z ERROR failed",
+      },
+    },
+  ]);
+  assert.equal(
+    frame.frame.message,
+    "\u001b[2m2027-01-15T08:00:03.877648Z ERROR failed",
+  );
+  assert.equal(
+    sanitizer.text("log 2026-11-26T17:00:05Z done"),
+    "log 2027-01-15T08:00:05Z done",
+  );
+});

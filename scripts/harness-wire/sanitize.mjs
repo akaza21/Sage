@@ -137,7 +137,16 @@ const CATALOGS = new Map(
     mcp_servers: "server",
   }),
 );
-const CATALOG_KEEP = new Set(["scope", "source", "origin", "type", "status"]);
+// The only enum values a catalog entry keeps, from the harnesses' published
+// definitions: Codex SkillScope; Pi SourceScope, SourceOrigin and command
+// source. Pi's SourceInfo.source is free text, so only its built-in value.
+const CATALOG_KEEP = new Map(
+  Object.entries({
+    scope: ["user", "repo", "system", "admin", "project", "temporary"],
+    origin: ["package", "top-level"],
+    source: ["extension", "prompt", "skill", "builtin"],
+  }).map(([key, values]) => [key, new Set(values)]),
+);
 // Values the sanitizer itself writes.
 const PLACEHOLDER =
   /^(?:redacted|(?:model|command|skill|agent|plugin|server|key|run|task)-\d+|Model \d+)$/;
@@ -182,6 +191,32 @@ const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
 const TIME_KEY = /(?:At|Ms|_at|_time|Time|stamp)$/;
 const NOT_TIME = /duration|Mins|resetsAt|resets_at|expires/i;
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+// A time written into a path moves to the same epoch on its own base, since a
+// harness may write it in local time and a shared offset would give away the
+// capture's time zone: a file-name time such as
+// Pi's `2026-11-26T17-01-08-628Z_<id>.jsonl` or Codex's
+// `2026/11/26/rollout-2026-11-26T22-30-00-<id>.jsonl`, together with the
+// date folders in front of it. Groups: folder date and separator, file-name
+// prefix, day, hours, minutes, seconds, milliseconds.
+const FILE_TIME =
+  /(?:\b(\d{4}([\\/])\d{2}\2\d{2})\2([A-Za-z_]*-?))?\b(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3})(?=Z))?/g;
+// An ISO time inside text. Groups: the time to the second, the fraction.
+const TEXT_TIME =
+  /(?<!\d)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z(?![\w:])/g;
+const fileTimeMs = (match) =>
+  Date.parse(
+    `${match[4]}T${match[5]}:${match[6]}:${match[7]}.${match[8] ?? "000"}Z`,
+  );
+const fileTime = (match, ms) => {
+  const iso = new Date(ms).toISOString();
+  const time = `${iso.slice(0, 10)}T${iso.slice(11, 19).replace(/:/g, "-")}`;
+  const millis = match[8] === undefined ? "" : `-${iso.slice(20, 23)}`;
+  const sep = match[2];
+  const folder = match[1]
+    ? `${iso.slice(0, 10).replace(/-/g, sep)}${sep}${match[3]}`
+    : "";
+  return `${folder}${time}${millis}`;
+};
 const TIME_BASE_MS = 1800000000000;
 const TIME_BASE_S = 1800000000;
 // The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
@@ -300,6 +335,23 @@ export function makeSanitizer({ roots }) {
     // A model id or name a catalog taught, wherever else it is written. Only
     // a model-like string (a digit, space or hyphen in it) is matched in free
     // text, so a catalog id that is also a protocol word stays a word.
+    if (earliest.file !== Infinity)
+      out = out.replace(FILE_TIME, (...match) =>
+        fileTime(match, TIME_BASE_MS + (fileTimeMs(match) - earliest.file)),
+      );
+    // An absolute time written into text, such as a log line in a stderr
+    // tail, moves with the capture's other times; digits finer than a
+    // millisecond are kept.
+    if (earliest.ms !== Infinity)
+      out = out.replace(TEXT_TIME, (match, whole, fraction = "") => {
+        const ms = `${fraction}000`.slice(0, 3);
+        const iso = new Date(
+          TIME_BASE_MS + (Date.parse(`${whole}.${ms}Z`) - earliest.ms),
+        ).toISOString();
+        return fraction
+          ? `${iso.slice(0, 23)}${fraction.slice(3)}Z`
+          : `${iso.slice(0, 19)}Z`;
+      });
     const learned = learnedModels();
     if (learned) out = out.replace(learned, (match) => models.get(match));
     const runs = runIdPattern();
@@ -374,8 +426,10 @@ export function makeSanitizer({ roots }) {
       .filter((id) => id.length >= 4)
       .sort((a, b) => b.length - a.length)
       .map(escapeRegExp);
+    // Separators such as `-`, `.` and `/` bound an id, so it is replaced in
+    // file names (`agent-<id>.txt`) too.
     runPattern = ids.length
-      ? new RegExp(`(?<![\\w-])(?:${ids.join("|")})(?![\\w])`, "g")
+      ? new RegExp(`(?<![A-Za-z0-9_])(?:${ids.join("|")})(?![A-Za-z0-9_])`, "g")
       : null;
     return runPattern;
   }
@@ -392,6 +446,24 @@ export function makeSanitizer({ roots }) {
           pseudonym(runIds, entry, RUN_IDS.get(key));
         else findRunIds(entry);
       }
+  };
+
+  // Catalog names are learned from every transcript before any record is
+  // rewritten, so a reference written before its catalog still maps.
+  const isCatalogName = (at) =>
+    at.length === 0 || (at.length === 1 && at[0] === "name");
+  const findCatalogs = (value, key = "") => {
+    if (Array.isArray(value)) {
+      if (CATALOGS.has(key))
+        for (const entry of value) {
+          const name = typeof entry === "string" ? entry : entry?.name;
+          if (typeof name === "string" && !PLACEHOLDER.test(name))
+            pseudonym(catalogNames, name, CATALOGS.get(key));
+        }
+      value.forEach((entry) => findCatalogs(entry, key));
+    } else if (value && typeof value === "object")
+      for (const [name, entry] of Object.entries(value))
+        if (!OPAQUE.has(name)) findCatalogs(entry, name);
   };
 
   // One pattern for every model-like id or name learned so far, rebuilt
@@ -490,7 +562,7 @@ export function makeSanitizer({ roots }) {
   };
 
   // Earliest absolute time seen, per unit.
-  const earliest = { ms: Infinity, s: Infinity };
+  const earliest = { ms: Infinity, s: Infinity, file: Infinity };
   const timeUnit = (value) =>
     typeof value === "number"
       ? value >= 1e12
@@ -507,6 +579,9 @@ export function makeSanitizer({ roots }) {
     else if (value && typeof value === "object") {
       for (const [name, entry] of Object.entries(value))
         if (!OPAQUE.has(name)) findTimes(entry, name);
+    } else if (typeof value === "string" && !isTime(key)) {
+      for (const match of value.matchAll(FILE_TIME))
+        earliest.file = Math.min(earliest.file, fileTimeMs(match));
     } else if (isTime(key)) {
       const unit = timeUnit(value);
       if (unit === "s") earliest.s = Math.min(earliest.s, value);
@@ -570,14 +645,13 @@ export function makeSanitizer({ roots }) {
     }
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
       return CREDENTIAL_EXPIRY;
-    if (!opaque && typeof value === "string" && catalog) {
+    // Inside a catalog entry the allow-list holds at every depth, under
+    // opaque keys too.
+    if (typeof value === "string" && catalog) {
       if (PLACEHOLDER.test(value)) return value;
-      if (
-        catalog.path.length === 0 ||
-        (catalog.path.length === 1 && catalog.path[0] === "name")
-      )
+      if (isCatalogName(catalog.path))
         return pseudonym(catalogNames, value, catalog.kind);
-      return CATALOG_KEEP.has(key) ? value : "redacted";
+      return CATALOG_KEEP.get(key)?.has(value) ? value : "redacted";
     }
     if (RUN_IDS.has(key) && typeof value === "string" && runIds.has(value))
       return runIds.get(value);
@@ -685,6 +759,7 @@ export function makeSanitizer({ roots }) {
       findModels(record.frame);
       findTimes(record.frame);
       findRunIds(record.frame);
+      findCatalogs(record.frame);
     });
 
   return {
