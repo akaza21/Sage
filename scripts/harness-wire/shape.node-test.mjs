@@ -1234,3 +1234,26 @@ test("a fresh capture's handle that looks like a synthetic number still gets a s
   const again = makeSanitizer({ roots: [] }).records(structuredClone(once));
   assert.deepEqual(again, once);
 });
+
+test("an MCP server named in a server notification gets its pseudonym, Sage's own keeps its name", () => {
+  const [tools, status, own] = makeSanitizer({ roots: [] }).records([
+    { direction: "in", frame: { tools: ["mcp__AcmeCustomerProd__deploy"] } },
+    {
+      direction: "in",
+      frame: {
+        method: "mcpServer/startupStatus/updated",
+        params: { name: "AcmeCustomerProd", status: "ready" },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        method: "mcpServer/startupStatus/updated",
+        params: { name: "sage-browser", status: "failed" },
+      },
+    },
+  ]);
+  assert.deepEqual(tools.frame.tools, ["mcp__server-1__tool-1"]);
+  assert.equal(status.frame.params.name, "server-1");
+  assert.equal(own.frame.params.name, "sage-browser");
+});

@@ -185,8 +185,9 @@ export function corpusDigests(dir) {
       .sort()
       .map((name) => {
         const file = path.join(dir, name);
-        // A corpus folder holds files only: nothing nested escapes review.
-        if (!fs.statSync(file).isFile()) return [name, NOT_A_FILE];
+        // A corpus folder holds regular files only (lstat: a link is never
+        // followed): nothing nested or linked escapes review.
+        if (!fs.lstatSync(file).isFile()) return [name, NOT_A_FILE];
         const bytes = fs
           .readFileSync(file)
           .toString("latin1")
@@ -271,10 +272,10 @@ export function harnessFolders(corpus = CORPUS) {
   const entries = fs.readdirSync(corpus).sort();
   return {
     harnesses: entries.filter((name) =>
-      fs.statSync(path.join(corpus, name)).isDirectory(),
+      fs.lstatSync(path.join(corpus, name)).isDirectory(),
     ),
     stray: entries
-      .filter((name) => !fs.statSync(path.join(corpus, name)).isDirectory())
+      .filter((name) => !fs.lstatSync(path.join(corpus, name)).isDirectory())
       .map(
         (name) =>
           `${name}: is not a harness folder; the corpus root holds those only`,

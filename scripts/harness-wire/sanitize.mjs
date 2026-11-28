@@ -173,6 +173,9 @@ const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 const MCP_TOOL =
   /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/g;
 const MCP_CALL = /^mcpToolCall/i;
+const MCP_SERVER_METHOD = /^mcpServer\//;
+// MCP servers Sage itself configures keep their names: a binding reads them.
+const SAGE_SERVERS = new Set(["sage-browser"]);
 const MCP_CALL_NAMES = new Set([
   "connectorId",
   "connectorName",
@@ -338,7 +341,7 @@ export function makeSanitizer({ roots }) {
   const hexSegments = new Map();
   const processes = new Map();
   const mcpServer = (server) =>
-    PLACEHOLDER.test(server)
+    PLACEHOLDER.test(server) || SAGE_SERVERS.has(server)
       ? server
       : pseudonym(catalogNames, server, "server");
   const mcpTool = (server, tool) =>
@@ -882,6 +885,16 @@ export function makeSanitizer({ roots }) {
     }
     if (value && typeof value === "object") {
       if (!opaque && MCP_CALL.test(value.type ?? "")) value = mcpCall(value);
+      // An MCP server notification names its server in `params.name`.
+      if (
+        !opaque &&
+        MCP_SERVER_METHOD.test(value.method ?? "") &&
+        typeof value.params?.name === "string"
+      )
+        value = {
+          ...value,
+          params: { ...value.params, name: mcpServer(value.params.name) },
+        };
       const model = isModel(value, key);
       const base =
         account ??
