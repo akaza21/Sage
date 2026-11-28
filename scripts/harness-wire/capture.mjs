@@ -95,12 +95,7 @@ function readTranscriptLines(file) {
 }
 
 function scratchRepo(dir) {
-  freshScratch(
-    dir,
-    Object.values(DRIVERS)
-      .map((driver) => process.env[driver.CONFIG.env])
-      .filter(Boolean),
-  );
+  freshScratch(dir);
   const repo = path.join(dir, "repo");
   fs.mkdirSync(path.join(repo, "src"), { recursive: true });
   fs.writeFileSync(
@@ -172,9 +167,16 @@ async function main() {
   const harnesses = option("harness", "claude,codex,pi").split(",");
   const only = option("scenario", "").split(",").filter(Boolean);
   const model = option("model", undefined);
-  const work = option("work", path.join(os.tmpdir(), "sage-wire-capture"));
-  if (process.argv.includes("--resanitize"))
+  if (process.argv.includes("--resanitize")) {
+    const work = option("work");
+    if (!work)
+      throw new Error("--resanitize needs the --work the capture used");
     return resanitize(out, harnesses, work);
+  }
+  // A new scratch dir for every run: the capture never clears an old one.
+  const work =
+    option("work") ??
+    fs.mkdtempSync(path.join(os.tmpdir(), "sage-wire-capture-"));
   const image = await twoColourPng();
   let failures = 0;
   for (const harness of harnesses) {

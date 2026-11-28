@@ -63,31 +63,19 @@ export function assertEmptyHome(dir) {
 }
 
 // The harness's own config dir, when the owner set it outside the home
-// folder, as a sanitizer root, so a path under it never reaches a capture.
+// folder, as a sanitizer root (absolute), so a path under it never reaches a
+// capture.
 export function configRoots(config, env) {
-  return env[config.env] ? [[env[config.env], "config"]] : [];
+  return env[config.env] ? [[path.resolve(env[config.env]), "config"]] : [];
 }
 
-const MARKER = ".sage-capture-scratch";
-
-// Clears and recreates a scenario's scratch dir. Only a dir this tool made
-// (it holds the marker) is ever cleared, and never one holding a harness's
-// live config dir (`configDirs`, from the environment); anything else there
-// is refused.
-export function freshScratch(dir, configDirs = []) {
-  if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
-    if (!fs.existsSync(path.join(dir, MARKER)))
-      throw new Error(
-        `${dir} was not made by the capture; refusing to clear it`,
-      );
-    const inside = configDirs.find((config) => {
-      const relative = path.relative(dir, path.resolve(config));
-      return !relative.startsWith("..") && !path.isAbsolute(relative);
-    });
-    if (inside)
-      throw new Error(`${dir} holds the harness config dir ${inside}`);
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+// Makes a scenario's scratch dir. The capture never deletes anything: a
+// scratch dir that already exists is refused, so whatever is in it (a
+// sign-in above all) stays; remove it yourself or pass a new --work.
+export function freshScratch(dir) {
+  if (fs.existsSync(dir))
+    throw new Error(
+      `${dir} already exists; remove it yourself or pass a new --work`,
+    );
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, MARKER), "");
 }

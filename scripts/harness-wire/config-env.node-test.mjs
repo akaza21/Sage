@@ -90,28 +90,17 @@ test("a signed-out home holding a sign-in file is refused", () => {
   }
 });
 
-test("only a scratch dir the capture made is ever cleared", () => {
+test("the capture never clears a scratch dir that already exists", () => {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "sage-scratch-"));
   try {
-    const foreign = path.join(work, "pi-auth-fail");
-    fs.mkdirSync(path.join(foreign, "empty-home"), { recursive: true });
-    fs.writeFileSync(path.join(foreign, "empty-home", "auth.json"), "{}");
-    assert.throws(() => freshScratch(foreign), /not made by the capture/);
-    assert.ok(fs.existsSync(path.join(foreign, "empty-home", "auth.json")));
-    const ours = path.join(work, "pi-shell");
-    freshScratch(ours);
-    fs.writeFileSync(path.join(ours, "leftover"), "");
-    freshScratch(ours);
-    assert.equal(fs.existsSync(path.join(ours, "leftover")), false);
-    // The owner pointed a harness at a home inside it and signed in there.
-    const live = path.join(ours, "empty-home");
-    fs.mkdirSync(live);
-    fs.writeFileSync(path.join(live, "auth.json"), "{}");
-    assert.throws(
-      () => freshScratch(ours, [live]),
-      /holds the harness config dir/,
-    );
-    assert.ok(fs.existsSync(path.join(live, "auth.json")));
+    const earlier = path.join(work, "pi-auth-fail");
+    fs.mkdirSync(path.join(earlier, "empty-home"), { recursive: true });
+    fs.writeFileSync(path.join(earlier, "empty-home", "auth.json"), "{}");
+    assert.throws(() => freshScratch(earlier), /already exists/);
+    assert.ok(fs.existsSync(path.join(earlier, "empty-home", "auth.json")));
+    const fresh = path.join(work, "pi-shell");
+    freshScratch(fresh);
+    assert.deepEqual(fs.readdirSync(fresh), []);
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
