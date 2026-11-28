@@ -14,7 +14,7 @@ import {
   clearAcpProjectionRegistry,
 } from "../../../src/app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../src/app/store";
-import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
+import { getWorkbenchPorts } from "../simulator/workbenchRuntime";
 import { acpDesktop } from "../../../src/services/acpDesktop";
 import { AgentArtifactPane } from "../../../src/workbench/AgentArtifactPane";
 import { AgentChatPanes } from "../../../src/workbench/AgentChatPanes";

@@ -5,7 +5,7 @@ import type {
   PinChatRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import { pinPrivateBrowserChat } from "./browserChatScopes";
 
 export function ensureBrowserLocalProject(input: {

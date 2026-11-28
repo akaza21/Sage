@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { LeftSidebar } from "./LeftSidebar";
 import {
   resetAgentRailViewPrefs,

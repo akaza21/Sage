@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../../src/app/store";
-import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
+import { getWorkbenchPorts } from "../simulator/workbenchRuntime";
 import { currentProjectLayout } from "../../../src/app/projectProjection";
 import { acpDesktop } from "../../../src/services/acpDesktop";
-import { resetBrowserDesktopForTests } from "../../../src/services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../simulator/browserDesktop";
 import { installWindowNewChatFixture } from "./agentWindowFixtures";
 
 const initial = useWorkbenchStore.getState();

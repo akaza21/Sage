@@ -5,8 +5,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "dev:browser": "tauri dev --features browser-bridge",
+    "dev": "node scripts/dev-live.mjs",
+    "dev:ui-fixture": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build --mode desktop-native && node scripts/write-web-build-receipt.mjs desktop-native",
     "test": "vitest run --exclude tests/ui/**/*.spec.ts",
     "test:ui": "playwright test --config playwright.config.ts",

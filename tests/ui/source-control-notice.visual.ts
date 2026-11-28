@@ -11,7 +11,7 @@ test("repository switches preserve a failed stage without a new alert", async ({
   await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { browserSnapshot, browserRepository } =
-      await import("/src/services/browserWorkspaceFixture.ts");
+      await import("/tests/ui/simulator/browserWorkspaceFixture.ts");
     const { desktop } = await import("/src/services/desktop.ts");
     const first = browserRepository.roots[0];
     useWorkbenchStore.setState({

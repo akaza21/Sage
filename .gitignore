@@ -40,3 +40,6 @@ npm-debug.log*
 # Local Cargo target location is a per-machine choice, never tracked.
 /.cargo/config.toml
 /.cargo/config
+
+# Old in-checkout throwaway profile from npm run dev (now kept outside the checkout)
+/.sage-dev/

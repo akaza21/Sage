@@ -1,13 +1,13 @@
-import { resourceKey } from "../domain/resourceIdentity";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
 import type {
   CreateProjectFileRequest,
   CreateProjectFileResult,
   CreateProjectFolderRequest,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import {
   newFileResource,
   validateNewFilePath,
-} from "../features/files/newFileContract";
+} from "../../../src/features/files/newFileContract";
 import { browserEditor } from "./browserEditor";
 import { browserDirectories, browserSnapshot } from "./browserWorkspaceFixture";
 
