@@ -204,7 +204,10 @@ export const Turn = memo(
               steered={workingItems
                 .filter((item) => item.kind === "userPrompt")
                 .map(renderWorkingItem)}
-              hasActivities={turnHasActivities(turn, workingItems.length)}
+              hasActivities={turnHasActivities(
+                turn,
+                workingItems.length + (plan ? 1 : 0),
+              )}
               aside={plan ? <PlanChip item={plan} /> : null}
             >
               {workingItems.length > 0 ? (

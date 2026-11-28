@@ -134,8 +134,9 @@ async function rendered(projection: Projection): Promise<string[]> {
     }
     await settleLazyModules();
   }
+  // The chat's changed-files card sits in the transcript after the turns.
   const roots = container.querySelectorAll(
-    "[data-turn-id],[data-edit-summary]",
+    "[data-turn-id],[data-edit-summary],.acp-file-changes",
   );
   const lines = [...roots].flatMap((root) => outline(root));
   cleanup();

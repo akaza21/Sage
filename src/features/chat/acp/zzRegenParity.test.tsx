@@ -136,7 +136,7 @@ async function rendered(projection: Projection): Promise<string[]> {
     await settleLazyModules();
   }
   const roots = container.querySelectorAll(
-    "[data-turn-id],[data-edit-summary]",
+    "[data-turn-id],[data-edit-summary],.acp-file-changes",
   );
   const lines = [...roots].flatMap((root) => outline(root));
   cleanup();
