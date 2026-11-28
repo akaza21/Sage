@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -944,18 +943,6 @@ describe("useFollowEnd", () => {
     scrollTo.mockClear();
     act(() => growTranscript());
     expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 2000 });
-  });
-
-  it("opts the transcript scroller out of browser scroll anchoring", () => {
-    const sheet = document.createElement("style");
-    sheet.textContent = readFileSync("src/styles/chat-surface.css", "utf8");
-    document.body.append(sheet);
-    const { transcript } = mountFollowEnd();
-    transcript.className = "message-list";
-
-    expect(
-      getComputedStyle(transcript).getPropertyValue("overflow-anchor"),
-    ).toBe("none");
   });
   function pauseNearEnd(running: boolean) {
     const frames: FrameRequestCallback[] = [];

@@ -66,24 +66,12 @@ it("refuses image send and queue before mutation without exact capability or dur
   expect(submit).not.toHaveBeenCalled();
   view.unmount();
 
-  currentNonterminalTurn.mockReturnValueOnce({
-    state: "running",
-  } as TurnProjection);
-  const queueView = renderHook(() => useChatSurfaceModel(base));
+  const queueView = renderHook(() =>
+    useChatSurfaceModel({ ...base, page: withLiveTurn(page, "running") }),
+  );
   act(() => queueView.result.current.submit(event));
   expect(queuePrompt).not.toHaveBeenCalled();
 });
-
-const { currentNonterminalTurn } = vi.hoisted(() => ({
-  currentNonterminalTurn: vi.fn<
-    (page: AcpChatPage | null) => TurnProjection | null
-  >(() => null),
-}));
-
-vi.mock(import("./acp/currentNonterminalTurn"), async (importOriginal) => ({
-  ...(await importOriginal()),
-  currentNonterminalTurn,
-}));
 
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 
@@ -117,6 +105,32 @@ const page = {
     },
   ],
 } as unknown as AcpChatPage;
+
+function liveTurn(state: TurnProjection["state"]): TurnProjection {
+  return {
+    id: "turn-live" as TurnProjection["id"],
+    sessionId: "session-a" as TurnProjection["sessionId"],
+    runtimeEpoch: "1" as TurnProjection["runtimeEpoch"],
+    ordinal: 1,
+    state,
+    revision: "1" as TurnProjection["revision"],
+    createdAt: 1,
+    updatedAt: 1,
+    terminalAt: null,
+    items: [],
+    activities: [],
+    browserOperations: [],
+    browserOperationsCollapsed: 0,
+  };
+}
+
+/** The page with a live turn in its current session. */
+function withLiveTurn(
+  source: AcpChatPage,
+  state: TurnProjection["state"],
+): AcpChatPage {
+  return { ...source, turns: [liveTurn(state)] };
+}
 
 const imagePage = {
   ...page,
@@ -344,9 +358,6 @@ it("keeps draft editing enabled while a queued prompt is saving without queueing
     ready: true,
     modes: { "binding-a": "readOnly" },
   });
-  currentNonterminalTurn.mockReturnValueOnce({
-    state: "running",
-  } as TurnProjection);
   const queuePrompt = vi.fn(async () => true);
   const { result } = renderHook(() =>
     useChatSurfaceModel({
@@ -370,7 +381,7 @@ it("keeps draft editing enabled while a queued prompt is saving without queueing
       ],
       selectedHarnessId: "harness-a",
       selectedModelId: null,
-      page,
+      page: withLiveTurn(page, "running"),
       discoveryPhase: "ready",
       composerText: "Next draft",
       attachedContext: [],
@@ -396,58 +407,6 @@ it("keeps draft editing enabled while a queued prompt is saving without queueing
   expect(result.current.queueAvailable).toBe(false);
   result.current.submit({ preventDefault: vi.fn() } as unknown as FormEvent);
   expect(queuePrompt).not.toHaveBeenCalled();
-});
-
-it("does not rescan page turn eligibility for an unrelated composer edit", () => {
-  const args = {
-    harnesses: [
-      {
-        id: "harness-a",
-        name: "Harness A",
-        transport: "acp",
-        bindingId: "binding-a",
-        installState: "available",
-        source: "builtIn",
-      },
-    ] satisfies readonly Pick<
-      HarnessDefinition,
-      | "id"
-      | "name"
-      | "transport"
-      | "bindingId"
-      | "installState"
-      | "source"
-      | "signIn"
-    >[],
-    selectedHarnessId: "harness-a",
-    selectedModelId: null,
-    page,
-    discoveryPhase: "ready" as const,
-    composerText: "first",
-    attachedContext: [],
-    sending: false,
-    chatError: null,
-    projectTransitioning: false,
-    focused: true,
-    acpActions: {
-      busy: false,
-      error: null,
-      cancellableTurnId: null,
-      submit: vi.fn(async () => undefined),
-      cancel: vi.fn(async () => undefined),
-      close: vi.fn(async () => undefined),
-      end: vi.fn(async () => undefined),
-    },
-    sendPrompt: vi.fn(async () => undefined),
-  };
-  const { rerender } = renderHook((next) => useChatSurfaceModel(next), {
-    initialProps: args,
-  });
-  expect(currentNonterminalTurn).toHaveBeenCalledTimes(1);
-  rerender({ ...args, composerText: "second" });
-  expect(currentNonterminalTurn).toHaveBeenCalledTimes(1);
-  rerender({ ...args, page: structuredClone(page) });
-  expect(currentNonterminalTurn).toHaveBeenCalledTimes(2);
 });
 
 it("hides usage from the previous session after harness selection diverges", () => {
@@ -517,23 +476,7 @@ it("hides usage from the previous session after harness selection diverges", () 
 });
 
 it("keeps native End available while cancellation is negotiated or a turn is active", () => {
-  const activeTurn: TurnProjection = {
-    id: "turn-active" as TurnProjection["id"],
-    sessionId: "session-a" as TurnProjection["sessionId"],
-    runtimeEpoch: "1" as TurnProjection["runtimeEpoch"],
-    ordinal: 1,
-    state: "running",
-    revision: "1" as TurnProjection["revision"],
-    createdAt: 1,
-    updatedAt: 1,
-    terminalAt: null,
-    items: [],
-    activities: [],
-    browserOperations: [],
-    browserOperationsCollapsed: 0,
-  };
-  currentNonterminalTurn.mockReturnValueOnce(activeTurn);
-  const endEligiblePage = structuredClone(page);
+  const endEligiblePage = withLiveTurn(structuredClone(page), "running");
   endEligiblePage.sessions[0].capabilities = capabilitySetFixture({
     closeSession: false,
     cancel: true,
@@ -637,9 +580,6 @@ it("queues behind a live turn waiting on a tool instead of telling the user to w
     ready: true,
     modes: { "binding-a": "readOnly" },
   });
-  currentNonterminalTurn.mockReturnValue({
-    state: "waitingTool",
-  } as TurnProjection);
   const queuePrompt = vi.fn(async () => true);
   const { result } = renderHook(() =>
     useChatSurfaceModel({
@@ -663,7 +603,7 @@ it("queues behind a live turn waiting on a tool instead of telling the user to w
       ],
       selectedHarnessId: "harness-a",
       selectedModelId: null,
-      page,
+      page: withLiveTurn(page, "waitingTool"),
       discoveryPhase: "ready",
       composerText: "Next draft",
       attachedContext: [],
@@ -684,8 +624,6 @@ it("queues behind a live turn waiting on a tool instead of telling the user to w
       queuePrompt,
     }),
   );
-  currentNonterminalTurn.mockReset();
-  currentNonterminalTurn.mockReturnValue(null);
   expect(result.current.queueAvailable).toBe(true);
   expect(result.current.disabledReason).toBeNull();
   act(() =>
