@@ -1,5 +1,4 @@
 import { Fragment, memo, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
@@ -335,17 +334,6 @@ export function AcpChatPresentation({
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
-  const summaryKey =
-    page.projectId + ":" + page.chatId + ":" + page.currentSessionId;
-  // The dock keeps background terminals; changed files sit in the transcript.
-  const editSummary = (
-    <EditSummaryPart
-      part="DockTerminals"
-      key={summaryKey}
-      page={page}
-      rootLabels={labels}
-    />
-  );
   const renderTurn = (turn: TurnProjection, index: number) => (
     <Fragment key={turn.id}>
       <TurnDaySeparator timestamp={dayTimestamps[index]} />
@@ -397,11 +385,13 @@ export function AcpChatPresentation({
           page.turns.map(renderTurn)
         )}
       </PromptPageContext>
+      {/* Changed files sit in the transcript; the dock keeps terminals. */}
       {editSummaryContainer !== undefined ? (
         <EditSummaryPart
           part="TurnEditSummary"
           onOpenResource={onOpenResource}
-          key={summaryKey}
+          key={page.projectId + ":" + page.chatId + ":" + page.currentSessionId}
+          dock={editSummaryContainer}
           page={page}
           rootLabels={labels}
           countIncomplete={countIncomplete}
@@ -411,9 +401,6 @@ export function AcpChatPresentation({
           onReview={onReviewChanges}
         />
       ) : null}
-      {editSummaryContainer
-        ? createPortal(editSummary, editSummaryContainer)
-        : null}
     </>
   );
 }

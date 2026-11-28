@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, FileText } from "../../../ui/leanIcons";
 
 import type {
@@ -45,8 +46,26 @@ export const DockTerminals = memo(function DockTerminals({
   return <BackgroundTerminalSlot page={page} rootLabels={rootLabels} />;
 });
 
-/** The chat's changed files, as a card under the latest answer. */
+/** The chat's changed files as a transcript card; the composer dock, when
+ * given, keeps only the background terminals. */
 export const TurnEditSummary = memo(function TurnEditSummary({
+  dock,
+  ...props
+}: TurnEditSummaryProps & { dock?: HTMLElement | null }) {
+  return (
+    <>
+      {dock
+        ? createPortal(
+            <DockTerminals page={props.page} rootLabels={props.rootLabels} />,
+            dock,
+          )
+        : null}
+      <ChangedFiles {...props} />
+    </>
+  );
+});
+
+function ChangedFiles({
   page,
   rootLabels,
   countIncomplete,
@@ -320,4 +339,4 @@ export const TurnEditSummary = memo(function TurnEditSummary({
       ) : null}
     </section>
   );
-});
+}
