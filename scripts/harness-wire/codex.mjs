@@ -42,7 +42,6 @@ export function launch({ cwd, env }) {
 // (config-env.mjs).
 export const CONFIG = {
   env: "CODEX_HOME",
-  keys: ["OPENAI_API_KEY", "CODEX_API_KEY"],
   extra: {},
 };
 

@@ -26,12 +26,6 @@ export function launch({ cwd, env }) {
 // (config-env.mjs).
 export const CONFIG = {
   env: "PI_CODING_AGENT_DIR",
-  keys: [
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-    "GEMINI_API_KEY",
-    "OPENROUTER_API_KEY",
-  ],
   extra: {},
 };
 

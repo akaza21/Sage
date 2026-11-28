@@ -22,7 +22,12 @@ import path from "node:path";
 import * as claude from "./claude.mjs";
 import * as codex from "./codex.mjs";
 import * as pi from "./pi.mjs";
-import { assertEmptyHome, scenarioEnv } from "./config-env.mjs";
+import {
+  assertEmptyHome,
+  configRoots,
+  freshScratch,
+  scenarioEnv,
+} from "./config-env.mjs";
 import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
@@ -90,7 +95,7 @@ function readTranscriptLines(file) {
 }
 
 function scratchRepo(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
+  freshScratch(dir);
   const repo = path.join(dir, "repo");
   fs.mkdirSync(path.join(repo, "src"), { recursive: true });
   fs.writeFileSync(
@@ -137,6 +142,7 @@ function resanitize(out, harnesses, work) {
         roots: [
           [path.join(scratch, "repo"), "repo"],
           [path.join(scratch, "empty-home"), "empty-home"],
+          ...configRoots(DRIVERS[harness].CONFIG, process.env),
           [work, "work"],
         ],
       });
@@ -196,6 +202,7 @@ async function main() {
         roots: [
           [repo, "repo"],
           [emptyHome, "empty-home"],
+          ...configRoots(driver.CONFIG, process.env),
           [work, "work"],
         ],
       });

@@ -43,11 +43,6 @@ export function launch({ cwd, env, model }) {
 // account's connectors is recorded.
 export const CONFIG = {
   env: "CLAUDE_CONFIG_DIR",
-  keys: [
-    "ANTHROPIC_API_KEY",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_AUTH_TOKEN",
-  ],
   extra: { ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
 };
 
