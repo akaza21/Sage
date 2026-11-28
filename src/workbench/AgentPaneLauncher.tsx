@@ -28,7 +28,10 @@ import {
   projectRecentAgents,
   type RecentAgent,
 } from "./agentArtifactTabPresentation";
-import { openPaneBrowser } from "./AgentArtifactPaneControls";
+import {
+  openPaneBrowser,
+  useBrowserPaneDisabled,
+} from "./AgentArtifactPaneControls";
 import { useAgentChangesState } from "./agentChangesState";
 import { selectAgentPaneView } from "./agentPaneViews";
 import { AgentToolsContext } from "./AgentToolsProvider";
@@ -100,6 +103,7 @@ export function AgentOverviewEntries({
           (kind === "subagent" && state === "running" && stoppable),
       ).length ?? 0;
   const noSession = !validPage || !page?.currentSessionId;
+  const browserDisabled = useBrowserPaneDisabled();
   const entry = (
     label: string,
     icon: ReactNode,
@@ -110,6 +114,7 @@ export function AgentOverviewEntries({
     <button
       className="agent-overview__row"
       type="button"
+      aria-label={label}
       disabled={disabled}
       onClick={() => {
         useAgentChangesState.getState().select(false);
@@ -160,8 +165,12 @@ export function AgentOverviewEntries({
           null,
           noSession,
         )}
-        {entry("Browser", <Globe2 size={16} aria-hidden="true" />, () =>
-          openPaneBrowser(),
+        {entry(
+          "Browser",
+          <Globe2 size={16} aria-hidden="true" />,
+          () => openPaneBrowser(),
+          null,
+          browserDisabled,
         )}
         {terminalAvailable
           ? entry(

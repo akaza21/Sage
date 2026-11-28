@@ -19,6 +19,7 @@ import {
   openAgentArtifact,
 } from "../../../app/openAgentArtifact";
 import { useWorkbenchStore } from "../../../app/store";
+import { useAgentPaneViews } from "../../../workbench/agentPaneViews";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 
 vi.mock("../../../app/openAgentArtifact", () => ({
@@ -380,6 +381,37 @@ describe("ChatMarkdown code blocks", () => {
 
     expect(writeText).toHaveBeenCalledWith("const answer = 42;");
     expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+
+  it("shows a Chat diagram as a card that opens it in the side pane", () => {
+    const source = "sequenceDiagram
+A->>B: hi";
+    render(
+      <ChatMarkdown
+        text={"```mermaid
+" + source + "
+```"}
+        fileReferenceOwner={
+          {
+            projectId: "project-a",
+            chatId: "chat-a",
+            sessionId: "session-a",
+          } as AgentArtifactOwner
+        }
+      />,
+    );
+    expect(screen.queryByRole("img", { name: "Mermaid diagram" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open Sequence diagram in the side pane",
+      }),
+    );
+    const { views, selected } = useAgentPaneViews.getState();
+    expect(views).toMatchObject([
+      { chatId: "chat-a", kind: "diagram", title: "Sequence diagram", source },
+    ]);
+    expect(selected).toBe(views[0].id);
+    useAgentPaneViews.setState({ views: [], selected: null, opened: 0 });
   });
 
   it("does not duplicate the answer copy action below a rendered diagram", async () => {

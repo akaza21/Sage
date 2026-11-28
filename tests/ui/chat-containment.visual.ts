@@ -548,7 +548,7 @@ for (const profile of profiles) {
             .getByRole("button", { name: "Show chat resources" })
             .click();
           await expectOverlay(
-            page.getByRole("dialog", { name: "Chat resources", exact: true }),
+            page.getByRole("dialog", { name: "Overview", exact: true }),
             viewport,
           );
           await page.keyboard.press("Escape");

@@ -94,10 +94,19 @@ import {
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane as Pane } from "./AgentArtifactPane";
+import { openAgentPaneView, useAgentPaneViews } from "./agentPaneViews";
 import { getWarning, queryWarning } from "../test/notice";
 function AgentArtifactPane(props: ComponentProps<typeof Pane>) {
   const publish = usePreviewTargetLifetime();
   return <Pane {...props} onPreviewTargetChange={publish} />;
+}
+
+/** The "+" launcher's Browser entry, which opens a browser tab. */
+async function launcherBrowser() {
+  fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+  return within(
+    await screen.findByRole("region", { name: "New tab" }),
+  ).getByRole("button", { name: "Browser" });
 }
 
 function mountArtifactHeader() {
@@ -118,9 +127,7 @@ it("disables browser creation at capacity and explains it inside the pane", asyn
   });
   render(<AgentArtifactPane />);
   await settleLazyModules();
-  expect(
-    screen.getByRole("button", { name: "New browser tab" }),
-  ).toBeDisabled();
+  expect(await launcherBrowser()).toBeDisabled();
   expect(
     within(screen.getByLabelText("Agent artifacts")).getByRole("status"),
   ).toHaveTextContent("Browser tab limit reached");
@@ -128,7 +135,7 @@ it("disables browser creation at capacity and explains it inside the pane", asyn
   act(() =>
     useWorkbenchStore.setState((state) => ({ tabs: state.tabs.slice(1) })),
   );
-  expect(screen.getByRole("button", { name: "New browser tab" })).toBeEnabled();
+  expect(await launcherBrowser()).toBeEnabled();
   expect(screen.queryByText(/Browser tab limit reached/)).toBeNull();
 });
 
@@ -311,6 +318,7 @@ afterEach(() => {
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   useSubagentPaneStore.setState({ open: null, selected: false, list: false });
+  useAgentPaneViews.setState({ views: [], selected: null, opened: 0 });
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -777,7 +785,7 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Historian" })).toBeNull();
   });
-  it("starts empty with a collapsed header resource affordance", () => {
+  it("starts empty with a collapsed header resource affordance", async () => {
     const onExpandedChange = vi.fn();
     pinAgentChatOwner(null);
     useWorkbenchStore.setState({
@@ -809,9 +817,7 @@ describe("Agent artifact file chips", () => {
     expect(within(expand).queryByText("Files")).toBeNull();
     expect(within(expand).queryByText("Changes")).toBeNull();
     expect(within(expand).queryByText("Preview")).toBeNull();
-    expect(
-      screen.queryByRole("heading", { name: "Waiting for this chat" }),
-    ).toBeNull();
+    expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
 
     fireEvent.click(expand);
     expect(onExpandedChange).toHaveBeenLastCalledWith(true);
@@ -820,7 +826,7 @@ describe("Agent artifact file chips", () => {
       <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
     );
     expect(
-      screen.getByRole("heading", { name: "Waiting for this chat" }),
+      await screen.findByRole("region", { name: "New tab" }),
     ).toBeVisible();
     expect(
       screen.getByText(/Open a file or change from the conversation/),
@@ -2055,20 +2061,16 @@ describe("Agent artifact file chips", () => {
     const openBrowser = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ openBrowser });
     const { rerender } = render(<AgentArtifactPane />);
-    expect(
-      screen.getByRole("button", { name: "New browser tab" }),
-    ).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    const browser = await launcherBrowser();
+    expect(browser).toBeDisabled();
+    fireEvent.click(browser);
     expect(openBrowser).not.toHaveBeenCalled();
 
     rerender(<AgentArtifactPane expanded={false} />);
     await settleLazyModules();
     rerender(<AgentArtifactPane expanded />);
     await settleLazyModules();
-    expect(
-      screen.getByRole("button", { name: "New browser tab" }),
-    ).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(await launcherBrowser()).toBeDisabled();
     expect(openBrowser).not.toHaveBeenCalled();
   });
 
@@ -2134,7 +2136,7 @@ describe("Agent artifact file chips", () => {
         screen.getByRole("tab", { name: "Diff src/other.ts" }),
       ).toHaveAttribute("aria-selected", "true");
 
-      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+      fireEvent.click(await launcherBrowser());
 
       const opened = await screen.findByRole("tab", {
         name: "Browser New tab",
@@ -2186,7 +2188,7 @@ describe("Agent artifact file chips", () => {
       });
       admit("diff:other");
       render(<AgentArtifactPane />);
-      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+      fireEvent.click(await launcherBrowser());
       await waitFor(() =>
         expect(
           screen.getByRole("tab", { name: "Browser New tab" }),
@@ -2243,7 +2245,7 @@ describe("Agent artifact file chips", () => {
     },
   );
 
-  it("shows browser tabs beside artifacts but keeps them out of Editor", () => {
+  it("shows browser tabs beside artifacts but keeps them out of Editor", async () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {});
     const openBrowser = vi.fn(async () => undefined);
     const onOpenInEditor = vi.fn();
@@ -2301,7 +2303,7 @@ describe("Agent artifact file chips", () => {
       ),
     ).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Browser New tab" }));
-    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    fireEvent.click(await launcherBrowser());
     expect(openBrowser).toHaveBeenCalledTimes(1);
     expect(
       screen.getByRole("button", { name: "Expand resource pane" }),
@@ -2341,9 +2343,7 @@ describe("Agent artifact file chips", () => {
     expect(
       screen.getByRole("tab", { name: "Browser Example Domain" }),
     ).toHaveAttribute("aria-selected", "false");
-    expect(
-      screen.queryByRole("heading", { name: "Waiting for this chat" }),
-    ).toBeNull();
+    expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
   });
 
   it("keeps a project browser selected when switching between Chats", () => {
@@ -2401,9 +2401,7 @@ describe("Agent artifact file chips", () => {
       useWorkbenchStore.setState({ activeTabId: "chat-second" });
     });
     expect(browserTab).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.queryByRole("heading", { name: "Waiting for this chat" }),
-    ).toBeNull();
+    expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
   });
 
   it("exposes full paths in accessible tab names with basename-visible middle ellipsis", () => {
@@ -2699,7 +2697,7 @@ describe("Agent artifact pane Changes ownership", () => {
     const { rerender } = render(<AgentArtifactPane expanded={false} />);
     rerender(<AgentArtifactPane expanded />);
     expect(
-      screen.getByRole("heading", { name: "Waiting for this chat" }),
+      await screen.findByRole("region", { name: "New tab" }),
     ).toBeVisible();
     expect(useAgentChangesState.getState().owner).toBeNull();
     act(() => {
@@ -2736,7 +2734,7 @@ describe("Agent artifact pane Changes ownership", () => {
     act(() => store.getState().clear());
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Waiting for this chat" }),
+      await screen.findByRole("region", { name: "New tab" }),
     ).toBeVisible();
   });
 
@@ -2803,7 +2801,7 @@ describe("Agent artifact pane Changes ownership", () => {
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
-  it("does not reuse a sessionless tab while the projection is unloaded", () => {
+  it("does not reuse a sessionless tab while the projection is unloaded", async () => {
     focusLateChat();
     act(() =>
       useAgentChangesState.getState().show(
@@ -2818,7 +2816,7 @@ describe("Agent artifact pane Changes ownership", () => {
     render(<AgentArtifactPane expanded />);
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Waiting for this chat" }),
+      await screen.findByRole("region", { name: "New tab" }),
     ).toBeVisible();
   });
 
@@ -2839,8 +2837,132 @@ describe("Agent artifact pane Changes ownership", () => {
     expect(
       await screen.findByRole("region", { name: "Chat changes" }),
     ).toBeVisible();
+    expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
+  });
+});
+
+describe("Agent pane launcher, diagram views and Ask pill", () => {
+  it("opens an address typed into the launcher as a browser tab", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    const openBrowser = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ openBrowser });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+    const launcher = await screen.findByRole("region", { name: "New tab" });
+    expect(screen.getByRole("button", { name: "New tab" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(
-      screen.queryByRole("heading", { name: "Waiting for this chat" }),
-    ).toBeNull();
+      within(launcher).getByRole("button", { name: "Open file" }),
+    ).toBeInTheDocument();
+    const address = within(launcher).getByRole("textbox", {
+      name: "Search or enter a URL",
+    });
+    fireEvent.change(address, { target: { value: "example.com/docs" } });
+    fireEvent.submit(address);
+    expect(openBrowser).toHaveBeenCalledWith("https://example.com/docs");
+    expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
+  });
+
+  it("refuses a non-web address in the launcher without opening a tab", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    const openBrowser = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ openBrowser });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+    const address = await screen.findByRole("textbox", {
+      name: "Search or enter a URL",
+    });
+    fireEvent.change(address, { target: { value: "file:///etc/hosts" } });
+    fireEvent.submit(address);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Browser addresses must use HTTP or HTTPS",
+    );
+    expect(openBrowser).not.toHaveBeenCalled();
+  });
+
+  it("opens a diagram as a pill tab, expands the pane, and yields to a file", async () => {
+    admit("file:app");
+    const onExpandedChange = vi.fn();
+    const { rerender } = render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    act(() =>
+      openAgentPaneView(
+        {
+          chatId: "chat-focused",
+          kind: "diagram",
+          title: "Flowchart",
+          source: "graph TD\nA --> B",
+        },
+        "flow",
+      ),
+    );
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    rerender(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    const tab = await screen.findByRole("tab", { name: "Flowchart" });
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    const view = screen.getByRole("region", { name: "Flowchart" });
+    expect(
+      await within(view).findByRole("img", { name: "Mermaid diagram" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("tab", { name: /app\.ts/ }));
+    expect(screen.queryByRole("region", { name: "Flowchart" })).toBeNull();
+    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Flowchart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Flowchart" }));
+    expect(screen.queryByRole("tab", { name: "Flowchart" })).toBeNull();
+  });
+
+  it("shows a placeholder for a background task until its output is wired", async () => {
+    render(<AgentArtifactPane />);
+    act(() =>
+      openAgentPaneView(
+        { chatId: "chat-focused", kind: "backgroundTask", title: "npm test" },
+        "task-1",
+      ),
+    );
+    const view = await screen.findByRole("region", { name: "npm test" });
+    expect(within(view).getByRole("status")).toHaveTextContent(
+      "Not available for this harness yet.",
+    );
+  });
+
+  it("sends from the maximised pane's Ask pill through the Chat's composer", async () => {
+    const submitted = vi.fn((event: Event) => event.preventDefault());
+    const chat = document.createElement("div");
+    chat.className = "agent-chat-pane";
+    chat.dataset.chatId = "chat-focused";
+    const form = document.createElement("form");
+    form.className = "composer";
+    form.addEventListener("submit", submitted);
+    chat.append(form);
+    document.body.append(chat);
+    try {
+      const { rerender } = render(<AgentArtifactPane maximized={false} />);
+      expect(screen.queryByRole("textbox", { name: "Ask anything" })).toBeNull();
+      rerender(<AgentArtifactPane maximized />);
+      const ask = await screen.findByRole("textbox", { name: "Ask anything" });
+      fireEvent.change(ask, { target: { value: "  Summarise the diff  " } });
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+      await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-focused"]?.composerText,
+      ).toBe("Summarise the diff");
+      expect(ask).toHaveValue("");
+    } finally {
+      chat.remove();
+    }
   });
 });

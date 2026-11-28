@@ -490,27 +490,20 @@ describe("AgentTaskHeader working status", () => {
       screen.getByRole("button", { name: "Show chat resources" }),
     );
     expect(
-      await screen.findByRole("dialog", { name: "Chat resources" }),
+      await screen.findByRole("dialog", { name: "Overview" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("dialog", { name: "Chat resources" }),
+      screen.getByRole("dialog", { name: "Overview" }),
     ).toHaveFocus();
-    expect(screen.getByText("Outputs")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Outputs" })).toHaveTextContent(
-      "Create a file or site",
-    );
-    expect(
-      within(screen.getByRole("region", { name: "Outputs" })).queryByText("0"),
-    ).toBeNull();
+    // Empty slots are left out of the Overview card.
+    expect(screen.queryByRole("region", { name: "Outputs" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
-    expect(screen.getByText("Sources")).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Sources" })).queryByText("0"),
-    ).toBeNull();
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Browser" })).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Overview" }), {
       key: "Escape",
     });
-    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Show chat resources" }),
     ).toHaveFocus();

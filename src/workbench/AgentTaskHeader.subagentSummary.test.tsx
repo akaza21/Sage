@@ -192,7 +192,7 @@ it.each(["session", "runtime"])(
     fireEvent.click(trigger);
     fireEvent.click(await screen.findByRole("button", { name: "View all" }));
     expect(screen.getByText("source-0.example")).toBeVisible();
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Overview" }), {
       key: "Escape",
     });
     const page = acpProjectionStoreFor(tab.id).getState().page!;
@@ -225,7 +225,7 @@ it("keeps expanded Sources across close and reopen, but resets them on an owner 
   fireEvent.click(trigger);
   fireEvent.click(await screen.findByRole("button", { name: "View all" }));
   expect(screen.getByText("source-0.example")).toBeVisible();
-  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Overview" }), {
     key: "Escape",
   });
   fireEvent.click(trigger);
@@ -340,7 +340,7 @@ it("makes a lazily loaded child row keyboard reachable and returns Tab focus", a
   expect(readChild).not.toHaveBeenCalled();
   expect(useSubagentPaneStore.getState().open).toBeNull();
   fireEvent.keyDown(row, { key: "Tab" });
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 
@@ -354,7 +354,7 @@ it("drops old-session counts and dismisses an open popover on session replacemen
       currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
     },
   );
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   fireEvent.click(trigger);
   expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
 });
@@ -476,7 +476,7 @@ it.each(["project", "generation", "transition"])(
             : { projectTransitioning: true },
       ),
     );
-    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
     fireEvent.click(trigger);
     expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
     expect(useSubagentPaneStore.getState().open).toBeNull();
@@ -539,7 +539,7 @@ it.each(["project", "generation", "transition", "session", "runtime", "chat"])(
         ),
       );
     }
-    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
     expect(trigger).toHaveFocus();
   },
 );
@@ -558,7 +558,7 @@ it("does not steal outside focus when a scope reset dismisses resources", async 
   replaceItems([], {
     currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
   });
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   expect(outside).toHaveFocus();
 });
 
@@ -574,9 +574,9 @@ it("resets resource visibility on Chat changes even when returning to the origin
       snapshot={null}
     />,
   );
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   rerender(<AgentTaskHeader tab={tab} chatCount={2} snapshot={null} />);
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
 });
 
 it("keeps Task lifecycle metadata readable without a child selection or transcript read", async () => {
@@ -669,7 +669,7 @@ it("opens the observed child only after explicit resource selection", async () =
   });
   expect(useSubagentPaneStore.getState().selected).toBe(true);
   expect(useAgentChangesState.getState().selected).toBe(false);
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 
@@ -828,11 +828,11 @@ it("portals chat resources outside the header and returns Escape focus to the tr
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   const trigger = screen.getByRole("button", { name: "Show chat resources" });
   fireEvent.click(trigger);
-  const panel = screen.getByRole("dialog", { name: "Chat resources" });
+  const panel = screen.getByRole("dialog", { name: "Overview" });
   expect(panel.parentElement).toBe(document.body);
   expect(panel).toHaveClass("menu-popover");
   fireEvent.keyDown(panel, { key: "Escape" });
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 
@@ -842,12 +842,12 @@ it.each([false, true])(
     render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
     const trigger = screen.getByRole("button", { name: "Show chat resources" });
     fireEvent.click(trigger);
-    const panel = await screen.findByRole("dialog", { name: "Chat resources" });
+    const panel = await screen.findByRole("dialog", { name: "Overview" });
     expect(
       within(panel).getByRole("button", { name: "Changes" }),
     ).toHaveFocus();
     fireEvent.keyDown(panel, { key: "Tab", shiftKey });
-    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
     expect(trigger).toHaveFocus();
   },
 );

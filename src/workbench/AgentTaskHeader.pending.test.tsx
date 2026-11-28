@@ -112,10 +112,10 @@ it("cancels cold resources and rename on outside pointer, Escape and Tab before 
   expect(outside).toHaveFocus();
   const chunk = await import("./AgentTaskResources");
   expect(chunk.AgentTaskResources).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   expect(screen.queryByRole("textbox", { name: "New chat name" })).toBeNull();
   fireEvent.click(resources);
   expect(
-    await screen.findByRole("dialog", { name: "Chat resources" }),
+    await screen.findByRole("dialog", { name: "Overview" }),
   ).toBeVisible();
 });

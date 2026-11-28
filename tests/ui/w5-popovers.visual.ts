@@ -220,7 +220,7 @@ for (const width of [1888, 720, 480]) {
           profile.subagents,
         );
       await resources.click();
-      const overview = page.getByRole("dialog", { name: "Chat resources" });
+      const overview = page.getByRole("dialog", { name: "Overview" });
       await contained(overview, resources, page.locator(".agent-chat-center"));
       if (profile.subagents) {
         const agents = overview.getByRole("region", { name: "Subagents" });
@@ -294,7 +294,7 @@ for (const height of [320, 400]) {
     await openPopoverScenario(page);
     await page.evaluate(() => window.popoverWorkbench.subagents("children"));
     for (const [name, role, label] of [
-      ["Show chat resources", "dialog", "Chat resources"],
+      ["Show chat resources", "dialog", "Overview"],
       ["Chat actions for", "menu", "Chat tools"],
     ] as const) {
       const trigger = page

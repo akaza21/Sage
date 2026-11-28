@@ -1,6 +1,7 @@
 import { Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
+import { isTauriRuntime } from "../ports/nativeInvoke";
 import { create } from "zustand";
 
 const useBrowserPaneError = create(() => ({
@@ -33,6 +34,17 @@ function useBrowserMessage() {
 export function AgentBrowserPaneStatus() {
   const message = useBrowserMessage();
   return message ? <p role="status">{message}</p> : null;
+}
+
+/** Whether the pane can open another browser tab right now. */
+export function useBrowserPaneDisabled() {
+  return useWorkbenchStore(
+    (state) =>
+      !state.project ||
+      state.projectTransitioning ||
+      !browserTabCapacity(state.tabs) ||
+      !isTauriRuntime(),
+  );
 }
 
 /** Opens a browser tab in the pane; a refusal shows in the pane status. */

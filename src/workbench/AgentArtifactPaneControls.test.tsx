@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { AgentArtifactPaneControls } from "./AgentArtifactPaneControls";
 
 afterEach(cleanup);
-it("expands the actual resource pane, restores it, and opens a real browser tab", () => {
+it("expands the actual resource pane, restores it, and opens the new tab launcher", () => {
   const paneRef = createRef<HTMLElement>();
   const onNewTab = vi.fn();
   const onCollapse = vi.fn();
@@ -32,7 +32,7 @@ it("expands the actual resource pane, restores it, and opens a real browser tab"
     screen.getByRole("button", { name: "Restore resource pane" }),
   );
   expect(paneRef.current).not.toHaveClass("agent-artifact-pane--maximized");
-  const newTab = screen.getByRole("button", { name: "New browser tab" });
+  const newTab = screen.getByRole("button", { name: "New tab" });
   expect(newTab).toHaveClass("agent-artifact-pane__new-tab");
   fireEvent.click(newTab);
   expect(onNewTab).toHaveBeenCalledOnce();

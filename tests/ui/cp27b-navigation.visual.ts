@@ -383,7 +383,7 @@ for (const forcedColors of ["none", "active"] as const) {
     const trigger = page.getByRole("button", { name: "Show chat resources" });
     await trigger.click();
     const menu = page.getByRole("dialog", {
-      name: "Chat resources",
+      name: "Overview",
       exact: true,
     });
     for (const { width, height, navigation } of geometries) {

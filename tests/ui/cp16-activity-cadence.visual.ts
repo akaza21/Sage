@@ -188,7 +188,7 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
     "cp16-subagent-rows.png",
   );
   await page.getByRole("button", { name: "Show chat resources" }).click();
-  const popover = page.getByRole("dialog", { name: "Chat resources" });
+  const popover = page.getByRole("dialog", { name: "Overview" });
   await expect(popover.getByLabel("Recent subagents working: 1")).toBeVisible();
   await expect(popover.getByLabel("Recent subagents done: 2")).toBeVisible();
   await expect(popover.locator(".agent-task-header__agent-glyph")).toHaveCount(

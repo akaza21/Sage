@@ -78,7 +78,9 @@ it("counts deleted display resources without offering them as file outputs", asy
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(await screen.findByText("1 recently changed file")).toBeVisible();
+  expect(
+    await screen.findByRole("button", { name: "Changes" }),
+  ).toHaveTextContent("1");
   expect(screen.queryByRole("button", { name: /Open.*deleted.ts/ })).toBeNull();
 });
 afterEach(() => {
@@ -170,8 +172,10 @@ it("lists edited files through Changes rather than pretending updates are create
     </AgentToolsContext>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(await screen.findByText("1 recently changed file")).toBeVisible();
-  expect(screen.getByText("No background processes reported.")).toBeVisible();
+  expect(
+    await screen.findByRole("button", { name: "Changes" }),
+  ).toHaveTextContent("1");
+  expect(screen.queryByRole("region", { name: "Background tasks" })).toBeNull();
   expect(screen.queryByRole("button", { name: /^Open output/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Changes" }));
   expect(launch).toHaveBeenCalledWith("changes", snapshotRef.chatId);
@@ -295,7 +299,7 @@ beforeAll(async () => {
   await import("../features/chat/ConversationActions");
 });
 
-it("lists the session's background tasks under Background processes", async () => {
+it("lists the session's background tasks under Background tasks with a count", async () => {
   const projection = seedSnapshotOwner();
   const { page, scope } = projection.getState();
   if (!page || !scope) throw new Error("Missing page");
@@ -333,7 +337,7 @@ it("lists the session's background tasks under Background processes", async () =
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const processes = await screen.findByRole("region", {
-    name: "Background processes",
+    name: "Background tasks",
   });
   expect(await within(processes).findByText("Serve the docs")).toBeVisible();
   expect(within(processes).getByText("Run the build")).toBeVisible();
@@ -341,6 +345,9 @@ it("lists the session's background tasks under Background processes", async () =
     within(processes).getAllByRole("button", { name: "Stop" }),
   ).toHaveLength(1);
   expect(within(processes).queryByText(/No background processes/)).toBeNull();
+  expect(processes.querySelector(".agent-overview__badge")).toHaveTextContent(
+    "2",
+  );
 });
 
 it("offers one Stop for a running background subagent and drops it once it ends", async () => {
@@ -381,13 +388,13 @@ it("offers one Stop for a running background subagent and drops it once it ends"
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const processes = await screen.findByRole("region", {
-    name: "Background processes",
+    name: "Background tasks",
   });
   expect(
     await within(processes).findByText("Subagent: Find the model source"),
   ).toBeVisible();
   expect(within(processes).queryByText(/Read the docs/)).toBeNull();
-  const dialog = screen.getByRole("dialog", { name: "Chat resources" });
+  const dialog = screen.getByRole("dialog", { name: "Overview" });
   expect(within(dialog).getAllByRole("button", { name: "Stop" })).toHaveLength(
     1,
   );

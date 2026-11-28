@@ -104,7 +104,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
       .getByRole("button", { name: "Show chat resources", exact: true })
       .click();
     const resources = page.getByRole("dialog", {
-      name: "Chat resources",
+      name: "Overview",
       exact: true,
     });
     await expect(
@@ -231,7 +231,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     });
     await trigger.click();
     const resources = page.getByRole("dialog", {
-      name: "Chat resources",
+      name: "Overview",
       exact: true,
     });
     await expect(

@@ -51,12 +51,12 @@ it("keeps the header painted during a cold open without a loading flash", async 
   const preload = vi.spyOn(AgentTaskResourcesPart, "preload");
   mountHeader();
   expect(preload).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   expect(screen.getByText("Lazy header")).toBeVisible();
   expect(screen.queryByText(/Loading/)).toBeNull();
   expect(
-    await screen.findByRole("dialog", { name: "Chat resources" }),
+    await screen.findByRole("dialog", { name: "Overview" }),
   ).toBeVisible();
 });
 
@@ -75,9 +75,9 @@ it("keeps lazy resources and menu rename available beside the collapsed-navigati
   expect(screen.queryByRole("button", { name: "Rename chat" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   expect(
-    await screen.findByRole("dialog", { name: "Chat resources" }),
+    await screen.findByRole("dialog", { name: "Overview" }),
   ).toBeVisible();
-  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Overview" }), {
     key: "Escape",
   });
   fireEvent.click(
@@ -107,9 +107,9 @@ it("prewarms after first paint without mounting the panel, then opens synchronou
     await preload.mock.results[0]!.value;
   });
   expect(preload).toHaveBeenCalledOnce();
-  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(screen.getByRole("dialog", { name: "Chat resources" })).toBeVisible();
+  expect(screen.getByRole("dialog", { name: "Overview" })).toBeVisible();
 });
 
 it("cancels idle prewarming when the header unmounts", () => {

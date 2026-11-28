@@ -136,7 +136,7 @@ for (const width of [1888, 720, 480]) {
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await trigger.focus();
     await trigger.press("Enter");
-    const panel = page.getByRole("dialog", { name: "Chat resources" });
+    const panel = page.getByRole("dialog", { name: "Overview" });
     const region = panel.getByRole("region", { name: "Subagents" });
     await expect(
       region.getByLabel("Recent subagents working: 64"),
@@ -234,7 +234,7 @@ for (const width of [1888, 720, 480]) {
         .first()
         .click();
       await expect(
-        page.getByRole("dialog", { name: "Chat resources" }),
+        page.getByRole("dialog", { name: "Overview" }),
       ).toBeVisible();
       await expect(page.getByRole("region", { name: "Subagents" })).toHaveCount(
         0,
