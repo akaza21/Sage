@@ -200,11 +200,6 @@ const otherFile: SafeResourceLocation = {
   resource: { rootId: "root-a", relativePath: "src/other.ts" },
 };
 
-const samePathOtherRoot: SafeResourceLocation = {
-  kind: "resource",
-  resource: { rootId: "root-b", relativePath: "src/main.ts" },
-};
-
 const unavailableFile: SafeResourceLocation = {
   kind: "unavailable",
   reason: "foreign",
@@ -1520,7 +1515,7 @@ describe("ToolActivityRollup", () => {
     expect(
       toolRollupLabel("read", [
         read,
-        { ...read, id: "read-2", toolState: "inProgress" as const },
+        { ...tool("read-2", "read", [mainFile]), toolState: "inProgress" },
       ]),
     ).toBe("Exploring files");
     const mcp = tool("mcp", "mcp");

@@ -3,6 +3,7 @@
   gap: var(--space-1);
   max-height: 220px;
   margin-top: calc(var(--space-1) / 2);
+  padding-left: var(--space-3);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -46,10 +47,6 @@
 
 .acp-tool-rollup__items .acp-tool-rollup > summary {
   min-height: var(--control-height-compact);
-}
-
-.acp-tool-rollup__items {
-  padding-left: var(--space-3);
 }
 
 .acp-thought-summary {

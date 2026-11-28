@@ -30,15 +30,12 @@
     transform var(--motion-duration-indicator) ease-out,
     background-color var(--motion-duration-indicator);
 }
-
-.turn-navigator button[data-active="true"]::before {
-  transform: scale(1.4);
-}
 .turn-navigator button[data-visible="true"]::before {
   background: var(--agent-nav-dash-visible);
 }
 .turn-navigator button[data-active="true"]::before {
   background: var(--color-status-foreground);
+  transform: scale(1.4);
 }
 .turn-navigator__preview {
   position: absolute;

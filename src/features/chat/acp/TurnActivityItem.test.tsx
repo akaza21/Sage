@@ -600,7 +600,7 @@ it("folds a settled plan into a step chip beside Worked for", () => {
   });
   const answer = {
     ...item("text", { role: "assistant", text: "Done." }),
-    id: "answer",
+    id: "answer" as never,
   };
   render(
     <AcpChatPresentation
@@ -622,7 +622,7 @@ it("keeps settled reasoning as a Thought for row that opens to its summary", () 
   };
   const answer = {
     ...item("text", { role: "assistant", text: "Done." }),
-    id: "answer",
+    id: "answer" as never,
   };
   render(
     <AcpChatPresentation
