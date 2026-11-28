@@ -151,12 +151,13 @@ test("CI keeps hosted-runner spend bounded", async () => {
     /^concurrency:\n {2}group: .+\n {2}cancel-in-progress: true$/m,
     "a new push cancels the run in flight for the same branch",
   );
-  // A push to main has a group of its own commit, so no later push or
-  // requested run on main cancels or replaces it before it saves caches.
+  // A push to main has a group of its own run, so no later push (even of the
+  // same commit) or
+  // a requested run on main cancels or replaces it before it saves caches.
   const group = workflow.match(/^ {2}group: (.+)$/m)[1];
   assert.ok(
     group.includes(
-      "github.event_name == 'push' && format('push-{0}', github.sha)",
+      "github.event_name == 'push' && format('push-{0}', github.run_id)",
     ),
     "each main push runs in its own concurrency group",
   );

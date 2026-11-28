@@ -39,13 +39,13 @@ permissions:
 
 # One run per source branch: a new push to a pull request, or a requested
 # platform run, supersedes the run already in flight for the same head. Each
-# push to main gets a group of its own commit, so no later push or requested
-# run cancels or replaces it: every main run finishes and saves the Rust caches
-# that pull requests restore. The key names the repository the branch lives
+# push to main gets a group of its own run, so no later push (even of the same
+# commit) or requested run cancels or replaces it: every main run finishes and
+# saves the Rust caches that pull requests restore. The key names the repository the branch lives
 # in, so a fork's branch never shares a group with a branch of the same name
 # here.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled' || github.event_name == 'push' && format('push-{0}', github.sha) || 'branch' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled' || github.event_name == 'push' && format('push-{0}', github.run_id) || 'branch' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
