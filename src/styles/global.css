@@ -444,6 +444,11 @@
   --radius-pill: 999px;
   --radius-rail-button: 10px;
   --radius-rail-box: 6px;
+  /* A chat card joined to the right pane, and that pane. */
+  --radius-card-joined-start: var(--radius-lg) var(--radius-none)
+    var(--radius-none) var(--radius-lg);
+  --radius-card-joined-end: var(--radius-none) var(--radius-lg) var(--radius-lg)
+    var(--radius-none);
   --radius-none: 0;
   /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);

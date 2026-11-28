@@ -135,8 +135,7 @@
   .workbench__body:has(> .workbench-sidebar-splitter--trailing)
   .agent-chat-center {
   margin-right: 0;
-  border-radius: var(--workbench-card-radius) var(--radius-none)
-    var(--radius-none) var(--workbench-card-radius);
+  border-radius: var(--radius-card-joined-start);
 }
 
 .workbench--agent .project-sidebar__icon-rail > button[aria-pressed="true"] {
@@ -151,9 +150,10 @@
 
 .project-sidebar__icon-rail .harness-account__attention {
   top: auto;
-  right: 5px;
-  bottom: 5px;
-  outline: 2px solid var(--agent-shell-rail);
+  right: 3px;
+  bottom: 3px;
+  box-sizing: content-box;
+  border: 2px solid var(--agent-shell-rail);
 }
 
 .harness-account__attention--ok {
@@ -293,8 +293,7 @@
   .workbench__body:has(> .workbench-sidebar-splitter--trailing)
   .agent-artifact-pane:not(.agent-artifact-pane--maximized) {
   border: 0;
-  border-radius: var(--radius-none) var(--workbench-card-radius)
-    var(--workbench-card-radius) var(--radius-none);
+  border-radius: var(--radius-card-joined-end);
   box-shadow: inset 0 0 0 0.5px var(--agent-card-edge);
 }
 
