@@ -9,17 +9,43 @@
 // profile under .sage-dev/ in this checkout, never the real Sage profile, and
 // publishes each run there; the dev server hands it to the tab, which pairs by
 // itself and reloads after a Rust rebuild. Prints one URL. Both children run
-// at below-normal priority and stop together.
-import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// at below-normal priority and stop together, with everything they started.
+// Cargo builds into this checkout's own target directory (or an explicit
+// CARGO_TARGET_DIR), so a gate holding a shared target never stalls a rebuild.
+// One launcher per checkout. Not on macOS: see refuseUnsupportedPlatform.
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { acquireLauncherLock } from "./lib/dev-live-lock.mjs";
+import { killTrees, launch, signalRoots } from "./lib/dev-live-processes.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STOP_GRACE_MS = 5_000;
 const READY_TIMEOUT_MS = 60_000;
+// Same bound as the dev server's route (scripts/devBridgeRun.ts).
+const MAX_RECORD_BYTES = 512;
+
+// WKWebView ignores Tauri's per-webview data directory, so on macOS the debug
+// app's main window and in-app Preview would share WebKit website data
+// (cookies, storage, Preview sign-ins) with the default store instead of the
+// throwaway profile. Sage's launch profile refuses that (launch_profile.rs).
+function refuseUnsupportedPlatform() {
+  if (process.platform !== "darwin") return;
+  throw new Error(
+    "npm run dev is not available on macOS yet: WebKit has no per-profile " +
+      "data directory, so the debug app could share browser data with your " +
+      "real Sage. Use npm run tauri dev for a native debug window on your own profile.",
+  );
+}
 const PROFILE_MARKER = "sage-disposable-profile-v1\n";
 
 function flag(name) {
@@ -58,8 +84,7 @@ async function choosePort() {
   return listenOnce(0);
 }
 
-function prepareProfile() {
-  const devRoot = path.join(root, ".sage-dev");
+function prepareProfile(devRoot) {
   const profile = path.join(devRoot, "profile");
   const durable = path.join(profile, "durable");
   mkdirSync(durable, { recursive: true });
@@ -71,7 +96,7 @@ function prepareProfile() {
   // A run from an earlier session would pair the tab with a dead backend.
   rmSync(runFile, { force: true });
   rmSync(`${runFile}.tmp`, { force: true });
-  return { devRoot, profile, runFile };
+  return { profile, runFile };
 }
 
 async function waitForVite(url, vite) {
@@ -88,62 +113,60 @@ async function waitForVite(url, vite) {
   throw new Error(`Vite did not answer on ${url}`);
 }
 
-const children = new Set();
+const running = new Set();
+let stopping = false;
+let graceTimer;
 
-function launch(args, env) {
-  const child = spawn(process.execPath, args, {
-    cwd: root,
-    env,
-    stdio: ["ignore", "inherit", "inherit"],
-    // POSIX: own process group, so stopping reaches cargo and the app too.
-    detached: process.platform !== "win32",
+/** Sweeps the trees once every child has exited, catching orphans too. */
+function track(child) {
+  running.add(child);
+  child.once("exit", () => {
+    running.delete(child);
+    if (stopping && running.size === 0) {
+      clearTimeout(graceTimer);
+      killTrees();
+    }
   });
-  children.add(child);
-  child.once("exit", () => children.delete(child));
   return child;
 }
 
-function signalTree(child, force) {
-  if (child.exitCode !== null || child.pid === undefined) return;
-  if (process.platform === "win32") {
-    // Without /F the app window gets a close request and can shut down cleanly.
-    spawnSync(
-      "taskkill",
-      ["/pid", String(child.pid), "/T", ...(force ? ["/F"] : [])],
-      {
-        stdio: "ignore",
-      },
-    );
-  } else {
-    try {
-      process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
-}
-
-let stopping = false;
-function stop(exitCode) {
+/**
+ * Stops both children and everything they started. After Ctrl+C the console
+ * has already signalled every process, so they get a grace period first.
+ */
+function stop(exitCode, { grace = false } = {}) {
   if (stopping) return;
   stopping = true;
   process.exitCode = exitCode;
-  for (const child of children) signalTree(child, false);
-  setTimeout(() => {
-    for (const child of children) signalTree(child, true);
-  }, STOP_GRACE_MS).unref();
+  if (!grace) {
+    killTrees();
+    return;
+  }
+  signalRoots();
+  graceTimer = setTimeout(killTrees, STOP_GRACE_MS);
+}
+
+function readRun(runFile) {
+  let descriptor;
+  try {
+    descriptor = openSync(runFile, "r");
+    const buffer = Buffer.alloc(MAX_RECORD_BYTES + 1);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytes > MAX_RECORD_BYTES) return undefined;
+    return JSON.parse(buffer.toString("utf8", 0, bytes)).run;
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
 }
 
 /** Logs each new backend run, so a rebuild's finish is visible. */
 function watchRuns(runFile) {
   let current;
   const timer = setInterval(() => {
-    let run;
-    try {
-      run = JSON.parse(readFileSync(runFile, "utf8")).run;
-    } catch {
-      return;
-    }
+    const run = readRun(runFile);
+    if (run === undefined) return;
     // Pairing rewrites the record without its code; only a new run counts.
     if (run === current) return;
     current = run;
@@ -155,6 +178,7 @@ function watchRuns(runFile) {
 }
 
 async function main() {
+  refuseUnsupportedPlatform();
   try {
     // Inherited by both children and everything they start.
     os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL);
@@ -165,7 +189,12 @@ async function main() {
   const jobs = flag("jobs");
   if (jobs !== undefined && !/^[1-9]\d{0,2}$/.test(jobs))
     throw new Error("--jobs must be a positive integer");
-  const { devRoot, profile, runFile } = prepareProfile();
+  const devRoot = path.join(root, ".sage-dev");
+  mkdirSync(devRoot, { recursive: true });
+  // Before anything touches the shared profile or its run record.
+  const release = acquireLauncherLock(devRoot);
+  process.on("exit", release);
+  const { profile, runFile } = prepareProfile(devRoot);
   const origin = `http://127.0.0.1:${port}`;
   const config = path.join(devRoot, "tauri-dev.json");
   writeFileSync(
@@ -174,20 +203,22 @@ async function main() {
   );
 
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"])
-    process.on(signal, () => stop(130));
+    process.on(signal, () => stop(130, { grace: true }));
 
-  const vite = launch(
-    [
-      path.join(root, "node_modules/vite/bin/vite.js"),
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--strictPort",
-      "--logLevel",
-      "warn",
-    ],
-    { ...process.env, SAGE_DEV_BRIDGE_RUN_FILE: runFile },
+  const vite = track(
+    launch(
+      [
+        path.join(root, "node_modules/vite/bin/vite.js"),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--strictPort",
+        "--logLevel",
+        "warn",
+      ],
+      { cwd: root, env: { ...process.env, SAGE_DEV_BRIDGE_RUN_FILE: runFile } },
+    ),
   );
   vite.once("exit", (code) => stop(code ?? 1));
   await waitForVite(origin, vite);
@@ -202,23 +233,29 @@ async function main() {
   Object.assign(tauriEnv, {
     SAGE_DISPOSABLE_PROFILE_ROOT: profile,
     WEBVIEW2_USER_DATA_FOLDER: path.join(profile, "webview"),
+    // Never the shared target a gate or another session may be holding.
+    CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR || path.join(root, "target"),
     ...(jobs === undefined ? {} : { CARGO_BUILD_JOBS: jobs }),
   });
-  const tauri = launch(
-    [
-      path.join(root, "node_modules/@tauri-apps/cli/tauri.js"),
-      "dev",
-      "--features",
-      "browser-bridge",
-      "--config",
-      config,
-    ],
-    tauriEnv,
+  const tauri = track(
+    launch(
+      [
+        path.join(root, "node_modules/@tauri-apps/cli/tauri.js"),
+        "dev",
+        "--features",
+        "browser-bridge",
+        "--config",
+        config,
+      ],
+      { cwd: root, env: tauriEnv },
+    ),
   );
   tauri.once("exit", (code) => stop(code ?? 1));
   watchRuns(runFile);
   console.log(`\n  Sage (live backend): ${origin}/\n`);
-  console.log("[sage] building the debug backend; the tab waits for it");
+  console.log(
+    `[sage] building the debug backend in ${tauriEnv.CARGO_TARGET_DIR}; the tab waits for it`,
+  );
 }
 
 main().catch((error) => {

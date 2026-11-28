@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("./app/mountApp");
+  vi.doUnmock("./ports/workbenchRuntime");
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   document.body.replaceChildren();
   vi.resetModules();
@@ -31,4 +34,32 @@ it("calls mountApp synchronously during entry evaluation", async () => {
   await import("./main");
 
   expect(contentAfterEntry).toBe("Sage mounted");
+});
+
+it("shows the page's backend-missing notice in a production build opened in a plain browser", async () => {
+  vi.stubEnv("DEV", false);
+  vi.stubEnv("PROD", true);
+  // The shipped page, with its notice template.
+  const page = new DOMParser().parseFromString(
+    readFileSync("index.html", "utf8"),
+    "text/html",
+  );
+  document.body.replaceChildren(...page.body.children);
+  let mounted = false;
+  // A plain browser tab: no desktop shell and no dev bridge.
+  vi.doMock("./ports/workbenchRuntime", () => ({
+    hasWorkbenchBackend: () => false,
+  }));
+  vi.doMock("./app/mountApp", () => ({
+    mountApp: () => {
+      mounted = true;
+    },
+  }));
+
+  await import("./main");
+
+  expect(document.querySelector('#root > [role="alert"] h1')?.textContent).toBe(
+    "Sage's backend isn't running",
+  );
+  expect(mounted).toBe(false);
 });

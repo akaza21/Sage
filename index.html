@@ -18,10 +18,33 @@
       body {
         background: #141414;
       }
+      .backend-missing {
+        max-width: 32rem;
+        margin: 20vh auto 0;
+        padding: 0 16px;
+        color: #d8d8d8;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+      }
+      .backend-missing h1 {
+        font-size: 18px;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Shown only when no Sage backend answers: a plain browser tab. Kept in
+         the page, not the bundle, so the desktop startup code never grows. -->
+    <template id="backend-missing">
+      <main class="backend-missing" role="alert">
+        <h1>Sage&apos;s backend isn&apos;t running</h1>
+        <p>
+          Start it with <code>npm run dev</code> and open the URL it prints.
+        </p>
+      </main>
+    </template>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

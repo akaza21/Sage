@@ -7,6 +7,8 @@ const FIRST_DELAY_MS = 250;
 const MAX_DELAY_MS = 2_000;
 // A cold debug build can take minutes; past this the tab stops polling.
 const WAIT_LIMIT_MS = 15 * 60_000;
+// A dev server that accepts the request but never answers must not stall polling.
+const FETCH_LIMIT_MS = 3_000;
 
 export type BridgeRun = { run: string; bridgePort: number; code?: string };
 
@@ -27,40 +29,44 @@ function parseRun(value: unknown): BridgeRun | undefined {
 }
 
 /** The current run, or undefined while the backend has none published. */
-async function readBridgeRun(): Promise<BridgeRun | undefined> {
-  let response: Response;
+async function readBridgeRun(): Promise<BridgeRun | "no-backend" | undefined> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), FETCH_LIMIT_MS);
   try {
-    response = await fetch(BRIDGE_RUN_PATH, {
+    const response = await fetch(BRIDGE_RUN_PATH, {
       cache: "no-store",
       credentials: "same-origin",
+      signal: abort.signal,
     });
-  } catch {
-    return undefined;
-  }
-  if (response.status === 404)
-    throw new Error("Start Sage with npm run dev to use this page.");
-  if (!response.ok) return undefined;
-  try {
+    if (response.status === 404) return "no-backend";
+    if (!response.ok) return undefined;
     return parseRun(await response.json());
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-/** Polls with backoff until `select` takes a run, for a bounded time. */
-export async function waitForBridgeRun<T>(
-  select: (run: BridgeRun) => T | undefined,
+/**
+ * Polls the published run with backoff until `step` settles on a value, up to
+ * an absolute deadline. `step` may try to connect; undefined means keep going.
+ */
+export async function pollBridgeRuns<T>(
+  step: (run: BridgeRun) => Promise<T | undefined> | T | undefined,
 ): Promise<T> {
-  let delay = FIRST_DELAY_MS;
+  const deadline = Date.now() + WAIT_LIMIT_MS;
   for (
-    let waited = 0;
+    let delay = FIRST_DELAY_MS;
     ;
-    waited += delay, delay = Math.min(delay * 2, MAX_DELAY_MS)
+    delay = Math.min(delay * 2, MAX_DELAY_MS)
   ) {
     const run = await readBridgeRun();
-    const selected = run && select(run);
-    if (selected !== undefined) return selected;
-    if (waited >= WAIT_LIMIT_MS)
+    if (run === "no-backend")
+      throw new Error("Start Sage with npm run dev to use this page.");
+    const settled = run && (await step(run));
+    if (settled !== undefined) return settled;
+    if (Date.now() + delay > deadline)
       throw new Error(
         "The Sage backend did not start. Reload this tab to retry.",
       );

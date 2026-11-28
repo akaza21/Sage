@@ -133,3 +133,23 @@ it("moves a localhost tab to the 127.0.0.1 origin the bridge admits", async () =
     `http://127.0.0.1:1461${BRIDGE_PAGE_PATH}`,
   );
 });
+
+it("refuses a record over 512 bytes, counted in bytes rather than characters", async () => {
+  const sameOrigin = { "Sec-Fetch-Site": "same-origin" };
+  const port = await serve(runFile);
+  const sized = (pad: string, bytes: number) => {
+    const body = JSON.stringify({ ...run, pad: "" });
+    const room = bytes - Buffer.byteLength(body);
+    return JSON.stringify({
+      ...run,
+      pad: pad.repeat(room / Buffer.byteLength(pad)),
+    });
+  };
+  writeFileSync(runFile, sized("x", 512));
+  expect((await get(port, sameOrigin)).status).toBe(200);
+  // Two-byte characters: fewer than 512 characters, but 514 bytes.
+  const wide = sized("é", 512 + 2);
+  expect(wide.length).toBeLessThan(512);
+  writeFileSync(runFile, wide);
+  expect((await get(port, sameOrigin)).status).toBe(503);
+});

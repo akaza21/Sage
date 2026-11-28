@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 
@@ -9,6 +9,25 @@ export const BRIDGE_PAGE_PATH = "/src/devBridge/bridge.html";
 const MAX_RECORD_BYTES = 512;
 
 type BridgeRun = { run: string; bridgePort: number; code?: string };
+
+/**
+ * Reads at most MAX_RECORD_BYTES + 1 bytes, so a corrupt or oversized record
+ * is refused before it is decoded. Undefined: missing, unreadable or too big.
+ */
+async function readRecord(file: string): Promise<string | undefined> {
+  let handle;
+  try {
+    handle = await open(file, "r");
+    const buffer = Buffer.alloc(MAX_RECORD_BYTES + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_RECORD_BYTES) return undefined;
+    return buffer.toString("utf8", 0, bytesRead);
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close();
+  }
+}
 
 function parseRun(text: string): BridgeRun | undefined {
   let value: unknown;
@@ -89,14 +108,8 @@ export function bridgeRunHandler(runFile: string | undefined) {
       reply(response, 404, "{}");
       return;
     }
-    let text: string;
-    try {
-      text = await readFile(runFile, "utf8");
-    } catch {
-      reply(response, 503, "{}");
-      return;
-    }
-    const run = text.length <= MAX_RECORD_BYTES ? parseRun(text) : undefined;
+    const text = await readRecord(runFile);
+    const run = text === undefined ? undefined : parseRun(text);
     if (run) reply(response, 200, JSON.stringify(run));
     else reply(response, 503, "{}");
   };
