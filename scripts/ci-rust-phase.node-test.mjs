@@ -149,7 +149,17 @@ test("CI keeps hosted-runner spend bounded", async () => {
   assert.match(
     workflow,
     /^concurrency:\n {2}group: .+\n {2}cancel-in-progress: true$/m,
-    "a new push must cancel the run in flight for the same branch",
+    "a new push cancels the run in flight for the same branch",
+  );
+  // A push to main has a group of its own run, so no later push (even of the
+  // same commit) or requested run on main cancels or replaces it before it
+  // saves caches.
+  const group = workflow.match(/^ {2}group: (.+)$/m)[1];
+  assert.ok(
+    group.includes(
+      "github.event_name == 'push' && format('push-{0}', github.run_id)",
+    ),
+    "each main push runs in its own concurrency group",
   );
   assert.match(
     workflow,
@@ -170,10 +180,10 @@ test("CI keeps hosted-runner spend bounded", async () => {
   }
 
   // Windows and macOS run only when requested through workflow_dispatch.
-  const smokeCli = jobBlock(workflow, "smoke-cli");
-  assert.match(smokeCli, /if: needs\.plan\.outputs\.windows == 'true'/);
-  const workflowOutsideSmokeCli = workflow.replace(smokeCli, "");
-  for (const line of workflowOutsideSmokeCli.split("\n")) {
+  const windowsBudget = jobBlock(workflow, "windows-budget");
+  assert.match(windowsBudget, /if: needs\.plan\.outputs\.windows == 'true'/);
+  const workflowOutsideWindowsBudget = workflow.replace(windowsBudget, "");
+  for (const line of workflowOutsideWindowsBudget.split("\n")) {
     if (/windows-latest|macos-latest/.test(line)) {
       assert.match(
         line,
@@ -226,6 +236,7 @@ test("CI plans Rust from both sides of every changed path", async () => {
     "scripts/cargo-features.mjs",
     "scripts/change-scope.mjs",
     ".github/workflows/ci.yml",
+    ".github/actions/rust-setup/action.yml",
   ]) {
     assert.ok(needsRust([file]), `${file} must run Rust`);
   }

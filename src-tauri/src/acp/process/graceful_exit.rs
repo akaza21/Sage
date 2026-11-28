@@ -29,6 +29,34 @@ pub(crate) fn close_budget_ms() -> u64 {
     u64::try_from(close_budget().as_millis()).unwrap_or(u64::MAX)
 }
 
+/// The grace a harness can still have when its teardown must end by
+/// `deadline`: at most [`EXIT_GRACE`], leaving the tree-termination budget to
+/// kill whatever is left and reach zero.
+pub(crate) fn grace_before(deadline: Instant) -> Duration {
+    deadline
+        .saturating_duration_since(Instant::now())
+        .saturating_sub(Duration::from_millis(
+            sage_core::limits::LIMITS.deadlines_ms.tree_termination,
+        ))
+        .min(EXIT_GRACE)
+}
+
+/// Ends a supervised harness whose stdin the caller has closed after work
+/// that finished cleanly: it is left the grace that fits before `deadline`
+/// to exit on its own, then the tree is killed, and zero is proven by
+/// `deadline`.
+pub(crate) fn end_tree_before(
+    control: &super::TreeControl,
+    reason: super::TreeExit,
+    deadline: Instant,
+) -> Result<(super::TreeExit, super::ZeroProcessToken), sage_process::error::LaunchError> {
+    // An absolute end no later than `deadline`, so the wait below always
+    // claims the grace and kills the tree, however late this thread runs.
+    let kill_at = (Instant::now() + grace_before(deadline)).min(deadline);
+    control.request_graceful_termination_until(reason, kill_at)?;
+    control.wait_zero_before(deadline)
+}
+
 /// A process whose input Sage has already ended.
 pub(crate) trait ExitingProcess {
     /// True once it has exited, or when its state can no longer be read.

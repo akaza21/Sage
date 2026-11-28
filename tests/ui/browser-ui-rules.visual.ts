@@ -6,7 +6,7 @@ forbidBrowserRetries();
 
 type Rule = {
   id: string;
-  ref: string;
+  source: string;
   selector: string;
   measure:
     | "height"
@@ -32,7 +32,7 @@ type RuleSet = {
   rules: Rule[];
 };
 
-const RULES = "docs/work-items/BROWSER-FIRST-CLASS/ui-rules";
+const RULES = "tests/ui/browser-ui-rules";
 const ruleSets: [string, RuleSet][] = readdirSync(RULES)
   .filter((name) => name.endsWith(".json"))
   .map((name) => [name, JSON.parse(readFileSync(`${RULES}/${name}`, "utf8"))]);
@@ -62,7 +62,7 @@ for (const [name, ruleSet] of ruleSets) {
       await page.goto(ruleSet.fixture);
     });
     for (const rule of ruleSet.rules) {
-      test(`${rule.id} matches Codex ${rule.ref}`, async ({ page }) => {
+      test(`${rule.id} matches ${rule.source}`, async ({ page }) => {
         await check(page, rule);
       });
     }

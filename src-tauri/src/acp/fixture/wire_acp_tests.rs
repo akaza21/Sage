@@ -48,11 +48,70 @@ fn acp_replay_preserves_prompt_id_across_config_and_cancel() {
         .collect();
     assert_eq!(frames[0]["id"], 41);
     assert_eq!(frames[1]["id"], 42);
-    assert_eq!(frames[2]["id"], 44);
     assert_eq!(
-        frames[3],
+        frames[2],
+        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":plain_options("default")}}})
+    );
+    assert_eq!(frames[3]["id"], 44);
+    assert_eq!(
+        frames[4],
         json!({"jsonrpc":"2.0","id":43,"result":{"stopReason":"cancelled"}})
     );
+}
+
+/// The plain Claude session's config options as claude-agent-acp 0.76.0
+/// reports them: the permission mode first, then the model.
+fn plain_options(mode: &str) -> Value {
+    json!([
+        {"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":mode,
+         "options":[{"value":"default","name":"Default"},{"value":"plan","name":"Plan"},{"value":"auto","name":"Auto"}]},
+        {"id":"model","name":"Model","category":"model","type":"select","currentValue":"fixture-model",
+         "options":[{"value":"fixture-model","name":"Synthetic replay"}]}
+    ])
+}
+
+#[test]
+fn a_plain_claude_session_switches_listed_modes_and_refuses_others() {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let requests = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}
+{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{}}
+{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/set_mode\",\"params\":{\"modeId\":\"auto\"}}
+{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/set_mode\",\"params\":{\"modeId\":\"bypassPermissions\"}}
+{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/set_config_option\",\"params\":{\"configId\":\"mode\",\"value\":\"plan\"}}
+{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"session/prompt\",\"params\":{}}
+";
+    let mut input = Cursor::new(requests.as_slice());
+    for step in [
+        json!({"op":"awaitClient","kind":"acpInitialize"}),
+        json!({"op":"emitKnownFrame","shape":"acpInitialize"}),
+        json!({"op":"awaitClient","kind":"acpNew"}),
+        json!({"op":"emitKnownFrame","shape":"acpSession"}),
+        json!({"op":"awaitClient","kind":"acpPrompt"}),
+    ] {
+        execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new()).unwrap();
+    }
+    let frames: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        frames[1]["result"]["configOptions"],
+        plain_options("default")
+    );
+    assert_eq!(
+        frames[2]["params"]["update"],
+        json!({"sessionUpdate":"config_option_update","configOptions":plain_options("auto")})
+    );
+    assert_eq!(frames[3], json!({"jsonrpc":"2.0","id":3,"result":{}}));
+    assert_eq!(frames[4]["id"], 4);
+    assert_eq!(frames[4]["error"]["code"], -32602);
+    assert_eq!(
+        frames[5],
+        json!({"jsonrpc":"2.0","id":5,"result":{"configOptions":plain_options("plan")}})
+    );
+    assert_eq!(frames.len(), 6);
 }
 
 #[test]
@@ -214,18 +273,31 @@ fn the_claude_config_journey_resumes_in_the_defaults_and_answers_each_change() {
     let resumed = &reply(2)["result"];
     assert_eq!(resumed["sessionId"], session);
     assert_eq!(resumed["modes"]["currentModeId"], "default");
-    assert_eq!(resumed["configOptions"][0]["currentValue"], "fixture-model");
-    assert_eq!(resumed["configOptions"][1]["currentValue"], "medium");
+    let option = |options: &Value, id: &str| {
+        options
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|option| option["id"] == id)
+            .unwrap()["currentValue"]
+            .clone()
+    };
+    assert_eq!(option(&resumed["configOptions"], "mode"), "default");
+    assert_eq!(option(&resumed["configOptions"], "model"), "fixture-model");
+    assert_eq!(option(&resumed["configOptions"], "effort"), "medium");
     assert_eq!(
-        reply(3)["result"]["configOptions"][0]["currentValue"],
+        option(&reply(3)["result"]["configOptions"], "model"),
         "fixture-model-deep"
     );
     assert_eq!(reply(4)["error"]["code"], -32602);
     let mode = frames
         .iter()
-        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "current_mode_update")
+        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "config_option_update")
         .unwrap();
-    assert_eq!(frames[mode]["params"]["update"]["currentModeId"], "plan");
+    assert_eq!(
+        option(&frames[mode]["params"]["update"]["configOptions"], "mode"),
+        "plan"
+    );
     assert_eq!(frames[mode + 1]["id"], 5);
     assert!(
         frames

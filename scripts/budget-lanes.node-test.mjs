@@ -101,25 +101,9 @@ test("lane split and runner tests are explicitly recorded", () => {
     laneOfBudgetTest("htmlCompletionSchema.node-test.mjs"),
     "portable",
   );
-  assert.ok(
-    discoverBudgetTestFiles().includes(
-      "capture-native-chat-source.node-test.mjs",
-    ),
-  );
-  assert.equal(
-    laneOfBudgetTest("capture-native-chat-source.node-test.mjs"),
-    "portable",
-  );
   assert.equal(
     laneOfBudgetTest("chat-performance-budget.node-test.mjs"),
     "windows",
-  );
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-cancel-evidence.node-test.mjs"),
-  );
-  assert.equal(
-    laneOfBudgetTest("hr6-cancel-evidence.node-test.mjs"),
-    "portable",
   );
   assert.ok(
     discoverBudgetTestFiles().includes(
@@ -145,36 +129,6 @@ test("lane split and runner tests are explicitly recorded", () => {
   );
   assert.ok(discoverBudgetTestFiles().includes("lane.node-test.mjs"));
   assert.equal(laneOfBudgetTest("lane.node-test.mjs"), "portable");
-  assert.ok(discoverBudgetTestFiles().includes("hr6-live-run.node-test.mjs"));
-  assert.equal(laneOfBudgetTest("hr6-live-run.node-test.mjs"), "windows");
-  assert.ok(discoverBudgetTestFiles().includes("hr6-chat-scope.node-test.mjs"));
-  assert.equal(laneOfBudgetTest("hr6-chat-scope.node-test.mjs"), "portable");
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-tool-evidence.node-test.mjs"),
-  );
-  assert.equal(laneOfBudgetTest("hr6-tool-evidence.node-test.mjs"), "portable");
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-access-mode.node-test.mjs"),
-  );
-  assert.equal(laneOfBudgetTest("hr6-access-mode.node-test.mjs"), "portable");
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-diff-evidence.node-test.mjs"),
-  );
-  assert.equal(laneOfBudgetTest("hr6-diff-evidence.node-test.mjs"), "portable");
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-permission-evidence.node-test.mjs"),
-  );
-  assert.equal(
-    laneOfBudgetTest("hr6-permission-evidence.node-test.mjs"),
-    "portable",
-  );
-  assert.ok(
-    discoverBudgetTestFiles().includes("hr6-harness-selection.node-test.mjs"),
-  );
-  assert.equal(
-    laneOfBudgetTest("hr6-harness-selection.node-test.mjs"),
-    "portable",
-  );
   assert.ok(
     discoverBudgetTestFiles().includes("app-smoke-server.node-test.mjs"),
   );
@@ -189,9 +143,12 @@ test("mixed check-lanes source is retired from the discovered set", () => {
 
 test("full budget inventory verifies without an expected-total freeze", () => {
   const inventory = verifyBudgetInventory();
-  assert.ok(inventory.discovered >= inventory.successors);
-  assert.equal(inventory.origins, 32);
-  assert.equal(inventory.successors, 33);
+  assert.equal(
+    inventory.discovered,
+    inventory.portable + inventory.windows + inventory.posix,
+  );
+  assert.equal(inventory.origins, 31);
+  assert.equal(inventory.successors, 32);
 });
 
 test("migration verifier parses actual test declarations, not comments", () => {
@@ -256,11 +213,7 @@ test("migration verifier rejects deletion and comment-only spoof", async () => {
 
 test("frozen original checkpoint rejects an unrecorded new member", () => {
   const discovered = discoverBudgetTestFiles();
-  assert.ok(
-    ORIGINAL_BUDGET_TESTS.includes(
-      "validate-performance-budgets.node-test.mjs",
-    ),
-  );
+  assert.ok(ORIGINAL_BUDGET_TESTS.includes("css-hygiene-policy.node-test.mjs"));
   assert.ok(!ORIGINAL_BUDGET_TESTS.includes("budget-lanes.node-test.mjs"));
   assert.throws(
     () => verifyLaneJustifications([...discovered, "evil-new.node-test.mjs"]),

@@ -8,12 +8,8 @@ use super::generated_cases::{FROZEN_CASES, FrozenCase, FrozenPhase};
 use super::{child, host, oracle};
 
 fn contract(name: &str) -> String {
-    let checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri has a checkout parent")
-        .to_path_buf();
-    let path = checkout
-        .join("docs/work-items/ADE-0006A-acp-session-foundation/contracts")
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata/acp/contracts")
         .join(name);
     fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("contract artifact {}: {error}", path.display()))

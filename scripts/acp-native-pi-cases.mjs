@@ -12,7 +12,7 @@ import {
   STREAM_CHUNKS,
   paced,
 } from "./acp-native-parity-events.mjs";
-import { paritySupported, parityTurns } from "./capture-native-chat-parity.mjs";
+import { paritySupported, parityTurns } from "./acp-native-parity-states.mjs";
 
 export const piAbsentStates = Object.freeze([
   "tool-long-label",

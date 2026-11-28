@@ -232,3 +232,51 @@ fn a_short_wait_never_ends_the_grace_early() {
         "killed at the grace's end"
     );
 }
+
+#[test]
+fn a_cleanly_finished_probe_is_left_to_save_its_work() {
+    let scratch = Scratch::new();
+    let marker = scratch.marker("saved");
+    let control = tree(78, &finishes_after_eof_script(&marker));
+    let (exit, _zero) = end_tree_before(
+        &control,
+        TreeExit::ParentShutdown,
+        Instant::now() + close_budget(),
+    )
+    .unwrap();
+    assert_eq!(exit, TreeExit::ParentShutdown);
+    assert!(marker.exists(), "the probe saved its work before exiting");
+}
+
+#[test]
+fn a_probe_grace_fits_inside_its_cleanup_deadline() {
+    let control = tree(79, &ignores_eof_script());
+    let begun = Instant::now();
+    // Six seconds leave the five-second tree budget and about one second of grace.
+    let deadline = begun + Duration::from_secs(6);
+    let (exit, _zero) = end_tree_before(&control, TreeExit::ParentShutdown, deadline).unwrap();
+    let elapsed = begun.elapsed();
+    assert_eq!(exit, TreeExit::ParentShutdown);
+    assert!(
+        elapsed >= Duration::from_millis(800),
+        "it had a grace: {elapsed:?}"
+    );
+    assert!(
+        Instant::now() <= deadline,
+        "zero was proven by the deadline: {elapsed:?}"
+    );
+}
+
+#[test]
+fn a_caller_running_late_still_kills_the_tree() {
+    let control = tree(80, &ignores_eof_script());
+    // The cleanup deadline has already passed when the caller gets to run.
+    let deadline = Instant::now();
+    std::thread::sleep(Duration::from_millis(50));
+    let _ = end_tree_before(&control, TreeExit::ParentShutdown, deadline);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        control.root_has_exited(),
+        "the grace ended no later than the deadline, so the tree was killed"
+    );
+}

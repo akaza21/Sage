@@ -19,6 +19,11 @@ mod provisioning;
 mod reproduction;
 mod request;
 pub(crate) mod runtime;
+#[allow(
+    dead_code,
+    reason = "the shared Codex host wires the router in its next change"
+)]
+mod shared_scope;
 mod state;
 mod trust_root;
 mod turn_policy;

@@ -2,9 +2,6 @@
 resolver = "3"
 members = ["src-tauri", "crates/*"]
 default-members = ["src-tauri"]
-# The footprint control is a standalone Tauri app with its own lockfile and
-# release profile; it is built on its own and never linked into Sage.
-exclude = ["tools/footprint-control"]
 
 [workspace.package]
 license = "Apache-2.0"
@@ -36,14 +33,12 @@ jpeg-encoder = { version = "=0.7.1", default-features = false, features = ["std"
 # Quick Open's byte prefilter (EDIT-0005 EP-07). Already in the lock through
 # regex, ignore and serde_json, so it adds no new code to the build.
 memchr = "=2.8.3"
-agent-client-protocol-schema = { version = "=1.4.0", default-features = false }
 rusqlite = { version = "=0.41.0", features = ["backup", "bundled", "hooks", "modern_sqlite"] }
 regex = "=1.13.1"
 serde = { version = "=1.0.229", features = ["derive"] }
 # `preserve_order` keeps object keys in the order a harness sent them, which
-# Sage shows (an MCP form's questions, for one). The all-features test build
-# already turned it on through `acp-schema`, so declaring it here makes the
-# shipped build match the tested one. indexmap is already in the build.
+# Sage shows (an MCP form's questions, for one). indexmap is already in the
+# build.
 serde_json = { version = "=1.0.151", features = ["preserve_order"] }
 sha2 = "=0.10.9"
 tauri = { version = "=2.11.5", features = ["unstable"] }

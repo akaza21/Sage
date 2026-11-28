@@ -79,7 +79,7 @@ struct RequestDigestVector {
 #[test]
 fn exact_request_payload_digest_matches_every_frozen_vector() {
     let vectors: RequestDigestVectors = serde_json::from_str(include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/request-digest-vectors-v1.json"
+        "../../../testdata/acp/contracts/request-digest-vectors-v1.json"
     ))
     .unwrap();
     tokio::runtime::Builder::new_current_thread()

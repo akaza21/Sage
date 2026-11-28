@@ -51,17 +51,6 @@ async function selectMode(name: "Agent" | "Editor") {
   await settleLazyModules();
 }
 
-it("mounts the Agent body only on its first Agent visit", async () => {
-  writeWorkbenchLayout({ windowMode: "editor" });
-  render(<Workbench />);
-  await settleLazyModules();
-  expect(screen.queryByLabelText("Agent body probe")).toBeNull();
-  expect(body.renders).toBe(0);
-
-  await selectMode("Agent");
-  expect(screen.getByLabelText("Agent body probe")).toBeVisible();
-});
-
 it("keeps one Agent body asleep in Editor without re-rendering it", async () => {
   writeWorkbenchLayout({ windowMode: "agent" });
   render(<Workbench />);

@@ -17,6 +17,16 @@ impl TreeControl {
         reason: TreeExit,
         grace: Duration,
     ) -> Result<(), LaunchError> {
+        self.request_graceful_termination_until(reason, Instant::now() + grace)
+    }
+
+    /// Like [`Self::request_graceful_termination`], with the grace ending at
+    /// `kill_at`.
+    pub(crate) fn request_graceful_termination_until(
+        &self,
+        reason: TreeExit,
+        kill_at: Instant,
+    ) -> Result<(), LaunchError> {
         let mut child = self
             .0
             .child
@@ -34,7 +44,7 @@ impl TreeControl {
                         code: status.code(),
                     })
                 },
-                Instant::now() + grace,
+                kill_at,
             );
         Ok(())
     }
@@ -53,6 +63,14 @@ impl TreeControl {
         };
         graceful_exit::exit_or_kill(&mut Root(self), kill_at);
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn root_has_exited(&self) -> bool {
+        self.0
+            .child
+            .lock()
+            .is_ok_and(|mut child| matches!(child.try_wait(), Ok(Some(_))))
     }
 
     /// The native bound on a wait for the tree, past any pending grace.

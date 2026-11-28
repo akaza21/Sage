@@ -18,7 +18,7 @@ The product is intentionally narrower than a VS Code fork:
 
 ## Current implementation frontier
 
-ADE-0005 durable project lifecycle and multi-root resource identity:
+Durable project lifecycle and multi-root resource identity:
 
 ```text
 SQLite project/root registry
@@ -42,17 +42,8 @@ Late work from an old project or selection is rejected, and a post-commit
 projection failure blocks for bounded authoritative recovery rather than
 reviving stale UI.
 
-The final custom-protocol executable is 5,118,976 bytes and the unsigned NSIS
-installer is 1,848,425 bytes. Five clean packaged launches put Chat at 231.766
-MiB median / 233.211 MiB P95 and Explorer at 232.207 MiB median / 234.762 MiB
-P95 private bytes on WebView2 150.0.4078.65. CSP, sandboxing, process
-isolation, GPU acceleration, accessibility, and the minimal `core:default`
-capability remain enabled.
-
-ADE-0005 implementation self-check is complete, but fresh-context independent
-review and independent verification have not been recorded. ADE-0006A and the
-staged ADE-0006B/C/D/E harness work items are specified, but none is
-release-admitted.
+CSP, sandboxing, process isolation, GPU acceleration, accessibility, and the
+minimal `core:default` capability remain enabled.
 
 Syntax highlighting, LSP, project search, Git mutation/history, file watching,
 PTYs, and managed-release wiring for Claude Code, Codex CLI, and Pi remain
@@ -107,7 +98,6 @@ application. The current development machine has these prerequisites installed.
 npm install
 npm run dev         # real UI in a browser tab against the real debug backend
 npm run check
-node scripts/validate-performance-budgets.mjs
 ```
 
 `npm run dev` (`scripts/dev-live.mjs`) starts Vite on a free loopback port (`--port <n>` or `SAGE_UI_PORT` pick one; `--jobs <n>` sets `CARGO_BUILD_JOBS`) and `tauri dev --features browser-bridge` against it, both at below-normal priority, and prints one URL. The debug Sage uses a throwaway profile, never your real one. It lives outside the checkout and is private to you: in `~/.cache/sage-dev/<checkout>-<hash>` (on Linux `$XDG_RUNTIME_DIR/sage-dev/...` when set). Not `%LOCALAPPDATA%`: a packaged Windows app, such as an agent host, redirects its processes' writes there into a private copy. On Linux both `sage-dev` folders must be yours, real directories and mode 700, or the launcher refuses to start. So the dev server (whose root is the checkout) can never serve its pairing code or database; the launcher prints the path. The dev server also sends no CORS headers and refuses dot-env, key, `.git` and `.sage-dev` paths. Cargo builds into this checkout's own `target/` unless you set `CARGO_TARGET_DIR`; keep it off any target dir that gates or other sessions share, or a rebuild waits on their build lock. Each backend run publishes its bridge port and single-use pairing code into that profile, and the dev server serves it to same-origin page scripts at `/__sage/bridge-run`, so the tab pairs by itself. TypeScript edits hot-reload; a Rust edit rebuilds the backend, and the tab shows "Reconnecting to the Sage backend…", waits for the new run and reloads itself. Only one `npm run dev` runs per checkout; a second refuses and leaves the first alone. Ctrl+C stops both children and everything they started. Not yet on macOS: WebKit ignores the per-profile data directory, so the debug app could share browser data with your real Sage; `npm run dev` refuses there.

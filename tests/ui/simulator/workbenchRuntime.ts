@@ -4,8 +4,8 @@ import type { WorkbenchPorts } from "../../../src/ports/workbenchPorts";
 import { createBrowserWorkbenchPorts } from "./browserWorkbenchPorts";
 
 // Test-only stand-in for src/ports/workbenchRuntime.ts. Vite resolves the app's
-// runtime import here only in the `ui-fixture` and `performance-browser` modes
-// and under Vitest. A page with a fake Tauri IPC surface still reaches the
+// runtime import here only in the `ui-fixture` mode and under
+// Vitest. A page with a fake Tauri IPC surface still reaches the
 // native adapter; a plain page gets the in-page simulator.
 let ports: WorkbenchPorts | null = null;
 

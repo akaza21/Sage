@@ -351,7 +351,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
           "test",
           "--workspace",
           "--features",
-          "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
+          "acp-fixture,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::first_test",
         ],
       ],
@@ -361,7 +361,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
           "test",
           "--workspace",
           "--features",
-          "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
+          "acp-fixture,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::second_test",
         ],
       ],
@@ -472,7 +472,7 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
         "--workspace",
         "--all-targets",
         "--features",
-        "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics,native-lane",
+        "acp-fixture,codex-provisioning-helper,custom-protocol,diagnostics,native-lane",
         "--",
         "-D",
         "warnings",
@@ -481,7 +481,7 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
         "test",
         "--workspace",
         "--features",
-        "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
+        "acp-fixture,codex-provisioning-helper,custom-protocol,diagnostics",
         "--",
         "--test-threads=1",
       ],
@@ -532,18 +532,12 @@ test("resolved npm invocation executes without a shell command string", async ()
 test("release lane fails closed and preserves conservative validation order", () => {
   assert.throws(() => parseReleaseArguments([]), /explicit mode/);
   assert.throws(
-    () => parseReleaseArguments(["--package-campaign"]),
-    /missing required package arguments/,
+    () => parseReleaseArguments(["--validation-only", "--validation-only"]),
+    /exactly one explicit mode/,
   );
   assert.throws(
-    () =>
-      parseReleaseArguments([
-        "--validation-only",
-        "--",
-        "--campaign-id",
-        "unexpected",
-      ]),
-    /does not accept package arguments/,
+    () => parseReleaseArguments(["--validation-only", "--package-campaign"]),
+    /unknown release-check argument/,
   );
 
   const options = parseReleaseArguments(["--validation-only", "--dry-run"]);
@@ -577,64 +571,6 @@ test("release lane fails closed and preserves conservative validation order", ()
       rustEnvironment: {},
     }),
   );
-});
-
-// origin: check-lanes.node-test.mjs:386 "release package mode hands exact validated arguments to the existing campaign" -> check-lanes.portable.node-test.mjs
-test("release package mode hands exact validated arguments to the existing campaign", () => {
-  const packageArguments = [
-    "--source-root",
-    "C:\\source",
-    "--campaign-id",
-    "beta-1",
-    "--rust-toolchain-root",
-    "C:\\rust",
-    "--cargo-home",
-    "C:\\cargo",
-    "--node",
-    "C:\\node\\node.exe",
-    "--npm-package-root",
-    "C:\\npm",
-    "--git-root",
-    "C:\\git",
-    "--wix-tools-root",
-    "C:\\wix",
-    "--nsis-tools-root",
-    "C:\\nsis",
-    "--msvc-tools-root",
-    "C:\\msvc",
-    "--windows-sdk-root",
-    "C:\\sdk",
-    "--windows-sdk-version",
-    "10.0.26100.0",
-    "--seven-zip",
-    "C:\\7zip\\7z.exe",
-    "--installed-smoke-output",
-    "C:\\evidence",
-    "--installed-smoke-signer-thumbprint",
-    "0123456789abcdef0123456789abcdef01234567",
-  ];
-  const options = parseReleaseArguments([
-    "--package-campaign",
-    "--dry-run",
-    "--",
-    ...packageArguments,
-  ]);
-  const plan = createReleasePlan(options, {
-    platform: "win32",
-    repositoryRoot,
-    rustEnvironment: {},
-    npmInvocation: {
-      command: "C:\\node\\node.exe",
-      argsPrefix: ["C:\\node\\node_modules\\npm\\bin\\npm-cli.js"],
-    },
-  });
-  const command = plan.groups[0].commands.at(-1);
-  assert.equal(command.label, "release:package-and-installed-smoke-handoff");
-  assert.equal(command.command, process.execPath);
-  assert.deepEqual(command.args, [
-    "scripts/collect-ade0006a-package.mjs",
-    ...packageArguments,
-  ]);
 });
 
 // origin: check-lanes.node-test.mjs:443 "Rust environment uses explicit paths and only enables detected sccache" -> check-lanes.portable.node-test.mjs

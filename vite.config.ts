@@ -124,12 +124,10 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
 ];
 
 // The browser simulator is a test fixture. Only these mode/command pairs swap
-// the app's runtime import for it: Playwright's dev server, the browser
-// performance build, and Vitest. The production runtime's own test keeps the
+// the app's runtime import for it: Playwright's dev server and Vitest. The production runtime's own test keeps the
 // real module.
 const SIMULATOR_MODES: Readonly<Record<string, string>> = {
   [UI_FIXTURE_MODE]: "serve",
-  "performance-browser": "build",
   test: "serve",
 };
 

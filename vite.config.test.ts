@@ -682,7 +682,6 @@ describe("desktop-native runtime resolver", () => {
   it("redirects only the canonical runtime import to the simulator in fixture modes", () => {
     for (const [command, mode] of [
       ["serve", UI_FIXTURE_MODE],
-      ["build", "performance-browser"],
       ["serve", "test"],
     ]) {
       expect(

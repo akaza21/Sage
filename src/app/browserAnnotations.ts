@@ -1,7 +1,6 @@
 /**
- * Contract: docs/work-items/BROWSER-FIRST-CLASS/contracts/browser-element-
- * context-v1.md. Rust builds, redacts and checks each item; this checks the
- * mirrored limits again.
+ * Rust builds, redacts and checks each `browserElement` context item; this
+ * checks the mirrored limits again.
  */
 
 import {

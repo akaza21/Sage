@@ -11,7 +11,7 @@ default-run = "sage"
 
 [lib]
 name = "sage_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 doctest = false
 
 [lints]
@@ -107,8 +107,7 @@ name = "acp_adversarial_fixture"
 path = "tests/acp_adversarial_fixture.rs"
 required-features = ["acp-fixture"]
 
-# Boots the real Sage browser on WebView2 (Windows debug builds only); see
-# docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
+# Boots the real Sage browser on WebView2 (Windows debug builds only).
 [[test]]
 name = "native_lane"
 path = "tests/native_lane/main.rs"
@@ -119,7 +118,6 @@ required-features = ["native-lane"]
 default = []
 browser-bridge = ["dep:futures-util", "dep:subtle", "dep:tokio-tungstenite", "tokio/net", "serde_json/raw_value"]
 acp-fixture = ["sage-acp-protocol/fixture", "sage-db/fixture"]
-acp-schema = ["sage-acp-protocol/acp-schema"]
 # Runs browser::devtools tests against a real headless Chromium (unix only).
 cdp-lane = []
 codex-provisioning-helper = []

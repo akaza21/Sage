@@ -6,6 +6,10 @@ use std::io::{Read, Write};
 #[path = "wire_acp_resources.rs"]
 mod resources;
 pub(super) use resources::EmbeddedContext;
+#[path = "wire_acp_config.rs"]
+mod config;
+use config::MODELS;
+pub(super) use config::{AcpConfig, PLAIN_MODES, config_options};
 
 pub(super) const SESSION: &str = "fixture-persisted-session-1";
 const ELICITATION_ID: &str = "fixture-elicitation-1";
@@ -57,9 +61,40 @@ pub(super) fn await_request(
                 }
                 continue;
             }
-            let result = if method == Some("session/set_config_option") {
-                json!({"configOptions":config_options()})
+            let params = &request["params"];
+            // claude-agent-acp 0.76.0 keeps the permission mode as the `mode`
+            // config option. set_mode publishes the options in a
+            // config_option_update before it answers; set_config_option returns
+            // them. A mode it does not list is refused.
+            let requested = if method == Some("session/set_mode") {
+                Some(&params["modeId"])
+            } else if params["configId"] == "mode" {
+                Some(&params["value"])
             } else {
+                None
+            };
+            if let Some(requested) = requested {
+                let Some(mode) = PLAIN_MODES
+                    .into_iter()
+                    .find(|mode| Some(*mode) == requested.as_str())
+                else {
+                    codex::emit_json(
+                        output,
+                        state,
+                        &json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Invalid value"}}),
+                    )?;
+                    continue;
+                };
+                state.acp_mode = mode;
+            }
+            let result = if method == Some("session/set_config_option") {
+                json!({"configOptions":config_options(state.acp_mode)})
+            } else {
+                codex::emit_json(
+                    output,
+                    state,
+                    &json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":config_options(state.acp_mode)}}}),
+                )?;
                 json!({})
             };
             codex::emit_json(
@@ -131,78 +166,6 @@ pub(super) fn await_request(
     Err(FixtureError::ExpandedLimit)
 }
 
-/// The session config of a journey that changes model, effort and mode: it
-/// answers each change with the new value, as claude-agent-acp does, and a
-/// new or resumed session starts again from the adapter's defaults.
-pub(super) struct AcpConfig {
-    model: &'static str,
-    effort: &'static str,
-    mode: &'static str,
-}
-
-const MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
-const EFFORTS: [&str; 3] = ["low", "medium", "high"];
-const MODES: [&str; 3] = ["default", "acceptEdits", "plan"];
-
-impl AcpConfig {
-    fn defaults() -> Self {
-        Self {
-            model: MODELS[0],
-            effort: EFFORTS[1],
-            mode: MODES[0],
-        }
-    }
-
-    fn options(&self) -> Value {
-        json!([
-            {"id":"model","name":"Model","category":"model","type":"select","currentValue":self.model,
-             "options":[{"value":MODELS[0],"name":"Synthetic replay"},{"value":MODELS[1],"name":"Synthetic replay deep"}]},
-            {"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":self.effort,
-             "options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]}
-        ])
-    }
-
-    fn session(&self) -> Value {
-        json!({"sessionId":SESSION,"modes":{"currentModeId":self.mode,"availableModes":[
-            {"id":"default","name":"Default"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}
-        ]},"configOptions":self.options()})
-    }
-
-    fn answer(&mut self, id: u64, request: &Value) -> Vec<Value> {
-        let params = &request["params"];
-        let pick = |choices: &[&'static str], value: &Value| {
-            choices
-                .iter()
-                .copied()
-                .find(|choice| Some(*choice) == value.as_str())
-        };
-        let refused =
-            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Invalid value"}});
-        if request["method"] == "session/set_mode" {
-            let Some(mode) = pick(&MODES, &params["modeId"]) else {
-                return vec![refused];
-            };
-            self.mode = mode;
-            return vec![
-                json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":mode}}}),
-                json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            ];
-        }
-        match params["configId"].as_str() {
-            Some("model") => match pick(&MODELS, &params["value"]) {
-                Some(model) => self.model = model,
-                None => return vec![refused],
-            },
-            Some("effort") => match pick(&EFFORTS, &params["value"]) {
-                Some(effort) => self.effort = effort,
-                None => return vec![refused],
-            },
-            _ => return vec![refused],
-        }
-        vec![json!({"jsonrpc":"2.0","id":id,"result":{"configOptions":self.options()}})]
-    }
-}
-
 /// Says how the client answered the elicitation: its action and, for an
 /// accepted form, the field names it filled. Answer values are never echoed.
 fn elicitation_echo(response: &Value) -> Result<String, FixtureError> {
@@ -224,10 +187,6 @@ fn elicitation_echo(response: &Value) -> Result<String, FixtureError> {
         (Some("cancel"), None) => "Synthetic replay: the request was cancelled.".to_owned(),
         _ => return Err(FixtureError::InvalidArguments),
     })
-}
-
-fn config_options() -> Value {
-    json!([{ "id":"model", "name":"Model", "category":"model", "type":"select", "currentValue":"fixture-model", "options":[{"value":"fixture-model","name":"Synthetic replay"}] }])
 }
 
 pub(super) fn emit(
@@ -331,7 +290,8 @@ pub(super) fn emit(
                     session
                 }
                 "acpSession" => {
-                    json!({"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"}]},"configOptions":config_options()})
+                    state.acp_mode = PLAIN_MODES[0];
+                    json!({"sessionId":SESSION,"modes":{"currentModeId":PLAIN_MODES[0],"availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"}]},"configOptions":config_options(PLAIN_MODES[0])})
                 }
                 _ => json!({}),
             };

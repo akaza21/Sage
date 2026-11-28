@@ -1,12 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
 import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
+import { cargoFeaturePolicyErrors } from "./cargo-feature-policy.mjs";
 import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import { cssInlineControlPolicyErrors } from "./css-inline-control-policy.mjs";
@@ -223,229 +222,14 @@ function canonicalRelative(value) {
   return value.split(path.sep).join("/");
 }
 
-const betaAcceptanceRelativePath =
-  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-acceptance-v1.json";
-const betaAcceptanceBytes = await readFile(
-  path.join(root, betaAcceptanceRelativePath),
-);
-const betaAcceptance = JSON.parse(betaAcceptanceBytes.toString("utf8"));
-const betaAcceptanceSha256 = createHash("sha256")
-  .update(betaAcceptanceBytes)
-  .digest("hex");
-if (
-  betaAcceptanceSha256 !==
-    "0cdc977c8b0bba907508a63ccf76ad44b68058f5eb28ecb6e6e2216a3baafc3a" ||
-  betaAcceptance.schemaVersion !== 1 ||
-  betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
-  betaAcceptance.workItem !== "BETA-0001"
-) {
-  fail("BETA-0001 acceptance contract drifted from its reviewed v1 bytes.");
-}
-const betaCandidateRelativePath =
-  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-candidate-evidence-v1.json";
-const betaCandidateBytes = await readFile(
-  path.join(root, betaCandidateRelativePath),
-);
-const betaCandidate = JSON.parse(betaCandidateBytes.toString("utf8"));
-const betaCandidateSha256 = createHash("sha256")
-  .update(betaCandidateBytes)
-  .digest("hex");
-if (
-  betaCandidateSha256 !==
-    "a8c2606707852c333394af5e9cb9ca3b8d504c1ecdfb2a0e964b8721b762660f" ||
-  betaCandidate.schemaVersion !== 1 ||
-  betaCandidate.status !== "frozen-verdict-matrix" ||
-  betaCandidate.workItem !== "BETA-0001" ||
-  betaCandidate.thresholdAuthority?.relativePath !==
-    "beta-acceptance-v1.json" ||
-  betaCandidate.thresholdAuthority?.bytes !== betaAcceptanceBytes.length ||
-  betaCandidate.thresholdAuthority?.sha256 !== betaAcceptanceSha256
-) {
-  fail("BETA-0001 candidate matrix or one-way threshold authority drifted.");
-}
-const betaSourceFunctionalRelativePath =
-  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-source-functional-evidence-v1.json";
-const betaSourceFunctionalBytes = await readFile(
-  path.join(root, betaSourceFunctionalRelativePath),
-);
-const betaSourceFunctional = JSON.parse(
-  betaSourceFunctionalBytes.toString("utf8"),
-);
-const betaSourceFunctionalSha256 = createHash("sha256")
-  .update(betaSourceFunctionalBytes)
-  .digest("hex");
-if (
-  betaSourceFunctionalSha256 !==
-    "77566a9ea122ad47e89e928ab2276eceb2408837021c4d171e6d7e47afe8d22e" ||
-  betaSourceFunctional.schemaVersion !== 1 ||
-  betaSourceFunctional.status !== "frozen-source-functional-verdict-profile" ||
-  betaSourceFunctional.workItem !== "BETA-0001" ||
-  betaSourceFunctional.acceptance !== "local-green-only" ||
-  betaSourceFunctional.evidenceBindingRequired !== true ||
-  betaSourceFunctional.deferredEvidence?.join("\0") !==
-    "windows.source-package\0windows.installed-lifecycle" ||
-  betaSourceFunctional.requiredEvidence?.includes("windows.source-package") ||
-  betaSourceFunctional.requiredEvidence?.includes("windows.installed-lifecycle")
-) {
-  fail("BETA-0001 source-functional evidence profile drifted.");
-}
-const betaContractDirectory = path.dirname(
-  path.join(root, betaAcceptanceRelativePath),
-);
-for (const authority of betaAcceptance.sharedAuthorities ?? []) {
-  const authorityPath = path.resolve(
-    betaContractDirectory,
-    authority.relativePath,
-  );
-  try {
-    const metadata = await lstat(authorityPath);
-    if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      fail(`BETA-0001 ${authority.id} authority is not a regular file.`);
-      continue;
-    }
-    const bytes = await readFile(authorityPath);
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    if (authority.bytes !== bytes.length || authority.sha256 !== sha256) {
-      fail(`BETA-0001 ${authority.id} authority bytes drifted.`);
-    }
-  } catch {
-    fail(`BETA-0001 ${authority.id} authority is missing.`);
-  }
-}
-
-const ownershipManifest = await readJson(
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/ownership-manifest-v1.json",
-);
-const ownershipScope = new Set(ownershipManifest.ownedFileScopes ?? []);
-for (const file of ownershipManifest.ownedFileScopes ?? []) {
-  try {
-    const metadata = await lstat(path.join(root, file));
-    if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      fail(`ADE-0006A owned file is not a regular file: ${file}`);
-    }
-  } catch {
-    fail(`ADE-0006A owned file is missing: ${file}`);
-  }
-}
-for (const directory of ownershipManifest.ownedDirectoryScopes ?? []) {
-  for (const file of await filesBelow(directory)) {
-    ownershipScope.add(canonicalRelative(file));
-  }
-}
-const adeScriptName =
-  /^(?:ade0006a|collect-ade0006a|validate-ade0006a|test-ade0006a)[a-z0-9.-]*\.(?:mjs|ps1)$/;
-for (const entry of await readdir(path.join(root, "scripts"), {
-  withFileTypes: true,
-})) {
-  const relativePath = `scripts/${entry.name}`;
-  if (
-    entry.isFile() &&
-    adeScriptName.test(entry.name) &&
-    !ownershipScope.has(relativePath)
-  ) {
-    fail(`ADE-0006A script is outside ownership: ${relativePath}`);
-  }
-}
-const ownershipRules = ownershipManifest.rules ?? [];
-const ownerNames = new Set();
-for (const rule of ownershipRules) {
-  if (
-    typeof rule.owner !== "string" ||
-    rule.owner.length === 0 ||
-    ownerNames.has(rule.owner)
-  ) {
-    fail("ADE-0006A ownership rule names must be unique and nonempty.");
-  }
-  ownerNames.add(rule.owner);
-  for (const prefix of rule.prefixes ?? []) {
-    if (
-      !prefix.endsWith("/") ||
-      prefix.includes("\\") ||
-      prefix.includes("..")
-    ) {
-      fail(`ADE-0006A ownership prefix is noncanonical: ${prefix}`);
-    }
-  }
-  for (const file of rule.files ?? []) {
-    if (
-      file.includes("\\") ||
-      file.includes("..") ||
-      !ownershipScope.has(file)
-    ) {
-      fail(`ADE-0006A ownership file is outside its closed scope: ${file}`);
-    }
-  }
-}
-for (const file of ownershipScope) {
-  const owners = ownershipRules.filter(
-    (rule) =>
-      (rule.files ?? []).includes(file) ||
-      (rule.prefixes ?? []).some((prefix) => file.startsWith(prefix)),
-  );
-  if (owners.length !== 1) {
-    fail(
-      `ADE-0006A ownership must resolve exactly once for ${file}; found ${owners.length}.`,
-    );
-  }
-}
-
-const contractDirectory =
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts";
-const contractManifest = await readJson(
-  `${contractDirectory}/contract-manifest-v1.json`,
-);
-const declaredContractFiles = contractManifest.files?.map(
-  (entry) => entry.relativePath,
-);
-const actualContractFiles = (await readdir(path.join(root, contractDirectory)))
-  .filter((file) => file !== "contract-manifest-v1.json")
-  .sort();
-if (
-  contractManifest.selfIncluded !== false ||
-  contractManifest.fileCount !== declaredContractFiles?.length ||
-  JSON.stringify(declaredContractFiles) !== JSON.stringify(actualContractFiles)
-) {
-  fail("ADE-0006A contract manifest membership is stale or unordered.");
-} else {
-  let logicalBytes = 0;
-  for (const entry of contractManifest.files) {
-    const bytes = await readFile(
-      path.join(root, contractDirectory, entry.relativePath),
-    );
-    logicalBytes += bytes.length;
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (entry.bytes !== bytes.length || entry.sha256 !== digest) {
-      fail(`ADE-0006A contract manifest mismatch: ${entry.relativePath}`);
-    }
-  }
-  if (contractManifest.logicalBytes !== logicalBytes) {
-    fail("ADE-0006A contract manifest logical byte total is stale.");
-  }
-}
-
 const tauriConfig = await readJson("src-tauri/tauri.conf.json");
 const tauriWindowsConfig = await readJson("src-tauri/tauri.windows.conf.json");
-const controlTauriConfig = await readJson(
-  "tools/footprint-control/tauri.conf.json",
-);
-const controlWindowsConfig = await readJson(
-  "tools/footprint-control/tauri.windows.package.conf.json",
-);
+const contractDirectory = "src-tauri/testdata/acp/contracts";
 const fixtureVectors = await readJson(
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/fixture-vectors-v1.json",
-);
-const packageContract = await readJson(
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/package-contract-v1.json",
-);
-const evidencePolicy = await readJson(
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/evidence-policy-v1.json",
+  `${contractDirectory}/fixture-vectors-v1.json`,
 );
 const packageCargoToml = await readFile(
   path.join(root, "src-tauri/Cargo.toml"),
-  "utf8",
-);
-const controlCargoToml = await readFile(
-  path.join(root, "tools/footprint-control/Cargo.toml"),
   "utf8",
 );
 const csp = tauriConfig.app?.security?.csp;
@@ -596,163 +380,7 @@ if (
   );
 }
 
-const candidatePackage = packageContract.participants?.candidate;
-const controlPackage = packageContract.participants?.control;
-const packageArtifactKinds = candidatePackage?.artifacts?.map(
-  ({ kind }) => kind,
-);
-const packageArtifactPaths = candidatePackage?.artifacts?.map(
-  ({ relativePath }) => relativePath,
-);
-const controlArtifactPaths = controlPackage?.artifacts?.map(
-  ({ relativePath }) => relativePath,
-);
-const controlBundle = controlWindowsConfig.bundle;
-const controlWebview = controlBundle?.windows?.webviewInstallMode;
-if (
-  packageContract.schemaVersion !== 1 ||
-  packageContract.platform !== "windows" ||
-  packageContract.productionBuild?.profile !== "release" ||
-  packageContract.productionBuild?.defaultFeaturesEnabled !== true ||
-  JSON.stringify(packageContract.productionBuild?.enabledFeatures) !==
-    JSON.stringify(["custom-protocol"]) ||
-  JSON.stringify(packageContract.productionBuild?.bundleTargets) !==
-    JSON.stringify(expectedWindowsTargets) ||
-  candidatePackage?.applicationRoot !== "." ||
-  candidatePackage?.cargoManifest !== "src-tauri/Cargo.toml" ||
-  candidatePackage?.configuration?.base !== "src-tauri/tauri.conf.json" ||
-  candidatePackage?.configuration?.platformOverlay !==
-    "src-tauri/tauri.windows.conf.json" ||
-  controlPackage?.applicationRoot !== "tools/footprint-control" ||
-  controlPackage?.cargoManifest !== "tools/footprint-control/Cargo.toml" ||
-  controlPackage?.configuration?.base !==
-    "tools/footprint-control/tauri.conf.json" ||
-  controlPackage?.configuration?.platformOverlay !==
-    "tools/footprint-control/tauri.windows.package.conf.json" ||
-  JSON.stringify(packageArtifactKinds) !==
-    JSON.stringify(["executable", "msi", "nsis"]) ||
-  JSON.stringify(packageArtifactPaths) !==
-    JSON.stringify([
-      "release/sage.exe",
-      "release/bundle/msi/Sage_0.1.0_x64_en-US.msi",
-      "release/bundle/nsis/Sage_0.1.0_x64-setup.exe",
-    ]) ||
-  JSON.stringify(controlArtifactPaths) !==
-    JSON.stringify([
-      "release/sage-footprint-control.exe",
-      "release/bundle/msi/Sage Footprint Control_0.1.0_x64_en-US.msi",
-      "release/bundle/nsis/Sage Footprint Control_0.1.0_x64-setup.exe",
-    ]) ||
-  packageContract.artifactSet?.requiredCount !== 3 ||
-  JSON.stringify(controlBundle?.targets) !==
-    JSON.stringify(expectedWindowsTargets) ||
-  controlBundle?.active !== true ||
-  controlWebview?.type !== "downloadBootstrapper" ||
-  controlWebview?.silent !== true ||
-  JSON.stringify(controlTauriConfig.app?.security?.csp) !==
-    JSON.stringify(tauriConfig.app?.security?.csp) ||
-  packageContract.webviewProvisioning?.mode !== "downloadBootstrapper" ||
-  packageContract.webviewProvisioning?.silent !== true ||
-  packageContract.webviewProvisioning?.whenRuntimeAbsent !== true ||
-  packageContract.webviewProvisioning?.networkRequiredWhenTriggered !== true ||
-  packageContract.webviewProvisioning?.bundledPayloadCount !== 0 ||
-  packageContract.webviewProvisioning?.bundledPayloadBytes !== 0 ||
-  packageContract.fixtureExclusion?.productionFeatureSetContainsFixture !==
-    false ||
-  packageContract.fixtureExclusion?.canonicalFeature !== "acp-fixture" ||
-  JSON.stringify(packageContract.fixtureExclusion?.canonicalBasenames) !==
-    JSON.stringify([
-      "acp-adversarial-fixture.exe",
-      "acp-adversarial-fixture-x86_64-pc-windows-msvc.exe",
-    ]) ||
-  packageContract.fixtureExclusion?.metadataDeclarationCount !== 0 ||
-  packageContract.fixtureExclusion?.extractedMemberBasenameCountPerInstaller !==
-    0 ||
-  packageContract.fixtureExclusion
-    ?.extractedPayloadHashMatchesFixturePerInstaller !== 0 ||
-  packageContract.installedExecutableIdentity?.algorithm !==
-    "tauri-bundle-type-patch-v1" ||
-  packageContract.installedExecutableIdentity?.sourceMarker !==
-    "__TAURI_BUNDLE_TYPE_VAR_UNK" ||
-  packageContract.installedExecutableIdentity?.sourceMarkerOccurrenceCount !==
-    1 ||
-  packageContract.installedExecutableIdentity?.targetMarkers?.msi !==
-    "__TAURI_BUNDLE_TYPE_VAR_MSI" ||
-  packageContract.installedExecutableIdentity?.targetMarkers?.nsis !==
-    "__TAURI_BUNDLE_TYPE_VAR_NSS" ||
-  packageContract.inspection?.installedPayloadProjection?.msi?.method !==
-    "wix-dark-install-root-v1" ||
-  packageContract.inspection?.installedPayloadProjection?.nsis?.method !==
-    "nsis-installed-tree-v1" ||
-  packageContract.retention?.rawReservation?.sourceManifestFiles !== 1 ||
-  packageContract.retention?.rawReservation?.sourceManifestBytes !==
-    8 * 1024 * 1024 ||
-  packageContract.retention?.rawReservation?.sourceManifestEntries !== 4096 ||
-  packageContract.retention?.rawReservation?.installerMemberSets !== 4 ||
-  packageContract.retention?.rawReservation?.memberSidecarFiles !== 32 ||
-  packageContract.retention?.rawReservation?.memberSidecarBytes !==
-    24 * 1024 * 1024 ||
-  packageContract.retention?.rawReservation?.totalFiles !== 33 ||
-  packageContract.retention?.rawReservation?.totalBytes !== 32 * 1024 * 1024 ||
-  evidencePolicy.packageCampaignRetention?.ledgerBytes !== 64 * 1024 ||
-  evidencePolicy.packageCampaignRetention?.ledgerEntries !== 16 ||
-  evidencePolicy.packageCampaignRetention?.reservation?.rawFiles !== 33 ||
-  evidencePolicy.packageCampaignRetention?.reservation?.rawBytes !==
-    32 * 1024 * 1024 ||
-  evidencePolicy.packageCampaignRetention?.reservation
-    ?.sourceManifestEntries !== 4096 ||
-  evidencePolicy.packageCampaignRetention?.reservation?.curatedFiles !== 1 ||
-  evidencePolicy.packageCampaignRetention?.reservation?.curatedBytes !==
-    evidencePolicy.campaignBounds?.curatedBytes
-) {
-  fail("ADE-0006A package contract is internally inconsistent.");
-}
-for (const error of cargoPackageFeatureErrors(
-  packageCargoToml,
-  packageContract,
-  "candidate",
-)) {
-  fail(error);
-}
-for (const error of cargoPackageFeatureErrors(
-  controlCargoToml,
-  packageContract,
-  "control",
-)) {
-  fail(error);
-}
-
-const packageFixture = fixtureVectors.cases?.find(
-  ({ id }) => id === "default-package-fixture-exclusion",
-);
-const expectedPackageOracle = {
-  productionArtifactKinds: packageArtifactKinds,
-  fixtureExecutableCount: 0,
-  fixtureMetadataCount:
-    packageContract.fixtureExclusion.metadataDeclarationCount,
-  productionFeatureSetContainsAcpFixture:
-    packageContract.fixtureExclusion.productionFeatureSetContainsFixture,
-  extractedFixtureHashMatches:
-    packageContract.fixtureExclusion
-      .extractedPayloadHashMatchesFixturePerInstaller,
-  msiExecutableMatchesExpectedBundleProjection: true,
-  nsisExecutableMatchesExpectedBundleProjection: true,
-  webviewProvisioningMode: packageContract.webviewProvisioning.mode,
-  webviewProvisioningWhenRuntimeAbsent:
-    packageContract.webviewProvisioning.whenRuntimeAbsent,
-  webviewProvisioningNetworkRequired:
-    packageContract.webviewProvisioning.networkRequiredWhenTriggered,
-  bundledWebviewPayloadCount:
-    packageContract.webviewProvisioning.bundledPayloadCount,
-  bundledWebviewPayloadBytes:
-    packageContract.webviewProvisioning.bundledPayloadBytes,
-};
-if (
-  JSON.stringify(packageFixture?.oracle) !==
-  JSON.stringify(expectedPackageOracle)
-) {
-  fail("Package fixture oracle does not match the frozen package contract.");
-}
+for (const error of cargoFeaturePolicyErrors(packageCargoToml)) fail(error);
 
 const capabilities = await readJson("src-tauri/capabilities/main.json");
 try {
@@ -799,10 +427,6 @@ const crateManifests = await Promise.all(
   crateManifestPaths.map((file) => readFile(path.join(root, file), "utf8")),
 );
 const cargoManifests = [cargoToml, workspaceCargoToml, ...crateManifests];
-const acpProtocolCargoToml =
-  crateManifests[
-    crateManifestPaths.indexOf("crates/sage-acp-protocol/Cargo.toml")
-  ] ?? "";
 for (const [file, manifest] of [
   ["src-tauri/Cargo.toml", cargoToml],
   ...crateManifestPaths.map((file, index) => [file, crateManifests[index]]),
@@ -827,7 +451,7 @@ const nativeLibrary = await readFile(
 );
 const viteConfig = await readFile(path.join(root, "vite.config.ts"), "utf8");
 const acpProtocolContract = await readJson(
-  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/protocol-contract-v1.json",
+  `${contractDirectory}/protocol-contract-v1.json`,
 );
 const projectionEvent = acpProtocolContract.projectionEvent?.name;
 const nativeState = await readFile(
@@ -907,19 +531,6 @@ if (
 }
 
 if (
-  !/^agent-client-protocol-schema\s*=\s*\{[^}]*version\s*=\s*"=1\.4\.0"[^}]*default-features\s*=\s*false/mu.test(
-    workspaceCargoToml,
-  ) ||
-  !/^agent-client-protocol-schema\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\}/mu.test(
-    acpProtocolCargoToml,
-  )
-) {
-  fail(
-    "The ACP boundary must use the exact feature-disabled schema v1.4.0 crate.",
-  );
-}
-
-if (
   cargoManifests.some((manifest) =>
     /^agent-client-protocol(?:\.workspace)?\s*=/mu.test(manifest),
   )
@@ -929,37 +540,8 @@ if (
   );
 }
 
-// The schema crate is an optional dependency of sage-acp-protocol only; the
-// app's acp-schema feature forwards to it.
-if (
-  !/^acp-schema\s*=\s*\["dep:agent-client-protocol-schema"\]/mu.test(
-    acpProtocolCargoToml,
-  ) ||
-  !/^acp-schema\s*=\s*\["sage-acp-protocol\/acp-schema"\]/mu.test(cargoToml) ||
-  [cargoToml, ...crateManifests].some(
-    (manifest) =>
-      manifest !== acpProtocolCargoToml &&
-      /^agent-client-protocol-schema\b/mu.test(manifest),
-  )
-) {
-  fail(
-    "The ACP schema crate must remain behind the isolated acp-schema feature.",
-  );
-}
-
 if (/^acp-runtime\s*=/mu.test(cargoToml)) {
   fail("The rejected acp-runtime feature must not be reachable.");
-}
-
-const schemaDeclaration = workspaceCargoToml.match(
-  /^agent-client-protocol-schema\s*=\s*\{([^}]*)\}/mu,
-)?.[1];
-if (
-  schemaDeclaration === undefined ||
-  /(?:^|[,\s])features\s*=/u.test(schemaDeclaration) ||
-  /\b(?:unstable|tracing)\b/u.test(schemaDeclaration)
-) {
-  fail("ACP schema tracing and unstable features must remain disabled.");
 }
 
 const tracingDeclaration = workspaceCargoToml.match(

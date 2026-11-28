@@ -109,6 +109,7 @@ fn reader_with_full_queue(pending: Vec<ReaderEvent>, deadline: Instant) -> Reade
         events: Some(events),
         completion,
         overflowed,
+        discard: Arc::new(AtomicBool::new(false)),
         handle: Some(handle),
     }
 }
@@ -122,4 +123,117 @@ fn frame(payload: &[u8]) -> Frame {
     let mut line = payload.to_vec();
     line.push(b'\n');
     decoder.push_chunk(&line).unwrap().unwrap()
+}
+
+/// A harness that keeps writing after the run has its answer, well past any
+/// pipe buffer, and only then saves its work.
+#[test]
+fn discarded_output_lets_a_chatty_harness_finish_its_grace() {
+    use crate::acp::process::{TreeExit, graceful_exit};
+
+    let scratch =
+        std::env::temp_dir().join(format!("sage-reader-discard-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("saved");
+    let line = format!("[{}0]", "0,".repeat(48));
+    #[cfg(windows)]
+    let tree = crate::acp::process::launch_script_for_test(
+        81,
+        &format!(
+            r"%SystemRoot%\System32\findstr.exe x >nul & (for /L %i in (1,1,2000) do @echo {line}) & type nul > {}",
+            marker.display()
+        ),
+    );
+    #[cfg(not(windows))]
+    let tree = crate::acp::process::launch_shell_for_test(
+        81,
+        &format!(
+            "cat >/dev/null; i=0; while [ $i -lt 2000 ]; do echo '{line}'; i=$((i+1)); done; : > '{}'",
+            marker.display()
+        ),
+    );
+    let (mut stdin, stdout, control) = tree.into_parts();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut reader = ReaderThread::spawn(stdout, 1, "test", deadline).unwrap();
+    reader.discard_output();
+    stdin.close();
+    graceful_exit::end_tree_before(&control, TreeExit::ParentShutdown, deadline).unwrap();
+    assert!(
+        marker.exists(),
+        "the harness wrote everything and saved its work"
+    );
+    assert_eq!(reader.finish_before(deadline), Ok(()));
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// A line past the frame limit after the answer must not close the pipe: the
+/// harness writes again and only then saves its work.
+#[cfg(not(windows))]
+#[test]
+fn an_oversized_line_during_discard_keeps_the_pipe_open() {
+    use crate::acp::process::{TreeExit, graceful_exit};
+
+    let scratch =
+        std::env::temp_dir().join(format!("sage-reader-oversized-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("saved");
+    let tree = crate::acp::process::launch_shell_for_test(
+        82,
+        &format!(
+            "cat >/dev/null; head -c 1100000 /dev/zero | tr -c a a; echo; echo '[0]'; sleep 1; : > '{}'",
+            marker.display()
+        ),
+    );
+    let (mut stdin, stdout, control) = tree.into_parts();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut reader = ReaderThread::spawn(stdout, 1, "test", deadline).unwrap();
+    reader.discard_output();
+    stdin.close();
+    graceful_exit::end_tree_before(&control, TreeExit::ParentShutdown, deadline).unwrap();
+    assert!(
+        marker.exists(),
+        "the harness wrote past the oversized line and saved"
+    );
+    assert_eq!(reader.finish_before(deadline), Ok(()));
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Malformed output right after the answer, before the runner starts
+/// discarding, must not close the pipe either.
+#[cfg(not(windows))]
+#[test]
+fn a_framing_failure_right_after_the_answer_keeps_the_pipe_open() {
+    use crate::acp::process::{TreeExit, graceful_exit};
+
+    let scratch =
+        std::env::temp_dir().join(format!("sage-reader-framing-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("saved");
+    let tree = crate::acp::process::launch_shell_for_test(
+        83,
+        &format!(
+            "cat >/dev/null; echo '[0]'; head -c 1100000 /dev/zero | tr -c a a; echo; echo '[0]'; sleep 1; : > '{}'",
+            marker.display()
+        ),
+    );
+    let (mut stdin, stdout, control) = tree.into_parts();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut reader = ReaderThread::spawn(stdout, 4, "test", deadline).unwrap();
+    stdin.close();
+    assert!(matches!(
+        reader.recv_timeout(Duration::from_secs(5)),
+        Ok(ReaderEvent::Frame(_))
+    ));
+    assert!(matches!(
+        reader.recv_timeout(Duration::from_secs(5)),
+        Ok(ReaderEvent::FramingFailed(_))
+    ));
+    reader.discard_output();
+    graceful_exit::end_tree_before(&control, TreeExit::ParentShutdown, deadline).unwrap();
+    assert!(
+        marker.exists(),
+        "the harness wrote past its malformed line and saved"
+    );
+    assert_eq!(reader.finish_before(deadline), Ok(()));
+    let _ = std::fs::remove_dir_all(&scratch);
 }

@@ -10,6 +10,7 @@ use crate::acp::{
     },
     process::{
         LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit,
+        graceful_exit,
     },
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
@@ -287,15 +288,18 @@ impl CodexProcessTransport {
         failed: bool,
         cleanup_end: Instant,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        let reason = if failed {
-            TreeExit::ProtocolFailure
+        // A run that finished cleanly may have refreshed Codex's sign-in, so
+        // Codex is left the grace to save it; a failed one is ended now.
+        let ended = if failed {
+            self.control
+                .terminate_zero_before(TreeExit::ProtocolFailure, cleanup_end)
         } else {
-            TreeExit::ParentShutdown
+            // The run's answer is in; its later output is read and dropped, so
+            // Codex neither blocks on a full stdout pipe nor meets a closed one.
+            self.reader.discard_output();
+            graceful_exit::end_tree_before(&self.control, TreeExit::ParentShutdown, cleanup_end)
         };
-        let (_, zero) = self
-            .control
-            .terminate_zero_before(reason, cleanup_end)
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
+        let (_, zero) = ended.map_err(|_| CodexDiscoveryRunError::Cleanup)?;
         self.reader.finish_before(cleanup_end)?;
         Ok(DiscoveryZeroProcess::from_supervisor(zero))
     }

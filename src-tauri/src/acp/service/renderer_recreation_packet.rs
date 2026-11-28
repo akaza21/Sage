@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn admits_the_frozen_focus_outcome_union() {
         let policy: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/evidence-policy-v1.json"
+            "../../../testdata/acp/contracts/renderer-recreation-v1.json"
         ))
         .unwrap();
         let contracted = policy["rendererRecreationObservation"]["focusOutcomes"]

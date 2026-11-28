@@ -56,6 +56,11 @@ mod projection_publisher;
 pub(crate) mod prompt_diagnostics;
 mod runtime_host;
 mod session_coordinator;
+#[allow(
+    dead_code,
+    reason = "the shared Codex host wires the router in its next change"
+)]
+pub(crate) mod shared_host;
 pub(crate) mod terminal_detail;
 
 pub(crate) use coordinator::{

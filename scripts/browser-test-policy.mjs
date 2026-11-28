@@ -23,7 +23,7 @@ const RUST_BYPASS = [
   [/#\[(?:cfg_attr\([^\]]*)?\bignore\b/u, "ignores a Rust test"],
 ];
 export const RETRY_GUARD = "forbidBrowserRetries(";
-export const UI_RULE_DIRECTORY = "docs/work-items/BROWSER-FIRST-CLASS/ui-rules";
+export const UI_RULE_DIRECTORY = "tests/ui/browser-ui-rules";
 export const UI_RULE_MAX_TOLERANCE_PX = 4;
 const UI_RULE_MEASURES = {
   height: "number",
@@ -38,7 +38,6 @@ const UI_RULE_MEASURES = {
   "left-inset": "number",
   "gap-below": "number",
 };
-const REFERENCE_DIRECTORY = "docs/work-items/CODEX-PARITY/reference";
 
 async function filesBelow(root, relativeDirectory, budget, depth = 0) {
   if (depth > BROWSER_POLICY_LIMITS.depth)
@@ -103,7 +102,7 @@ export function retryGuardErrors(relativePath, source) {
     : [];
 }
 
-export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
+export function uiRuleErrors(relativePath, ruleSet) {
   const errors = [];
   const ids = new Set();
   const fail = (rule, message) =>
@@ -111,12 +110,6 @@ export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
   for (const rule of ruleSet.rules ?? []) {
     if (ids.has(rule.id)) fail(rule, "is repeated.");
     ids.add(rule.id);
-    const reference = /^reference\/(\d{2}[a-z]?)$/u.exec(rule.ref ?? "")?.[1];
-    if (
-      !reference ||
-      !referenceNames.some((name) => name.startsWith(`${reference}-`))
-    )
-      fail(rule, "cites no Codex reference image on disk.");
     if (typeof rule.source !== "string" || rule.source.trim() === "")
       fail(rule, "does not say where its value was measured.");
     if (typeof rule.selector !== "string" || rule.selector.trim() === "")
@@ -168,9 +161,6 @@ export async function browserTestPolicyErrors(root) {
       );
     }
   }
-  const referenceNames = (
-    await filesBelow(root, REFERENCE_DIRECTORY, { files: 0 })
-  ).map((file) => path.posix.basename(file));
   for (const file of await filesBelow(root, UI_RULE_DIRECTORY, { files: 0 })) {
     if (!file.endsWith(".json")) continue;
     let ruleSet;
@@ -180,7 +170,7 @@ export async function browserTestPolicyErrors(root) {
       errors.push(`${file} is not valid JSON: ${error.message}`);
       continue;
     }
-    errors.push(...uiRuleErrors(file, ruleSet, referenceNames));
+    errors.push(...uiRuleErrors(file, ruleSet));
   }
   return errors;
 }
