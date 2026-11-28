@@ -3379,7 +3379,6 @@ describe("ChatSurface ACP resource integration", () => {
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["Install Pi"]);
-    expect(options[1]).toBeDisabled();
   });
 
   it("marks the development simulator as test-only without policy claims", async () => {

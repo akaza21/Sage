@@ -201,7 +201,9 @@ async function openModelPopover() {
   const dialog = await screen.findByRole("dialog", { name: "Select model" });
   // The list is lazy; the level section can stand alone without models.
   await waitFor(() =>
-    expect(dialog.querySelector("[role=listbox], input")).not.toBeNull(),
+    expect(
+      dialog.querySelector("[role=listbox], .composer-effort"),
+    ).not.toBeNull(),
   );
   return dialog;
 }
@@ -781,7 +783,7 @@ describe("last confirmed model label", () => {
       // The advertised default stays reachable, marked, in the level list.
       fireEvent.click(await effortRow());
       expect(
-        await screen.findByRole("menuitemradio", { name: "Low Default" }),
+        await screen.findByRole("menuitemradio", { name: /^Low\s*Default$/ }),
       ).toBeVisible();
     },
   );
@@ -2249,20 +2251,12 @@ describe("composer permission mode picker", () => {
     expect(screen.getByRole("option", { name: /OpenCode/ })).toHaveTextContent(
       /^OpenCode$/,
     );
-    expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
-    const missingCopy = screen
-      .getByRole("option", { name: /Missing/ })
-      .querySelector(".searchable-picker__option-copy")!;
-    expect(missingCopy.firstElementChild).toHaveTextContent(/^Missing$/);
-    expect(missingCopy.lastElementChild).toHaveTextContent(
-      /^Install it, then refresh harness discovery in Settings\.$/,
-    );
+    // A harness this computer lacks is not an option; it follows them with
+    // Install.
+    expect(screen.queryByRole("option", { name: /Missing/ })).toBeNull();
     expect(
-      screen.getByRole("option", { name: /Missing/ }),
-    ).toHaveAccessibleDescription(
-      "Install it, then refresh harness discovery in Settings.",
-    );
-    expect(screen.getAllByRole("option").at(-1)).toHaveTextContent("Missing");
+      await screen.findByRole("button", { name: "Install Missing" }),
+    ).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "Harness" })).toBeNull();
     expect(claudeRow).toHaveFocus();
     fireEvent.keyDown(claudeRow, { key: "ArrowDown" });
