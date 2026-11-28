@@ -324,6 +324,11 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
     key: "Escape",
   });
   expect(useAgentSettingsState.getState().page).toBeNull();
+  useAgentSettingsState.getState().open("Chats");
+  fireEvent.pointerDown(screen.getByRole("heading", { name: "Chats" }));
+  expect(useAgentSettingsState.getState().page).toBe("Chats");
+  fireEvent.pointerDown(screen.getByRole("dialog", { name: "Agent settings" }));
+  expect(useAgentSettingsState.getState().page).toBeNull();
   useAgentSettingsState.getState().open("Browser", "tab-a");
   useAgentSettingsState.getState().open();
   expect(useAgentSettingsState.getState()).toMatchObject({

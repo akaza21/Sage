@@ -175,6 +175,10 @@ export function AgentSettingsSurface({
       className="agent-settings"
       labelledBy="agent-settings-label"
       initialFocusRef={initialFocusRef}
+      // The frame fills the dialog, so only the backdrop hits it directly.
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
       onDismiss={() => {
         if (!keepsEscape(document.activeElement)) close();
       }}

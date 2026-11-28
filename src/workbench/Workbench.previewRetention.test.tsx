@@ -176,14 +176,14 @@ async function resizeWhileHidden() {
   await settleLazyModules();
 }
 
-it("keeps the Preview frame asleep behind Settings through a resize", async () => {
+it("keeps the same Preview frame behind the Settings dialog through a resize", async () => {
   const frame = await openPreview();
 
   fireEvent.keyDown(window, { key: ",", ctrlKey: true });
   await settleLazyModules();
   expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
   expect(frame.isConnected).toBe(true);
-  expect(frame).not.toBeVisible();
+  expect(frame).toBeVisible();
   expect(previewBridge.stop).not.toHaveBeenCalled();
   await resizeWhileHidden();
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));

@@ -275,13 +275,13 @@ test.describe("Editor layout invariants", () => {
       name: "Settings",
       exact: true,
     });
-    await settings.getByRole("searchbox").fill("terminal");
+    await settings.getByRole("searchbox").fill("go to symbol");
     const pages = settings.getByRole("tablist").getByRole("tab");
     const opacity = (name: string) =>
       pages
         .filter({ hasText: name })
         .evaluate((tab) => Number(getComputedStyle(tab).opacity));
-    await expect(pages.filter({ hasText: "Browser" })).toHaveAttribute(
+    await expect(pages.filter({ hasText: "Editor" })).toHaveAttribute(
       "data-matches",
       "false",
     );
@@ -289,22 +289,22 @@ test.describe("Editor layout invariants", () => {
       "data-matches",
       "true",
     );
-    expect(await opacity("Browser")).toBeLessThan(await opacity("Keyboard"));
+    expect(await opacity("Editor")).toBeLessThan(await opacity("Keyboard"));
     await settings.getByRole("searchbox").fill("");
-    expect(await opacity("Browser")).toBe(await opacity("Keyboard"));
+    expect(await opacity("Editor")).toBe(await opacity("Keyboard"));
   });
 
   test("lays alternate chords for one command side by side without touching", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 480, height: 880 });
-    await openScenario(page, "agent-single", "agent");
+    await openScenario(page, "editor", "editor");
     await page.keyboard.press("Control+,");
-    const settings = page.getByRole("dialog", { name: "Agent settings" });
-    await settings
-      .getByRole("navigation", { name: "Agent settings sections" })
-      .getByRole("button", { name: "Keybindings", exact: true })
-      .click();
+    const settings = page.getByRole("region", {
+      name: "Settings",
+      exact: true,
+    });
+    await settings.getByRole("tab", { name: "Keyboard", exact: true }).click();
     const chords = settings
       .getByRole("row", { name: /^Send message/ })
       .locator("kbd");

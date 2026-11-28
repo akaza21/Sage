@@ -67,9 +67,6 @@ for (const width of [480, 1380]) {
       page.getByRole("radio", { name: "Agent", exact: true }),
     ).toBeChecked();
     await expect(
-      page.getByRole("complementary", { name: "Projects and chats" }),
-    ).toHaveCount(0);
-    await expect(
       settings.getByRole("heading", { name: "Appearance", exact: true }),
     ).toBeVisible();
     await expect(settings).toHaveScreenshot(
@@ -86,7 +83,11 @@ for (const width of [480, 1380]) {
     });
     expect(geometry.x).toBeGreaterThanOrEqual(0);
     expect(geometry.right).toBeLessThanOrEqual(width);
-    expect(geometry.y).toBeGreaterThanOrEqual(40);
+    expect(geometry.y).toBeGreaterThanOrEqual(0);
+    if (width === 1380)
+      expect([geometry.right - geometry.x, geometry.bottom - geometry.y]).toEqual([
+        1024, 704,
+      ]);
     expect(geometry.bottom).toBeLessThanOrEqual(880);
     await expectNoViewportOverflow(page);
 
@@ -95,15 +96,15 @@ for (const width of [480, 1380]) {
     });
     await expect(nav.getByRole("button")).toHaveText([
       "Appearance",
-      "Keybindings",
       "Harnesses",
       "Chats",
       "Browser",
       "Passwords",
       "Archived chats",
+      "Data",
+      "Editor settings",
     ]);
     for (const section of [
-      "Keybindings",
       "Harnesses",
       "Browser",
       "Passwords",
@@ -126,40 +127,6 @@ for (const width of [480, 1380]) {
     ).toHaveCount(0);
     await expect(settings).toHaveScreenshot(
       `agent-settings-chats-${width}.png`,
-    );
-    await nav.getByRole("button", { name: "Keybindings", exact: true }).click();
-    await expect(settings.getByRole("row", { name: /Save file/ })).toHaveCount(
-      0,
-    );
-    await expect(
-      settings.getByRole("row", { name: /Open settings/ }),
-    ).toContainText("Ctrl+,");
-    await expect(
-      settings.getByRole("row", { name: "New browser tab Ctrl+T" }),
-    ).toBeVisible();
-    const shortcutSpacing = await settings
-      .getByRole("row", { name: "New browser tab Ctrl+T" })
-      .evaluate((row) => {
-        const label = row.querySelector("th")!;
-        const text = document.createRange();
-        text.selectNodeContents(label);
-        return {
-          rowHeight: row.getBoundingClientRect().height,
-          labelHeight: text.getBoundingClientRect().height,
-        };
-      });
-    expect(
-      shortcutSpacing.rowHeight,
-      "Shortcut rows retain vertical breathing room in Agent Settings",
-    ).toBeGreaterThanOrEqual(shortcutSpacing.labelHeight + 16);
-    await expect(
-      settings.getByRole("row", { name: "Browser zoom in Ctrl++" }),
-    ).toBeVisible();
-    await settings
-      .getByRole("heading", { name: "Browser", exact: true })
-      .scrollIntoViewIfNeeded();
-    await expect(settings).toHaveScreenshot(
-      `agent-settings-keyboard-${width}.png`,
     );
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect(settings).toHaveCount(0);

@@ -71,7 +71,7 @@ it("keeps one Agent body asleep in Editor without re-rendering it", async () => 
   expect(body.renders).toBe(rendersBeforeToggle);
 });
 
-it("keeps the same Agent body asleep behind Settings and across Editor", async () => {
+it("keeps the same Agent body on screen behind the Settings dialog and asleep across Editor", async () => {
   writeWorkbenchLayout({ windowMode: "agent" });
   render(<Workbench />);
   await settleLazyModules();
@@ -81,9 +81,9 @@ it("keeps the same Agent body asleep behind Settings and across Editor", async (
   fireEvent.keyDown(window, { key: ",", ctrlKey: true });
   await settleLazyModules();
   expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
-  expect(node.isConnected).toBe(true);
-  expect(node).not.toBeVisible();
-  expect(body.liveTimers).toBe(0);
+  // The dialog dims the Agent window rather than replacing it.
+  expect(node).toBeVisible();
+  expect(body.liveTimers).toBe(1);
 
   await selectMode("Editor");
   expect(node.isConnected).toBe(true);
@@ -91,8 +91,8 @@ it("keeps the same Agent body asleep behind Settings and across Editor", async (
   expect(body.liveTimers).toBe(0);
   await selectMode("Agent");
   expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
-  expect(node).not.toBeVisible();
-  expect(body.liveTimers).toBe(0);
+  expect(node).toBeVisible();
+  expect(body.liveTimers).toBe(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   await settleLazyModules();
