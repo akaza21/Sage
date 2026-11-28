@@ -44,9 +44,15 @@ const ESSENTIALS = new Set(
 );
 
 // `config`: the driver's `{ env, extra }`: the variable naming its config dir,
-// and fixed settings.
+// and fixed settings. The harness runs in the scratch repository, so a
+// relative config dir the owner set is made absolute from where the capture
+// was started.
 export function scenarioEnv(config, scenario, env, emptyHome) {
-  if (scenario !== SIGNED_OUT) return { ...env, ...config.extra };
+  if (scenario !== SIGNED_OUT) {
+    const signedIn = { ...env, ...config.extra };
+    if (env[config.env]) signedIn[config.env] = path.resolve(env[config.env]);
+    return signedIn;
+  }
   const essentials = Object.fromEntries(
     Object.entries(env).filter(([name]) => ESSENTIALS.has(name.toUpperCase())),
   );
@@ -73,9 +79,14 @@ export function configRoots(config, env) {
 // scratch dir that already exists is refused, so whatever is in it (a
 // sign-in above all) stays; remove it yourself or pass a new --work.
 export function freshScratch(dir) {
-  if (fs.existsSync(dir))
+  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  try {
+    fs.mkdirSync(dir);
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
     throw new Error(
       `${dir} already exists; remove it yourself or pass a new --work`,
+      { cause: error },
     );
-  fs.mkdirSync(dir, { recursive: true });
+  }
 }

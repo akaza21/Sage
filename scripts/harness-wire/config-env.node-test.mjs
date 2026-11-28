@@ -42,7 +42,11 @@ for (const [harness, driver] of Object.entries(drivers)) {
         owner(driver),
         "/scratch/empty-home",
       );
-      assert.equal(env[driver.CONFIG.env], "/home/owner/config", scenario);
+      assert.equal(
+        env[driver.CONFIG.env],
+        path.resolve("/home/owner/config"),
+        scenario,
+      );
       assert.equal(env.OPENAI_API_KEY, "secret", scenario);
     }
   });
@@ -63,6 +67,16 @@ for (const [harness, driver] of Object.entries(drivers)) {
     assert.equal(env.SystemRoot, "C:\\Windows");
   });
 }
+
+test("a relative config dir stays the one the owner meant, not one in the scratch repo", () => {
+  const env = scenarioEnv(
+    pi.CONFIG,
+    "shell",
+    { PI_CODING_AGENT_DIR: "my-agent" },
+    "/scratch/empty-home",
+  );
+  assert.equal(env.PI_CODING_AGENT_DIR, path.resolve("my-agent"));
+});
 
 test("a config dir the owner keeps outside the home folder never reaches a capture", () => {
   const config = path.join(os.tmpdir(), "private-codex-home");
