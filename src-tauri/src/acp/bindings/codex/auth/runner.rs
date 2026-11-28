@@ -372,14 +372,20 @@ fn write(
     }
 }
 
-fn settle<T>(
+fn settle(
     transport: &mut dyn AuthTransport,
     runtime_epoch: u64,
     deadline: CodexAuthDeadline,
-    result: Result<T, CodexDiscoveryRunError>,
-) -> Result<T, CodexDiscoveryRunError> {
+    result: Result<CodexAuthOutcome, CodexDiscoveryRunError>,
+) -> Result<CodexAuthOutcome, CodexDiscoveryRunError> {
     transport.close_stdin();
-    let zero = transport.terminate_zero(result.is_err(), deadline);
+    // Only a finished exchange may have saved a new sign-in; a cancelled login
+    // is ended at once like a failed one.
+    let finished = matches!(
+        result,
+        Ok(CodexAuthOutcome::SignedIn | CodexAuthOutcome::SignedOut)
+    );
+    let zero = transport.terminate_zero(!finished, deadline);
     match (result, zero) {
         (Ok(value), Ok(zero)) if zero.runtime_epoch() == runtime_epoch => Ok(value),
         (Err(error), Ok(zero)) if zero.runtime_epoch() == runtime_epoch => Err(error),
