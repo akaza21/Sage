@@ -336,7 +336,7 @@ export function AcpChatPresentation({
   // The dock keeps background terminals; changed files sit in the transcript.
   const editSummary = (
     <EditSummaryPart
-      part="TurnEditSummary"
+      part="DockTerminals"
       key={summaryKey}
       page={page}
       rootLabels={labels}
@@ -395,7 +395,7 @@ export function AcpChatPresentation({
       </PromptPageContext>
       {editSummaryContainer !== undefined ? (
         <EditSummaryPart
-          part="ChatChangedFiles"
+          part="TurnEditSummary"
           onOpenResource={onOpenResource}
           key={summaryKey}
           page={page}

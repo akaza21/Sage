@@ -20,7 +20,7 @@ import {
   acpBackgroundTerminals,
   type BackgroundTerminal,
 } from "../../../services/acpBackgroundTerminals";
-import { TurnEditSummary } from "./TurnEditSummary";
+import { DockTerminals } from "./TurnEditSummary";
 
 const server: BackgroundTerminal = {
   handle: "7",
@@ -65,12 +65,7 @@ function page(
 
 const labels = { "root-1": "Sage" };
 const Dock = ({ page }: { page: AcpChatPage }) => (
-  <TurnEditSummary
-    page={page}
-    rootLabels={labels}
-    countIncomplete={false}
-    workspaceChanges={[]}
-  />
+  <DockTerminals page={page} rootLabels={labels} />
 );
 
 beforeEach(() => useWorkbenchStore.setState({ nativeTransitionEpoch: 4 }));

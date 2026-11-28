@@ -38,7 +38,7 @@ interface TurnEditSummaryProps {
 }
 
 /** The composer dock keeps only the background terminals. */
-export const TurnEditSummary = memo(function TurnEditSummary({
+export const DockTerminals = memo(function DockTerminals({
   page,
   rootLabels,
 }: Pick<TurnEditSummaryProps, "page" | "rootLabels">) {
@@ -46,7 +46,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
 });
 
 /** The chat's changed files, as a card under the latest answer. */
-export const ChatChangedFiles = memo(function ChatChangedFiles({
+export const TurnEditSummary = memo(function TurnEditSummary({
   page,
   rootLabels,
   countIncomplete,
@@ -130,7 +130,6 @@ export const ChatChangedFiles = memo(function ChatChangedFiles({
     ? summary.changes.find(
         (change) =>
           change.turn.sessionId === page.currentSessionId &&
-          chatFileChipBasename(projectChangeResource(change)!.relativePath) &&
           editDiffAction(change).resource,
       )
     : undefined;
@@ -273,14 +272,14 @@ export const ChatChangedFiles = memo(function ChatChangedFiles({
                 disabled={recording !== null}
                 onClick={() => void recordDisposition("accepted", turn)}
               >
-                {recording === "accepted" ? "Recording…" : "Mark reviewed"}
+                {recording === "accepted" ? "Recordingâ€¦" : "Mark reviewed"}
               </button>
               <button
                 type="button"
                 disabled={recording !== null}
                 onClick={() => void recordDisposition("rejected", turn)}
               >
-                {recording === "rejected" ? "Recording…" : "Needs follow-up"}
+                {recording === "rejected" ? "Recordingâ€¦" : "Needs follow-up"}
               </button>
               <span>
                 This records review status only. It does not apply or revert

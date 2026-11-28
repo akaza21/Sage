@@ -544,3 +544,86 @@ it("shows no running tool in the plan of a failed turn", () => {
   const region = screen.getByRole("region", { name: "Agent plan" });
   expect(within(region).queryByLabelText("Current activity")).toBeNull();
 });
+
+function settledPage(items: readonly AcpItem[]): AcpChatPage {
+  return {
+    projectId: "project-1",
+    chatId: "chat-1",
+    title: "Settled",
+    projectionRevision: "1",
+    currentSessionId: "session-1",
+    sessions: [],
+    turns: [
+      {
+        id: "turn-1",
+        sessionId: "session-1",
+        runtimeEpoch: "1",
+        ordinal: 1,
+        state: "completed",
+        revision: "1",
+        createdAt: 1_000,
+        updatedAt: 9_000,
+        terminalAt: 9_000,
+        items,
+        activities: [],
+      },
+    ],
+    nextCursor: null,
+  } as unknown as AcpChatPage;
+}
+
+const presentationProps = {
+  hasEarlier: false,
+  loadingEarlier: false,
+  historyError: null,
+  projectRoots: [],
+  retentionIncomplete: false,
+};
+
+it("folds a settled plan into a step chip beside Worked for", () => {
+  const plan = item("plan", {
+    entries: [
+      { label: "Inspect", state: "completed" },
+      { label: "Implement", state: "completed" },
+      { label: "Verify", state: "inProgress" },
+    ],
+  });
+  const answer = {
+    ...item("text", { role: "assistant", text: "Done." }),
+    id: "answer",
+  };
+  render(
+    <AcpChatPresentation
+      page={settledPage([plan, answer])}
+      {...presentationProps}
+    />,
+  );
+  expect(screen.queryByRole("region", { name: "Agent plan" })).toBeNull();
+  const chip = document.querySelector(".acp-plan-chip");
+  expect(chip).toHaveTextContent("2/3 steps");
+  expect(chip?.parentElement).toHaveClass("chat-transcript-work");
+});
+
+it("keeps settled reasoning as a Thought for row that opens to its summary", () => {
+  const thought = {
+    ...item("thoughtSummary", { summary: "Checked the parser first." }),
+    createdAt: 1_000,
+    terminalAt: 5_000,
+  };
+  const answer = {
+    ...item("text", { role: "assistant", text: "Done." }),
+    id: "answer",
+  };
+  render(
+    <AcpChatPresentation
+      page={settledPage([thought, answer])}
+      {...presentationProps}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+  const row = screen.getByText("Thought for 4s").closest("details")!;
+  expect(screen.queryByText("Checked the parser first.")).toBeNull();
+  row.open = true;
+  fireEvent(row, new Event("toggle"));
+  expect(screen.getByText("Checked the parser first.")).toBeVisible();
+});

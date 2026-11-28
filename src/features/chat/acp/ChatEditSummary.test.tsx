@@ -342,3 +342,36 @@ it("opens the originating saved Diff and records only the chosen retained Turn r
     }),
   );
 });
+
+it("shows the chat's changed files as a transcript card whose Review opens the diff", async () => {
+  const open = vi.fn();
+  const dock = document.createElement("div");
+  document.body.append(dock);
+  const { container } = render(
+    <AcpChatPresentation
+      page={snapshotPage()}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+      editSummaryContainer={dock}
+      onOpenResource={open}
+    />,
+  );
+  const card = await within(container).findByRole("region", {
+    name: "Files edited in this chat",
+  });
+  expect(dock).not.toContainElement(card);
+  expect(
+    within(card).getByRole("button", { name: /1 file changed/ }),
+  ).toBeVisible();
+  fireEvent.click(within(card).getByRole("button", { name: "Review" }));
+  expect(open).toHaveBeenCalledWith(
+    expect.objectContaining({ relativePath: expect.stringMatching(/a\.ts$/) }),
+    "diff",
+    expect.anything(),
+    expect.anything(),
+  );
+  dock.remove();
+});

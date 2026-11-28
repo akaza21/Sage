@@ -384,28 +384,27 @@ describe("ToolActivityRollup", () => {
       expect(toolRollupLabel("subagent", [task])).toBe(`Reviewer ${wording}`);
     }
   });
-  it("groups adjacent completed tools in order and bounds a group", () => {
+  it("groups adjacent tools of one kind family in order and bounds a group", () => {
     const items = [
       tool("file-1", "read"),
-      tool("file-2", "read"),
+      tool("search", "search"),
       tool("command", "execute"),
-      tool("file-3", "read"),
+      tool("edit", "edit"),
+      tool("delete", "delete"),
     ];
     const grouped = groupPrimaryActivities(items);
 
-    expect(grouped).toHaveLength(1);
-    expect(grouped[0]).toMatchObject({
-      kind: "toolRollup",
-      rollup: {
-        kind: "mixed",
-        items: [
-          { id: "file-1" },
-          { id: "file-2" },
-          { id: "command" },
-          { id: "file-3" },
-        ],
-      },
-    });
+    expect(
+      grouped.map((row) =>
+        row.kind === "toolRollup"
+          ? [row.rollup.kind, row.rollup.items.map((item) => item.id)]
+          : null,
+      ),
+    ).toEqual([
+      ["mixed", ["file-1", "search"]],
+      ["execute", ["command"]],
+      ["mixed", ["edit", "delete"]],
+    ]);
     const bounded = groupPrimaryActivities(
       Array.from({ length: 65 }, (_, index) => tool(`file-${index}`, "read")),
     );
@@ -452,63 +451,52 @@ describe("ToolActivityRollup", () => {
     expect(screen.queryByRole("group", { name: "MCP activity" })).toBeNull();
   });
 
-  it("names a single file tool by its file and a group of them without counts", () => {
-    expect(toolRollupLabel("read", [tool("file-1", "read", [mainFile])])).toBe(
-      "Read main.ts",
-    );
-    expect(
-      toolRollupLabel("read", [
-        { ...tool("file-1", "read", [mainFile]), toolState: "inProgress" },
-      ]),
-    ).toBe("Reading main.ts");
-    expect(toolRollupLabel("read", [tool("file-1", "read")])).toBe(
-      "read activity",
-    );
-    for (const locations of [[mainFile], [], [unavailableFile]]) {
+  it.each([
+    ["edit", "Edited files", "Editing files"],
+    ["delete", "Edited files", "Editing files"],
+    ["move", "Edited files", "Editing files"],
+    ["read", "Explored files", "Exploring files"],
+    ["search", "Explored files", "Exploring files"],
+    ["fetch", "Searched the web", "Searching the web"],
+    ["webSearch", "Searched the web", "Searching the web"],
+    ["execute", "Ran a command", "Running a command"],
+    ["mcp", "tool", "tool"],
+    ["other", "other activity", "other activity"],
+  ] as const)(
+    "labels a %s row from its reported tool kind",
+    (kind, settled, live) => {
+      const item = tool(`${kind}-1`, kind, [mainFile]);
+      expect(toolRollupLabel(kind, [item])).toBe(settled);
       expect(
-        toolRollupLabel("read", [
-          tool("file-1", "read", [mainFile]),
-          tool("file-2", "read", locations),
-        ]),
-      ).toBe("Read files");
-    }
+        toolRollupLabel(kind, [{ ...item, toolState: "inProgress" }]),
+      ).toBe(live);
+    },
+  );
+
+  it("opens a file row to one line per file, without leading icons", () => {
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "read",
+          commandActivity: "ordinary",
+          items: [
+            tool("file-1", "read", [mainFile]),
+            tool("file-2", "search", [unavailableFile]),
+          ],
+        }}
+        interactive
+      />,
+    );
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    expect(row.querySelector("summary")).toHaveTextContent("Explored files");
+    expect(row.querySelectorAll("summary svg")).toHaveLength(1);
+    row.open = true;
+    fireEvent(row, new Event("toggle"));
     expect(
-      toolRollupLabel("edit", [
-        tool("diff-1", "edit", [mainFile]),
-        tool("diff-2", "edit", [samePathOtherRoot]),
-      ]),
-    ).toBe("Edited files");
-  });
-
-  it("does not imply one known file in a mixed row with unknown locations", () => {
-    const command = tool("command", "execute");
-    const { rerender } = render(
-      <ToolActivityRollup
-        rollup={{
-          kind: "mixed",
-          commandActivity: "ordinary",
-          items: [tool("edit-unknown", "edit"), command],
-        }}
-        interactive
-      />,
-    );
-    expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Edited a file, ran a command",
-    );
-
-    rerender(
-      <ToolActivityRollup
-        rollup={{
-          kind: "mixed",
-          commandActivity: "ordinary",
-          items: [tool("read-unavailable", "read", [unavailableFile]), command],
-        }}
-        interactive
-      />,
-    );
-    expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Read a file, ran a command",
-    );
+      [...row.querySelectorAll(".acp-tool-rollup__items .acp-tool-rollup__label")].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Read main.ts", "Search activity"]);
   });
 
   it.each([
@@ -524,23 +512,6 @@ describe("ToolActivityRollup", () => {
         ),
       ),
     ).toBe(expected);
-  });
-
-  it("preserves read and edit verbs while counting mixed command calls", () => {
-    expect(
-      toolRollupLabel("mixed", [
-        tool("read", "read"),
-        tool("edit", "edit"),
-        tool("command", "execute"),
-      ]),
-    ).toBe("Read a file, edited a file, ran a command");
-    expect(
-      toolRollupLabel("mixed", [
-        tool("read", "read"),
-        tool("command-1", "execute"),
-        tool("command-2", "execute"),
-      ]),
-    ).toBe("Read a file, ran commands");
   });
 
   it.each([
