@@ -161,6 +161,8 @@ const CATALOG_REFS = new Set([
 ]);
 // Maps keyed by an account's own ids.
 const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
+// Maps keyed by model.
+const MODEL_KEYED = new Set(["modelUsage"]);
 // Maps keyed by catalog entries: each key uses the entry's pseudonym.
 const CATALOG_KEYED = new Map(Object.entries({ by_type: "agent" }));
 // A provider's own message, tool-use and call ids.
@@ -607,16 +609,16 @@ export function makeSanitizer({ roots }) {
   // values that keep their types and order: each window resets one window
   // after a fixed instant.
   const usage = (object, inAccount) => {
-    // Only a usage window (a limit notice's), a credit balance, or a reset
-    // time inside an account or rate-limit object, whatever its siblings.
+    // Only inside an account or rate-limit object: a usage window, a credit
+    // balance, or a reset time whatever its siblings.
     const window =
       "usedPercent" in object ||
       "utilization" in object ||
       "windowDurationMins" in object ||
       "hasCredits" in object;
     if (
-      !window &&
-      !(inAccount && ("resetsAt" in object || "resets_at" in object))
+      !inAccount ||
+      (!window && !("resetsAt" in object) && !("resets_at" in object))
     )
       return object;
     const out = { ...object };
@@ -715,12 +717,17 @@ export function makeSanitizer({ roots }) {
 
   // A key inside an account object that is not a plain identifier, or any key
   // of a map keyed by the account's own ids, gets a stable pseudonym.
+  // Every key of a usage map keyed by model is a model, whatever its form.
   const accountKey = (name, base) =>
-    PLACEHOLDER.test(name) ||
-    (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
-      !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
-      ? name
-      : pseudonym(keyNames, name, "key");
+    MODEL_KEYED.has(base.root) && base.path.length === 0
+      ? PLACEHOLDER.test(name)
+        ? name
+        : (models.get(name) ?? modelPlaceholder(name, "model-"))
+      : PLACEHOLDER.test(name) ||
+          (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
+            !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
+        ? name
+        : pseudonym(keyNames, name, "key");
 
   const scrub = (value, key, inModel, opaque, account, catalog) => {
     // A process id changes every run and says nothing about the protocol.

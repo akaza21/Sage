@@ -1131,3 +1131,25 @@ test("a default model entry is a descriptor, and a reset time is fixed whatever 
   // Not on the rate-limit allow-list, so redacted outright.
   assert.equal(limit.frame.rateLimits.primary.resets_at, "redacted");
 });
+
+test("every model usage key is a model placeholder, and usage-like objects elsewhere are left alone", () => {
+  const [result] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        modelUsage: { sonnet: { contextWindow: 1 }, o3: { contextWindow: 2 } },
+        input: { query: { utilization: 0.9, resetsAt: 123 } },
+        payload: { utilization: 0.9, resetsAt: 123 },
+      },
+    },
+  ]);
+  assert.deepEqual(Object.keys(result.frame.modelUsage), [
+    "model-1",
+    "model-2",
+  ]);
+  assert.deepEqual(result.frame.payload, { utilization: 0.9, resetsAt: 123 });
+  assert.deepEqual(result.frame.input.query, {
+    utilization: 0.9,
+    resetsAt: 123,
+  });
+});
