@@ -38,35 +38,21 @@ export function launch({ cwd, env, model }) {
   return { command: "claude", args, cwd, env };
 }
 
-// Every scenario runs on a config home seeded with the sign-in alone, so no
-// plugin, skill, agent, setting or connector of the capturing account is
-// recorded; claude.ai connectors are switched off for the same reason.
+// The capture's sign-in: the owner's own config dir for a signed-in run
+// (config-env.mjs); claude.ai connectors are switched off so none of the
+// account's connectors is recorded.
 export const CONFIG = {
   env: "CLAUDE_CONFIG_DIR",
-  from: [".claude"],
-  files: [".credentials.json"],
+  keys: [
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_AUTH_TOKEN",
+  ],
+  extra: { ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
 };
 
-export async function run(
-  scenario,
-  { cwd, env, emptyHome, configHome, image, model },
-) {
-  const scenarioEnv = {
-    ...env,
-    CLAUDE_CONFIG_DIR: configHome,
-    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
-  };
-  if (scenario === "auth-fail") {
-    scenarioEnv.CLAUDE_CONFIG_DIR = emptyHome;
-    for (const key of [
-      "ANTHROPIC_API_KEY",
-      "CLAUDE_CODE_OAUTH_TOKEN",
-      "ANTHROPIC_AUTH_TOKEN",
-    ]) {
-      delete scenarioEnv[key];
-    }
-  }
-  const spec = launch({ cwd, env: scenarioEnv, model });
+export async function run(scenario, { cwd, env, image, model }) {
+  const spec = launch({ cwd, env, model });
   const wire = new Wire(spec);
   let next = 0;
   const control = (request, step) => {

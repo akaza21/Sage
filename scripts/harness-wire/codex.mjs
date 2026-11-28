@@ -38,25 +38,16 @@ export function launch({ cwd, env }) {
   };
 }
 
-// Every scenario runs on a Codex home seeded with the sign-in alone, as
-// Sage runs Codex on a managed home, so no plugin or setting is recorded.
+// The capture's sign-in: the owner's own Codex home for a signed-in run
+// (config-env.mjs).
 export const CONFIG = {
   env: "CODEX_HOME",
-  from: [".codex"],
-  files: ["auth.json"],
+  keys: ["OPENAI_API_KEY", "CODEX_API_KEY"],
+  extra: {},
 };
 
-export async function run(
-  scenario,
-  { cwd, env, emptyHome, configHome, image },
-) {
-  const scenarioEnv = { ...env, CODEX_HOME: configHome };
-  if (scenario === "auth-fail") {
-    scenarioEnv.CODEX_HOME = emptyHome;
-    delete scenarioEnv.OPENAI_API_KEY;
-    delete scenarioEnv.CODEX_API_KEY;
-  }
-  const spec = launch({ cwd, env: scenarioEnv });
+export async function run(scenario, { cwd, env, image }) {
+  const spec = launch({ cwd, env });
   const wire = new Wire(spec);
   let next = 0;
   const request = (method, params, step) => {
