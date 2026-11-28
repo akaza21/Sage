@@ -429,6 +429,12 @@ test("provider ids keep their links, a sign-in's expiry is fixed, other payloads
 test("a re-scrub that cannot keep every reference leaves the corpus as it was", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-"));
   try {
+    // An earlier harness the scrub would change, and a later one with a
+    // broken reference.
+    const codex = path.join(out, "codex");
+    fs.mkdirSync(codex);
+    const codexCommands = `${JSON.stringify({ direction: "in", frame: { error: { message: "cf-ray: a618907869f55a00-DEL" } } })}\n`;
+    fs.writeFileSync(path.join(codex, "commands.jsonl"), codexCommands);
     const dir = path.join(out, "pi");
     fs.mkdirSync(dir);
     const commands = `${JSON.stringify({ direction: "in", frame: { type: "response", id: "req_0123456789abcdefABCD" } })}\n`;
@@ -442,7 +448,7 @@ test("a re-scrub that cannot keep every reference leaves the corpus as it was", 
         "--out",
         out,
         "--harness",
-        "pi",
+        "codex,pi",
         "--resanitize",
         "--work",
         path.join(out, "work"),
@@ -462,6 +468,11 @@ test("a re-scrub that cannot keep every reference leaves the corpus as it was", 
       "commands.jsonl",
       "shell.jsonl",
     ]);
+    assert.equal(
+      fs.readFileSync(path.join(codex, "commands.jsonl"), "utf8"),
+      codexCommands,
+    );
+    assert.deepEqual(fs.readdirSync(codex), ["commands.jsonl"]);
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }

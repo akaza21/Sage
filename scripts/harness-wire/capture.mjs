@@ -137,6 +137,7 @@ function scratchRepo(dir) {
 // by hash from another transcript keeps its reference.
 function resanitize(out, harnesses, work) {
   const digest = (line) => createHash("sha256").update(line).digest("hex");
+  const every = [];
   for (const harness of harnesses) {
     const dir = path.join(out, harness);
     const files = fs
@@ -197,8 +198,14 @@ function resanitize(out, harnesses, work) {
         );
       staged.set(file, `${after.join("\n")}\n`);
     }
+    every.push([dir, staged]);
+  }
+  // Every selected harness is rewritten and checked before any file is
+  // replaced.
+  for (const [dir, staged] of every)
     for (const [file, body] of staged)
       fs.writeFileSync(path.join(dir, `${file}.tmp`), body);
+  for (const [dir, staged] of every) {
     for (const file of staged.keys())
       fs.renameSync(path.join(dir, `${file}.tmp`), path.join(dir, file));
     fs.writeFileSync(
