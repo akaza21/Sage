@@ -60,6 +60,31 @@ describe("workbench layout storage", () => {
     expect(readWorkbenchLayout().windowMode).toBe("editor");
   });
 
+  it.each([
+    [100, 256],
+    [300, 300],
+    [999, 456],
+  ])(
+    "clamps a stored Agent panel width of %i to the 256-456px range",
+    (stored, restored) => {
+      localStorage.setItem(
+        WORKBENCH_LAYOUT_STORAGE_KEY,
+        JSON.stringify({ editorToolRailWidth: 300, agentSidebarWidth: stored }),
+      );
+      expect(readWorkbenchLayout().agentSidebarWidth).toBe(restored);
+    },
+  );
+
+  it("keeps a dragged Agent panel width beside later editor writes", () => {
+    writeWorkbenchLayout({ agentSidebarWidth: 380 });
+    writeWorkbenchLayout({ editorToolRailWidth: 310, windowMode: "editor" });
+    expect(readWorkbenchLayout()).toEqual({
+      editorToolRailWidth: 310,
+      windowMode: "editor",
+      agentSidebarWidth: 380,
+    });
+  });
+
   it("writes only the bounded layout record to WebView storage", () => {
     writeWorkbenchLayout({
       editorToolRailWidth: 300,

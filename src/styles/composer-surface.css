@@ -6,17 +6,8 @@
   /* The composer keeps its intrinsic minimum; notices and edits can scroll. */
   grid-template-areas: "location" "dock" "dock" "dock";
   grid-template-rows: auto minmax(auto, 1fr) auto auto;
-  width: min(
-    var(--chat-column-measure),
-    calc(
-      100% - var(--chat-column-gutter) - var(--chat-column-gutter) -
-        var(--chat-column-trailing)
-    )
-  );
-  margin-inline-start: max(
-    var(--chat-column-gutter),
-    calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2)
-  );
+  width: var(--chat-column-width);
+  margin-inline-start: var(--chat-column-start);
 }
 
 .chat-dock-frame > .composer-location {

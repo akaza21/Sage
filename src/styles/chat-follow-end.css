@@ -21,7 +21,7 @@
   grid-area: transcript;
   align-self: end;
   justify-self: center;
-  margin: 0 var(--chat-column-trailing) var(--space-6) 0;
+  margin: 0 0 var(--space-6);
 }
 
 .chat-follow-end:not([data-mode="activity"]) > svg {

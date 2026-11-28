@@ -67,7 +67,13 @@ test("transcript owns one responsive reading column with nonnegative rhythm", as
     const geometry = await page
       .locator(".message-list__content")
       .evaluate((column) => {
-        const box = column.getBoundingClientRect();
+        // Rows fill the column's content box, inside its 8px text inset.
+        const outer = column.getBoundingClientRect();
+        const inset = Number.parseFloat(getComputedStyle(column).paddingLeft);
+        const box = {
+          left: outer.left + inset,
+          right: outer.right - inset,
+        };
         const nodes = [
           ...column.querySelectorAll(
             ".acp-turn__items, .acp-turn__header, .acp-message--assistant, .chat-transcript-actions, .chat-fork-divider",

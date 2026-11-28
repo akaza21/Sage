@@ -372,7 +372,8 @@ for (const width of [720, 480]) {
         Math.abs(deny.x + deny.width - (actions.x + actions.width)),
       ).toBeLessThanOrEqual(1);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
-    if (width <= 600)
+    // Under 800px the panel auto-hides; the toggle brings it back.
+    if (width < 800)
       await page
         .getByRole("button", { name: "Show projects and chats" })
         .click();

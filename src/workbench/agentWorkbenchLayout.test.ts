@@ -65,16 +65,14 @@ describe("Agent navigation allocation", () => {
   );
 
   it.each([
-    [479, 262, 217],
-    [480, 262, 218],
-    [719, 326, 393],
-    [720, 326, 394],
-    [760, 326, 434],
-    [761, 326, 427],
-    [1280, 326, 946],
-    [1888, 326, 1554],
+    [479, 46, 433],
+    [760, 46, 714],
+    [799, 46, 753],
+    [800, 302, 490],
+    [1280, 302, 970],
+    [1888, 302, 1578],
   ])(
-    "retains navigation at %i without reserving a closed resource edge",
+    "docks the 256px panel from 800px without reserving a closed resource edge at %i",
     (viewportWidth, navigation, chat) => {
       const layout = agentWorkbenchLayout({
         viewportWidth,
@@ -82,6 +80,8 @@ describe("Agent navigation allocation", () => {
       });
       expect(layout.leftRailWidth).toBe(navigation);
       expect(layout.chatWidth).toBe(chat);
+      expect(layout.navigationAutoHidden).toBe(viewportWidth < 800);
+      expect(layout.navigationCollapsed).toBe(viewportWidth < 800);
       expect(layout.artifactOverlay).toBe(false);
     },
   );
@@ -107,15 +107,15 @@ describe("Agent navigation allocation", () => {
       expect(
         agentWorkbenchLayout({ viewportWidth, artifactExpanded: false })
           .navigationCollapsed,
-      ).toBe(false);
+      ).toBe(viewportWidth < 800);
     },
   );
 
   it.each([
-    [1279, 326, 576, 361],
-    [1280, 326, 576, 362],
-    [1600, 326, 720, 538],
-    [1888, 326, 850, 696],
+    [1279, 302, 576, 385],
+    [1280, 302, 576, 386],
+    [1600, 302, 720, 562],
+    [1888, 302, 850, 720],
   ])(
     "keeps the full rail beside inline resources at %i",
     (viewportWidth, navigation, resource, chat) => {
@@ -133,7 +133,7 @@ describe("Agent navigation allocation", () => {
 
   it.each([
     ["left", 460, 444],
-    ["artifact", 180, 724],
+    ["artifact", 302, 602],
   ] as const)(
     "bounds %s splitter extremes without consuming the chat floor",
     (prioritize, navigation, resource) => {
@@ -163,34 +163,70 @@ describe("Agent navigation allocation", () => {
     expect(layout.chatWidth).toBe(360);
   });
 
-  it("keeps narrow navigation reference-sized even with wide splitter overrides", () => {
+  it("auto-hides the panel under 800px whatever width was dragged", () => {
     const layout = agentWorkbenchLayout({
       viewportWidth: 480,
       artifactExpanded: false,
       requestedWidths: { leftRailWidth: 460, artifactWidth: 1200 },
     });
-    expect(layout.leftRailWidth).toBe(262);
-    expect(layout.chatWidth).toBe(218);
+    expect(layout.navigationAutoHidden).toBe(true);
+    expect(layout.navigationCollapsed).toBe(true);
+    expect(layout.navigationOverlay).toBe(false);
     expect(layout.navigationResizable).toBe(false);
+    expect(layout.leftRailWidth).toBe(46);
+    expect(layout.chatWidth).toBe(434);
+  });
+
+  it.each([
+    [480, 460, 460],
+    [420, undefined, 302],
+    [300, undefined, 284],
+  ])(
+    "brings the panel back over the chat at %i without squeezing it",
+    (viewportWidth, leftRailWidth, overlayWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: false,
+        navigationOverlayOpen: true,
+        requestedWidths: { leftRailWidth },
+      });
+      expect(layout.navigationOverlay).toBe(true);
+      expect(layout.navigationOverlayWidth).toBe(overlayWidth);
+      expect(layout.leftRailWidth).toBe(46);
+      expect(layout.chatWidth).toBe(viewportWidth - 46);
+      expect(layout.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+    },
+  );
+
+  it("restores the docked panel from 800px and ignores a stale overlay", () => {
+    const layout = agentWorkbenchLayout({
+      viewportWidth: 800,
+      artifactExpanded: false,
+      navigationOverlayOpen: true,
+    });
+    expect(layout.navigationAutoHidden).toBe(false);
+    expect(layout.navigationOverlay).toBe(false);
+    expect(layout.navigationCollapsed).toBe(false);
+    expect(layout.leftRailWidth).toBe(302);
     expect(layout.leftRailBounds).toMatchObject({
-      minWidth: 262,
-      maxWidth: 262,
+      minWidth: 302,
+      maxWidth: 432,
     });
   });
 
   it.each([
-    [836, 280, 360],
-    [1000, 300, 504],
+    [958, 280, 360],
+    [1100, 300, 482],
   ])(
     "admits inline resources at %i when resized navigation leaves room",
     (viewportWidth, artifactWidth, chatWidth) => {
       const layout = agentWorkbenchLayout({
         viewportWidth,
         artifactExpanded: true,
-        requestedWidths: { leftRailWidth: 180, artifactWidth },
+        requestedWidths: { leftRailWidth: 302, artifactWidth },
       });
       expect(layout.artifactOverlay).toBe(false);
-      expect(layout.leftRailWidth).toBe(180);
+      expect(layout.leftRailWidth).toBe(302);
       expect(layout.artifactWidth).toBe(artifactWidth);
       expect(layout.chatWidth).toBe(chatWidth);
     },

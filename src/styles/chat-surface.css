@@ -1,9 +1,17 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
-  --chat-column-measure: 42rem;
-  --chat-column-gutter: var(--space-1);
-  --chat-column-trailing: var(--scrollbar-size);
+  /* One column rule for the transcript, the dock and everything in it:
+     min(768px, pane - 32px), centred on the pane (100cqw), so the scrollbar
+     sits inside the right gutter instead of pushing the column off-centre.
+     Text sits a further 8px in. No query may shrink the 16px gutter. */
+  --chat-column-gutter: var(--space-4);
+  --chat-column-text-inset: var(--space-2);
+  --chat-column-width: min(
+    768px,
+    calc(100cqw - var(--chat-column-gutter) - var(--chat-column-gutter))
+  );
+  --chat-column-start: calc((100cqw - var(--chat-column-width)) / 2);
   position: relative;
   container-name: chat;
   container-type: inline-size;
@@ -114,7 +122,7 @@
 
 .message-list {
   min-height: 0;
-  padding: var(--space-3) var(--chat-column-gutter) var(--space-6);
+  padding: var(--space-3) 0 var(--space-6);
   overflow-y: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
@@ -122,8 +130,9 @@
 }
 
 .message-list__content {
-  width: min(100%, var(--chat-column-measure));
-  margin-inline: auto;
+  width: var(--chat-column-width);
+  margin-inline-start: var(--chat-column-start);
+  padding-inline: var(--chat-column-text-inset);
 }
 
 .project-intro,

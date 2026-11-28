@@ -132,8 +132,9 @@
 }
 
 @container composer (max-width: 520px) {
+  /* Reserve the scrollbar on both sides so the draft stays centred. */
   .composer .composer__body {
-    scrollbar-gutter: stable;
+    scrollbar-gutter: stable both-edges;
   }
 
   .composer .composer__queued-row {

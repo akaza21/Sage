@@ -5,35 +5,35 @@ import {
 } from "./shared/visualBrowserPrimitives";
 
 type Resource = "closed" | "file" | "diff" | "preview";
-// Navigation widths follow the owner's Codex desktop capture: the icon rail
-// plus the chat list end at x = 326, and the icon rail alone is 46 px. Where
-// Files can't sit beside the full rail, opening them folds it to the icon
-// rail and docks them beside Chat; only the narrowest window overlays them.
+// Navigation is the 46 px icon rail plus a 256 px panel; under 800 px the
+// panel hides itself. Where Files can't sit beside the full rail, opening
+// them folds it to the icon rail and docks them beside Chat; only the
+// narrowest window overlays them.
 const geometries = [
   {
     width: 1888,
     height: 1096,
-    navigation: 326,
-    openNavigation: 326,
-    closedChat: 1554,
-    openChat: 696,
+    navigation: 302,
+    openNavigation: 302,
+    closedChat: 1578,
+    openChat: 720,
     inline: true,
   },
   {
     width: 1280,
     height: 1000,
-    navigation: 326,
-    openNavigation: 326,
-    closedChat: 946,
-    openChat: 362,
+    navigation: 302,
+    openNavigation: 302,
+    closedChat: 970,
+    openChat: 386,
     inline: true,
   },
   {
     width: 720,
     height: 1000,
-    navigation: 326,
+    navigation: 46,
     openNavigation: 46,
-    closedChat: 394,
+    closedChat: 674,
     openChat: 360,
     inline: true,
   },
@@ -155,7 +155,7 @@ for (const geometry of geometries) {
         } = geometry;
         await page.setViewportSize({ width, height });
         await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
-        // The chat surface owns its 42rem (672px) transcript/composer measure.
+        // The chat surface owns its 768px transcript/composer column.
         await settleChatProjections(page);
         // agent-dual's secondary chat has an active turn, so its composer is
         // disabled by the fixture; the draft and resource owner use the
@@ -205,27 +205,27 @@ for (const geometry of geometries) {
           for (const item of await items.all()) {
             const reading = await item.boundingBox();
             expect(reading).not.toBeNull();
-            expect(reading!.width).toBeLessThanOrEqual(672);
+            expect(reading!.width).toBeLessThanOrEqual(768);
             expect(reading!.x).toBeGreaterThanOrEqual(lane.x);
             expect(reading!.x + reading!.width).toBeLessThanOrEqual(
               lane.x + lane.width,
             );
           }
           if (width === 1888 && resource === "closed")
-            expect((await items.first().boundingBox())!.width).toBe(672);
+            expect((await items.first().boundingBox())!.width).toBe(752);
         }
         for (const composer of await page.locator("form.composer").all()) {
           const bounds = await box(composer);
-          expect(bounds.width).toBeLessThanOrEqual(672);
+          expect(bounds.width).toBeLessThanOrEqual(768);
           if (width === 1888 && resource === "closed")
-            expect(bounds.width).toBe(670);
+            expect(bounds.width).toBe(766);
           expect(bounds.x).toBeGreaterThanOrEqual(chat.x);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(
             chat.x + chat.width,
           );
           if (width === 720)
-            expect(bounds.width).toBe(resource === "closed" ? 358 : 324);
-          if (width === 480) expect(bounds.width).toBe(398);
+            expect(bounds.width).toBe(resource === "closed" ? 622 : 308);
+          if (width === 480) expect(bounds.width).toBe(382);
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {

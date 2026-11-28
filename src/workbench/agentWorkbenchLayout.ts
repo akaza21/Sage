@@ -3,6 +3,7 @@ import {
   AGENT_ARTIFACT_WIDTH,
   AGENT_CHAT_MIN_WIDTH,
   AGENT_LEFT_RAIL_WIDTH,
+  AGENT_SIDEBAR_AUTO_HIDE_BELOW,
   agentDesktopArtifactWidth,
   agentDesktopLeftRailWidth,
   clampWorkbenchSidebarWidth,
@@ -12,7 +13,7 @@ import {
   type AgentDesktopSidebarWidths,
 } from "./workbenchSidebarResize";
 
-const NAVIGATION_RESIZE_MIN = 761;
+const COMPACT_BELOW = 761;
 const INLINE_RESOURCE_SPAN =
   AGENT_CHAT_MIN_WIDTH + 16 + AGENT_ARTIFACT_WIDTH.minWidth;
 const INLINE_RESOURCE_MIN =
@@ -22,40 +23,38 @@ export function agentWorkbenchLayout({
   viewportWidth,
   artifactExpanded,
   navigationCollapsed: navigationCollapsedRequest = false,
+  navigationOverlayOpen = false,
   requestedWidths,
   prioritize = "left",
 }: {
   viewportWidth: number;
   artifactExpanded: boolean;
   navigationCollapsed?: boolean;
+  /** Under the auto-hide width, whether the toggle has the panel out. */
+  navigationOverlayOpen?: boolean;
   requestedWidths?: Partial<AgentDesktopSidebarWidths>;
   prioritize?: AgentDesktopSidebarPriority;
 }) {
   const desktopWidth = Math.max(INLINE_RESOURCE_MIN, viewportWidth);
-  const navigationCap = Math.min(
-    AGENT_LEFT_RAIL_WIDTH.defaultWidth,
-    Math.round(262 + ((Math.max(480, viewportWidth) - 480) * 70) / 240),
-  );
-  const desktop = viewportWidth >= NAVIGATION_RESIZE_MIN;
+  // Under 800 px the panel never docks, so it never squeezes the chat.
+  const navigationAutoHidden = viewportWidth < AGENT_SIDEBAR_AUTO_HIDE_BELOW;
+  const desktop = !navigationAutoHidden;
   const defaults = initialAgentDesktopSidebarWidths(desktopWidth);
   const requested = {
-    leftRailWidth:
-      requestedWidths?.leftRailWidth ??
-      Math.min(defaults.leftRailWidth, navigationCap),
+    leftRailWidth: requestedWidths?.leftRailWidth ?? defaults.leftRailWidth,
     artifactWidth: requestedWidths?.artifactWidth ?? defaults.artifactWidth,
   };
   const artifactShare =
     requestedWidths?.artifactWidth ?? Math.round(viewportWidth * 0.45);
   const expandedNavigationBounds = {
     ...AGENT_LEFT_RAIL_WIDTH,
-    defaultWidth: navigationCap,
-    minWidth: desktop ? AGENT_LEFT_RAIL_WIDTH.minWidth : navigationCap,
-    maxWidth: desktop
-      ? Math.min(
-          AGENT_LEFT_RAIL_WIDTH.maxWidth,
-          viewportWidth - AGENT_CHAT_MIN_WIDTH - 8,
-        )
-      : navigationCap,
+    maxWidth: Math.max(
+      AGENT_LEFT_RAIL_WIDTH.minWidth,
+      Math.min(
+        AGENT_LEFT_RAIL_WIDTH.maxWidth,
+        viewportWidth - AGENT_CHAT_MIN_WIDTH - 8,
+      ),
+    ),
   };
   // Once the person drags either splitter, the allocator trades width between
   // the rail and the Files by resize priority, so a drag never folds the rail
@@ -76,15 +75,11 @@ export function agentWorkbenchLayout({
         ? Math.max(AGENT_ARTIFACT_WIDTH.minWidth, artifactShare)
         : AGENT_ARTIFACT_WIDTH.minWidth);
   const navigationCollapsed =
-    navigationCollapsedRequest || (artifactExpanded && !navigationFits);
-  const navigationResizable = desktop && !navigationCollapsed;
-  const navigationBounds = navigationResizable
-    ? expandedNavigationBounds
-    : {
-        ...expandedNavigationBounds,
-        minWidth: navigationCap,
-        maxWidth: navigationCap,
-      };
+    navigationCollapsedRequest ||
+    navigationAutoHidden ||
+    (artifactExpanded && !navigationFits);
+  const navigationResizable = !navigationCollapsed;
+  const navigationBounds = expandedNavigationBounds;
   const artifactInlineAvailable =
     navigationCollapsedRequest || !navigationFits
       ? viewportWidth - AGENT_ICON_RAIL_WIDTH >= INLINE_RESOURCE_SPAN
@@ -140,14 +135,24 @@ export function agentWorkbenchLayout({
   const artifactOverlayWidth = artifactModal
     ? Math.min(420, viewportWidth - 16)
     : chatWidth;
+  const navigationOverlay = navigationAutoHidden && navigationOverlayOpen;
   return {
     ...widths,
     navigationCollapsed,
     navigationFits,
+    navigationAutoHidden,
+    navigationOverlay,
+    navigationOverlayWidth: Math.min(
+      clampWorkbenchSidebarWidth(
+        AGENT_LEFT_RAIL_WIDTH,
+        requested.leftRailWidth,
+      ),
+      viewportWidth - 16,
+    ),
     leftRailBounds,
     artifactBounds,
     navigationResizable,
-    compact: !desktop,
+    compact: viewportWidth < COMPACT_BELOW,
     artifactOverlay,
     artifactOverlayOnExpand: !artifactInlineAvailable,
     artifactModal,

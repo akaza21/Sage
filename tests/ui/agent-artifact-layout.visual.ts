@@ -35,10 +35,10 @@ for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
     ).toBeVisible();
     await expect(pane).toBeHidden();
     expect((await page.locator(".project-sidebar").boundingBox())!.width).toBe(
-      326,
+      302,
     );
     expect((await page.locator(".center-region").boundingBox())!.width).toBe(
-      466,
+      490,
     );
     const composer = page.getByRole("combobox", { name: "Message agent" });
     await composer.fill("Chat remains usable");
