@@ -92,7 +92,10 @@
 
 .workbench--editor .status-bar__button {
   min-width: 28px;
+  height: 100%;
+  padding: 0 6px;
   border-inline: 1px solid transparent;
+  color: inherit;
 }
 
 .workbench--editor .source-change__discard-confirmation {
