@@ -217,7 +217,7 @@ async function main() {
   );
   tauri.once("exit", (code) => stop(code ?? 1));
   watchRuns(runFile);
-  console.log(`\n  Sage (live backend): ${origin}/src/devBridge/bridge.html\n`);
+  console.log(`\n  Sage (live backend): ${origin}/\n`);
   console.log("[sage] building the debug backend; the tab waits for it");
 }
 

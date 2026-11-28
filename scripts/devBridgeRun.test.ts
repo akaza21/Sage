@@ -5,7 +5,11 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { BRIDGE_RUN_PATH, bridgeRunHandler } from "./devBridgeRun";
+import {
+  BRIDGE_PAGE_PATH,
+  BRIDGE_RUN_PATH,
+  bridgeRunHandler,
+} from "./devBridgeRun";
 
 const servers: Server[] = [];
 const directory = mkdtempSync(path.join(tmpdir(), "sage-bridge-run-"));
@@ -104,4 +108,19 @@ it("reports a missing backend apart from one still starting", async () => {
     run: run.run,
     bridgePort: 40001,
   });
+});
+
+it("sends the app root to the paired page only when a live backend is configured", async () => {
+  const live = await serve(runFile);
+  for (const route of ["/", "/index.html", "/?bridge=1"]) {
+    const response = await get(live, {}, route);
+    expect(response.status).toBe(302);
+    expect(response.headers.location).toBe(
+      route.includes("?") ? `${BRIDGE_PAGE_PATH}?bridge=1` : BRIDGE_PAGE_PATH,
+    );
+  }
+  expect((await get(live, {}, "/src/main.tsx")).status).toBe(418);
+
+  const fixture = await serve(undefined);
+  expect((await get(fixture, {}, "/")).status).toBe(418);
 });

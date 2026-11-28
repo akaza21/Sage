@@ -4,6 +4,8 @@ import type { Plugin } from "vite";
 
 /** Same-origin path the dev tab reads its bridge run from. */
 export const BRIDGE_RUN_PATH = "/__sage/bridge-run";
+/** The page that pairs with the live backend before mounting the app. */
+export const BRIDGE_PAGE_PATH = "/src/devBridge/bridge.html";
 const MAX_RECORD_BYTES = 512;
 
 type BridgeRun = { run: string; bridgePort: number; code?: string };
@@ -53,7 +55,20 @@ export function bridgeRunHandler(runFile: string | undefined) {
     response: ServerResponse,
     next: () => void,
   ) => {
-    if (request.url?.split("?")[0] !== BRIDGE_RUN_PATH) {
+    const [route, query] = (request.url ?? "").split("?", 2);
+    // With a live backend the app root is the paired page, so the plain dev
+    // URL never lands on the "backend isn't running" screen.
+    if (runFile && (route === "/" || route === "/index.html")) {
+      response.statusCode = 302;
+      response.setHeader(
+        "Location",
+        query ? `${BRIDGE_PAGE_PATH}?${query}` : BRIDGE_PAGE_PATH,
+      );
+      response.setHeader("Cache-Control", "no-store");
+      response.end();
+      return;
+    }
+    if (route !== BRIDGE_RUN_PATH) {
       next();
       return;
     }
