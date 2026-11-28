@@ -37,13 +37,15 @@ on:
 permissions:
   contents: read
 
-# One run per source branch: a new push, or a requested platform run,
-# supersedes the run already in flight for the same head. The key names the
-# repository the branch lives in, so a fork's branch never shares a group with
-# a branch of the same name here.
+# One run per source branch: a new push to a pull request, or a requested
+# platform run, supersedes the run already in flight for the same head. A push
+# to main waits instead, so every main run finishes and saves the Rust caches
+# that pull requests restore. The key names the repository the branch lives
+# in, so a fork's branch never shares a group with a branch of the same name
+# here.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled' || 'branch' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   security:
@@ -392,6 +394,21 @@ jobs:
       # (workspace_notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
+      # tauri::generate_context! rewrites files in the crate's OUT_DIR while
+      # rustc compiles it, so the next cargo command finds an input newer
+      # than the build and recompiles the whole crate (about two minutes).
+      # The files are already compiled in; dating them back lets the serial
+      # phases reuse the build. Contents are untouched.
+      - name: Date the compiled-in build outputs before the build
+        run: >-
+          node -e "const fs = require('node:fs'), path = require('node:path');
+          const build = path.join('target', 'debug', 'build');
+          for (const dir of fs.readdirSync(build)) {
+          const out = path.join(build, dir, 'out');
+          if (!dir.startsWith('sage-') || !fs.existsSync(out)) continue;
+          for (const name of fs.readdirSync(out, { recursive: true })) {
+          const file = path.join(out, name);
+          if (fs.statSync(file).isFile()) fs.utimesSync(file, new Date(0), new Date(0)); } }"
       - name: Test repository mutation commands serially
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
       - name: Test app preview serially

@@ -148,8 +148,8 @@ test("CI keeps hosted-runner spend bounded", async () => {
 
   assert.match(
     workflow,
-    /^concurrency:\n {2}group: .+\n {2}cancel-in-progress: true$/m,
-    "a new push must cancel the run in flight for the same branch",
+    /^concurrency:\n {2}group: .+\n {2}cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}$/m,
+    "a pull request push cancels its run in flight; main runs finish",
   );
   assert.match(
     workflow,
