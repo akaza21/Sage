@@ -6,7 +6,7 @@ use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 use sage_domain::{
     editor::FileDiff,
-    repository::{RepositoryRef, RootRepositoryStatus},
+    repository::{RepositoryRef, RepositorySummary, RootRepositoryStatus},
     resource::ResourceRef,
 };
 use sage_git::discovery::{self, MAX_REPOSITORIES_PER_PROJECT};
@@ -53,6 +53,9 @@ pub struct DiscoverProjectRepositoriesResult {
     pub project_id: String,
     pub transition_epoch: u64,
     pub refs: Vec<RepositoryRef>,
+    /// Branch and change count for each repository found directly inside a
+    /// root that is outside any Git work tree; empty otherwise.
+    pub summaries: Vec<RepositorySummary>,
     pub truncated: bool,
 }
 
@@ -153,6 +156,7 @@ async fn discover_inner(
     .await?;
     let roots = state.database.root_records(&request.project_id)?;
     let mut refs = Vec::new();
+    let mut child_refs = Vec::new();
     let mut truncated = false;
     for root in roots {
         let remaining = MAX_REPOSITORIES_PER_PROJECT.saturating_sub(refs.len());
@@ -162,16 +166,29 @@ async fn discover_inner(
         }
         let discovery = discovery::discover_root(&root.id, &root.absolute_path, remaining);
         truncated |= discovery.truncated;
+        if discovery.child_repositories {
+            child_refs.extend(discovery.refs.iter().cloned());
+        }
         refs.extend(discovery.refs);
     }
     if refs.len() > MAX_REPOSITORIES_PER_PROJECT {
         refs.truncate(MAX_REPOSITORIES_PER_PROJECT);
         truncated = true;
     }
+    child_refs.truncate(MAX_REPOSITORIES_PER_PROJECT);
+    let workspaces = child_refs
+        .into_iter()
+        .map(|repository| {
+            let workspace = nested_workspace(state, &request.project_id, &repository);
+            (repository, workspace)
+        })
+        .collect();
+    let summaries = sage_git::summary::summaries(workspaces).await;
     Ok(DiscoverProjectRepositoriesResult {
         project_id: request.project_id,
         transition_epoch: epoch,
         refs,
+        summaries,
         truncated,
     })
 }
@@ -423,8 +440,64 @@ mod tests {
                 "nested repository must be discovered: {:?}",
                 result.refs
             );
+            assert!(result.summaries.is_empty());
             drop(state);
             fs::remove_dir_all(base).ok();
+        });
+    }
+
+    #[test]
+    fn discover_summarizes_each_repository_of_a_folder_of_repositories() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-multi-ref-{}", Uuid::new_v4()));
+            let root = base.join("multi");
+            for (name, branch) in [("api", "main"), ("web", "topic")] {
+                let repo = root.join(name);
+                fs::create_dir_all(&repo).unwrap();
+                git(&repo, &["init", "-q", "-b", branch]);
+                git(&repo, &["config", "user.email", "sage@example.invalid"]);
+                git(&repo, &["config", "user.name", "Sage Test"]);
+                fs::write(repo.join("app.ts"), "1\n").unwrap();
+                git(&repo, &["add", "--", "app.ts"]);
+                git(&repo, &["commit", "-q", "-m", "fixture"]);
+            }
+            fs::write(root.join("web/app.ts"), "2\n").unwrap();
+            fs::create_dir_all(root.join("notes")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
+            let project = database.create_project_with_chat(&root).unwrap();
+            let state = AppState::new(database);
+
+            let result = discover_inner(
+                &state,
+                DiscoverProjectRepositoriesRequest {
+                    project_id: project.id,
+                    project_generation: 0,
+                    expected_transition_epoch: 0,
+                },
+            )
+            .await
+            .unwrap();
+            drop(state);
+            fs::remove_dir_all(base).ok();
+
+            let paths = result
+                .refs
+                .iter()
+                .map(|r| r.relative_path.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(paths, ["api", "web"]);
+            let rows = result
+                .summaries
+                .iter()
+                .map(|s| {
+                    (
+                        s.r#ref.relative_path.as_str(),
+                        s.branch.as_deref(),
+                        s.change_count,
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(rows, [("api", Some("main"), 0), ("web", Some("topic"), 1)]);
         });
     }
 

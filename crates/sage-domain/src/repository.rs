@@ -152,6 +152,20 @@ impl RootRepositoryStatus {
     }
 }
 
+/// One row of a folder-of-repositories list: branch and change count only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySummary {
+    pub r#ref: RepositoryRef,
+    /// `repository` or `unavailable`.
+    pub state: String,
+    pub branch: Option<String>,
+    pub change_count: u64,
+    /// More changes exist than `change_count` counts.
+    pub changes_overflowed: bool,
+    pub message: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectRepositoryStatus {

@@ -149,6 +149,72 @@
   margin: 0 2px var(--space-1);
 }
 
+.source-repositories {
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-1);
+}
+
+.source-repositories__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-repositories__row {
+  display: flex;
+  width: 100%;
+  min-height: var(--row-height-default);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-align: left;
+}
+
+.source-repositories__row:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.source-repositories__row[aria-current="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-selected);
+}
+
+.source-repositories__row:disabled {
+  cursor: default;
+}
+
+.source-repositories__name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-repositories__branch {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-repositories__count {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .source-root__header {
   display: flex;
   min-height: var(--row-height-default);

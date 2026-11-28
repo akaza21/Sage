@@ -41,15 +41,68 @@ const SKIP_DIRECTORY_NAMES: &[&str] = &[
     "Carthage",
 ];
 
+/// A root outside any Git work tree lists the repositories directly inside it
+/// (a folder of checkouts). These caps bound that one-level walk.
+pub const MAX_CHILD_REPOSITORIES_PER_ROOT: usize = 32;
+pub const MAX_CHILD_ENTRIES_PER_ROOT: usize = 1_024;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootDiscovery {
     pub refs: Vec<RepositoryRef>,
     pub truncated: bool,
+    /// The root is outside any Git work tree and `refs` are its direct child
+    /// repositories, sorted by path.
+    pub child_repositories: bool,
+}
+
+struct WalkLimits {
+    repositories: usize,
+    depth: usize,
+    entries: usize,
 }
 
 pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> RootDiscovery {
+    if is_git_repository(root) || inside_work_tree(root) {
+        let (refs, truncated) = walk(
+            root_id,
+            root,
+            WalkLimits {
+                repositories: MAX_REPOSITORIES_PER_ROOT.min(project_remaining),
+                depth: MAX_DISCOVERY_DEPTH,
+                entries: MAX_ENTRIES_PER_ROOT,
+            },
+        );
+        return RootDiscovery {
+            refs,
+            truncated,
+            child_repositories: false,
+        };
+    }
+    let (mut refs, truncated) = walk(
+        root_id,
+        root,
+        WalkLimits {
+            repositories: MAX_CHILD_REPOSITORIES_PER_ROOT.min(project_remaining),
+            depth: 1,
+            entries: MAX_CHILD_ENTRIES_PER_ROOT,
+        },
+    );
+    refs.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    RootDiscovery {
+        refs,
+        truncated,
+        child_repositories: true,
+    }
+}
+
+/// Filesystem-only: some ancestor directory holds a `.git` entry.
+fn inside_work_tree(root: &Path) -> bool {
+    root.ancestors().skip(1).any(is_git_repository)
+}
+
+fn walk(root_id: &str, root: &Path, limits: WalkLimits) -> (Vec<RepositoryRef>, bool) {
     let started = Instant::now();
-    let cap = MAX_REPOSITORIES_PER_ROOT.min(project_remaining);
+    let cap = limits.repositories;
     let mut refs = Vec::new();
     let mut truncated = false;
     let mut visited = 0_usize;
@@ -59,7 +112,7 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
     'scan: while let Some((directory, relative, depth)) = queue.pop_front() {
         if started.elapsed() >= MAX_DISCOVERY_DURATION_PER_ROOT
             || visited >= MAX_VISITED_DIRECTORIES_PER_ROOT
-            || entries_seen >= MAX_ENTRIES_PER_ROOT
+            || entries_seen >= limits.entries
         {
             truncated = true;
             break;
@@ -76,7 +129,7 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
             break;
         }
 
-        if depth >= MAX_DISCOVERY_DEPTH {
+        if depth >= limits.depth {
             continue;
         }
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -84,7 +137,7 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
         };
         for entry in entries.flatten() {
             entries_seen += 1;
-            if entries_seen >= MAX_ENTRIES_PER_ROOT {
+            if entries_seen >= limits.entries {
                 truncated = true;
                 break 'scan;
             }
@@ -120,7 +173,7 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
         }
     }
 
-    RootDiscovery { refs, truncated }
+    (refs, truncated)
 }
 
 fn is_git_repository(directory: &Path) -> bool {
@@ -195,5 +248,73 @@ mod tests {
             ]
         );
         assert!(!discovery.truncated);
+        assert!(!discovery.child_repositories);
+    }
+
+    #[test]
+    fn folder_of_repositories_lists_only_direct_child_repositories() {
+        let root = scratch("children");
+        fs::create_dir_all(root.join("web/.git")).unwrap();
+        fs::create_dir_all(root.join("api")).unwrap();
+        fs::write(root.join("api/.git"), "gitdir: ../elsewhere\n").unwrap();
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::create_dir_all(root.join("group/deep/.git")).unwrap();
+        fs::create_dir_all(root.join("node_modules/.git")).unwrap();
+
+        let discovery = discover_root("root-a", &root, MAX_REPOSITORIES_PER_PROJECT);
+        fs::remove_dir_all(&root).ok();
+
+        let paths = discovery
+            .refs
+            .iter()
+            .map(|r| r.relative_path.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(paths, ["api", "web"]);
+        assert!(discovery.child_repositories);
+        assert!(!discovery.truncated);
+    }
+
+    #[test]
+    fn folder_of_repositories_fails_closed_past_the_repository_cap() {
+        let root = scratch("child-cap");
+        for index in 0..=MAX_CHILD_REPOSITORIES_PER_ROOT {
+            fs::create_dir_all(root.join(format!("repo-{index:03}/.git"))).unwrap();
+        }
+        let discovery = discover_root("root-a", &root, MAX_REPOSITORIES_PER_PROJECT);
+        let limited = discover_root("root-a", &root, 3);
+        fs::remove_dir_all(&root).ok();
+
+        assert_eq!(discovery.refs.len(), MAX_CHILD_REPOSITORIES_PER_ROOT);
+        assert!(discovery.truncated);
+        assert_eq!(limited.refs.len(), 3);
+        assert!(limited.truncated);
+    }
+
+    #[test]
+    fn folder_of_repositories_fails_closed_past_the_entry_cap() {
+        let root = scratch("child-entries");
+        for index in 0..MAX_CHILD_ENTRIES_PER_ROOT {
+            fs::write(root.join(format!("file-{index:05}")), "").unwrap();
+        }
+        fs::create_dir_all(root.join("zz-repo/.git")).unwrap();
+        let discovery = discover_root("root-a", &root, MAX_REPOSITORIES_PER_PROJECT);
+        fs::remove_dir_all(&root).ok();
+
+        assert!(discovery.truncated);
+        assert!(discovery.refs.len() <= 1);
+    }
+
+    #[test]
+    fn subfolder_of_a_repository_keeps_the_nested_walk() {
+        let root = scratch("inside");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        let sub = root.join("src");
+        fs::create_dir_all(sub.join("a/b/.git")).unwrap();
+        let discovery = discover_root("root-a", &sub, MAX_REPOSITORIES_PER_PROJECT);
+        fs::remove_dir_all(&root).ok();
+
+        assert!(!discovery.child_repositories);
+        assert_eq!(discovery.refs.len(), 1);
+        assert_eq!(discovery.refs[0].relative_path, "a/b");
     }
 }
