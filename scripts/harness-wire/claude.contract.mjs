@@ -9,11 +9,11 @@ import path from "node:path";
 import {
   Graph,
   declarations,
-  installed,
   literals,
   members,
   variants,
 } from "./contract-ts.mjs";
+import { installed, published } from "./npm.mjs";
 
 const SDK = "@anthropic-ai/claude-agent-sdk";
 
@@ -71,6 +71,11 @@ function responses(api, graph, map) {
       }
     }
   }
+}
+
+// The Claude Code release the newest SDK bundles.
+export function latest() {
+  return published(SDK, "claudeCodeVersion");
 }
 
 export async function contract(version, work) {

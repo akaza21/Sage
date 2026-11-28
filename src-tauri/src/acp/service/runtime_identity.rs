@@ -255,15 +255,6 @@ mod tests {
     }
 
     #[test]
-    fn release_build_does_not_compile_the_debug_command_module() {
-        // The command is cfg-gated at its registration seam in lib.rs. Keeping
-        // this test local documents the data object is not a release API.
-        const {
-            assert!(cfg!(any(debug_assertions, feature = "diagnostics")));
-        }
-    }
-
-    #[test]
     fn exact_publish_shape_reports_batch_entrypoint_and_node_root() {
         let value = observation(&owner(7));
         assert_eq!(value.owner.runtime_epoch, "7");

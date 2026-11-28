@@ -97,7 +97,14 @@ gtk = "=0.18.2"
 # crate is fetched; this adds binding features only.
 block2 = "=0.6.2"
 objc2 = "=0.6.4"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSFileManager", "NSString", "NSURL"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSFileManager", "NSOperation", "NSString", "NSURL"] }
+# macOS only: composer dictation (Speech + AVAudioEngine). Two new crates,
+# pure Rust bindings with no build script or bundled library: objc2-speech
+# (20 KB .crate) and objc2-avf-audio (116 KB .crate); only the features below
+# compile. At runtime they link the system Speech and AVFAudio frameworks, and
+# nothing runs until the user starts dictation.
+objc2-avf-audio = { version = "=0.3.2", default-features = false, features = ["std", "block2", "AVAudioBuffer", "AVAudioEngine", "AVAudioFormat", "AVAudioIONode", "AVAudioNode", "AVAudioTime", "AVAudioTypes"] }
+objc2-speech = { version = "=0.3.2", default-features = false, features = ["std", "block2", "objc2-avf-audio", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFSpeechRecognizer", "SFTranscription"] }
 objc2-user-notifications = { version = "=0.3.2", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 
 # Windows only.
