@@ -1,0 +1,45 @@
+name: Rust setup
+description: >-
+  Prepares a runner for the Sage Rust jobs: the Linux Tauri system packages,
+  the stable toolchain with Clippy and rustfmt, the Cargo cache, and the empty
+  frontend directory that tauri::generate_context! needs.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Linux Tauri dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          build-essential \
+          curl \
+          wget \
+          file \
+          libxdo-dev \
+          libssl-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev
+    - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      with:
+        components: clippy,rustfmt
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: . -> target
+        # Branches restore main's cache instead of each writing their own,
+        # which would evict it under the repository's cache quota.
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+        cache-on-failure: true
+        # Keep Sage's own build outputs too. tauri::generate_context! writes
+        # the window icon into the crate's OUT_DIR while rustc runs, and
+        # Cargo marks a crate stale when an input is newer than the start of
+        # its compile. When the restored cache has no OUT_DIR, the first
+        # test phase creates that file and the next phase recompiles the
+        # whole crate (about two and a half minutes on ubuntu-latest).
+        cache-workspace-crates: true
+    - name: Create Tauri frontend placeholder
+      shell: bash
+      run: >-
+        node -e "require('node:fs').mkdirSync('dist', { recursive: true })"

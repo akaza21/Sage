@@ -66,6 +66,8 @@ jobs:
         run: cargo deny check advisories bans sources
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm audit --audit-level=critical
+      # The plan skips schedules and draft PRs, so Security is the only job
+      # that checks source policy on those triggers.
       - name: Check source policy and regression tests
         run: node --test scripts/check-policy.node-test.mjs && node scripts/check-policy.mjs
 
@@ -79,7 +81,6 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      frontend: ${{ steps.plan.outputs.frontend }}
       rust: ${{ steps.plan.outputs.rust }}
       rust-os: ${{ steps.plan.outputs.rust-os }}
       rust-matrix: ${{ steps.plan.outputs.rust-matrix }}
@@ -99,7 +100,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          frontend=true
           rust=true
           # Both sides of a rename count, so moving a file out of a Rust path
           # still runs Rust.
@@ -148,7 +148,6 @@ jobs:
           rust_os+=']'
 
           {
-            echo "frontend=$frontend"
             echo "rust=$rust"
             echo "rust-os=$rust_os"
             echo "rust-matrix=$(node --input-type=module -e '
@@ -159,7 +158,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           {
             echo "### Lanes"
-            echo "- Frontend and policy: $frontend"
             echo "- Rust: $rust on $rust_os"
             echo "- Windows budget lane: $windows"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -167,7 +165,6 @@ jobs:
   frontend:
     name: Frontend and policy
     needs: plan
-    if: needs.plan.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     # Vitest runs in its own sharded job below; this job runs the rest of
     # `npm run check` in the same order.
@@ -197,7 +194,6 @@ jobs:
   vitest:
     name: Vitest (${{ matrix.shard }}/3)
     needs: plan
-    if: needs.plan.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     # One unsharded run takes about 5.5 minutes on ubuntu-latest; Vitest
     # splits the files across the three shards, so every file still runs.
@@ -215,7 +211,9 @@ jobs:
       - run: npm ci
       - run: npm run test -- --shard=${{ matrix.shard }}/3
 
-  smoke-cli:
+  # The Node budget tests that need a native Windows host
+  # (scripts/budget-lanes.mjs --lane windows). Runs only when requested.
+  windows-budget:
     name: Windows budget lane (browser)
     needs: plan
     if: needs.plan.outputs.windows == 'true'
@@ -228,7 +226,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Provision the bundled Chromium the smoke CLI drives
+      - name: Provision the bundled Chromium the app smoke CLI tests drive
         run: npx playwright install chromium
       # The Windows Cargo Job tests give each cargo command 10 s. The image
       # keeps rustup on C:, which Defender saturates for about 30 s when it
@@ -293,41 +291,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux Tauri dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          # Branches restore main's cache instead of each writing their own,
-          # which would evict it under the repository's cache quota.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-          # Keep Sage's own build outputs too. tauri::generate_context! writes
-          # the window icon into the crate's OUT_DIR while rustc runs, and
-          # Cargo marks a crate stale when an input is newer than the start of
-          # its compile. When the restored cache has no OUT_DIR, the first
-          # test phase creates that file and the next phase recompiles the
-          # whole crate (about two and a half minutes on ubuntu-latest).
-          cache-workspace-crates: true
+      - uses: ./.github/actions/rust-setup
       - run: cargo fmt --all -- --check
-      - name: Create Tauri frontend placeholder
-        run: >-
-          node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
       - run: cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
       # Library targets only: no dev-dependency enables a test-support
       # feature, so the production configuration is linted as well.
@@ -357,40 +322,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux Tauri dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          # Branches restore main's cache instead of each writing their own,
-          # which would evict it under the repository's cache quota.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-          # Keep Sage's own build outputs too. tauri::generate_context! writes
-          # the window icon into the crate's OUT_DIR while rustc runs, and
-          # Cargo marks a crate stale when an input is newer than the start of
-          # its compile. When the restored cache has no OUT_DIR, the first
-          # test phase creates that file and the next phase recompiles the
-          # whole crate (about two and a half minutes on ubuntu-latest).
-          cache-workspace-crates: true
-      - name: Create Tauri frontend placeholder
-        run: >-
-          node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
+      - uses: ./.github/actions/rust-setup
       # The parallel phase includes the shared-contract suites
       # (workspace_notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
@@ -431,40 +363,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux Tauri dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          # Branches restore main's cache instead of each writing their own,
-          # which would evict it under the repository's cache quota.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-          # Keep Sage's own build outputs too. tauri::generate_context! writes
-          # the window icon into the crate's OUT_DIR while rustc runs, and
-          # Cargo marks a crate stale when an input is newer than the start of
-          # its compile. When the restored cache has no OUT_DIR, the first
-          # test phase creates that file and the next phase recompiles the
-          # whole crate (about two and a half minutes on ubuntu-latest).
-          cache-workspace-crates: true
-      - name: Create Tauri frontend placeholder
-        run: >-
-          node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
+      - uses: ./.github/actions/rust-setup
       - run: "cargo test -p sage --features browser-bridge --lib dev_bridge::"
       - run: cargo check -p sage --release --lib
 
@@ -478,7 +377,7 @@ jobs:
       - plan
       - frontend
       - vitest
-      - smoke-cli
+      - windows-budget
       - rust-lint
       - rust
       - rust-bridge
@@ -490,10 +389,9 @@ jobs:
           SECURITY: ${{ needs.security.result }}
           PLAN: ${{ needs.plan.result }}
           FRONTEND: ${{ needs.frontend.result }}
-          FRONTEND_PLANNED: ${{ needs.plan.outputs.frontend }}
           VITEST: ${{ needs.vitest.result }}
-          SMOKE_CLI: ${{ needs.smoke-cli.result }}
-          SMOKE_CLI_PLANNED: ${{ needs.plan.outputs.windows }}
+          WINDOWS_BUDGET: ${{ needs.windows-budget.result }}
+          WINDOWS_PLANNED: ${{ needs.plan.outputs.windows }}
           RUST_LINT: ${{ needs.rust-lint.result }}
           RUST: ${{ needs.rust.result }}
           RUST_BRIDGE: ${{ needs.rust-bridge.result }}
@@ -512,9 +410,9 @@ jobs:
           }
           require "Security" "true" "$SECURITY"
           test "$PLAN" = "success"
-          require "Frontend and policy" "$FRONTEND_PLANNED" "$FRONTEND"
-          require "Vitest" "$FRONTEND_PLANNED" "$VITEST"
-          require "Windows budget lane" "$SMOKE_CLI_PLANNED" "$SMOKE_CLI"
+          require "Frontend and policy" "true" "$FRONTEND"
+          require "Vitest" "true" "$VITEST"
+          require "Windows budget lane" "$WINDOWS_PLANNED" "$WINDOWS_BUDGET"
           require "Rust lint" "$RUST_PLANNED" "$RUST_LINT"
           require "Rust" "$RUST_PLANNED" "$RUST"
           require "Rust bridge and release" "$RUST_PLANNED" "$RUST_BRIDGE"
@@ -526,7 +424,7 @@ jobs:
             echo "- Rust lint on $RUST_OS: $RUST_LINT"
             echo "- Rust on $RUST_OS: $RUST"
             echo "- Rust bridge and release on $RUST_OS: $RUST_BRIDGE"
-            echo "- Windows budget lane: $SMOKE_CLI"
+            echo "- Windows budget lane: $WINDOWS_BUDGET"
             for platform in windows macos; do
               case "$RUST_OS" in
                 *"$platform-latest"*) ;;

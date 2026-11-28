@@ -4,6 +4,10 @@ import path from "node:path";
 import test from "node:test";
 
 const workflowPath = path.join(process.cwd(), ".github/workflows/ci.yml");
+const setupActionPath = path.join(
+  process.cwd(),
+  ".github/actions/rust-setup/action.yml",
+);
 
 function jobBlock(workflow, jobId) {
   const job = workflow.match(
@@ -38,13 +42,18 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
 
   const placeholder =
     "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"";
+  const setup = "uses: ./.github/actions/rust-setup";
+  assert.ok(
+    (await readFile(setupActionPath, "utf8")).includes(placeholder),
+    "the Rust setup action must create the Tauri frontend placeholder",
+  );
   // Every Rust job builds `sage`, whose generate_context! needs dist/.
   for (const job of rustJobs) {
     const firstBuild = job.search(/run: ["']?cargo (?:clippy|test|check) /);
     assert.ok(firstBuild > 0, "Rust job must build sage");
     assert.ok(
-      job.includes(placeholder) && job.indexOf(placeholder) < firstBuild,
-      "Rust frontend placeholder must be created before the first build",
+      job.includes(setup) && job.indexOf(setup) < firstBuild,
+      "Rust setup, with its frontend placeholder, must run before the first build",
     );
   }
   for (const command of [

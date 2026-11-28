@@ -180,10 +180,10 @@ test("CI keeps hosted-runner spend bounded", async () => {
   }
 
   // Windows and macOS run only when requested through workflow_dispatch.
-  const smokeCli = jobBlock(workflow, "smoke-cli");
-  assert.match(smokeCli, /if: needs\.plan\.outputs\.windows == 'true'/);
-  const workflowOutsideSmokeCli = workflow.replace(smokeCli, "");
-  for (const line of workflowOutsideSmokeCli.split("\n")) {
+  const windowsBudget = jobBlock(workflow, "windows-budget");
+  assert.match(windowsBudget, /if: needs\.plan\.outputs\.windows == 'true'/);
+  const workflowOutsideWindowsBudget = workflow.replace(windowsBudget, "");
+  for (const line of workflowOutsideWindowsBudget.split("\n")) {
     if (/windows-latest|macos-latest/.test(line)) {
       assert.match(
         line,
@@ -236,6 +236,7 @@ test("CI plans Rust from both sides of every changed path", async () => {
     "scripts/cargo-features.mjs",
     "scripts/change-scope.mjs",
     ".github/workflows/ci.yml",
+    ".github/actions/rust-setup/action.yml",
   ]) {
     assert.ok(needsRust([file]), `${file} must run Rust`);
   }
