@@ -37,12 +37,15 @@ export function AnswerActions({
   createdAt,
   page,
   forkable = false,
+  prompt = false,
   children,
 }: {
   text: string;
   createdAt?: number;
   page?: AcpChatPage | null;
   forkable?: boolean;
+  /** A user prompt's hover row: time first, then copy and its menu. */
+  prompt?: boolean;
   children?: ReactNode;
 }) {
   const onCopyFeedback = useContext(AnswerCopyFeedback);
@@ -79,12 +82,18 @@ export function AnswerActions({
     onCopyFeedback?.(succeeded ? "Copied" : "Copy failed");
   }
 
+  const timeLabel = time ? (
+    <time className="chat-transcript-actions__time" dateTime={time.dateTime}>
+      {time.label}
+    </time>
+  ) : null;
   return (
     <div
-      className="chat-transcript-actions"
+      className={`chat-transcript-actions${prompt ? " acp-prompt-actions" : ""}`}
       role="group"
-      aria-label="Message actions"
+      aria-label={prompt ? "Prompt actions" : "Message actions"}
     >
+      {prompt ? timeLabel : null}
       <AnswerActionButton
         label={copied ? "Copied" : "Copy"}
         onClick={() => void copyAnswer()}
@@ -100,14 +109,7 @@ export function AnswerActions({
         />
       ) : null}
       {children}
-      {time ? (
-        <time
-          className="chat-transcript-actions__time"
-          dateTime={time.dateTime}
-        >
-          {time.label}
-        </time>
-      ) : null}
+      {prompt ? null : timeLabel}
     </div>
   );
 }

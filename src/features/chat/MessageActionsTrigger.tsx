@@ -1,6 +1,6 @@
 import { useContext, useId, useState, type ComponentProps } from "react";
 import { Ellipsis } from "../../ui/leanIcons";
-import { AnswerActionButton } from "./AnswerActions";
+import { AnswerActionButton, AnswerActions } from "./AnswerActions";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { lazyParts } from "./lazyParts";
 import type { AnswerMoreActions } from "./ForkChat";
@@ -42,7 +42,8 @@ const offeredTurns = (page: AcpChatPage) => {
   return offered;
 };
 
-/** The trigger shows only when its menu would offer rewind or fork. */
+/** Time and copy on hover beneath the prompt; the menu trigger shows only
+ * when it would offer rewind or fork. */
 export function PromptActions({
   item,
   turn,
@@ -51,11 +52,16 @@ export function PromptActions({
   turn: TurnProjection;
 }) {
   const page = useContext(PromptPageContext);
-  return page &&
-    item.kind === "text" &&
-    item.payload.role === "user" &&
-    offeredTurns(page).has(turn.id) ? (
-    <MessageActionsTrigger page={page} turn={turn} text={item.payload.text} />
+  return page && item.kind === "text" && item.payload.role === "user" ? (
+    <AnswerActions text={item.payload.text} createdAt={item.createdAt} prompt>
+      {offeredTurns(page).has(turn.id) ? (
+        <MessageActionsTrigger
+          page={page}
+          turn={turn}
+          text={item.payload.text}
+        />
+      ) : null}
+    </AnswerActions>
   ) : null;
 }
 
@@ -69,7 +75,7 @@ export function MessageActionsTrigger(
   const menuId = useId();
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const close = () => setTrigger(null);
-  const content = (
+  return (
     <>
       <AnswerActionButton
         label={props.turn ? "Message actions" : "More actions"}
@@ -98,10 +104,5 @@ export function MessageActionsTrigger(
         />
       ) : null}
     </>
-  );
-  return props.turn ? (
-    <div className="chat-transcript-actions acp-prompt-actions">{content}</div>
-  ) : (
-    content
   );
 }

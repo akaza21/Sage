@@ -19,14 +19,20 @@
   border-radius: var(--radius-none);
   background: transparent;
 }
+/* One dot per turn on the card's left edge; the hovered one grows. */
 .turn-navigator button::before {
   content: "";
-  width: var(--w);
-  height: var(--dash-height);
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-circle);
   background: var(--agent-nav-dash);
   transition:
-    width var(--motion-duration-indicator) ease-out,
+    transform var(--motion-duration-indicator) ease-out,
     background-color var(--motion-duration-indicator);
+}
+
+.turn-navigator button[data-active="true"]::before {
+  transform: scale(1.4);
 }
 .turn-navigator button[data-visible="true"]::before {
   background: var(--agent-nav-dash-visible);

@@ -18,7 +18,7 @@ export function turnHasActivities(
 
 /** "Worked for 3m 12s" once settled, "Working for 3s" while live. */
 export function formatDuration(
-  verb: "Worked" | "Working",
+  verb: "Worked" | "Working" | "Thought",
   startedAt: number,
   endedAt: number | null,
 ): string | null {

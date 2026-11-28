@@ -1,66 +1,50 @@
 import { useContext, useState } from "react";
 import { type AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
-import {
-  BrainCircuit,
-  ChevronRight,
-  Command,
-  FilePenLine,
-  FileText,
-  Image,
-  Search,
-  TerminalSquare,
-  Workflow,
-} from "../../../ui/leanIcons";
+import { ChevronRight } from "../../../ui/leanIcons";
 import { ToolItem } from "./ToolItem";
 import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 import { toolStateLabels } from "./statusSemantics";
 import {
   liveToolItem,
   liveToolProgress,
+  namesCategory,
+  toolItemLabel,
   toolRollupDurationLabel,
   toolRollupLabel,
   toolRollupState,
   type ToolRollup,
 } from "./toolActivityRollup";
 
-const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
-  edit: FilePenLine,
-  delete: FilePenLine,
-  move: FilePenLine,
-  execute: TerminalSquare,
-  read: FileText,
-  imageView: Image,
-  search: Search,
-  fetch: Command,
-  webSearch: Command,
-  mcp: Command,
-  think: BrainCircuit,
-};
-
 export function ToolActivityRollup({
   rollup,
   interactive,
   onOpenResource,
+  nested = false,
 }: {
   rollup: ToolRollup;
   interactive: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
+  /** A row inside an opened Worked-for row names its own file or command. */
+  nested?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const turnEnded = useContext(WorkedTurnTerminal);
-  const label = toolRollupLabel(
-    rollup.kind,
-    rollup.items,
-    rollup.commandActivity,
-    turnEnded,
-  );
-  const state = toolRollupState(rollup.items);
-  // The latest live child names the row (toolRollupLabel); its icon must
-  // describe that same child.
   const current = liveToolItem(rollup.items, turnEnded);
+  const label =
+    nested && rollup.items.length === 1
+      ? toolItemLabel(
+          rollup.items[0]!,
+          Boolean(current),
+          rollup.commandActivity === "declaredTest",
+        )
+      : toolRollupLabel(
+          rollup.kind,
+          rollup.items,
+          rollup.commandActivity,
+          turnEnded,
+        );
+  const state = toolRollupState(rollup.items);
   const live = Boolean(current) || (!turnEnded && state === "inProgress");
-  const iconKind = (current ?? rollup.items[0])?.payload.presentation.kind;
-  const ActivityIcon = (iconKind && activityIcons[iconKind]) || Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
   const progress = liveToolProgress(current);
   return (
@@ -80,11 +64,6 @@ export function ToolActivityRollup({
           .join(", ")}
       >
         <span className="acp-tool-rollup__summary-copy">
-          <ActivityIcon
-            aria-hidden="true"
-            size={14}
-            data-activity-icon={iconKind}
-          />
           <span
             className={`acp-tool-rollup__label${live ? " acp-live-shimmer" : ""}`}
           >
@@ -94,19 +73,19 @@ export function ToolActivityRollup({
             <span className="acp-tool-rollup__progress">{progress}</span>
           ) : null}
         </span>
-        <span className="acp-tool-rollup__meta">
-          <ChevronRight
-            className="acp-tool-rollup__chevron"
-            aria-hidden="true"
-            size={14}
-          />
-        </span>
+        <ChevronRight
+          className="acp-tool-rollup__chevron"
+          aria-hidden="true"
+          size={14}
+        />
       </summary>
       {expanded ? (
         <div className="acp-tool-rollup__items stagger-reveal">
           {rollup.items.map((item) => (
             <div key={item.id} className="acp-tool-rollup__row">
-              {rollup.items.length > 1 && rollup.kind !== "subagent" ? (
+              {rollup.kind !== "subagent" &&
+              (rollup.items.length > 1 ||
+                (!nested && namesCategory(rollup.kind))) ? (
                 <ToolActivityRollup
                   rollup={{
                     kind: item.payload.presentation.kind,
@@ -118,6 +97,7 @@ export function ToolActivityRollup({
                   }}
                   interactive={interactive}
                   onOpenResource={onOpenResource}
+                  nested
                 />
               ) : (
                 <ToolItem

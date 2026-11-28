@@ -38,12 +38,6 @@
 }
 
 .chat-edit-summary-zone {
-  --edit-summary-width: 100%;
-  --edit-summary-margin: 0;
-  --edit-summary-border: 0;
-  --radius-edit-summary: var(--radius-none);
-  --edit-summary-collapsed-radius: var(--radius-none);
-  --edit-summary-fill: transparent;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;

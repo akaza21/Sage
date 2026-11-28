@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 import type { TurnProjection } from "../../domain/acp";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import {
-  dashWidth,
   sampleTurnIndices,
   turnAnswerPreview,
   turnPrompt,
@@ -21,12 +20,6 @@ it("caps an evenly sampled rail and always includes first, last and current", ()
   );
   expect(sampleTurnIndices(6, 2)).toEqual([0, 1, 2, 3, 4, 5]);
   expect(sampleTurnIndices(0, 0)).toEqual([]);
-});
-
-it("uses the measured fisheye widths", () => {
-  expect([0, 1, -1, 2, 3, 4, 20].map(dashWidth)).toEqual([
-    24, 18, 18, 13, 9, 6, 6,
-  ]);
 });
 
 it("bounds previews and preserves plain-text bullets", () => {

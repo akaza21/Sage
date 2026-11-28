@@ -16,7 +16,6 @@ type ToolKind = ToolPresentation["kind"];
 
 const MAX_TOOL_ROLLUP_ITEMS = 64;
 const COMPACTED = "Context automatically compacted";
-const WEB_SEARCH_INTEGRATION = "Search Service";
 
 export type ToolRollup = {
   kind: ToolKind | "mixed";
@@ -45,19 +44,48 @@ function commandActivity(
 }
 
 const fileVerbs: Partial<Record<ToolKind, readonly string[]>> = {
-  read: ["Reading", "Read", "read a file", "read files"],
-  edit: ["Editing", "Edited", "edited a file", "edited files"],
-  delete: ["Deleting", "Deleted", "deleted a file", "deleted files"],
-  move: ["Moving", "Moved", "moved a file", "moved files"],
+  read: ["Reading", "Read"],
+  edit: ["Editing", "Edited"],
+  delete: ["Deleting", "Deleted"],
+  move: ["Moving", "Moved"],
 };
 
 const clauses: Partial<Record<ToolKind, readonly string[]>> = {
   execute: ["ran a command", "ran commands"],
   imageView: ["viewed an image", "viewed images"],
-  search: ["explored files", "explored files"],
-  fetch: ["fetched a page", "fetched pages"],
 };
 const TOOL_CLAUSE = ["used a tool", "used tools"] as const;
+
+/**
+ * Worked-for rows are named from the tool kind the harness reported, never
+ * from a command line: one shared labelling for every harness.
+ */
+const kindCategories: Partial<Record<ToolKind, string>> = {
+  edit: "edit",
+  delete: "edit",
+  move: "edit",
+  read: "explore",
+  search: "explore",
+  execute: "command",
+  fetch: "web",
+  webSearch: "web",
+};
+
+const categoryLabels: Record<string, readonly [string, string]> = {
+  edit: ["Editing files", "Edited files"],
+  explore: ["Exploring files", "Explored files"],
+  web: ["Searching the web", "Searched the web"],
+};
+
+/** Adjacent tools share a Worked-for row only within one category. */
+export function toolRowCategory(kind: ToolKind): string {
+  return kindCategories[kind] ?? kind;
+}
+
+/** Rows named for a category ("Edited files") open to one row per call. */
+export function namesCategory(kind: ToolRollup["kind"]): boolean {
+  return kind === "mixed" || toolRowCategory(kind) in categoryLabels;
+}
 
 function itemFile(presentation: ToolPresentation): string | null {
   const location =
@@ -131,17 +159,9 @@ function mixedClauses(items: readonly ToolProjectionItem[]): string {
   for (const { payload } of items) {
     const presentation = payload.presentation;
     const integration =
-      presentation.kind === "mcp"
-        ? presentation.serverLabel
-        : presentation.kind === "webSearch"
-          ? WEB_SEARCH_INTEGRATION
-          : null;
+      presentation.kind === "mcp" ? presentation.serverLabel : null;
     if (integration) integrations.add(integration);
-    const key = integration
-      ? null
-      : (clauses[presentation.kind] ??
-        fileVerbs[presentation.kind] ??
-        TOOL_CLAUSE);
+    const key = integration ? null : (clauses[presentation.kind] ?? TOOL_CLAUSE);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const names = [...integrations];
@@ -175,6 +195,9 @@ export function toolRollupLabel(
         : `Ran ${items.length} subagents`;
   const tests = activity === "declaredTest";
   const current = liveToolItem(items, turnEnded);
+  const first = items[0]?.payload.presentation.kind;
+  const named = first && categoryLabels[toolRowCategory(first)];
+  if (named) return named[current ? 0 : 1];
   if (items.length === 1)
     return toolItemLabel(items[0], current === items[0], tests);
   if (current) return toolItemLabel(current, true, tests);
@@ -290,7 +313,8 @@ export function groupPrimaryActivities(
         !isToolItem(candidate) ||
         commandActivity(candidate) !== activity ||
         !(joinable(item) && joinable(candidate)
-          ? true
+          ? toolRowCategory(candidate.payload.presentation.kind) ===
+            toolRowCategory(toolKind)
           : toolKind === "subagent" &&
             candidate.payload.presentation.kind === "subagent" &&
             candidate.payload.presentation.taskLifecycle ===

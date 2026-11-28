@@ -1,14 +1,13 @@
+/* Under each answer: copy and more as 24 px round buttons, then the time. */
 .chat-transcript-actions {
   display: flex;
   min-height: var(--control-height-compact);
   align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
-}
-
-/* The owning turn reveals the time by setting this property on hover. */
-.chat-transcript-actions:hover,
-.chat-transcript-actions:focus-within {
-  --answer-actions-time-opacity: 1;
 }
 
 .chat-transcript-actions__button {
@@ -19,25 +18,20 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   color: var(--color-text-muted);
   background: transparent;
   font: inherit;
-  font-size: var(--font-size-xs);
   cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) ease,
+    color var(--motion-duration-fast) ease;
 }
 
 .chat-transcript-actions__button:hover,
 .chat-transcript-actions__button[aria-expanded="true"] {
-  background: var(--color-surface-hover);
-}
-
-.chat-transcript-actions__button:hover {
   color: var(--color-text-primary);
-}
-
-.chat-transcript-actions__button[aria-expanded="true"] {
-  color: var(--color-text-emphasis);
+  background: var(--color-fill-soft);
 }
 
 .chat-transcript-actions__button:focus-visible {
@@ -48,24 +42,24 @@
 .chat-transcript-actions__button > svg {
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
-  stroke-width: 1.5;
+  stroke-width: 1.7;
 }
 
 .chat-transcript-actions__time {
-  margin-left: var(--space-1);
+  padding-left: 6px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-  opacity: var(--answer-actions-time-opacity, 0);
-  transition: opacity var(--motion-duration-fast) ease;
+}
+
+.acp-prompt-actions .chat-transcript-actions__time {
+  padding: 0 6px 0 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-transcript-actions {
+  .chat-transcript-actions,
+  .chat-transcript-actions__button {
     animation: none;
-  }
-
-  .chat-transcript-actions__time {
     transition: none;
   }
 }

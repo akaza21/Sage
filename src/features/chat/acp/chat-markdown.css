@@ -51,8 +51,8 @@
 }
 
 .acp-markdown {
-  --chat-text-leading: 1.6;
-  --chat-table-font-size: var(--font-size-xs);
+  --chat-text-leading: var(--line-height-prose);
+  --chat-table-font-size: var(--font-size-md);
   font-size: var(--font-size-md);
   line-height: var(--chat-text-leading);
 }
@@ -115,7 +115,7 @@
   overflow-wrap: break-word;
   font-size: var(--chat-table-font-size);
   font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-relaxed);
+  line-height: var(--line-height-body);
 }
 
 .acp-markdown .markdown-table :is(th, td).markdown-table__unbroken,
@@ -124,9 +124,5 @@
 }
 
 .acp-markdown .markdown-table th {
-  font-weight: var(--font-weight-semibold);
-}
-
-.acp-markdown .markdown-table :is(th, td):first-child {
-  padding-inline-start: 0;
+  font-weight: var(--font-weight-medium);
 }

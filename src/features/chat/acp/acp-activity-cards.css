@@ -145,18 +145,25 @@
   white-space: pre-wrap;
 }
 
+/* Plan: a bordered checklist while the Turn runs (Antigravity .plan). */
+.acp-plan {
+  margin: var(--space-1) 0;
+  padding: 6px var(--space-1);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+
 .acp-plan__summary {
-  display: grid;
+  display: flex;
   width: 100%;
   min-width: 0;
-  min-height: var(--row-height-compact);
-  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: var(--control-height-compact);
   align-items: center;
-  gap: var(--space-3);
-  padding: 0;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   background: transparent;
   font: inherit;
   text-align: left;
@@ -166,123 +173,95 @@
 .acp-plan__summary:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: var(--highlight-focus-halo-shadow);
-}
-
-.acp-plan__summary strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.acp-plan__summary .acp-state {
-  justify-self: end;
-  text-align: right;
 }
 
 .acp-plan ol {
   display: grid;
-  gap: var(--space-2);
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.acp-plan li {
+.acp-plan ol > li {
+  display: flex;
   min-width: 0;
-  padding-left: var(--space-1);
-  color: var(--color-text-muted);
+  min-height: var(--control-height-compact);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0 var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
 }
 
-.acp-plan li > svg {
-  display: inline-block;
-  margin: 0 var(--space-1) 0 0;
-  vertical-align: text-bottom;
-}
-
-.acp-plan li::marker {
-  color: var(--color-text-muted);
-}
-
-.acp-plan li > span:first-of-type {
+.acp-plan ol > li > span:not(.sr-only) {
+  min-width: 0;
+  flex: 1;
   overflow-wrap: anywhere;
 }
 
-.acp-plan__state {
-  display: block;
-  margin-top: 2px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
 .acp-plan li[data-plan-state="completed"] {
-  color: var(--color-success);
+  color: var(--color-text-muted);
 }
 
 .acp-plan li[data-plan-state="inProgress"] {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
 }
 
-.acp-plan li[data-plan-state="pending"] {
-  color: var(--color-text-muted);
-}
-
-.acp-plan li[data-plan-state="failed"] {
+.acp-plan li[data-plan-state="failed"] .acp-plan__mark {
   color: var(--color-danger);
 }
 
-.acp-plan__working {
-  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
-    infinite;
+.acp-plan__mark {
+  flex: none;
+}
+
+.acp-plan__dot {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid var(--color-text-muted);
+  border-radius: var(--radius-circle);
+}
+
+li[data-plan-state="inProgress"] > .acp-plan__dot {
+  border: 2px dotted var(--color-accent);
+  animation: sage-spin 2.4s linear infinite;
 }
 
 .acp-plan__activity {
   display: grid;
-  gap: var(--space-1);
-  margin: var(--space-2) 0 0;
+  width: 100%;
+  gap: 2px;
+  margin: 0 0 var(--space-1) var(--space-6);
   padding: 0;
   list-style: none;
 }
 
 .acp-plan__activity li {
-  display: grid;
+  display: flex;
   min-width: 0;
-  grid-template-columns: 10px minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-1);
+  gap: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-}
-
-.acp-plan__activity li > span:last-child {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.acp-plan__activity li > span:last-child span {
   overflow-wrap: anywhere;
 }
 
-.acp-plan__activity li > span:last-child span:last-child {
-  color: var(--color-text-disabled);
+/* A settled Turn's plan, folded beside Worked for. */
+.acp-plan-chip {
+  display: inline-flex;
+  height: var(--control-height-default);
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
 }
 
-.acp-plan__pulse {
-  width: 4px;
-  height: 4px;
-  margin-top: var(--space-1);
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
-    infinite;
-}
-
-.acp-plan__activity .acp-plan__working-more {
-  display: block;
-  margin-left: var(--space-4);
-  color: var(--color-text-disabled);
-  font-style: italic;
+@media (prefers-reduced-motion: reduce) {
+  li[data-plan-state="inProgress"] > .acp-plan__dot {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -310,12 +289,9 @@
     box-shadow: none;
   }
 
-  .acp-plan__pulse {
-    background: CanvasText;
-  }
-
-  .acp-plan__activity .acp-plan__working-more {
-    color: CanvasText;
+  .acp-plan,
+  .acp-plan__dot {
+    border-color: CanvasText;
   }
 }
 .acp-lifecycle-notice {

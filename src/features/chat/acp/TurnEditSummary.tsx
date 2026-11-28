@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronRight, Files } from "../../../ui/leanIcons";
+import { ChevronRight, FileText } from "../../../ui/leanIcons";
 
 import type {
   AcpChatPage,
@@ -37,18 +37,16 @@ interface TurnEditSummaryProps {
   onReview?: () => void;
 }
 
-export const TurnEditSummary = memo(function TurnEditSummary(
-  props: TurnEditSummaryProps,
-) {
-  return (
-    <>
-      <BackgroundTerminalSlot page={props.page} rootLabels={props.rootLabels} />
-      <EditSummary {...props} />
-    </>
-  );
+/** The composer dock keeps only the background terminals. */
+export const TurnEditSummary = memo(function TurnEditSummary({
+  page,
+  rootLabels,
+}: Pick<TurnEditSummaryProps, "page" | "rootLabels">) {
+  return <BackgroundTerminalSlot page={page} rootLabels={rootLabels} />;
 });
 
-function EditSummary({
+/** The chat's changed files, as a card under the latest answer. */
+export const ChatChangedFiles = memo(function ChatChangedFiles({
   page,
   rootLabels,
   countIncomplete,
@@ -127,6 +125,15 @@ function EditSummary({
   const fileLabel = summaryIncomplete
     ? `Showing ${summary.changes.length} changed ${noun}`
     : `${summary.changes.length} ${noun} changed`;
+  // Review opens the first change this session can show as a Diff tab.
+  const reviewable = onOpenResource
+    ? summary.changes.find(
+        (change) =>
+          change.turn.sessionId === page.currentSessionId &&
+          chatFileChipBasename(projectChangeResource(change)!.relativePath) &&
+          editDiffAction(change).resource,
+      )
+    : undefined;
   const reviewTurns = [
     ...new Set(
       summary.changes
@@ -141,25 +148,37 @@ function EditSummary({
       aria-label="Files edited in this chat"
       data-chat-id={page.chatId}
     >
-      <button
-        className="acp-file-changes__header"
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => {
-          setExpanded(!expanded);
-          if (expanded) setPreviewKey(null);
-        }}
-      >
-        <Files size={16} aria-hidden="true" />
-        <strong>{fileLabel}</strong>
-        {dispositionError ? (
-          <span className="acp-file-changes__error">Needs attention</span>
+      <div className="acp-file-changes__bar">
+        <button
+          className="acp-file-changes__header"
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => {
+            setExpanded(!expanded);
+            if (expanded) setPreviewKey(null);
+          }}
+        >
+          <strong>{fileLabel}</strong>
+          {dispositionError ? (
+            <span className="acp-file-changes__error">Needs attention</span>
+          ) : null}
+          <FileChangeTotals
+            changes={summary.changes}
+            incomplete={summaryIncomplete}
+          />
+        </button>
+        {reviewable ? (
+          <button
+            type="button"
+            className="acp-file-changes__open"
+            title={editDiffAction(reviewable).title}
+            onClick={() => open(reviewable)}
+          >
+            <FileText size={14} aria-hidden="true" />
+            Review
+          </button>
         ) : null}
-        <FileChangeTotals
-          changes={summary.changes}
-          incomplete={summaryIncomplete}
-        />
-      </button>
+      </div>
       {expanded && summary.changes.length > 0 ? (
         <ul>
           {summary.changes.map((change) => {
@@ -302,4 +321,4 @@ function EditSummary({
       ) : null}
     </section>
   );
-}
+});

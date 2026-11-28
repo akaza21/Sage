@@ -23,12 +23,15 @@ export function ChatTranscriptTurnSummary({
   children,
   steered,
   runningHeading = true,
+  aside,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
   steered?: readonly ReactNode[];
   runningHeading?: boolean;
+  /** Sits beside the settled heading, such as the folded plan chip. */
+  aside?: ReactNode;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
   const [expanded, setExpanded] = useState(false);
@@ -54,6 +57,7 @@ export function ChatTranscriptTurnSummary({
     return (
       <div className="chat-transcript-work">
         <div className="chat-transcript-work__heading">{duration}</div>
+        {aside}
       </div>
     );
   }
@@ -102,6 +106,7 @@ export function ChatTranscriptTurnSummary({
             aria-hidden="true"
           />
         </button>
+        {aside}
       </div>
       {groups}
     </>

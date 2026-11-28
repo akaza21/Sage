@@ -1,16 +1,28 @@
 .chat-transcript-work {
-  margin-block: calc(var(--space-8) - var(--space-1) / 2) 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.chat-transcript-work__heading {
   display: flex;
   min-width: 0;
-  min-height: var(--control-height-compact);
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  border-bottom: var(--border-width) solid var(--agent-shell-divider);
+  margin-block: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+}
+
+.chat-transcript-work--running {
+  display: grid;
+  justify-items: start;
+}
+
+/* Worked for: a grey row with a chevron, no divider (Antigravity .act). */
+.chat-transcript-work__heading {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--control-height-default);
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   font-weight: var(--font-weight-regular);
   white-space: nowrap;
@@ -19,15 +31,19 @@
 }
 
 .chat-transcript-work__toggle {
-  width: 100%;
-  padding: 0;
-  border-top: 0;
-  border-inline: 0;
+  border: 0;
   background: transparent;
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: color var(--motion-duration-fast) ease;
+  transition:
+    background-color var(--motion-duration-fast) ease,
+    color var(--motion-duration-fast) ease;
+}
+
+.chat-transcript-work__toggle:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-fill-hover);
 }
 
 .chat-transcript-work__toggle:focus-visible {
@@ -49,7 +65,11 @@
 .chat-transcript-work__groups {
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-1) 0 0;
+  padding: 0 0 0 var(--space-3);
+}
+
+.chat-transcript-work--running > .chat-transcript-work__groups {
+  width: 100%;
 }
 
 .chat-transcript-work__row {

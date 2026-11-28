@@ -40,13 +40,13 @@ function turns(count: number): TurnProjection[] {
   }));
 }
 
-function widths() {
+function activeDots() {
   return screen
     .getAllByRole("button", { name: /^Go to turn/ })
-    .map((button) => button.style.getPropertyValue("--w"));
+    .map((button) => button.dataset.active);
 }
 
-it("labels the rail, widens like Codex, delays the preview card and jumps", async () => {
+it("labels the dots, marks the hovered one, delays the preview card and jumps", async () => {
   vi.useFakeTimers();
   const jump = vi.fn();
   render(
@@ -73,9 +73,16 @@ it("labels the rail, widens like Codex, delays the preview card and jumps", asyn
     "false",
   ]);
   expect(buttons[2]).toHaveAttribute("aria-current", "location");
-  expect(widths()).toEqual(["6px", "6px", "6px", "6px", "6px", "6px"]);
+  expect(activeDots()).toEqual(Array(6).fill("false"));
   fireEvent.pointerEnter(buttons[2]!);
-  expect(widths()).toEqual(["13px", "18px", "24px", "18px", "13px", "9px"]);
+  expect(activeDots()).toEqual([
+    "false",
+    "false",
+    "true",
+    "false",
+    "false",
+    "false",
+  ]);
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   await act(async () => vi.advanceTimersByTime(120));
   const card = screen.getByRole("tooltip");

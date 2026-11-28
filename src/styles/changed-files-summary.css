@@ -11,31 +11,51 @@
   margin: var(--space-3) auto 0;
 }
 
+/* Changed files: a bordered 44 px card under the answer, with Review. */
 .acp-file-changes {
-  width: var(--edit-summary-width, min(100%, var(--reading-measure)));
-  margin: var(--edit-summary-margin, var(--space-3) auto 0);
-  padding: var(--space-1);
-  border: var(
-    --edit-summary-border,
-    var(--border-width) solid var(--color-border-subtle)
-  );
-  border-radius: var(--radius-edit-summary);
-  background: var(--edit-summary-fill, var(--color-panel));
+  min-width: 0;
+  margin: var(--space-2) 0 var(--space-1);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-lg);
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
-.acp-file-changes--collapsed {
-  --radius-edit-summary: var(
-    --edit-summary-collapsed-radius,
-    var(--radius-pill)
-  );
-  width: var(--edit-summary-width, max-content);
-  max-width: 100%;
-  background: var(--edit-summary-fill, var(--color-plane-raised));
+.acp-file-changes:not(.acp-file-changes--collapsed) {
+  padding-bottom: var(--space-1);
 }
 
-.acp-file-changes--collapsed .acp-file-changes__header {
-  border-radius: var(--radius-pill);
+.acp-file-changes__bar {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-1);
+}
+
+.acp-file-changes__open {
+  display: inline-flex;
+  height: 26px;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-fill-hover);
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
+  font: inherit;
+  cursor: pointer;
+}
+
+.acp-file-changes__open:hover {
+  color: var(--color-text-primary);
+  background: var(--color-fill-soft);
+}
+
+.acp-file-changes__open:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .acp-editing-files {
@@ -55,7 +75,9 @@
 }
 
 .acp-file-changes__header {
-  width: 100%;
+  display: flex;
+  min-width: 0;
+  flex: 1;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -82,8 +104,8 @@
 .acp-file-changes__header strong {
   overflow: hidden;
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

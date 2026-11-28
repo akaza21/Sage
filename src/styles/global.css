@@ -436,6 +436,7 @@
   --card-border: var(--border-width) solid var(--color-border-subtle);
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
+  --radius-transcript-output: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
   /* Part radii that window modes re-project. */

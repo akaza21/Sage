@@ -1,11 +1,5 @@
-import { memo, useState } from "react";
-import {
-  Archive,
-  Check,
-  Circle,
-  LoaderCircle,
-  XCircle,
-} from "../../../ui/leanIcons";
+import { memo } from "react";
+import { Archive } from "../../../ui/leanIcons";
 
 import type { AcpItem, TurnState } from "../../../domain/acp";
 import type { AcpTurnCommand } from "../../../domain/acpCommand";
@@ -19,8 +13,9 @@ import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
+import { UserPromptClamp } from "./UserPromptClamp";
 import { terminalItemLifecycles } from "./statusSemantics";
-import { isWorkingTool, workingToolStatus } from "./workingTool";
+import { PlanActivity, ThoughtRow } from "./WorkedRows";
 
 const loadExtensionMessage = () => import("./ExtensionMessage");
 
@@ -94,6 +89,23 @@ export const ItemView = memo(
           (turnState === "interrupted" || turnState === "cancelled") &&
           item.lifecycle !== "completed" &&
           item.payload.text.trim().length > 0;
+        const prose = (
+          <LazyModuleBoundary
+            label="Markdown renderer"
+            load={loadMarkdown}
+            render={(ChatMarkdown) => (
+              <ChatMarkdown
+                text={input ?? item.payload.text}
+                streaming={
+                  item.lifecycle === "started" || item.lifecycle === "streaming"
+                }
+                fileReferenceOwner={
+                  role === "assistant" ? fileReferenceOwner : undefined
+                }
+              />
+            )}
+          />
+        );
         return (
           <article
             className={`acp-message acp-message--${role}`}
@@ -117,23 +129,10 @@ export const ItemView = memo(
                 ) : null}
               </p>
             ) : null}
-            {input === "" ? null : (
-              <LazyModuleBoundary
-                label="Markdown renderer"
-                load={loadMarkdown}
-                render={(ChatMarkdown) => (
-                  <ChatMarkdown
-                    text={input ?? item.payload.text}
-                    streaming={
-                      item.lifecycle === "started" ||
-                      item.lifecycle === "streaming"
-                    }
-                    fileReferenceOwner={
-                      role === "assistant" ? fileReferenceOwner : undefined
-                    }
-                  />
-                )}
-              />
+            {input === "" ? null : role === "user" ? (
+              <UserPromptClamp>{prose}</UserPromptClamp>
+            ) : (
+              prose
             )}
           </article>
         );
@@ -188,115 +187,6 @@ export const ItemView = memo(
     left.onOpenResource === right.onOpenResource,
 );
 
-const MAX_PLAN_WORKING_ROWS = 3;
-const planStateLabels = {
-  pending: "Pending",
-  inProgress: "In progress",
-  completed: "Completed",
-  failed: "Failed",
-} as const;
-
-function PlanStateIcon({ state }: { state: keyof typeof planStateLabels }) {
-  const Icon =
-    state === "completed"
-      ? Check
-      : state === "inProgress"
-        ? LoaderCircle
-        : state === "failed"
-          ? XCircle
-          : Circle;
-  return (
-    <Icon
-      className={state === "inProgress" ? "acp-plan__working" : undefined}
-      size={14}
-      aria-hidden="true"
-    />
-  );
-}
-
-function PlanActivity({
-  item,
-  workingItems,
-}: {
-  item: Extract<AcpItem, { kind: "plan" }>;
-  workingItems: readonly AcpItem[];
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const complete = item.payload.entries.filter(
-    (entry) => entry.state === "completed",
-  ).length;
-  const activityState = item.payload.entries.some(
-    (entry) => entry.state === "failed",
-  )
-    ? "failed"
-    : complete === item.payload.entries.length
-      ? "completed"
-      : "inProgress";
-  const inProgressIndex = item.payload.entries.findIndex(
-    (entry) => entry.state === "inProgress",
-  );
-  const working = workingItems.filter(isWorkingTool);
-  const visibleWorking = working.slice(0, MAX_PLAN_WORKING_ROWS);
-  const omittedWorkingCount = working.length - visibleWorking.length;
-  return (
-    <section
-      className="acp-activity acp-activity-card acp-plan"
-      aria-label="Agent plan"
-      data-activity-kind="plan"
-      data-activity-state={activityState}
-    >
-      <button
-        className="acp-plan__summary"
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <strong>Plan</strong>
-        <span className="acp-state" role="status" aria-live="off">
-          {expanded
-            ? `Hide · ${complete} of ${item.payload.entries.length} complete`
-            : `${complete} of ${item.payload.entries.length} complete`}
-        </span>
-      </button>
-      {expanded ? (
-        <ol>
-          {item.payload.entries.map((entry, index) => (
-            <li key={`${index}:${entry.label}`} data-plan-state={entry.state}>
-              <PlanStateIcon state={entry.state} />
-              <span>{entry.label}</span>
-              <span className="acp-plan__state">
-                {planStateLabels[entry.state]}
-              </span>
-              {index === inProgressIndex && visibleWorking.length > 0 ? (
-                <ul
-                  className="acp-plan__activity"
-                  aria-label="Current activity"
-                >
-                  {visibleWorking.map((workingItem) => (
-                    <li key={workingItem.id}>
-                      <span className="acp-plan__pulse" aria-hidden="true" />
-                      <span>
-                        <span>{workingItem.payload.presentation.label}</span>
-                        <span>{workingToolStatus(workingItem)}</span>
-                      </span>
-                    </li>
-                  ))}
-                  {omittedWorkingCount > 0 ? (
-                    <li className="acp-plan__working-more">
-                      {omittedWorkingCount} more activity item
-                      {omittedWorkingCount === 1 ? "" : "s"} running
-                    </li>
-                  ) : null}
-                </ul>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </section>
-  );
-}
-
 function ErrorActivity({
   item,
 }: {
@@ -342,7 +232,8 @@ export function TurnActivityItem({
 }) {
   switch (item.kind) {
     case "thoughtSummary":
-      if (terminalItemLifecycles.has(item.lifecycle)) return null;
+      if (terminalItemLifecycles.has(item.lifecycle))
+        return item.payload.summary.trim() ? <ThoughtRow item={item} /> : null;
       return (
         <p
           className="acp-thought acp-live-shimmer"

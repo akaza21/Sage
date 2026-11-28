@@ -4,14 +4,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import { type TurnProjection } from "../../domain/acp";
 import "./turn-navigator.css";
 import {
   DASH_PITCH,
-  dashWidth,
   sampleTurnIndices,
   turnPrompt,
 } from "./turnNavigatorModel";
@@ -146,12 +144,6 @@ export function TurnNavigator({
                 aria-current={index === liveCurrent ? "location" : undefined}
                 data-visible={visible.has(turn.id)}
                 data-active={distance === 0}
-                style={
-                  {
-                    "--w": `${distance === null ? 6 : dashWidth(distance)}px`,
-                    "--dash-height": distance === null ? "1px" : "2px",
-                  } as CSSProperties
-                }
                 onPointerEnter={() => {
                   engage();
                   setFocused(null);

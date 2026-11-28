@@ -28,7 +28,12 @@ import { isEditingFiles } from "./editingFiles";
 import { RootHarnessActivities } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { terminalTurnStates, turnReasonErrorItem } from "./statusSemantics";
+import {
+  terminalItemLifecycles,
+  terminalTurnStates,
+  turnReasonErrorItem,
+} from "./statusSemantics";
+import { PlanChip, settledPlan } from "./WorkedRows";
 import { type OpenResourceTarget } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
@@ -121,12 +126,18 @@ export const Turn = memo(
     );
     const failureItem =
       turn.state === "failed" ? turnReasonErrorItem(turn) : undefined;
+    const plan = settledPlan(chronologicalItems, terminal);
+    // Settled reasoning stays as a "Thought for" row; only the latest live
+    // one shimmers. A settled plan folds into the chip beside Worked for.
     const workingItems = chronologicalItems.filter(
       (item) =>
         item.id !== failureItem?.id &&
         item.id !== finalAnswer?.id &&
+        !(terminal && item.kind === "plan") &&
         (item.kind !== "thoughtSummary" ||
-          (!terminal && item.id === liveThought?.id)),
+          (terminalItemLifecycles.has(item.lifecycle)
+            ? item.payload.summary.trim() !== ""
+            : !terminal && item.id === liveThought?.id)),
     );
     const text = finalAnswer?.payload.text;
     // Rust forks only the latest Turn.
@@ -193,6 +204,7 @@ export const Turn = memo(
                 .filter((item) => item.kind === "userPrompt")
                 .map(renderWorkingItem)}
               hasActivities={turnHasActivities(turn, workingItems.length)}
+              aside={plan ? <PlanChip item={plan} /> : null}
             >
               {workingItems.length > 0 ? (
                 <PrimaryActivities
@@ -319,18 +331,15 @@ export function AcpChatPresentation({
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
+  const summaryKey =
+    page.projectId + ":" + page.chatId + ":" + page.currentSessionId;
+  // The dock keeps background terminals; changed files sit in the transcript.
   const editSummary = (
     <EditSummaryPart
       part="TurnEditSummary"
-      onOpenResource={onOpenResource}
-      key={page.projectId + ":" + page.chatId + ":" + page.currentSessionId}
+      key={summaryKey}
       page={page}
       rootLabels={labels}
-      countIncomplete={countIncomplete}
-      workspaceChanges={workspaceChanges}
-      workspaceIncomplete={incompleteTurnIds.size > 0}
-      onRecordDisposition={acpDesktop.recordAgentEditDisposition}
-      onReview={onReviewChanges}
     />
   );
   const renderTurn = (turn: TurnProjection, index: number) => (
@@ -384,6 +393,20 @@ export function AcpChatPresentation({
           page.turns.map(renderTurn)
         )}
       </PromptPageContext>
+      {editSummaryContainer !== undefined ? (
+        <EditSummaryPart
+          part="ChatChangedFiles"
+          onOpenResource={onOpenResource}
+          key={summaryKey}
+          page={page}
+          rootLabels={labels}
+          countIncomplete={countIncomplete}
+          workspaceChanges={workspaceChanges}
+          workspaceIncomplete={incompleteTurnIds.size > 0}
+          onRecordDisposition={acpDesktop.recordAgentEditDisposition}
+          onReview={onReviewChanges}
+        />
+      ) : null}
       {editSummaryContainer
         ? createPortal(editSummary, editSummaryContainer)
         : null}
