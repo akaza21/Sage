@@ -129,7 +129,7 @@ it("auto-hides under 800px, returns as an overlay, and restores the docked panel
   ).toBeInTheDocument();
   // The overlay floats over the chat; the grid keeps only the icon rail.
   expect((body() as HTMLElement).style.gridTemplateColumns).toBe(
-    "46px minmax(0, 1fr)",
+    "48px minmax(0, 1fr)",
   );
   // A press outside the panel, or Escape, puts it away; inside it stays.
   fireEvent.pointerDown(
@@ -229,7 +229,7 @@ it("collapses navigation to its icon rail, keeps header New chat usable, and res
   fireEvent.keyDown(splitter, { key: "End" });
   const body = container.querySelector(".workbench__body") as HTMLElement;
   const columns = body.style.gridTemplateColumns;
-  expect(columns).toMatch(/^502px /);
+  expect(columns).toMatch(/^504px /);
   fireEvent.click(
     screen.getByRole("button", { name: "Hide projects and chats" }),
   );
@@ -246,7 +246,7 @@ it("collapses navigation to its icon rail, keeps header New chat usable, and res
   expect(container.querySelector(".project-sidebar__scroll")).toBeNull();
   expect(container.querySelector(".project-sidebar__actions")).toBeNull();
   expect(container.querySelector(".project-sidebar__account")).toBeNull();
-  expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+  expect(body.style.gridTemplateColumns).toBe("48px minmax(0, 1fr)");
   expect(
     screen.queryByRole("separator", { name: "Resize project and chat rail" }),
   ).toBeNull();

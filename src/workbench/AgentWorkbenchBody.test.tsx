@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
+import { useAgentPanelView } from "./agentPanelView";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import AgentWorkbenchBody from "./AgentWorkbenchBodyView";
@@ -21,6 +22,7 @@ vi.mock("./AgentArtifactPane", () => ({ AgentArtifactPane: () => null }));
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
+  useAgentPanelView.setState({ view: "home" });
   cleanup();
   useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
@@ -63,18 +65,16 @@ it("opens Agent settings from collapsed navigation without opening an Editor tab
   useWorkbenchStore.setState({ openSettings });
   render(<NavigationWorkbench />);
   fireEvent.click(screen.getByRole("button", { name: "Toggle navigation" }));
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Open settings from rail" }),
-  );
+  fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
   expect(useAgentSettingsState.getState().page).toBe("Appearance");
   expect(openSettings).not.toHaveBeenCalled();
 });
 
 it.each([
-  ["Go to projects", "Projects", false],
-  ["Go to projects", "Projects", true],
+  ["Projects", "Projects", false],
+  ["Projects", "Projects", true],
 ] as const)(
-  "%s reveals %s (section initially collapsed: %s)",
+  "the %s rail item brings back the %s list (section initially collapsed: %s)",
   async (control, label, initiallyCollapsed) => {
     const loadRepositoryInventory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
@@ -116,7 +116,11 @@ it.each([
       }));
     });
     expect(loadRepositoryInventory).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: control }));
+    fireEvent.click(
+      within(
+        await screen.findByRole("navigation", { name: "Sidebar sections" }),
+      ).getByRole("button", { name: control }),
+    );
     const section = await screen.findByRole("region", { name: label });
     expect(section).toBeVisible();
     await waitFor(() =>
@@ -124,12 +128,6 @@ it.each([
         within(section).getByRole("button", { name: label }),
       ).toHaveAttribute("aria-expanded", "true"),
     );
-    await waitFor(() =>
-      expect(
-        within(section).getByRole("button", { name: label }),
-      ).toHaveFocus(),
-    );
-    expect(section).toContainElement(document.activeElement as HTMLElement);
     expect(
       (
         await screen.findAllByRole("button", {

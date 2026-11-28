@@ -293,7 +293,9 @@ export function AgentChatPanes({
   );
   // A lone chat's header joins the toolbar row; side-by-side chats keep
   // one header cell over each pane.
-  const toolbarHeader = visible && !split ? toolbarNode : null;
+  // Not tied to visibility: moving it would remount the header and drop the
+  // focus a dismissed overlay hands back to its button.
+  const toolbarHeader = split ? null : toolbarNode;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
       <AcpProjectionOwnerContext value={projectionIds}>

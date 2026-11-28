@@ -516,7 +516,7 @@ it.each([false, true])(
     fireEvent.change(composer, { target: { value: "Keep this unsent text" } });
     for (let click = 0; click < 3; click += 1) {
       const navigation = screen.getByRole("navigation", {
-        name: "Primary navigation",
+        name: "Sidebar sections",
       });
       await act(async () =>
         fireEvent.click(within(navigation).getAllByRole("button")[0]!),

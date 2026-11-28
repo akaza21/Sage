@@ -229,7 +229,7 @@ describe("compact Workbench project tools", () => {
     expect(trigger.closest(".agent-chat-center__header")).not.toBeNull();
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
     const body = container.querySelector(".workbench__body") as HTMLElement;
-    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("48px minmax(0, 1fr)");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",
@@ -241,7 +241,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".project-sidebar")).not.toHaveAttribute(
       "inert",
     );
-    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("48px minmax(0, 1fr)");
     expect(body.style.getPropertyValue("--agent-artifact-overlay-width")).toBe(
       "634px",
     );
@@ -256,7 +256,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("48px minmax(0, 1fr)");
   });
 
   it("folds navigation to its icon rail so Files sit beside Chat at 800px", async () => {
@@ -266,7 +266,7 @@ describe("compact Workbench project tools", () => {
     const { container } = render(<Workbench />);
     await selectWindowMode("Agent");
     const body = container.querySelector(".workbench__body") as HTMLElement;
-    expect(body.style.gridTemplateColumns).toBe("302px 8px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("304px 8px minmax(0, 1fr)");
     fireEvent.click(
       screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     );
@@ -282,7 +282,7 @@ describe("compact Workbench project tools", () => {
         name: "Collapse files, changes, and preview",
       }),
     );
-    expect(body.style.gridTemplateColumns).toBe("302px 8px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("304px 8px minmax(0, 1fr)");
   });
 
   it("makes resources fully modal below the chat-column floor and dismisses outside", async () => {
@@ -533,7 +533,7 @@ describe("compact Workbench project tools", () => {
     expect(
       (container.querySelector(".workbench__body") as HTMLElement).style
         .gridTemplateColumns,
-    ).toBe("46px minmax(0, 1fr)");
+    ).toBe("48px minmax(0, 1fr)");
     expect(
       screen.queryByRole("dialog", { name: "Projects and chats" }),
     ).toBeNull();
@@ -1158,10 +1158,10 @@ describe("compact Workbench project tools", () => {
     const agentRail = screen.getByRole("separator", {
       name: "Resize project and chat rail",
     });
-    expect(agentRail).toHaveAttribute("aria-valuemin", "302");
-    expect(agentRail).toHaveAttribute("aria-valuemax", "502");
+    expect(agentRail).toHaveAttribute("aria-valuemin", "304");
+    expect(agentRail).toHaveAttribute("aria-valuemax", "504");
     fireEvent.keyDown(agentRail, { key: "Home" });
-    expect(agentRail).toHaveAttribute("aria-valuenow", "302");
+    expect(agentRail).toHaveAttribute("aria-valuenow", "304");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",
@@ -1194,7 +1194,7 @@ describe("compact Workbench project tools", () => {
     const artifact = screen.getByRole("separator", {
       name: "Resize files and preview",
     });
-    expect(rail).toHaveAttribute("aria-valuenow", "302");
+    expect(rail).toHaveAttribute("aria-valuenow", "304");
     expect(artifact).toHaveAttribute("aria-valuenow", "576");
 
     Object.defineProperty(window, "innerWidth", {
@@ -1202,7 +1202,7 @@ describe("compact Workbench project tools", () => {
       value: 1380,
     });
     fireEvent(window, new Event("resize"));
-    expect(rail).toHaveAttribute("aria-valuenow", "302");
+    expect(rail).toHaveAttribute("aria-valuenow", "304");
     expect(artifact).toHaveAttribute("aria-valuenow", "621");
 
     fireEvent.keyDown(rail, { key: "ArrowRight" });
@@ -1241,7 +1241,7 @@ describe("compact Workbench project tools", () => {
     });
     expect(artifact).toHaveAttribute("aria-valuenow", "752");
     fireEvent.keyDown(artifact, { key: "End" });
-    expect(artifact).toHaveAttribute("aria-valuenow", "994");
+    expect(artifact).toHaveAttribute("aria-valuenow", "992");
     screen
       .getByRole("button", { name: "Collapse files, changes, and preview" })
       .focus();
@@ -1261,7 +1261,7 @@ describe("compact Workbench project tools", () => {
     fireEvent(window, new Event("resize"));
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
-    ).toHaveAttribute("aria-valuenow", "994");
+    ).toHaveAttribute("aria-valuenow", "992");
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -1325,7 +1325,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
-    ).toHaveAttribute("aria-valuenow", "302");
+    ).toHaveAttribute("aria-valuenow", "304");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",

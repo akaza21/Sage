@@ -14,6 +14,7 @@ import {
 } from "../ui/leanIcons";
 import { useAgentPanelView, type AgentPanelView } from "./agentPanelView";
 import { AgentHomeNavigationContext } from "./agentRailNavigation";
+import { expandAgentRailSection } from "./agentRailViewPrefs";
 
 const RAIL_ITEMS: ReadonlyArray<
   [view: AgentPanelView, label: string, Icon: typeof Home]
@@ -45,6 +46,7 @@ export function AgentIconRail({
     state.harnesses.some(harnessHasSignInCheck),
   );
   const show = (next: AgentPanelView) => {
+    if (next === "projects") expandAgentRailSection("projects");
     useAgentPanelView.getState().show(next);
     onShow?.(next);
     if (next === "home") navigateHome();

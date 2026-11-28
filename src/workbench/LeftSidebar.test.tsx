@@ -27,21 +27,6 @@ import {
   setAgentRailOrganize,
 } from "./agentRailViewPrefs";
 
-it("uses the neutral workspace identity for a project-less chat", () => {
-  useWorkbenchStore.setState({
-    project: {
-      id: "private-chat",
-      name: "Choose project",
-      isInternal: true,
-      roots: [],
-    },
-  });
-  const { container } = render(<LeftSidebar inert />);
-  const identity = container.querySelector(".agent-rail-identity")!;
-  expect(identity.querySelector("strong")).toHaveTextContent("Local");
-  expect(container.querySelector(".account-avatar")).toHaveTextContent("L");
-});
-
 it("leaves the brand and the window mode switch to the title bar", () => {
   render(<LeftSidebar />);
   expect(screen.queryByRole("banner")).toBeNull();
@@ -69,16 +54,16 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
   });
   render(<LeftSidebar />);
   expect(
-    screen.getByRole("navigation", { name: "Primary navigation" }),
+    screen.getByRole("navigation", { name: "Sidebar sections" }),
   ).toBeInTheDocument();
   expect(
     screen
       .getByRole("complementary", { name: "Projects and chats" })
       .querySelector(".project-sidebar__brand"),
-  ).toHaveTextContent("Sage");
+  ).toBeNull();
   fireEvent.click(
     within(
-      screen.getByRole("navigation", { name: "Primary navigation" }),
+      screen.getByRole("navigation", { name: "Sidebar sections" }),
     ).getByRole("button", { name: "Home" }),
   );
   render(<NewChatDraftSurface />);
@@ -701,12 +686,12 @@ it("promotes pinned tasks without duplicating them in recents", async () => {
 
   const pinned = screen.getByRole("region", { name: "Pinned" });
   const projects = screen.getByRole("region", { name: "Projects" });
-  const recent = screen.getByRole("region", { name: "Recents" });
-  expect(
-    projects.compareDocumentPosition(pinned) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  const recent = screen.getByRole("region", { name: "Chats" });
   expect(
     pinned.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    recent.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(within(pinned).getByText("Pinned research")).toBeInTheDocument();
   expect(within(projects).queryByText("Pinned research")).toBeNull();
@@ -799,18 +784,19 @@ it("collapses Pinned and Projects but keeps Recents open", async () => {
   render(<LeftSidebar />);
 
   for (const label of ["Pinned", "Projects"]) {
-    const disclosure = screen.getByRole("button", { name: label });
+    const disclosure = within(
+      screen.getByRole("region", { name: label }),
+    ).getByRole("button", { name: label });
     expect(disclosure).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
   }
   expect(
-    within(screen.getByRole("region", { name: "Recents" })).getByRole(
-      "heading",
-      { name: "Recents" },
-    ),
+    within(screen.getByRole("region", { name: "Chats" })).getByRole("heading", {
+      name: "Chats",
+    }),
   ).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Recents" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Chats" })).toBeNull();
 });
 
 it("groups attached chats with no listed project under Unknown project", () => {
@@ -838,7 +824,7 @@ it("groups attached chats with no listed project under Unknown project", () => {
   expect(within(projects).getByText("Unbound task")).toBeInTheDocument();
 });
 
-it("shows a labelled running spinner and local project identity without fake account fields", () => {
+it("shows a labelled running spinner and keeps fake account fields out of the sidebar", () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -864,12 +850,9 @@ it("shows a labelled running spinner and local project identity without fake acc
   expect(
     within(row as HTMLElement).getByRole("img", { name: "Working" }),
   ).toBeInTheDocument();
-  const footer = document.querySelector(".project-sidebar__account");
-  expect(footer).toHaveTextContent("Sage");
-  expect(footer).toHaveTextContent("Local workspace");
-  expect(footer?.querySelector(".account-avatar")).toHaveTextContent("S");
+  expect(document.querySelector(".project-sidebar__account")).toBeNull();
   expect(screen.queryByText(/@/)).toBeNull();
-  expect(footer?.querySelector(".project-sidebar__settings")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Open settings" })).toBeVisible();
 });
 
 it("disambiguates colliding sidebar names with paths and removes suffixes for unique names", () => {

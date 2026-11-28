@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
+import { useAgentPanelView } from "./agentPanelView";
 import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
@@ -19,6 +20,7 @@ import {
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
+  useAgentPanelView.setState({ view: "home" });
   cleanup();
   resetAgentRailInteractions();
   resetAgentRailViewPrefs();
@@ -58,12 +60,18 @@ it("collapses projects without activating them and reopens the section from the 
   expect(switchProject).not.toHaveBeenCalled();
   fireEvent.click(project);
   expect(project).toHaveAttribute("aria-expanded", "true");
-  fireEvent.click(screen.getByRole("button", { name: "Projects" }));
-  fireEvent.click(screen.getByRole("button", { name: "Go to projects" }));
-  expect(screen.getByRole("button", { name: "Projects" })).toHaveAttribute(
-    "aria-expanded",
-    "true",
+  const disclosure = () =>
+    within(screen.getByRole("region", { name: "Projects" })).getByRole(
+      "button",
+      { name: "Projects" },
+    );
+  fireEvent.click(disclosure());
+  fireEvent.click(
+    within(
+      screen.getByRole("navigation", { name: "Sidebar sections" }),
+    ).getByRole("button", { name: "Projects" }),
   );
+  expect(disclosure()).toHaveAttribute("aria-expanded", "true");
   expect(
     screen.queryByRole("button", { name: "Open settings from rail" }),
   ).toBeNull();

@@ -195,6 +195,7 @@ export function LeftSidebar({
             </button>
             <button
               ref={searchTriggerRef}
+              aria-label="Search chats"
               className="project-action"
               type="button"
               disabled={!project || projectTransitioning}

@@ -150,7 +150,7 @@ async function openChatActions(title: string) {
   await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
-it("shows one glyph per chat: spinner while running, dot when unread, nothing when idle", () => {
+it("shows one glyph per chat: spinner while running, dot when unread, its age when idle", () => {
   seedChats();
   render(
     <ProjectChatNavigation
@@ -182,7 +182,9 @@ it("shows one glyph per chat: spinner while running, dot when unread, nothing wh
   expect(
     row("Beta")?.querySelector(".project-chat__state"),
   ).toHaveAccessibleName("Unread updates");
-  expect(row("Gamma")?.querySelector(".project-chat__state")).toBeNull();
+  expect(row("Gamma")?.querySelector(".project-chat__state")).toHaveClass(
+    "project-chat__age",
+  );
   expect(screen.queryByText("feat/onboarding")).toBeNull();
 });
 
