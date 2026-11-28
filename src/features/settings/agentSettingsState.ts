@@ -2,7 +2,6 @@ import { create } from "zustand";
 
 export type AgentSettingsPage =
   | "Appearance"
-  | "Keybindings"
   | "Harnesses"
   | "Chats"
   | "Browser"

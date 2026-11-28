@@ -1,4 +1,3 @@
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { useSettingsPageRequest } from "./settingsPageRequest";
@@ -19,7 +18,6 @@ beforeEach(() => {
 
 afterEach(() => {
   useWorkbenchStore.setState(original, true);
-  useAgentSettingsState.getState().close();
   vi.unstubAllGlobals();
 });
 
@@ -80,11 +78,4 @@ it("asks for no page when Settings cannot open", async () => {
   });
   await useWorkbenchStore.getState().openSettings("keyboard");
   expect(useSettingsPageRequest.getState().page).toBeNull();
-});
-
-it("opens Browser in the shared dialog without creating a Settings tab", async () => {
-  await useWorkbenchStore.getState().openSettings("browser");
-  expect(useAgentSettingsState.getState().page).toBe("Browser");
-  expect(useWorkbenchStore.getState().tabs).toEqual([]);
-  expect(useWorkbenchStore.getState().activeTabId).toBeNull();
 });

@@ -1,83 +1,70 @@
-.agent-settings-layer {
-  display: grid;
-  place-items: center;
-  min-height: 0;
-  padding: var(--space-6);
-}
-.agent-settings {
-  display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
-  width: min(1280px, 100%);
-  height: min(960px, 100%);
+/* Agent settings: a centred dialog over the Agent window. Sizes live here,
+   not on the shared dialog primitive. */
+.dirty-dialog.agent-settings {
+  width: min(1024px, calc(100vw - 48px));
+  max-width: none;
+  height: min(704px, calc(100vh - 48px));
+  max-height: none;
+  padding: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--bg);
-  box-shadow: var(--elevation-floating);
+  border: 0;
+  border-radius: var(--radius-3xl);
+  outline: 1px solid transparent;
+  color: var(--color-text-primary);
+  background: var(--color-card);
+  box-shadow: var(--settings-dialog-shadow);
   font-family: var(--font-family-agent);
+}
+.dirty-dialog.agent-settings::backdrop {
+  background: var(--settings-dialog-scrim);
+}
+.agent-settings__frame {
+  position: relative;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  height: 100%;
 }
 
 .agent-settings__nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  min-height: 0;
-  padding: var(--space-3) var(--space-2);
-  overflow: auto;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-}
-.agent-settings__search:focus-within {
-  border-color: var(--color-accent);
-}
-.agent-settings__search {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.agent-settings__search input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  color: inherit;
-  background: none;
-  font: inherit;
-}
-.agent-settings__nav-group {
-  display: flex;
-  flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  padding: 12px 8px;
+  overflow: auto;
+  background: var(--color-window);
 }
-.agent-settings__nav-group h2 {
+.dirty-dialog .agent-settings__title {
   margin: 0;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-.agent-settings__nav h2,
-.agent-settings__nav svg,
-.agent-settings__nav > p {
+  padding: 0 8px 6px;
   color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  line-height: 16px;
 }
-.agent-settings__nav-group button {
+.agent-settings__nav button {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: var(--space-2);
-  height: 32px;
-  padding: 0 var(--space-2);
+  gap: var(--space-1);
+  min-height: 28px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md);
   text-align: left;
   color: inherit;
   background: transparent;
+  font: inherit;
 }
-.agent-settings__nav-group button:hover,
-.agent-settings__nav-group button[aria-current] {
-  background: var(--surface-hover);
+.agent-settings__nav button:hover {
+  background: var(--color-fill-hover);
 }
-.agent-settings__nav > p {
-  margin: 0;
-  text-align: center;
+.agent-settings__nav button[aria-current] {
+  background: var(--color-fill-active);
+}
+.agent-settings__nav .agent-settings__editor-link {
+  margin-top: auto;
+  color: var(--text-muted);
 }
 
 .agent-settings__content {
@@ -86,24 +73,24 @@
   min-width: 0;
   min-height: 0;
 }
+.agent-settings__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
 .agent-settings__header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-  height: 48px;
-  padding: 0 8px 0 20px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--space-1);
 }
-.agent-settings__header h2 {
+.dirty-dialog .agent-settings__header h2 {
   margin: 0;
-  color: var(--text);
-  font-size: var(--font-size-md);
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: 450;
+  line-height: 28px;
 }
-.agent-settings__header button {
-  margin-left: auto;
+.agent-settings__header p {
+  color: var(--text-muted);
 }
 /* Block margins are cleared, so no page can fuse a control to the card below. */
 .agent-settings__page {
@@ -112,28 +99,17 @@
   flex-direction: column;
   gap: var(--settings-content-gap);
   min-height: 0;
-  padding: 32px max(24px, calc((100% - 720px) / 2));
+  padding: 24px clamp(16px, 8%, 100px);
   overflow: auto;
 }
 
-@media (max-width: 640px) {
-  .agent-settings-layer {
-    padding: 0;
+@media (max-width: 820px) {
+  .dirty-dialog.agent-settings {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
   }
-  .agent-settings {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    width: 100%;
-    height: 100%;
-    border: 0;
-  }
-  .agent-settings__nav {
-    max-height: 208px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .agent-settings__page {
-    padding: var(--space-6) var(--space-4);
+  .agent-settings__frame {
+    grid-template-columns: 132px minmax(0, 1fr);
   }
 }
 
@@ -180,10 +156,10 @@
    take the card's inset here. */
 .agent-settings__card,
 .agent-settings .settings-surface__rows {
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface-raised);
+  background: transparent;
 }
 
 .agent-settings .settings-surface__rows {
@@ -195,7 +171,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-4) 0;
+  padding: 10px 0;
 }
 
 .agent-settings__row + .agent-settings__row {

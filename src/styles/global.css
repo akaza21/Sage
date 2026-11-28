@@ -413,6 +413,9 @@
   --radius-edit-summary: var(--radius-md);
   --settings-measure: 820px;
   --settings-content-gap: var(--space-4);
+  --settings-dialog-scrim: rgb(0 0 0 / 30%);
+  --settings-dialog-shadow:
+    inset 0 0 0 1px var(--color-hairline), 0 30px 80px rgb(0 0 0 / 50%);
   --workbench-card-radius: var(--radius-md);
   --workbench-card-border: var(--color-border-subtle);
   --workbench-card-fill: var(--color-panel);

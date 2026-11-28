@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import AgentKeyboardSettings from "./AgentKeyboardSettings";
+import { SettingsBrowserShortcuts } from "./SettingsBrowserShortcuts";
 
 afterEach(cleanup);
 
@@ -30,7 +30,7 @@ it("covers every native browser shortcut action and its native-only aliases", ()
     ),
   ];
   expect(nativeActions.sort()).toEqual(Object.keys(labels).sort());
-  render(<AgentKeyboardSettings />);
+  render(<SettingsBrowserShortcuts />);
   for (const label of Object.values(labels))
     expect(screen.getByText(label)).toBeVisible();
   expect(native).toContain("0xBB | 0x6B => Some(BrowserShortcut::ZoomIn)");
@@ -41,6 +41,34 @@ it("covers every native browser shortcut action and its native-only aliases", ()
   expect(
     screen.getByText("Native page zoom out").closest("tr"),
   ).toHaveTextContent("Ctrl+Subtract");
+  expect(
+    screen.getByText(/Esc leaves annotation mode first, even while idle/),
+  ).toBeVisible();
+});
+
+it("lists every implemented browser shortcut with its browser-only scope", () => {
+  render(<SettingsBrowserShortcuts />);
+  for (const [label, chord] of [
+    ["Focus browser address", "Ctrl+L"],
+    ["New browser tab", "Ctrl+T"],
+    ["Close browser tab", "Ctrl+W"],
+    ["Reload browser page", "Ctrl+R"],
+    ["Reload browser page (function key)", "F5"],
+    ["Find in browser page", "Ctrl+F"],
+    ["Browser back", "Alt+Left"],
+    ["Browser forward", "Alt+Right"],
+    ["Browser zoom in", "Ctrl++"],
+    ["Browser zoom out", "Ctrl+-"],
+    ["Reset browser zoom", "Ctrl+0"],
+    ["Stop loading browser page", "Esc"],
+    ["Native page zoom in", "Ctrl+="],
+    ["Native page zoom out", "Ctrl+Subtract"],
+    ["Leave browser annotation", "Esc"],
+  ])
+    expect(screen.getByText(label).closest("tr")).toHaveTextContent(chord);
+  expect(
+    screen.getByText(/Only while focus is inside the browser pane/),
+  ).toBeVisible();
   expect(
     screen.getByText(/Esc leaves annotation mode first, even while idle/),
   ).toBeVisible();

@@ -35,18 +35,21 @@ afterEach(() => {
 });
 
 describe("SettingsSurface", () => {
-  it("lists the settings pages in a nav and opens Editor first", () => {
+  it("lists only the Editor and Keyboard pages and opens Editor first", () => {
     render(<SettingsSurface />);
     const nav = screen.getByRole("navigation", { name: "Settings pages" });
     expect(
       within(nav)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Editor", "Keyboard", "Browser", "Passwords"]);
+    ).toEqual(["Editor", "Keyboard"]);
     expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    expect(
+      screen.getByText("Editor settings. Agent settings open from Agent mode."),
+    ).toBeVisible();
   });
 
   it("opens on a requested page and follows a request while open", async () => {
@@ -75,27 +78,33 @@ describe("SettingsSurface", () => {
     expect(useSettingsPageRequest.getState().page).toBeNull();
   });
 
-  it("opens Browser in the shared Agent settings dialog", async () => {
+  it("selects pages with the up and down arrows", () => {
     render(<SettingsSurface />);
-    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
-    await waitFor(() =>
-      expect(useAgentSettingsState.getState().page).toBe("Browser"),
-    );
-    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
+    const [editor, keyboard] = screen.getAllByRole("tab");
+    editor.focus();
+    fireEvent.keyDown(editor, { key: "ArrowDown" });
+    expect(keyboard).toHaveFocus();
+    expect(keyboard).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(keyboard, { key: "Home" });
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveAttribute("aria-selected", "true");
   });
 
-  it("moves between pages with the arrows without opening Browser", () => {
+  it("lists every shortcut once, Agent and browser ones included", () => {
     render(<SettingsSurface />);
-    const tabs = screen.getAllByRole("tab");
-    const browser = screen.getByRole("tab", { name: "Browser" });
-    const before = tabs[tabs.indexOf(browser) - 1];
-    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
-    before.focus();
-    fireEvent.keyDown(before, { key: "ArrowRight" });
-    expect(browser).toHaveFocus();
-    expect(useAgentSettingsState.getState().page).not.toBe("Browser");
-    fireEvent.keyDown(browser, { key: "Home" });
-    expect(tabs[0]).toHaveFocus();
+    fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
+    expect(screen.getByText("Find in chat").closest("tr")).toHaveTextContent(
+      "Ctrl+F",
+    );
+    expect(screen.getByText("New browser tab").closest("tr")).toHaveTextContent(
+      "Ctrl+T",
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "find in chat" },
+    });
+    expect(screen.getByText("Find in chat")).toBeVisible();
+    expect(screen.queryByText("New browser tab")).toBeNull();
+    expect(useAgentSettingsState.getState().page).toBeNull();
   });
 
   it("shows the real chord for each shortcut on the Keyboard page", () => {

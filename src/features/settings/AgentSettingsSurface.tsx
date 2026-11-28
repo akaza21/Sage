@@ -8,24 +8,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { ModalDialog } from "../../ui/ModalDialog";
 import {
   hasNavigationModifier,
   listIndexForKey,
 } from "../../ui/listNavigation";
 import { useDocumentVisible } from "../../ui/useDocumentVisible";
-import {
-  Archive,
-  Bot,
-  ChevronRight,
-  Command,
-  Eye,
-  Globe,
-  History,
-  Lock,
-  MessageSquare,
-  Search,
-  X,
-} from "../../ui/leanIcons";
+import { ChevronRight, X } from "../../ui/leanIcons";
 import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPageLoaders";
 import "./agent-settings.css";
@@ -67,31 +56,44 @@ const loadHarnessModule = () =>
   loadHarnessSettings().then((Surface) => ({ default: Surface }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
-// The panel has no per-setting search, so the whole Passwords page shows.
+// The dialog has no per-setting search, so the whole Passwords page shows.
 const passwordEntries = matchingSettingsEntryIds("", "passwords");
-const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
-// One chunk serves both pages of the last nav group.
+// One chunk serves both of the last two pages.
 const loadArchivedSettings = () => import("./AgentArchivedSettings");
 
 export default AgentSettingsSurface;
 
-const groups: readonly {
-  heading: string | null;
-  pages: readonly AgentSettingsPage[];
-}[] = [
-  { heading: null, pages: ["Appearance", "Keybindings"] },
-  {
-    heading: "Agents",
-    pages: ["Harnesses", "Chats", "Browser", "Passwords"],
-  },
-  { heading: null, pages: ["Archived chats", "Data"] },
-];
+/** Agent settings only: editor and keybinding settings live in the Editor. */
+const pages: Readonly<Record<AgentSettingsPage, string>> = {
+  Appearance:
+    "How the Agent window looks. Code font, tab size and keybindings are Editor settings.",
+  Harnesses: "Installed harnesses, sign-in and versions.",
+  Chats: "Chat defaults and history.",
+  Browser: "The in-app browser used for previews.",
+  Passwords: "Saved sign-ins for the in-app browser.",
+  "Archived chats": "Chats you archived.",
+  Data: "Storage and local data.",
+};
+const pageNames = Object.keys(pages) as AgentSettingsPage[];
+
+const textEntry =
+  "input:not([type]), input[type=text], input[type=email], input[type=password], input[type=url], input[type=tel], input[type=number], input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week], textarea, [contenteditable=true]";
+
+/** Escape belongs to a field being typed in, not to the dialog. */
+function keepsEscape(target: Element | null) {
+  return Boolean(
+    target?.closest(textEntry) ||
+    (target instanceof HTMLInputElement &&
+      target.type === "search" &&
+      target.value),
+  );
+}
 
 function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
   if (hasNavigationModifier(event)) return;
   const sections = [
     ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      ".agent-settings__nav-group > button",
+      ".agent-settings__section",
     ),
   ];
   const index = sections.indexOf(event.target as HTMLButtonElement);
@@ -107,29 +109,22 @@ function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
   sections[next].focus();
 }
 
-const icons: Record<AgentSettingsPage, typeof Archive> = {
-  Appearance: Eye,
-  Keybindings: Command,
-  Harnesses: Bot,
-  Chats: MessageSquare,
-  Browser: Globe,
-  Passwords: Lock,
-  "Archived chats": Archive,
-  Data: History,
-};
-
 export function AgentSettingsSurface({
   chatRuntimeOwned = false,
+  onOpenEditorSettings,
 }: {
   chatRuntimeOwned?: boolean;
+  /** Leaves Agent mode for the Editor's Settings tab. */
+  onOpenEditorSettings?: () => void;
 }) {
   const documentVisible = useDocumentVisible();
   const page = useAgentSettingsState((state) => state.page) ?? "Appearance";
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
-  const [query, setQuery] = useState("");
-  const surfaceRef = useRef<HTMLElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
+  const [initialSection] = useState(page);
+  const initialFocusRef = useRef<HTMLButtonElement | null>(null);
   const [, setHarnessReady] = useState(Boolean(HarnessSettings));
   const [harnessFailed, setHarnessFailed] = useState(false);
   const [shownPage, setShownPage] = useState(page);
@@ -158,7 +153,7 @@ export function AgentSettingsSurface({
     const from = deferredFrom.current;
     deferredFrom.current = null;
     // Move into the page only if focus never left the section button that
-    // asked for it, so searching or moving on while it loads is kept.
+    // asked for it, so moving on while it loads is kept.
     if (document.activeElement !== from) return;
     pageRef.current
       ?.querySelector<HTMLElement>("button, input, select, textarea, a[href]")
@@ -170,87 +165,66 @@ export function AgentSettingsSurface({
     const handle = idle(prewarmHarnessSettings);
     return () => cancel(handle);
   }, []);
-  // Settings covers the Agent workspace without unmounting it, so closing
-  // it hands focus back to whatever opened it.
+  // Closing hands focus back to whatever opened the dialog.
   useEffect(() => {
     const surface = surfaceRef.current;
     return () => returnFocusToAgentSettingsOpener(surface);
   }, []);
-  const normalized = query.trim().toLowerCase();
-  const matching = groups
-    .map((group) => ({
-      ...group,
-      pages: group.pages.filter((item) =>
-        item.toLowerCase().includes(normalized),
-      ),
-    }))
-    .filter((group) => group.pages.length > 0);
   return (
-    <div className="agent-settings-layer">
-      <section
+    <ModalDialog
+      className="agent-settings"
+      labelledBy="agent-settings-label"
+      initialFocusRef={initialFocusRef}
+      onDismiss={() => {
+        if (!keepsEscape(document.activeElement)) close();
+      }}
+    >
+      <div
         ref={surfaceRef}
-        className="agent-settings"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Agent settings"
+        className="agent-settings__frame"
         onKeyDown={(event) => {
-          const target = event.target as Element;
-          if (
-            event.key === "Escape" &&
-            !event.defaultPrevented &&
-            !target.closest(
-              "input:not([type]):not([type=search]), input[type=text], input[type=email], input[type=password], input[type=url], input[type=tel], input[type=number], input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week], textarea, [contenteditable=true]",
-            ) &&
-            target.closest("[role=dialog]") === event.currentTarget &&
-            !(target.matches("input[type=search]") && query)
-          ) {
-            event.preventDefault();
-            close();
-          }
+          // Left to the field, so the dialog's Escape does not take it.
+          if (event.key === "Escape" && keepsEscape(event.target as Element))
+            event.stopPropagation();
         }}
       >
+        <span id="agent-settings-label" hidden>
+          Agent settings
+        </span>
         <nav
           className="agent-settings__nav"
           aria-label="Agent settings sections"
           onKeyDown={moveSectionFocus}
         >
-          <label className="input agent-settings__search">
-            <Search size={14} aria-hidden="true" />
-            <span className="sr-only">Search Agent settings sections</span>
-            <input
-              autoFocus
-              type="search"
-              placeholder="Search settings"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          {matching.map((group) => (
-            <div className="agent-settings__nav-group" key={group.pages[0]}>
-              {group.heading ? <h2>{group.heading}</h2> : null}
-              {group.pages.map((item) => {
-                const Icon = icons[item];
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    aria-current={page === item ? "page" : undefined}
-                    onClick={() => open(item)}
-                    {...(item === "Harnesses"
-                      ? {
-                          onPointerEnter: prewarmHarnessSettings,
-                          onFocus: prewarmHarnessSettings,
-                        }
-                      : {})}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    {item}
-                  </button>
-                );
-              })}
-            </div>
+          <h2 className="agent-settings__title">Settings</h2>
+          {pageNames.map((item) => (
+            <button
+              key={item}
+              ref={item === initialSection ? initialFocusRef : undefined}
+              type="button"
+              className="agent-settings__section"
+              aria-current={page === item ? "page" : undefined}
+              onClick={() => open(item)}
+              {...(item === "Harnesses"
+                ? {
+                    onPointerEnter: prewarmHarnessSettings,
+                    onFocus: prewarmHarnessSettings,
+                  }
+                : {})}
+            >
+              {item}
+            </button>
           ))}
-          {!matching.length ? <p role="status">No matching sections.</p> : null}
+          {onOpenEditorSettings ? (
+            <button
+              type="button"
+              className="agent-settings__editor-link"
+              onClick={onOpenEditorSettings}
+            >
+              Editor settings
+              <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          ) : null}
         </nav>
         <div className="agent-settings__content">
           {chatRuntimeOwned ? null : (
@@ -261,31 +235,15 @@ export function AgentSettingsSurface({
               render={(Execution) => <Execution />}
             />
           )}
-          <header className="agent-settings__header">
-            <span>Settings</span>
-            <ChevronRight size={14} aria-hidden="true" />
-            <h2>{shownPage}</h2>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Close settings"
-              onClick={close}
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          </header>
           {/* Like the Editor workbench, pages sleep while the window is
               minimized, so they clear what they hold on suspend. */}
           <Activity mode={documentVisible ? "visible" : "hidden"}>
             <div className="agent-settings__page" key={shownPage} ref={pageRef}>
+              <header className="agent-settings__header">
+                <h2>{shownPage}</h2>
+                <p>{pages[shownPage]}</p>
+              </header>
               {shownPage === "Appearance" ? <AgentAppearanceSettings /> : null}
-              {shownPage === "Keybindings" ? (
-                <LazyModuleBoundary
-                  label="Keybindings"
-                  load={loadKeyboardSettings}
-                  render={(KeyboardSettings) => <KeyboardSettings />}
-                />
-              ) : null}
               {shownPage === "Harnesses" ? (
                 HarnessSettings ? (
                   <HarnessSettings presentation={SettingsHarnessNotices} />
@@ -329,7 +287,15 @@ export function AgentSettingsSurface({
             </div>
           </Activity>
         </div>
-      </section>
-    </div>
+        <button
+          type="button"
+          className="icon-button agent-settings__close"
+          aria-label="Close settings"
+          onClick={close}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </ModalDialog>
   );
 }

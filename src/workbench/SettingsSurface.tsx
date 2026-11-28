@@ -1,23 +1,21 @@
-import { useWorkbenchStore } from "../app/store";
 import { Notice } from "../ui/Notice";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import {
-  EDITOR_KEYMAP_SCOPES,
+  SETTINGS_KEYMAP_SCOPES,
   SETTINGS_PAGES,
   matchingSettingsEntryIds,
   pagesWithMatches,
   type SettingsPageId,
 } from "../domain/settingsNavigation";
+import { SettingsBrowserShortcuts } from "./settings/SettingsBrowserShortcuts";
 import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
-import { loadSettingsPasswordsPage } from "./settings/settingsPageLoaders";
 
-const SettingsPasswordsPage = lazy(loadSettingsPasswordsPage);
-
+/** Editor settings: the Settings tab of the Editor's File / Diff strip. */
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
@@ -78,63 +76,53 @@ export function SettingsSurface() {
       <SettingsNav
         activePageId={activePageId}
         matchingPageIds={matchingPageIds}
-        onSelect={(page) => {
-          if (page === "browser")
-            void useWorkbenchStore.getState().openSettings(page);
-          else setActivePageId(page);
-        }}
+        onSelect={setActivePageId}
       />
-      <p className="settings-surface__description">{activePage?.description}</p>
-      {persistenceMessage ? (
-        <div className="settings-surface__notice">
-          <Notice
-            identity="settings:editor-persistence"
-            severity="warning"
-            message={persistenceMessage}
-            action={
-              persistenceClosing
-                ? undefined
-                : { label: "Retry", onClick: retryPersistence }
-            }
-          />
-        </div>
-      ) : persistencePhase === "loading" ? (
-        <div className="settings-surface__notice">
-          <Notice
-            identity="settings:editor-persistence:loading"
-            severity="info"
-            message="Loading editor settings…"
-            progress
-          />
-        </div>
-      ) : null}
-      {visible.size === 0 ? (
-        <p className="settings-surface__empty" role="status">
-          No matching settings.
+      <div className="settings-surface__content">
+        <p className="settings-surface__scope">
+          Editor settings. Agent settings open from Agent mode.
         </p>
-      ) : activePageId === "keyboard" ? (
-        <SettingsKeyboardPage scopes={EDITOR_KEYMAP_SCOPES} visible={visible} />
-      ) : activePageId === "passwords" ? (
-        <Suspense
-          fallback={
-            <div className="settings-surface__notice">
-              <Notice
-                identity="settings:passwords:loading"
-                severity="info"
-                message="Loading saved passwords…"
-                progress
-              />
-            </div>
-          }
-        >
-          <SettingsPasswordsPage visible={visible} />
-        </Suspense>
-      ) : (
-        <SettingsEditorPage
-          visible={visible}
-          controlsDisabled={controlsDisabled}
-        />
-      )}
+        <p className="settings-surface__description">
+          {activePage?.description}
+        </p>
+        {persistenceMessage ? (
+          <div className="settings-surface__notice">
+            <Notice
+              identity="settings:editor-persistence"
+              severity="warning"
+              message={persistenceMessage}
+              action={
+                persistenceClosing
+                  ? undefined
+                  : { label: "Retry", onClick: retryPersistence }
+              }
+            />
+          </div>
+        ) : persistencePhase === "loading" ? (
+          <div className="settings-surface__notice">
+            <Notice
+              identity="settings:editor-persistence:loading"
+              severity="info"
+              message="Loading editor settings…"
+              progress
+            />
+          </div>
+        ) : null}
+        {visible.size === 0 ? (
+          <p className="settings-surface__empty" role="status">
+            No matching settings.
+          </p>
+        ) : activePageId === "keyboard" ? (
+          <SettingsKeyboardPage scopes={SETTINGS_KEYMAP_SCOPES} visible={visible}>
+            {query.trim() ? null : <SettingsBrowserShortcuts />}
+          </SettingsKeyboardPage>
+        ) : (
+          <SettingsEditorPage
+            visible={visible}
+            controlsDisabled={controlsDisabled}
+          />
+        )}
+      </div>
     </section>
   );
 }

@@ -1,6 +1,9 @@
+/* Editor settings, laid out like VS Code's: search across the top, the page
+   list in a column on the left, rows on the right. */
 .settings-surface {
-  --settings-header-padding-top: 14px;
+  --settings-header-padding-top: 12px;
   --settings-gutter: var(--space-6);
+  --settings-toc-width: 190px;
   --settings-row-inset: 14px;
   --settings-row-padding-top: var(--space-3);
   --settings-row-padding-bottom: 18px;
@@ -14,30 +17,47 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--settings-content-gap);
-  padding: var(--settings-header-padding-top) var(--settings-gutter)
-    var(--space-8);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: var(--settings-toc-width) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-3) 0;
+  padding-top: var(--settings-header-padding-top);
   color: var(--color-text-primary);
   background: var(--color-canvas);
 }
 
-.settings-surface > * {
+.settings-surface__header {
+  display: grid;
+  grid-column: 1 / -1;
+  padding: 0 var(--settings-gutter);
+}
+
+.settings-surface__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-content-gap);
+  min-height: 0;
+  padding: 0 var(--settings-gutter) var(--space-8) var(--space-4);
+  overflow: auto;
+}
+
+.settings-surface__content > * {
   width: 100%;
   flex: none;
 }
 
-.settings-surface__header {
-  display: grid;
-  max-width: var(--settings-measure);
-  margin: 0 auto;
-}
-
 .settings-surface__search .input {
   min-height: var(--control-height-default);
+  border-radius: var(--radius-xs);
   font-size: var(--font-size-sm);
+}
+
+.settings-surface .settings-surface__scope {
+  max-width: var(--settings-measure);
+  margin: 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .settings-surface .settings-surface__description {
@@ -91,39 +111,38 @@
 }
 
 .settings-surface__nav {
-  max-width: var(--settings-measure);
-  margin: 0 auto;
+  min-height: 0;
+  padding: 0 0 0 var(--settings-gutter);
+  overflow: auto;
 }
 
 .settings-surface__nav-list {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow-x: auto;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .settings-surface__nav-item {
-  height: var(--control-height-compact);
-  padding: 0 12px;
+  min-height: 24px;
+  padding: 0 var(--space-2);
   border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-muted);
   background: transparent;
   font-family: inherit;
-  font-size: var(--font-size-sm);
+  font-size: 13px;
+  text-align: left;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.settings-surface__nav-item:hover {
+.settings-surface__nav-item:hover,
+.settings-surface__nav-item[aria-selected="true"] {
   color: var(--color-text-primary);
-  background: var(--highlight-active-fill);
 }
 
 .settings-surface__nav-item[aria-selected="true"] {
-  color: var(--color-text-primary);
-  background: var(--highlight-selection-fill);
-  box-shadow: inset 0 0 0 1px var(--highlight-selection-edge);
+  font-weight: 550;
 }
 
 .settings-surface__nav-item[data-matches="false"] {
@@ -431,6 +450,21 @@
 @media (max-width: 760px) {
   .settings-surface {
     --settings-gutter: var(--space-4);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .settings-surface__nav {
+    padding-right: var(--settings-gutter);
+  }
+
+  .settings-surface__nav-list {
+    flex-direction: row;
+    gap: var(--space-3);
+  }
+
+  .settings-surface__content {
+    padding-left: var(--settings-gutter);
   }
 
   .settings-surface__row,

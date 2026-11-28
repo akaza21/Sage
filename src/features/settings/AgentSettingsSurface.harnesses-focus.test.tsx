@@ -40,7 +40,7 @@ afterEach(() => {
   useWorkbenchStore.setState(workbench, true);
 });
 
-it("leaves focus and typed text in Search when the user moves there while Harnesses loads", async () => {
+it("leaves focus where the user moved it while Harnesses loads", async () => {
   render(<AgentSettingsSurface />);
   const section = screen.getByRole("button", { name: "Harnesses" });
   section.focus();
@@ -48,17 +48,13 @@ it("leaves focus and typed text in Search when the user moves there while Harnes
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  const search = screen.getByRole("searchbox", {
-    name: "Search Agent settings sections",
-  });
-  search.focus();
-  fireEvent.change(search, { target: { value: "har" } });
+  const data = screen.getByRole("button", { name: "Data" });
+  data.focus();
 
   gate.release();
   await screen.findByRole("button", { name: "Refresh discovery" });
   expect(
     screen.getByRole("heading", { level: 2, name: "Harnesses" }),
   ).toBeVisible();
-  expect(search).toHaveFocus();
-  expect(search).toHaveValue("har");
+  expect(data).toHaveFocus();
 });

@@ -182,47 +182,6 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
   expect(screen.queryByRole("switch", { name: "Code folding" })).toBeNull();
 });
 
-it("lists app-wide and Agent shortcuts and leaves Editor shortcuts to Editor settings", async () => {
-  await import("./AgentKeyboardSettings");
-  render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
-  expect(
-    (await screen.findByText("Open settings")).closest("tr"),
-  ).toHaveTextContent("Ctrl+,");
-  expect(screen.getByText("Find in chat")).toBeVisible();
-  expect(screen.queryByText("Save file")).toBeNull();
-  expect(screen.queryByRole("group", { name: "Editor" })).toBeNull();
-});
-
-it("lists every implemented browser shortcut with its browser-only scope", async () => {
-  render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
-  await screen.findByText("New browser tab");
-  for (const [label, chord] of [
-    ["Focus browser address", "Ctrl+L"],
-    ["New browser tab", "Ctrl+T"],
-    ["Close browser tab", "Ctrl+W"],
-    ["Reload browser page", "Ctrl+R"],
-    ["Reload browser page (function key)", "F5"],
-    ["Find in browser page", "Ctrl+F"],
-    ["Browser back", "Alt+Left"],
-    ["Browser forward", "Alt+Right"],
-    ["Browser zoom in", "Ctrl++"],
-    ["Browser zoom out", "Ctrl+-"],
-    ["Reset browser zoom", "Ctrl+0"],
-    ["Stop loading browser page", "Esc"],
-    ["Native page zoom in", "Ctrl+="],
-    ["Native page zoom out", "Ctrl+Subtract"],
-    ["Leave browser annotation", "Esc"],
-  ])
-    expect(screen.getByText(label).closest("tr")).toHaveTextContent(chord);
-  expect(
-    screen.getByText(/Only while focus is inside the browser pane/),
-  ).toBeVisible();
-  expect(
-    screen.getByText(/Esc leaves annotation mode first, even while idle/),
-  ).toBeVisible();
-});
 afterEach(() => {
   cleanup();
   useAgentSettingsState.getState().close();
@@ -313,8 +272,9 @@ it("labels transient harness/model selection honestly and exposes only real acce
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("shows T3 Code's settings sections in its order, plus Sage's Passwords next to Browser", () => {
-  render(<AgentSettingsSurface />);
+it("lists only Agent sections; editor settings and keybindings live in the Editor", () => {
+  const openEditorSettings = vi.fn();
+  render(<AgentSettingsSurface onOpenEditorSettings={openEditorSettings} />);
   const nav = screen.getByRole("navigation", {
     name: "Agent settings sections",
   });
@@ -322,18 +282,21 @@ it("shows T3 Code's settings sections in its order, plus Sage's Passwords next t
     Array.from(nav.querySelectorAll("button"), (button) => button.textContent),
   ).toEqual([
     "Appearance",
-    "Keybindings",
     "Harnesses",
     "Chats",
     "Browser",
     "Passwords",
     "Archived chats",
     "Data",
+    "Editor settings",
   ]);
-  expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
+  expect(screen.getByText("Chat defaults and history.")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Editor settings" }));
+  expect(openEditorSettings).toHaveBeenCalledOnce();
 });
 
-it("opens the saved passwords page that Editor Settings shows", async () => {
+it("opens the saved passwords page", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Passwords" }));
   expect(useAgentSettingsState.getState().page).toBe("Passwords");
@@ -349,15 +312,11 @@ it("opens the saved passwords page that Editor Settings shows", async () => {
   ).toBeVisible();
 });
 
-it("does not offer reserved shortcuts", async () => {
-  render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
-  await screen.findByText("New browser tab");
-  expect(screen.queryByText("Quick Open")).toBeNull();
-});
-
 it("closes from its close button and Escape, and Ctrl+, keeps its section", () => {
   render(<AgentSettingsSurface />);
+  expect(
+    screen.getByRole("dialog", { name: "Agent settings" }),
+  ).toHaveAttribute("aria-modal", "true");
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   expect(useAgentSettingsState.getState().page).toBeNull();
   useAgentSettingsState.getState().open("Chats");
@@ -373,18 +332,17 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
   });
 });
 
-it("returns focus to what opened it when Escape closes it (B-16)", () => {
+it("focuses the open section, then returns focus to what opened it when Escape closes it (B-16)", () => {
   const opener = document.createElement("button");
   document.body.append(opener);
   useAgentSettingsState.getState().close();
   opener.focus();
-  // Opening hides the Agent workspace, and focus with it, before Settings
-  // mounts; only the open call still sees the opener.
+  // Only the open call sees the opener: focus can move before Settings mounts.
   useAgentSettingsState.getState().open("Chats");
   opener.blur();
   try {
     const { rerender } = render(<AgentSettingsSurface />);
-    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Chats" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("button", { name: "Chats" }), {
       key: "Escape",
     });
@@ -397,12 +355,12 @@ it("returns focus to what opened it when Escape closes it (B-16)", () => {
 });
 
 it("moves between sections with the arrow keys, wrapping at either end", () => {
-  render(<AgentSettingsSurface />);
+  render(<AgentSettingsSurface onOpenEditorSettings={() => undefined} />);
   const appearance = screen.getByRole("button", { name: "Appearance" });
   appearance.focus();
   fireEvent.keyDown(appearance, { key: "ArrowDown" });
-  expect(screen.getByRole("button", { name: "Keybindings" })).toHaveFocus();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Keybindings" }), {
+  expect(screen.getByRole("button", { name: "Harnesses" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Harnesses" }), {
     key: "ArrowUp",
   });
   expect(appearance).toHaveFocus();
@@ -424,14 +382,6 @@ it("moves between sections with the arrow keys, wrapping at either end", () => {
   expect(appearance).toHaveFocus();
 });
 
-it("leaves the search field's keys to the field", () => {
-  render(<AgentSettingsSurface />);
-  const search = screen.getByRole("searchbox");
-  search.focus();
-  for (const key of ["Home", "End", "ArrowDown", "ArrowUp"])
-    expect(fireEvent.keyDown(search, { key })).toBe(true);
-  expect(search).toHaveFocus();
-});
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {
   let stored: SessionAccessModes = {};
@@ -479,20 +429,6 @@ it("restores the real per-harness access default from its persistence boundary a
     "workspaceWrite",
   );
   expect(stored).toEqual({ "binding-a": "workspaceWrite" });
-});
-
-it("filters settings navigation without changing the current section", () => {
-  render(<AgentSettingsSurface />);
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "BROWSER" },
-  });
-  expect(screen.getByRole("button", { name: "Browser" })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Harnesses" })).toBeNull();
-  expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "does not match" },
-  });
-  expect(screen.getByText("No matching sections.")).toBeVisible();
 });
 
 it("keeps failed restores visible and sends foreign project identity to unarchive", async () => {
@@ -670,15 +606,17 @@ it("records a discovery refresh that finishes while the window is minimized", as
 
 it("allows Escape from a checkbox but keeps text-entry edits open", () => {
   render(<AgentSettingsSurface />);
-  const dialog = screen.getByRole("dialog", { name: "Agent settings" });
+  const page = screen.getByRole("heading", { name: "Chats" }).parentElement!;
   const text = document.createElement("input");
   text.type = "text";
-  dialog.append(text);
+  page.append(text);
+  text.focus();
   fireEvent.keyDown(text, { key: "Escape" });
   expect(useAgentSettingsState.getState().page).toBe("Chats");
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
-  dialog.append(checkbox);
+  page.append(checkbox);
+  checkbox.focus();
   fireEvent.keyDown(checkbox, { key: "Escape" });
   expect(useAgentSettingsState.getState().page).toBeNull();
 });

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   formatKeymapChords,
   type KeymapScope,
@@ -13,11 +14,13 @@ const SCOPE_COPY: Record<KeymapScope, string> = {
 };
 
 export function SettingsKeyboardPage({
+  children,
   scopes,
   visible,
 }: {
   scopes: readonly KeymapScope[];
   visible: Set<string>;
+  children?: ReactNode;
 }) {
   const apple = usesMetaModifier();
   return (
@@ -64,6 +67,7 @@ export function SettingsKeyboardPage({
           </section>
         );
       })}
+      {children}
     </section>
   );
 }

@@ -101,7 +101,9 @@ export const SETTINGS_KEYMAP_BINDINGS: readonly DescribedKeymapBinding[] = [
   ...FIND_BAR_BINDINGS,
 ];
 
-export type SettingsPageId = "editor" | "keyboard" | "browser" | "passwords";
+/** The Editor's Settings tab pages. Browser and Passwords are Agent settings. */
+export type SettingsPageId = "editor" | "keyboard";
+type SettingsEntryPageId = SettingsPageId | "browser" | "passwords";
 
 export interface SettingsEntry {
   id: string;
@@ -133,15 +135,18 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
 ]);
 
-export const EDITOR_KEYMAP_SCOPES: readonly KeymapScope[] = [
+/** Every shortcut is listed once, in Editor settings. */
+export const SETTINGS_KEYMAP_SCOPES: readonly KeymapScope[] = [
   "Global",
+  "Agent",
+  "Agent chat",
   "Editor",
 ];
 
 const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
   SETTINGS_KEYMAP_BINDINGS.filter(
     (binding) =>
-      !binding.reservedFor && EDITOR_KEYMAP_SCOPES.includes(binding.scope),
+      !binding.reservedFor && SETTINGS_KEYMAP_SCOPES.includes(binding.scope),
   ).map((binding) => ({
     id: binding.id,
     label: binding.label,
@@ -222,19 +227,14 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
     description: "Shortcuts for the Editor and for all of Sage.",
     entries: KEYBOARD_ENTRIES,
   },
-  {
-    id: "browser",
-    label: "Browser",
-    description: "Manage the built-in browser's preferences and data.",
-    entries: BROWSER_ENTRIES,
-  },
-  {
-    id: "passwords",
-    label: "Passwords",
-    description: "Passwords you've saved for websites.",
-    entries: PASSWORD_ENTRIES,
-  },
 ]);
+
+const ENTRIES: Record<SettingsEntryPageId, readonly SettingsEntry[]> = {
+  editor: EDITOR_ENTRIES,
+  keyboard: KEYBOARD_ENTRIES,
+  browser: BROWSER_ENTRIES,
+  passwords: PASSWORD_ENTRIES,
+};
 
 export function admitSettingsPageId(value: unknown): SettingsPageId {
   const page = SETTINGS_PAGES.find((candidate) => candidate.id === value);
@@ -250,12 +250,11 @@ function entryMatches(entry: SettingsEntry, normalized: string): boolean {
 
 export function matchingSettingsEntryIds(
   query: string,
-  pageId: SettingsPageId,
+  pageId: SettingsEntryPageId,
 ): Set<string> {
   const normalized = query.trim().toLowerCase();
-  const page = SETTINGS_PAGES.find((candidate) => candidate.id === pageId);
   const matched = new Set<string>();
-  for (const entry of page?.entries ?? [])
+  for (const entry of ENTRIES[pageId])
     if (entryMatches(entry, normalized)) matched.add(entry.id);
   return matched;
 }

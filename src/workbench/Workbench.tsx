@@ -131,7 +131,7 @@ export function Workbench() {
     agentLayout.navigationFits,
     agentLayout.navigationOverlay,
   ]);
-  const agentVisible = windowMode === "agent" && !agentSettingsPage;
+  const agentVisible = windowMode === "agent";
   const agentCenterVisible = !agentLayout.artifactOverlay && !artifactMaximized;
   const resourceModal = agentVisible && agentLayout.artifactModal;
   const terminal = useTerminalDock(resourceModal);
@@ -226,7 +226,6 @@ export function Workbench() {
   const terminalVisible =
     terminal.visible &&
     documentVisible &&
-    !agentSettingsPage &&
     (windowMode === "agent" ? agentCenterVisible : editorCenterVisible);
   const bodyStyle = compact
     ? undefined
@@ -277,11 +276,18 @@ export function Workbench() {
           label="Agent settings"
           load={loadAgentSettings}
           render={(AgentSettingsSurface) => (
-            <AgentSettingsSurface chatRuntimeOwned={agentVisited} />
+            <AgentSettingsSurface
+              chatRuntimeOwned={agentVisited}
+              onOpenEditorSettings={() => {
+                useAgentSettingsState.getState().close();
+                setWindowMode("editor");
+                void useWorkbenchStore.getState().openSettings();
+              }}
+            />
           )}
         />
       ) : null}
-      {windowMode === "editor" && !agentSettingsPage ? (
+      {windowMode === "editor" ? (
         <Activity mode={documentVisible ? "visible" : "hidden"}>
           <div
             className="workbench__body"

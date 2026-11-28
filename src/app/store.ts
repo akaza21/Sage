@@ -298,12 +298,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     },
 
     openSettings: async (page) => {
-      if (page === "browser") {
-        const { useAgentSettingsState } =
-          await import("../features/settings/agentSettingsState");
-        useAgentSettingsState.getState().open("Browser");
-        return;
-      }
       const source = get();
       const { default: openEditorSettings } =
         await import("../features/settings/openEditorSettings");

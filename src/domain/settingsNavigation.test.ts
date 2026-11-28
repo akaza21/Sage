@@ -21,26 +21,24 @@ describe("settings navigation", () => {
     );
   });
 
-  it("orders the pages Editor, Keyboard, Browser, then Passwords", () => {
+  it("gives Editor settings only the Editor and Keyboard pages", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",
       "keyboard",
-      "browser",
-      "passwords",
     ]);
   });
 
-  it("finds the Passwords page by import and saved-password searches", () => {
-    expect(admitSettingsPageId("passwords")).toBe("passwords");
-    expect(pagesWithMatches("csv")).toEqual(new Set(["passwords"]));
+  it("keeps Passwords out of Editor settings but still filters its rows", () => {
+    expect(admitSettingsPageId("passwords")).toBe("editor");
+    expect(pagesWithMatches("csv")).toEqual(new Set());
     expect(matchingSettingsEntryIds("delete all", "passwords")).toEqual(
       new Set(["passwords.deleteAll"]),
     );
   });
 
-  it("finds the Browser settings by their Codex labels", () => {
-    expect(admitSettingsPageId("browser")).toBe("browser");
-    expect(pagesWithMatches("full url")).toEqual(new Set(["browser"]));
+  it("keeps Browser out of Editor settings but finds its rows by their Codex labels", () => {
+    expect(admitSettingsPageId("browser")).toBe("editor");
+    expect(pagesWithMatches("full url")).toEqual(new Set());
     expect(matchingSettingsEntryIds("address bar", "browser")).toEqual(
       new Set(["browser.showFullUrl"]),
     );
@@ -102,11 +100,11 @@ describe("settings navigation", () => {
     expect(matchingSettingsEntryIds("save", "keyboard")).toContain("save");
   });
 
-  it("keeps Agent shortcuts off the Editor's Keyboard page", () => {
+  it("lists Agent and chat shortcuts on the one Keyboard page", () => {
     const ids = matchingSettingsEntryIds("", "keyboard");
     expect(ids).toContain("openSettings");
-    expect(ids).not.toContain("chat.findInChat");
-    expect(ids).not.toContain("sendMessage");
+    expect(ids).toContain("chat.findInChat");
+    expect(ids).toContain("sendMessage");
   });
 });
 

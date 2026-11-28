@@ -6,6 +6,7 @@ import {
   type SettingsPageId,
 } from "../../domain/settingsNavigation";
 
+/** The Editor settings page list, a column beside the rows like VS Code's. */
 export function SettingsNav({
   activePageId,
   matchingPageIds,
@@ -22,10 +23,9 @@ export function SettingsNav({
         className="settings-surface__nav-list"
         ref={listRef}
         role="tablist"
-        // The Browser page opens elsewhere, so arrowing past it must not
-        // select it: arrows move focus and Enter or Space selects.
+        aria-orientation="vertical"
         onKeyDown={(event) =>
-          handleTabListKeyDown(event, listRef.current, "horizontal", "manual")
+          handleTabListKeyDown(event, listRef.current, "vertical", "automatic")
         }
       >
         {SETTINGS_PAGES.map((page) => (
