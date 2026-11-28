@@ -60,6 +60,19 @@ type SignInPoll = {
 // lifetime; suspension retains intent and attempt counts without any timers.
 const polls = new Map<string, SignInPoll>();
 const refreshes = new Map<string, symbol>();
+// In-flight reads have their own listeners, so a read still notifies the
+// shared cache once, when its result lands.
+const checkingListeners = new Set<() => void>();
+const checkingChanged = () => {
+  for (const listener of checkingListeners) listener();
+};
+/** Whether an account read for this harness is in flight. */
+export const harnessSignInChecking = (harnessId: string) =>
+  refreshes.has(harnessId);
+export function subscribeHarnessSignInChecking(listener: () => void) {
+  checkingListeners.add(listener);
+  return () => void checkingListeners.delete(listener);
+}
 
 function prune() {
   let changed = false;
@@ -149,6 +162,7 @@ export async function refreshHarnessSignIn(
   identities.set(harnessId, provider.key);
   const request = Symbol();
   refreshes.set(harnessId, request);
+  checkingChanged();
   if (harnessSignInStatus(harnessId).state === "unknown")
     publish(harnessId, {
       state: "checking",
@@ -161,7 +175,10 @@ export async function refreshHarnessSignIn(
   } catch {
     read = { state: "unavailable", accountReadStartedAt: null };
   }
-  if (refreshes.get(harnessId) === request) refreshes.delete(harnessId);
+  if (refreshes.get(harnessId) === request) {
+    refreshes.delete(harnessId);
+    checkingChanged();
+  }
   if (
     signInProvider(harnessId)?.key === provider.key &&
     useWorkbenchStore.getState().nativeTransitionEpoch === nativeTransitionEpoch

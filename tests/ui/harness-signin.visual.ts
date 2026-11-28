@@ -87,9 +87,8 @@ for (const adapter of ["cli", "account"] as const) {
     await expect(
       menu.getByRole("menuitem", { name: `Sign in to ${name}` }),
     ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: `Check sign-in for ${name}` }),
-    ).toBeVisible();
+    // One row per harness: Sage rechecks on focus, so there is no Check row.
+    await expect(menu.getByRole("menuitem")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(account).toBeFocused();
     await account.click();
