@@ -9,11 +9,11 @@ import path from "node:path";
 import {
   Graph,
   declarations,
-  installed,
   literals,
   members,
   variants,
 } from "./contract-ts.mjs";
+import { installed, published } from "./npm.mjs";
 
 const PI = "@earendil-works/pi-coding-agent";
 
@@ -26,6 +26,10 @@ function split(api, graph, map, root, discriminators, prefix = "") {
     const kind = `${prefix}${variant.parts.join("/")}`;
     add(map, kind, graph.refs(variant.root, kind, variant.narrow));
   }
+}
+
+export function latest() {
+  return published(PI);
 }
 
 export async function contract(version, work) {
