@@ -492,9 +492,7 @@ describe("AgentTaskHeader working status", () => {
     expect(
       await screen.findByRole("dialog", { name: "Overview" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("dialog", { name: "Overview" }),
-    ).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "Overview" })).toHaveFocus();
     // Empty slots are left out of the Overview card.
     expect(screen.queryByRole("region", { name: "Outputs" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();

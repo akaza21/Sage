@@ -41,7 +41,10 @@
   padding: 0 10px 0 8px;
   color: inherit;
 }
-.workbench--agent .agent-artifact-pane .tab:is(:hover, :focus-within) .tab__activate {
+.workbench--agent
+  .agent-artifact-pane
+  .tab:is(:hover, :focus-within)
+  .tab__activate {
   padding-inline-end: 0;
 }
 .workbench--agent .agent-artifact-pane .tab button:focus-visible {
@@ -52,7 +55,10 @@
   width: var(--agent-pane-tab-close-width);
   min-width: var(--agent-pane-tab-close-width);
 }
-.workbench--agent .agent-artifact-pane .tab:is(:hover, :focus-within) .tab__close {
+.workbench--agent
+  .agent-artifact-pane
+  .tab:is(:hover, :focus-within)
+  .tab__close {
   display: grid;
   border-radius: var(--radius-pill);
 }

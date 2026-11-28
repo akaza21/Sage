@@ -96,12 +96,13 @@ export function AgentOverviewEntries({
   // Counts what BackgroundProcesses lists: background tasks, plus running
   // subagents that can still be stopped.
   const taskCount =
-    decodeSessionSurface(validPage ? page?.sessionSurface : null)?.activities
-      .filter(
-        ({ kind, state, stoppable }) =>
-          kind === "backgroundTask" ||
-          (kind === "subagent" && state === "running" && stoppable),
-      ).length ?? 0;
+    decodeSessionSurface(
+      validPage ? page?.sessionSurface : null,
+    )?.activities.filter(
+      ({ kind, state, stoppable }) =>
+        kind === "backgroundTask" ||
+        (kind === "subagent" && state === "running" && stoppable),
+    ).length ?? 0;
   const noSession = !validPage || !page?.currentSessionId;
   const browserDisabled = useBrowserPaneDisabled();
   const entry = (
@@ -281,11 +282,7 @@ export function AgentPaneAskPill({ chatId }: { chatId: string }) {
         value={text}
         onChange={(event) => setText(event.currentTarget.value)}
       />
-      <button
-        type="submit"
-        aria-label="Send message"
-        disabled={!text.trim()}
-      >
+      <button type="submit" aria-label="Send message" disabled={!text.trim()}>
         <ArrowUp size={16} aria-hidden="true" />
       </button>
     </form>

@@ -486,7 +486,8 @@ button.agent-overview__row:disabled {
     var(--motion-ease-out);
 }
 
-.agent-task-header__resource-panel.agent-overview > .agent-overview__heading:first-child {
+.agent-task-header__resource-panel.agent-overview
+  > .agent-overview__heading:first-child {
   margin-top: 0;
 }
 

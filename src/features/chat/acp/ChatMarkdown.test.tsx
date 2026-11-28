@@ -384,13 +384,10 @@ describe("ChatMarkdown code blocks", () => {
   });
 
   it("shows a Chat diagram as a card that opens it in the side pane", () => {
-    const source = "sequenceDiagram
-A->>B: hi";
+    const source = "sequenceDiagram\nA->>B: hi";
     render(
       <ChatMarkdown
-        text={"```mermaid
-" + source + "
-```"}
+        text={"```mermaid\n" + source + "\n```"}
         fileReferenceOwner={
           {
             projectId: "project-a",

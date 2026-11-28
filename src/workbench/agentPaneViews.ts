@@ -10,7 +10,8 @@ import { useAgentChangesState } from "./agentChangesState";
  * output. They are disposable WebView state derived from the transcript, so
  * they stay bounded and are never persisted.
  */
-export type AgentPaneViewKind = "diagram" | "subagentTranscript" | "backgroundTask";
+export type AgentPaneViewKind =
+  "diagram" | "subagentTranscript" | "backgroundTask";
 export type AgentPaneView = {
   id: string;
   chatId: string;

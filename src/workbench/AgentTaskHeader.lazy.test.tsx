@@ -55,9 +55,7 @@ it("keeps the header painted during a cold open without a loading flash", async 
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   expect(screen.getByText("Lazy header")).toBeVisible();
   expect(screen.queryByText(/Loading/)).toBeNull();
-  expect(
-    await screen.findByRole("dialog", { name: "Overview" }),
-  ).toBeVisible();
+  expect(await screen.findByRole("dialog", { name: "Overview" })).toBeVisible();
 });
 
 it("keeps lazy resources and menu rename available beside the collapsed-navigation New Chat control", async () => {
@@ -74,9 +72,7 @@ it("keeps lazy resources and menu rename available beside the collapsed-navigati
   draftView.unmount();
   expect(screen.queryByRole("button", { name: "Rename chat" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(
-    await screen.findByRole("dialog", { name: "Overview" }),
-  ).toBeVisible();
+  expect(await screen.findByRole("dialog", { name: "Overview" })).toBeVisible();
   fireEvent.keyDown(screen.getByRole("dialog", { name: "Overview" }), {
     key: "Escape",
   });

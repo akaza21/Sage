@@ -2951,7 +2951,9 @@ describe("Agent pane launcher, diagram views and Ask pill", () => {
     document.body.append(chat);
     try {
       const { rerender } = render(<AgentArtifactPane maximized={false} />);
-      expect(screen.queryByRole("textbox", { name: "Ask anything" })).toBeNull();
+      expect(
+        screen.queryByRole("textbox", { name: "Ask anything" }),
+      ).toBeNull();
       rerender(<AgentArtifactPane maximized />);
       const ask = await screen.findByRole("textbox", { name: "Ask anything" });
       fireEvent.change(ask, { target: { value: "  Summarise the diff  " } });

@@ -37,7 +37,10 @@ export function ChatDiagramCard({
       type="button"
       aria-label={`Open ${title} in the side pane`}
       onClick={() =>
-        openAgentPaneView({ chatId, kind: "diagram", title, source }, sourceKey(source))
+        openAgentPaneView(
+          { chatId, kind: "diagram", title, source },
+          sourceKey(source),
+        )
       }
     >
       <Workflow size={16} aria-hidden="true" />
