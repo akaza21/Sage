@@ -425,3 +425,32 @@ test("pointing a model alias at another reviewed model fails the reviewed-value 
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+test("a model added to a usage map fails the reviewed-value check", async () => {
+  const { unreviewed, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-usage-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    const write = (usage) =>
+      fs.writeFileSync(
+        path.join(corpus, "x", "t.jsonl"),
+        `${JSON.stringify({ direction: "in", frame: { modelUsage: usage } })}\n`,
+      );
+    write({ "model-5": { contextWindow: 1 }, "model-4": { contextWindow: 1 } });
+    writeReviewed("x", corpus, root);
+    write({ "model-5": { contextWindow: 1 } });
+    assert.deepEqual(unreviewed("x", corpus, root), []);
+    write({ "model-5": { contextWindow: 1 } });
+    writeReviewed("x", corpus, root);
+    write({ "model-5": { contextWindow: 1 }, "model-4": { contextWindow: 1 } });
+    assert.match(
+      unreviewed("x", corpus, root).join("\n"),
+      /placeholder "t\.jsonl:1\.frame\.modelUsage\{model-4\}" is not reviewed/,
+    );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

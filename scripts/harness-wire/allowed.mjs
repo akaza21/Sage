@@ -111,6 +111,10 @@ export function corpusValues(dir) {
     else if (value && typeof value === "object")
       for (const [name, entry] of Object.entries(value)) {
         note(found.keys, name, at);
+        // A pseudonym used as a key (a model in a usage map) is reviewed
+        // where it is too, so a model added to a map fails.
+        if (PLACEHOLDER.test(name) && name !== "redacted")
+          note(found.placeholders, `${at}{${name}}`, at);
         const shown = PLACEHOLDER.test(name) ? "*" : name;
         const inner = context
           ? {
