@@ -1,14 +1,10 @@
 name: CI
 
-# Hosted minutes are billed per platform: a macOS minute costs about ten Linux
-# minutes and a Windows minute about two. Pull requests and main therefore run
-# the Linux lanes only. The Windows and macOS lanes run when someone asks for
-# them on a branch:
-#
-#   gh workflow run ci.yml --ref <branch> -f platforms=windows|macos|all
-#
-# Their checks land on the branch's head commit, so they show on its pull
-# request next to the Linux ones.
+# The Linux lanes every pull request and every push to main runs, all of
+# them every time: Vitest and Rust tests read files across the language
+# boundary, so no path rule can safely skip a lane. Windows, macOS, the native
+# budget lane and the desktop packages run after merge (main.yml); a failure
+# there opens an issue.
 
 on:
   schedule:
@@ -22,28 +18,16 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      platforms:
-        description: Platform lanes to run in addition to Linux
-        type: choice
-        default: all
-        options:
-          - linux
-          - windows
-          - macos
-          - all
 
 permissions:
   contents: read
 
-# One run per source branch: a new push to a pull request, or a requested
-# platform run, supersedes the run already in flight for the same head. Each
-# push to main gets a group of its own run, so no later push (even of the same
-# commit) or requested run cancels or replaces it: every main run finishes and
-# saves the Rust caches that pull requests restore. The key names the repository the branch lives
-# in, so a fork's branch never shares a group with a branch of the same name
-# here.
+# One run per source branch: a new push to a pull request supersedes the run
+# already in flight for the same head. Each push to main gets a group of its
+# own run, so no later push (even of the same commit) cancels or replaces it:
+# every main run finishes and saves the Rust caches that pull requests
+# restore. The key names the repository the branch lives in, so a fork's
+# branch never shares a group with a branch of the same name here.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled' || github.event_name == 'push' && format('push-{0}', github.run_id) || 'branch' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
@@ -66,105 +50,15 @@ jobs:
         run: cargo deny check advisories bans sources
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm audit --audit-level=critical
-      # The plan skips schedules and draft PRs, so Security is the only job
-      # that checks source policy on those triggers.
+      # Schedules and draft PRs run only this job, so it checks source
+      # policy on those triggers.
       - name: Check source policy and regression tests
         run: node --test scripts/check-policy.node-test.mjs && node scripts/check-policy.mjs
 
-  plan:
-    name: Plan lanes
-    # Only the security job runs on schedules and draft pull requests.
-    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      rust: ${{ steps.plan.outputs.rust }}
-      rust-os: ${{ steps.plan.outputs.rust-os }}
-      rust-matrix: ${{ steps.plan.outputs.rust-matrix }}
-      windows: ${{ steps.plan.outputs.windows }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Choose the lanes this change needs
-        id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BEFORE: ${{ github.event.before }}
-          FORCED: ${{ github.event.forced }}
-          AFTER: ${{ github.sha }}
-          PLATFORMS: ${{ inputs.platforms }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          rust=true
-          # Both sides of a rename count, so moving a file out of a Rust path
-          # still runs Rust.
-          names='.filename, (.previous_filename // empty)'
-          case "$EVENT" in
-            pull_request)
-              # The files API lists at most 3000 files.
-              gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" \
-                --jq ".[] | $names" > changed-files
-              limit=3000
-              ;;
-            push)
-              # A new branch or a force push has no reliable base to compare.
-              if [ -n "${BEFORE//0/}" ] && [ "$FORCED" != "true" ]; then
-                # The compare API lists at most 300 files.
-                gh api "repos/$REPOSITORY/compare/$BEFORE...$AFTER" \
-                  --jq ".files[] | $names" > changed-files
-                limit=300
-              fi
-              ;;
-          esac
-          # Past the API's file limit the list is incomplete, so Rust runs.
-          # scripts/change-scope.mjs names the paths the Rust crate depends
-          # on; the local `gate changed` mode reads the same list.
-          if [ -f changed-files ] && [ "$(wc -l < changed-files)" -lt "$limit" ] \
-            && [ "$(node --input-type=module -e '
-              import { readFileSync } from "node:fs";
-              import { changeScope } from "./scripts/change-scope.mjs";
-              const files = readFileSync("changed-files", "utf8").split("\n");
-              console.log(changeScope(files.filter(Boolean)).rust);
-            ')" = "false" ]; then
-            rust=false
-          fi
-
-          windows=false
-          macos=false
-          case "${PLATFORMS:-linux}" in
-            windows) windows=true ;;
-            macos) macos=true ;;
-            all) windows=true; macos=true ;;
-          esac
-
-          rust_os='["ubuntu-latest"'
-          if [ "$windows" = "true" ]; then rust_os+=',"windows-latest"'; fi
-          if [ "$macos" = "true" ]; then rust_os+=',"macos-latest"'; fi
-          rust_os+=']'
-
-          {
-            echo "rust=$rust"
-            echo "rust-os=$rust_os"
-            echo "rust-matrix=$(node --input-type=module -e '
-              import { runnerFeatures } from "./scripts/cargo-features.mjs";
-              console.log(JSON.stringify(JSON.parse(process.argv[1]).map(runnerFeatures)));
-            ' "$rust_os")"
-            echo "windows=$windows"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "### Lanes"
-            echo "- Rust: $rust on $rust_os"
-            echo "- Windows budget lane: $windows"
-          } >> "$GITHUB_STEP_SUMMARY"
-
   frontend:
     name: Frontend and policy
-    needs: plan
+    # Only the security job runs on schedules and draft pull requests.
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     # Vitest runs in its own sharded job below; this job runs the rest of
     # `npm run check` in the same order.
@@ -188,7 +82,7 @@ jobs:
 
   vitest:
     name: Vitest (${{ matrix.shard }}/3)
-    needs: plan
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     # One unsharded run takes about 5.5 minutes on ubuntu-latest; Vitest
     # splits the files across the three shards, so every file still runs.
@@ -206,155 +100,14 @@ jobs:
       - run: npm ci
       - run: npm run test -- --shard=${{ matrix.shard }}/3
 
-  # The Node budget tests that need a native Windows host
-  # (scripts/budget-lanes.mjs --lane windows). Runs only when requested.
-  windows-budget:
-    name: Windows budget lane (browser)
-    needs: plan
-    if: needs.plan.outputs.windows == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Provision the bundled Chromium the app smoke CLI tests drive
-        run: npx playwright install chromium
-      # The Windows Cargo Job tests give each cargo command 10 s. The image
-      # keeps rustup on C:, which Defender saturates for about 30 s when it
-      # loads new security intelligence partway through the job; a rustup
-      # proxy that pages in from C: then can stall past that deadline. Install
-      # rustup into the runner temp directory, which shares the workspace's
-      # disk (D: on hosted images), so rustup, its proxies and the toolchain
-      # are not read from C:.
-      - name: Install rustup on the runner's local disk
-        run: |
-          $cargoHome = Join-Path $env:RUNNER_TEMP "cargo"
-          $rustupHome = Join-Path $env:RUNNER_TEMP "rustup"
-          $installer = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
-          Copy-Item (Get-Command rustup -CommandType Application | Select-Object -First 1).Source $installer
-          $env:CARGO_HOME = $cargoHome
-          $env:RUSTUP_HOME = $rustupHome
-          & $installer -y --no-modify-path --default-toolchain none
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item $installer
-          "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          "RUSTUP_HOME=$rustupHome" >> $env:GITHUB_ENV
-          Join-Path $cargoHome "bin" >> $env:GITHUB_PATH
-      # Install the rust-toolchain.toml toolchain first so no command waits on
-      # a download.
-      - name: Install the pinned Rust toolchain
-        run: rustup toolchain install
-      # Keep what each PowerShell start reads and writes off C:, for the same
-      # Defender burst as the rustup step above: TEMP and TMP (where csc and
-      # Add-Type compile) and, through PSModuleAnalysisCachePath, the module
-      # analysis cache. Windows PowerShell's startup profile data has no
-      # override and stays on C:.
-      - name: Keep PowerShell per-start files on the runner's local disk
-        run: |
-          $psCache = Join-Path $env:RUNNER_TEMP "powershell"
-          New-Item -ItemType Directory -Force $psCache | Out-Null
-          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
-          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
-          "PSModuleAnalysisCachePath=$(Join-Path $psCache 'ModuleAnalysisCache')" >> $env:GITHUB_ENV
-      - name: Run the Windows budget lane
-        run: npm run test:budgets:windows
-
-  rust-lint:
-    name: Rust lint (${{ matrix.os }})
-    needs: plan
-    if: needs.plan.outputs.rust == 'true'
-    runs-on: ${{ matrix.os }}
-    env:
-      # CI never attaches a debugger, and debug info is most of what the test
-      # binaries cost to compile, link and cache. Locally the dev profile keeps
-      # line tables for backtraces.
-      CARGO_PROFILE_DEV_DEBUG: 0
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-setup
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
-      # Library targets only: no dev-dependency enables a test-support
-      # feature, so the production configuration is linted as well.
-      - run: cargo clippy --workspace --lib --features "${{ matrix.lint-features }}" -- -D warnings
-      - run: cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings
-
+  # Lint, tests, and the browser-bridge and release builds, as three jobs.
+  # After merge calls the same workflow for Windows and macOS.
   rust:
-    name: Rust (${{ matrix.os }})
-    needs: plan
-    if: needs.plan.outputs.rust == 'true'
-    runs-on: ${{ matrix.os }}
-    env:
-      # CI never attaches a debugger, and debug info is most of what the test
-      # binaries cost to compile, link and cache. Locally the dev profile keeps
-      # line tables for backtraces.
-      CARGO_PROFILE_DEV_DEBUG: 0
-    # The Rust work runs as three jobs on separate runners: lint, tests, and
-    # the browser-bridge and release builds. Each keeps its own cache, saved
-    # from main. A cold-cache run of this job builds and runs the parallel
-    # test phase in about 20 minutes on ubuntu-latest. The macOS runner is the
-    # slowest lane: its parallel phase alone takes 30 to 43 minutes, and its
-    # serial phases about 6 more.
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-setup
-      # The parallel phase includes the shared-contract suites
-      # (workspace_notify, editor_watch) on every platform it runs on.
-      - name: Test Rust parallel phase
-        run: 'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
-      # src-tauri/permissions is generated (gitignored): build.rs writes
-      # main-commands.toml and tauri-build writes autogenerated/ there, and
-      # tauri-build also watches the folder. In a fresh checkout the build
-      # creates them, which leaves the folder newer than the build script's
-      # recorded run, so the next cargo command reruns the script and
-      # recompiles the whole crate (about two minutes). The serial phases
-      # read the same generated files, so dating them back lets those phases
-      # reuse the build. Contents are untouched.
-      - name: Date the generated permission files before the build
-        run: >-
-          node -e "const fs = require('node:fs'), path = require('node:path');
-          const root = path.join('src-tauri', 'permissions');
-          const entries = fs.readdirSync(root, { recursive: true }).map((name) => path.join(root, name));
-          for (const entry of [...entries, root]) fs.utimesSync(entry, new Date(0), new Date(0));"
-      - name: Test repository mutation commands serially
-        run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
-      - name: Test app preview serially
-        run: 'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
-
-  rust-bridge:
-    name: Rust bridge and release (${{ matrix.os }})
-    needs: plan
-    if: needs.plan.outputs.rust == 'true'
-    runs-on: ${{ matrix.os }}
-    env:
-      # CI never attaches a debugger, and debug info is most of what the test
-      # binaries cost to compile, link and cache. Locally the dev profile keeps
-      # line tables for backtraces.
-      CARGO_PROFILE_DEV_DEBUG: 0
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-setup
-      - run: "cargo test -p sage --features browser-bridge --lib dev_bridge::"
-      - run: cargo check -p sage --release --lib
+    name: Rust
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    uses: ./.github/workflows/rust.yml
+    with:
+      runners: '["ubuntu-latest"]'
 
   merge-gate:
     name: Merge gate
@@ -363,61 +116,32 @@ jobs:
       (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     needs:
       - security
-      - plan
       - frontend
       - vitest
-      - windows-budget
-      - rust-lint
       - rust
-      - rust-bridge
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every planned lane
+      - name: Require every lane
         env:
           SECURITY: ${{ needs.security.result }}
-          PLAN: ${{ needs.plan.result }}
           FRONTEND: ${{ needs.frontend.result }}
           VITEST: ${{ needs.vitest.result }}
-          WINDOWS_BUDGET: ${{ needs.windows-budget.result }}
-          WINDOWS_PLANNED: ${{ needs.plan.outputs.windows }}
-          RUST_LINT: ${{ needs.rust-lint.result }}
           RUST: ${{ needs.rust.result }}
-          RUST_BRIDGE: ${{ needs.rust-bridge.result }}
-          RUST_PLANNED: ${{ needs.plan.outputs.rust }}
-          RUST_OS: ${{ needs.plan.outputs.rust-os }}
         run: |
           set -euo pipefail
-          # A planned lane must succeed; a lane the plan left out must not have run.
           require() {
-            local lane="$1" planned="$2" result="$3"
-            if [ "$planned" = "true" ]; then
-              test "$result" = "success" || { echo "::error::$lane: $result"; exit 1; }
-            else
-              test "$result" = "skipped" || { echo "::error::$lane ran unplanned: $result"; exit 1; }
-            fi
+            test "$2" = "success" || { echo "::error::$1: $2"; exit 1; }
           }
-          require "Security" "true" "$SECURITY"
-          test "$PLAN" = "success"
-          require "Frontend and policy" "true" "$FRONTEND"
-          require "Vitest" "true" "$VITEST"
-          require "Windows budget lane" "$WINDOWS_PLANNED" "$WINDOWS_BUDGET"
-          require "Rust lint" "$RUST_PLANNED" "$RUST_LINT"
-          require "Rust" "$RUST_PLANNED" "$RUST"
-          require "Rust bridge and release" "$RUST_PLANNED" "$RUST_BRIDGE"
+          require "Security" "$SECURITY"
+          require "Frontend and policy" "$FRONTEND"
+          require "Vitest" "$VITEST"
+          require "Rust" "$RUST"
           {
             echo "### Verified in this run"
             echo "- Security: $SECURITY"
             echo "- Frontend and policy: $FRONTEND"
             echo "- Vitest: $VITEST"
-            echo "- Rust lint on $RUST_OS: $RUST_LINT"
-            echo "- Rust on $RUST_OS: $RUST"
-            echo "- Rust bridge and release on $RUST_OS: $RUST_BRIDGE"
-            echo "- Windows budget lane: $WINDOWS_BUDGET"
-            for platform in windows macos; do
-              case "$RUST_OS" in
-                *"$platform-latest"*) ;;
-                *) echo "- Not run on $platform: request it with workflow_dispatch or record a local run." ;;
-              esac
-            done
+            echo "- Rust on Linux (lint, tests, bridge and release): $RUST"
+            echo "- Windows, macOS, the Windows budget lane and the packages run after merge (main.yml)."
           } >> "$GITHUB_STEP_SUMMARY"

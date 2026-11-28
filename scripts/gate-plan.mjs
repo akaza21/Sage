@@ -12,11 +12,9 @@ const cargoTest = ["cargo", "test", ...cargoConfiguration];
 const vitestExclude = ["--exclude", "tests/ui/**/*.spec.ts"];
 
 export const steps = {
-  policy: ["node", "scripts/generate-acp-fixture-cases.mjs", "--check"],
-  "policy-modules": ["node", "scripts/check-policy.mjs"],
+  policy: ["npm", "run", "check:policy"],
   prettier: ["npx", "prettier", "--check", "."],
   eslint: ["npx", "eslint", "."],
-  typescript: ["npx", "tsc", "--noEmit"],
   rustfmt: ["cargo", "fmt", "--all", "--", "--check"],
   vitest: {
     command: ["npx", "vitest", "run", ...vitestExclude],
@@ -90,64 +88,53 @@ export const steps = {
     "--lib",
     "dev_bridge::",
   ],
+  "rust-release": ["cargo", "check", "-p", "sage", "--release", "--lib"],
+  // The portable lane, plus this host's native lane: on Windows that is the
+  // lane After merge runs on its Windows runner.
   budgets: ["node", "scripts/budget-lanes.mjs", "--check"],
   build: ["npm", "run", "build"],
   "web-bundle": ["node", "scripts/verify-web-bundle.mjs"],
   ui: ["npm", "run", "test:ui"],
 };
 
+// The local tiers follow CI's split (README, "How changes ship"):
+//   fast     pull-request CI less the Rust test phases
+//   changed  everything pull-request CI runs (every pull request runs all
+//            of it: no path rule can safely skip a lane)
+//   full     changed, plus what After merge runs on this host (the Rust
+//            lanes on this OS, the native budget lane) and the visual
+//            suite, which no CI job runs
+// The build step runs tsc, so no tier needs a separate typescript step.
+const pullRequestLanes = [
+  "policy",
+  "prettier",
+  "eslint",
+  "vitest",
+  "budgets",
+  "build",
+  "web-bundle",
+];
+const rustLintSteps = [
+  "rustfmt",
+  "clippy",
+  "clippy-lib",
+  "clippy-browser-bridge",
+];
+const rustTestSteps = [
+  "rust-fixture",
+  "rust-parallel",
+  "rust-git-proc",
+  "rust-preview",
+  "rust-browser-bridge",
+  "rust-release",
+];
+
+const pullRequestCi = [...pullRequestLanes, ...rustLintSteps, ...rustTestSteps];
+
 export const plans = {
-  static: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-  ],
-  // fast is the standing landing gate: it deliberately excludes the Rust test
-  // phases, budgets, build, web-bundle, and visual suite; full is the pre-merge
-  // coverage gate. `changed` (see changedPlan) checks only what a diff needs.
-  fast: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-    "vitest",
-    "clippy",
-    "clippy-lib",
-    "clippy-browser-bridge",
-  ],
-  rust: [
-    "rust-fixture",
-    "rust-parallel",
-    "rust-git-proc",
-    "rust-preview",
-    "rust-browser-bridge",
-  ],
-  full: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-    "vitest",
-    "clippy",
-    "clippy-lib",
-    "clippy-browser-bridge",
-    "rust-fixture",
-    "rust-parallel",
-    "rust-git-proc",
-    "rust-preview",
-    "rust-browser-bridge",
-    "budgets",
-    "build",
-    "web-bundle",
-    "ui",
-  ],
+  fast: [...pullRequestLanes, ...rustLintSteps],
+  changed: pullRequestCi,
+  full: [...pullRequestCi, "ui"],
 };
 
 export function stepConfiguration(name) {
@@ -155,68 +142,4 @@ export function stepConfiguration(name) {
   return Array.isArray(configured)
     ? { command: configured, env: process.env }
     : configured;
-}
-
-const staticSteps = ["policy", "policy-modules"];
-const rustSteps = [
-  "rustfmt",
-  "clippy",
-  "clippy-lib",
-  "clippy-browser-bridge",
-  ...plans.rust,
-];
-
-// Steps that take file names start each tool's Node entry point directly, so
-// no shell reinterprets a name and Windows' 32,767-character command line
-// limit is the only bound; a longer list checks everything instead.
-const fileArgumentBudget = 24_000;
-const toolEntry = {
-  prettier: "node_modules/prettier/bin/prettier.cjs",
-  eslint: "node_modules/eslint/bin/eslint.js",
-  vitest: "node_modules/vitest/vitest.mjs",
-};
-
-// The steps a change needs while it is being written: formatting and lint of
-// the changed files, the type check, the Vitest files that import them, the
-// Node budget tests when something they read changed, and the Rust lane when
-// CI would run it. A step covers the whole tree when the change can affect
-// files it does not name. `full` stays the gate before merge.
-export function changedPlan(scope) {
-  const entries = staticSteps.map(namedStep);
-  const scoped = (name, files, args) => {
-    if (files === "all" || fitsCommandLine(files) === false) {
-      entries.push(namedStep(name));
-    } else if (files.length > 0) {
-      entries.push({
-        name,
-        command: ["node", toolEntry[name], ...args, ...files],
-        env: stepConfiguration(name).env,
-      });
-    }
-  };
-  scoped("prettier", scope.format, ["--check", "--ignore-unknown"]);
-  scoped("eslint", scope.lint, ["--no-warn-ignored"]);
-  if (scope.typescript || scope.vitest === "all") {
-    entries.push(namedStep("typescript"));
-  }
-  scoped("vitest", scope.vitest, [
-    "related",
-    "--run",
-    "--passWithNoTests",
-    ...vitestExclude,
-  ]);
-  if (scope.nodeTests) entries.push(namedStep("budgets"));
-  if (scope.rust) entries.push(...rustSteps.map(namedStep));
-  return entries;
-}
-
-function fitsCommandLine(files) {
-  return (
-    files.reduce((length, file) => length + file.length + 3, 0) <=
-    fileArgumentBudget
-  );
-}
-
-function namedStep(name) {
-  return { name, ...stepConfiguration(name) };
 }

@@ -1,17 +1,17 @@
 name: Desktop packages
 
+# Builds the Windows installer and the universal macOS image. After merge
+# calls this every night and on request; run After merge on a branch to
+# package that branch.
+#
+# No Cargo cache: a release cache per platform would push the Linux caches
+# that pull requests restore out of the repository's cache quota.
+
 on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [.github/workflows/desktop-packages.yml]
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: desktop-packages-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   macos:
@@ -31,10 +31,6 @@ jobs:
         with:
           toolchain: stable-2026-07-16
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          cache-on-failure: true
       - run: npm ci
       - name: Build the universal installer
         run: npm run tauri build -- --target universal-apple-darwin --bundles dmg --ci -- --locked
@@ -111,9 +107,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable-2026-07-16
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
       - run: npm ci
       - name: Build the Windows installer
         run: npm run tauri build -- --bundles nsis --ci -- --locked
