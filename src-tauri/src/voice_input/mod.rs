@@ -58,8 +58,8 @@ const STOPPED_IDS: usize = 8;
 
 struct VoiceSlot<T> {
     active: Option<(String, T)>,
-    /// Recently stopped ids that held no session: starts still on their way or
-    /// waiting on permission prompts. Bounded; ids are validated first.
+    /// Recently stopped ids that held no session: starts whose worker has not
+    /// run yet. Starts never wait, so a few suffice; ids are validated first.
     stopped: VecDeque<String>,
 }
 
@@ -108,18 +108,6 @@ impl<T> VoiceSlot<T> {
     fn is_stopped(&self, id: &str) -> bool {
         self.stopped.iter().any(|stopped| stopped == id)
     }
-}
-
-/// Runs one permission flow at a time, so unanswered prompts never pile up
-/// blocked threads; a second start fails fast instead.
-fn coalesced(
-    lock: &std::sync::Mutex<()>,
-    authorize: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
-    let _held = lock
-        .try_lock()
-        .map_err(|_| "Answer the permission prompt that is already open.".to_string())?;
-    authorize()
 }
 
 /// Orders an engine's callbacks against shutdown: deliveries run one at a time,
@@ -259,17 +247,13 @@ fn stop_inner(_app: &AppHandle, _id: &str, _cancel: bool) -> Result<(), String> 
 
 #[cfg(any(windows, target_os = "macos"))]
 fn start_inner(app: &AppHandle, id: String) -> Result<(), String> {
-    static AUTHORIZING: Mutex<()> = Mutex::new(());
     let state = app.state::<VoiceInputState>();
-    let wanted = || state.0.lock().is_ok_and(|slot| !slot.is_stopped(&id));
-    // Permission prompts can wait on the user, so they run outside the slot
-    // lock and stop asking once this id is stopped.
-    let authorized = coalesced(&AUTHORIZING, || engine::authorize(&wanted));
     let mut guard = state.0.lock().map_err(|_| "Voice input is unavailable.")?;
     if guard.is_stopped(&id) {
         return Ok(());
     }
-    authorized?;
+    // Never waits on a permission prompt, so holding the lock stays short.
+    engine::authorize()?;
     if let Some((previous_id, previous)) = guard.active.take() {
         let _ = engine::close(previous, true);
         ended(app, &previous_id);

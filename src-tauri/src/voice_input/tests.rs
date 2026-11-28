@@ -1,6 +1,6 @@
 use super::{
     Gate, MAX_MESSAGE_CHARS, MAX_TRANSCRIPT_CHARS, STOPPED_IDS, Signal, VoiceEvent, VoiceSlot,
-    coalesced, valid_id,
+    valid_id,
 };
 use serde_json::{Value, json};
 use std::sync::{
@@ -120,38 +120,6 @@ fn stopping_a_live_session_releases_it_without_refusing_its_id_later() {
     drop(slot.stop("live"));
     assert_eq!(closed.load(Ordering::SeqCst), 1);
     assert!(slot.stopped.is_empty());
-}
-
-#[test]
-fn only_one_permission_flow_waits_at_a_time() {
-    use std::sync::{Mutex, mpsc};
-    let lock = Arc::new(Mutex::new(()));
-    let (entered_tx, entered) = mpsc::channel();
-    let (release, wait) = mpsc::channel::<()>();
-    let first = {
-        let lock = lock.clone();
-        std::thread::spawn(move || {
-            coalesced(&lock, || {
-                entered_tx.send(()).unwrap();
-                wait.recv().unwrap();
-                Ok(())
-            })
-        })
-    };
-    entered.recv().unwrap();
-    let mut ran = false;
-    let second = coalesced(&lock, || {
-        ran = true;
-        Ok(())
-    });
-    assert_eq!(
-        second.unwrap_err(),
-        "Answer the permission prompt that is already open."
-    );
-    assert!(!ran);
-    release.send(()).unwrap();
-    assert!(first.join().unwrap().is_ok());
-    assert!(coalesced(&lock, || Ok(())).is_ok());
 }
 
 #[test]

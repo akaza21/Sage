@@ -3,11 +3,7 @@
 //! required whenever the recognizer supports it, so audio stays local and the
 //! server's one-minute task limit does not apply.
 
-use std::{
-    ptr::NonNull,
-    sync::{Arc, mpsc},
-    time::Duration,
-};
+use std::{ptr::NonNull, sync::Arc};
 
 use block2::RcBlock;
 use objc2::{AllocAnyThread, msg_send, rc::Retained, runtime::AnyClass, runtime::Bool, sel};
@@ -21,7 +17,8 @@ use objc2_speech::{
 use super::{Gate, MAX_TRANSCRIPT_CHARS, Signal, Sink};
 
 pub(super) const STOP_ERROR: &str = "macOS dictation could not stop.";
-const PROMPT_WAIT: Duration = Duration::from_secs(120);
+const ASK: &str =
+    "Allow Sage to use speech recognition and the microphone, then start dictation again.";
 const TAP_FRAMES: u32 = 1024;
 const MIC_DENIED: &str = "Microphone access is off for Sage. Turn it on in System Settings > Privacy & Security > Microphone.";
 const SPEECH_DENIED: &str = "Speech recognition is off for Sage. Turn it on in System Settings > Privacy & Security > Speech Recognition.";
@@ -75,13 +72,35 @@ impl Drop for Active {
     }
 }
 
-pub(super) fn authorize(wanted: &dyn Fn() -> bool) -> Result<(), String> {
+/// Never waits on a prompt: an undecided permission shows the system prompt
+/// (speech, then microphone) and this start ends with a message, so no thread
+/// or lock is held while the user decides.
+pub(super) fn authorize() -> Result<(), String> {
     require_usage_strings()?;
-    speech_authorized()?;
-    if !wanted() {
-        return Err("Dictation was stopped.".into());
+    // SAFETY: class methods with no preconditions beyond the usage strings.
+    match unsafe { SFSpeechRecognizer::authorizationStatus() } {
+        SFSpeechRecognizerAuthorizationStatus::Authorized => {}
+        SFSpeechRecognizerAuthorizationStatus::NotDetermined => {
+            let then_microphone = RcBlock::new(|status: SFSpeechRecognizerAuthorizationStatus| {
+                if status == SFSpeechRecognizerAuthorizationStatus::Authorized
+                    && microphone_status() == NOT_DETERMINED
+                {
+                    request_microphone();
+                }
+            });
+            unsafe { SFSpeechRecognizer::requestAuthorization(&then_microphone) };
+            return Err(ASK.into());
+        }
+        _ => return Err(SPEECH_DENIED.into()),
     }
-    microphone_authorized()
+    match microphone_status() {
+        AUTHORIZED => Ok(()),
+        NOT_DETERMINED => {
+            request_microphone();
+            Err(ASK.into())
+        }
+        _ => Err(MIC_DENIED.into()),
+    }
 }
 
 pub(super) fn open(sink: Sink) -> Result<Active, String> {
@@ -207,52 +226,26 @@ fn require_usage_strings() -> Result<(), String> {
     Ok(())
 }
 
-fn speech_authorized() -> Result<(), String> {
-    // SAFETY: class methods with no preconditions beyond the usage string checked above.
-    let mut status = unsafe { SFSpeechRecognizer::authorizationStatus() };
-    if status == SFSpeechRecognizerAuthorizationStatus::NotDetermined {
-        let (sender, answer) = mpsc::sync_channel(1);
-        let handler = RcBlock::new(move |status: SFSpeechRecognizerAuthorizationStatus| {
-            let _ = sender.try_send(status);
-        });
-        unsafe { SFSpeechRecognizer::requestAuthorization(&handler) };
-        status = answer
-            .recv_timeout(PROMPT_WAIT)
-            .map_err(|_| SPEECH_DENIED)?;
-    }
-    if status == SFSpeechRecognizerAuthorizationStatus::Authorized {
-        Ok(())
-    } else {
-        Err(SPEECH_DENIED.into())
-    }
-}
+const NOT_DETERMINED: isize = 0;
+const AUTHORIZED: isize = 3;
 
 /// `AVAuthorizationStatus`: 0 not determined, 1 restricted, 2 denied, 3 authorized.
-fn microphone_authorized() -> Result<(), String> {
-    const NOT_DETERMINED: isize = 0;
-    const AUTHORIZED: isize = 3;
-    let device = AnyClass::get(c"AVCaptureDevice").ok_or(MIC_DENIED)?;
-    // SAFETY: documented AVCaptureDevice class methods (macOS 10.14+) called
-    // with AVFoundation's own media type constant.
-    let status: isize =
-        unsafe { msg_send![device, authorizationStatusForMediaType: AVMediaTypeAudio] };
-    let granted = match status {
-        AUTHORIZED => true,
-        NOT_DETERMINED => {
-            let (sender, answer) = mpsc::sync_channel(1);
-            let handler = RcBlock::new(move |granted: Bool| {
-                let _ = sender.try_send(granted.as_bool());
-            });
-            let _: () = unsafe {
-                msg_send![device, requestAccessForMediaType: AVMediaTypeAudio, completionHandler: &*handler]
-            };
-            answer.recv_timeout(PROMPT_WAIT).unwrap_or(false)
-        }
-        _ => false,
+fn microphone_status() -> isize {
+    let Some(device) = AnyClass::get(c"AVCaptureDevice") else {
+        return -1;
     };
-    if granted {
-        Ok(())
-    } else {
-        Err(MIC_DENIED.into())
+    // SAFETY: documented AVCaptureDevice class method (macOS 10.14+) called
+    // with AVFoundation's own media type constant.
+    unsafe { msg_send![device, authorizationStatusForMediaType: AVMediaTypeAudio] }
+}
+
+/// Shows the system microphone prompt; the answer is read on the next start.
+fn request_microphone() {
+    if let Some(device) = AnyClass::get(c"AVCaptureDevice") {
+        let ignore = RcBlock::new(|_: Bool| {});
+        // SAFETY: documented class method; the framework copies the block.
+        let _: () = unsafe {
+            msg_send![device, requestAccessForMediaType: AVMediaTypeAudio, completionHandler: &*ignore]
+        };
     }
 }

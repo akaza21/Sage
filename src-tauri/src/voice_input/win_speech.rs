@@ -65,7 +65,7 @@ impl Drop for Active {
 }
 
 /// Windows asks for microphone access itself when the session starts.
-pub(super) fn authorize(_wanted: &dyn Fn() -> bool) -> Result<(), String> {
+pub(super) fn authorize() -> Result<(), String> {
     Ok(())
 }
 
