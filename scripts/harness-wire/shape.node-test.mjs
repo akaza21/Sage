@@ -1257,3 +1257,22 @@ test("an MCP server named in a server notification gets its pseudonym, Sage's ow
   assert.equal(status.frame.params.name, "server-1");
   assert.equal(own.frame.params.name, "sage-browser");
 });
+
+test("a raw capture's placeholder-shaped name is a real name; a scrubbed corpus's is trusted", () => {
+  const frame = {
+    mcp_servers: [{ name: "server-835791234", status: "connected" }],
+    tools: ["mcp__server-835791234__deploy"],
+    agents: ["agent-77"],
+  };
+  const [raw] = makeSanitizer({ roots: [] }).records([
+    { direction: "in", frame },
+  ]);
+  assert.deepEqual(raw.frame.mcp_servers[0].name, "server-1");
+  assert.deepEqual(raw.frame.tools, ["mcp__server-1__tool-1"]);
+  assert.deepEqual(raw.frame.agents, ["agent-1"]);
+  assert.doesNotMatch(JSON.stringify(raw), /835791234|agent-77/);
+  const [again] = makeSanitizer({ roots: [], trusted: true }).records([
+    structuredClone(raw),
+  ]);
+  assert.deepEqual(again, raw);
+});

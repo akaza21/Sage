@@ -132,7 +132,18 @@ export function readTranscript(file) {
       .filter((line) => line.trim());
   return lines(path.basename(file)).map((line) => {
     const record = JSON.parse(line);
-    if (!record.ref) return record;
+    if (!("ref" in record)) return record;
+    // A reference names the one stored file beside it by a 16-hex digest
+    // prefix: never another path, and never an empty prefix that any line
+    // would match.
+    if (
+      record.ref !== "commands.jsonl" ||
+      typeof record.sha256 !== "string" ||
+      !/^[0-9a-f]{16}$/.test(record.sha256)
+    )
+      throw new Error(
+        `${file}: a reference must be commands.jsonl by a 16-hex digest`,
+      );
     const stored = lines(record.ref).find((candidate) =>
       createHash("sha256")
         .update(candidate)

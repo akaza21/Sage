@@ -507,16 +507,75 @@ test("a nested folder, a stray root file or a new harness folder fails the revie
     assert.deepEqual(unreviewedCorpus(corpus, root), []);
     fs.mkdirSync(path.join(corpus, "x", "nested"));
     fs.writeFileSync(path.join(corpus, "x", "nested", "a.json"), "{}");
-    assert.throws(() => writeReviewed("x", corpus, root), /nested not files/);
+    assert.throws(
+      () => writeReviewed("x", corpus, root),
+      /nested: not regular files, so no value was read/,
+    );
     fs.writeFileSync(path.join(corpus, "notes.txt"), "someone@private\n");
     fs.mkdirSync(path.join(corpus, "y"));
     assert.deepEqual(unreviewedCorpus(corpus, root), [
       "notes.txt: is not a harness folder; the corpus root holds those only",
+      "x/nested: not regular files, so no value was read",
       "x/nested: is not a file; a corpus folder holds files only",
       "x/nested: is not a reviewed file",
       "y: no corpus-values.json",
     ]);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a reference may only name commands.jsonl by a 16-hex digest", async () => {
+  const { readTranscript } = await import("./shape.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sage-ref-"));
+  try {
+    fs.writeFileSync(
+      path.join(dir, "commands.jsonl"),
+      `${JSON.stringify({ frame: { a: 1 } })}\n`,
+    );
+    for (const ref of [
+      { ref: "../../outside.jsonl", sha256: "0123456789abcdef" },
+      { ref: "commands.jsonl", sha256: "" },
+      { ref: "commands.jsonl", sha256: "0123" },
+    ]) {
+      fs.writeFileSync(
+        path.join(dir, "t.jsonl"),
+        `${JSON.stringify({ direction: "in", ...ref })}\n`,
+      );
+      assert.throws(
+        () => readTranscript(path.join(dir, "t.jsonl")),
+        /must be commands\.jsonl by a 16-hex digest/,
+      );
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted --resanitize that had replaced every file says so, not to restore", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-done-"));
+  try {
+    fs.mkdirSync(path.join(out, "pi"));
+    fs.writeFileSync(path.join(out, "pi", "edit.jsonl.123-0a1b2c3d.bak"), "");
+    fs.writeFileSync(path.join(out, ".resanitize-123-0a1b2c3d.committed"), "");
+    const run = spawnSync(
+      process.execPath,
+      [
+        "scripts/harness-wire/capture.mjs",
+        "--out",
+        out,
+        "--harness",
+        "pi",
+        "--resanitize",
+        "--work",
+        out,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /had replaced every file/);
+    assert.doesNotMatch(run.stderr, /put each \.bak back/);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
   }
 });

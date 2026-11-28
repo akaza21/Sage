@@ -136,6 +136,17 @@ export function corpusValues(dir) {
         walk(entry, `${at}.${name}`, name, inner);
       }
   };
+  // Types first: a folder holding anything but regular files (a link, a
+  // folder) is read no further, so nothing outside the corpus is followed.
+  const irregular = fs
+    .readdirSync(dir)
+    .filter((entry) => !fs.lstatSync(path.join(dir, entry)).isFile());
+  if (irregular.length) {
+    found.fixed.push(
+      `${irregular.join(", ")}: not regular files, so no value was read`,
+    );
+    return found;
+  }
   for (const name of fs
     .readdirSync(dir)
     .filter((entry) => entry.endsWith(".jsonl"))

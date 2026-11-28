@@ -312,7 +312,7 @@ function spellings(path, label) {
   return out;
 }
 
-export function makeSanitizer({ roots }) {
+export function makeSanitizer({ roots, trusted = false }) {
   // Longest first, so a scratch repo inside the home folder maps to the repo.
   const replacements = [];
   const system = process.env.SystemRoot
@@ -340,12 +340,25 @@ export function makeSanitizer({ roots }) {
   const signatures = new Map();
   const hexSegments = new Map();
   const processes = new Map();
+  // Values this sanitizer wrote. A placeholder-shaped value counts as
+  // already scrubbed only if this run wrote it, or when re-scrubbing a corpus
+  // that is already scrubbed (`trusted`): in a raw capture, a server named
+  // `server-835791234` is a real name like any other.
+  const generated = new Set();
+  const minted = (value) => {
+    generated.add(value);
+    return value;
+  };
+  const isSynthetic = (value) =>
+    value === "redacted" ||
+    generated.has(value) ||
+    (trusted && PLACEHOLDER.test(value));
   const mcpServer = (server) =>
-    PLACEHOLDER.test(server) || SAGE_SERVERS.has(server)
+    isSynthetic(server) || SAGE_SERVERS.has(server)
       ? server
       : pseudonym(catalogNames, server, "server");
   const mcpTool = (server, tool) =>
-    PLACEHOLDER.test(tool)
+    isSynthetic(tool)
       ? tool
       : pseudonym(catalogNames, `mcp tool ${server} ${tool}`, "tool");
   const mcpCall = (call) => {
@@ -363,7 +376,9 @@ export function makeSanitizer({ roots }) {
     if (!map.has(original))
       map.set(
         original,
-        `${kind}-${[...map.values()].filter((seen) => seen.startsWith(`${kind}-`)).length + 1}`,
+        minted(
+          `${kind}-${[...map.values()].filter((seen) => seen.startsWith(`${kind}-`)).length + 1}`,
+        ),
       );
     return map.get(original);
   };
@@ -448,11 +463,11 @@ export function makeSanitizer({ roots }) {
     // A hash a harness derives for a folder (Claude Code's per-project temp
     // directory) comes from the capture's own paths.
     out = out.replace(HEX_SEGMENT, (match) =>
-      /^0{12}/.test(match)
+      generated.has(match) || (trusted && /^0{12}/.test(match))
         ? match
         : (hexSegments.get(match) ??
           hexSegments
-            .set(match, String(hexSegments.size + 1).padStart(16, "0"))
+            .set(match, minted(String(hexSegments.size + 1).padStart(16, "0")))
             .get(match)),
     );
     out = out.replace(PROVIDER_ID, (match, prefix) => {
@@ -540,7 +555,7 @@ export function makeSanitizer({ roots }) {
           RUN_IDS.has(key) &&
           typeof entry === "string" &&
           entry !== "" &&
-          !/^(?:run|task|agent)-\d+$/.test(entry)
+          !isSynthetic(entry)
         )
           pseudonym(runIds, entry, RUN_IDS.get(key));
         else findRunIds(entry);
@@ -556,7 +571,7 @@ export function makeSanitizer({ roots }) {
       if (CATALOGS.has(key))
         for (const entry of value) {
           const name = typeof entry === "string" ? entry : entry?.name;
-          if (typeof name === "string" && !PLACEHOLDER.test(name))
+          if (typeof name === "string" && !isSynthetic(name))
             pseudonym(catalogNames, name, CATALOGS.get(key));
         }
       value.forEach((entry) => findCatalogs(entry, key));
@@ -575,9 +590,7 @@ export function makeSanitizer({ roots }) {
     const names = [...models.keys()]
       .filter(
         (name) =>
-          name.length >= 4 &&
-          /[\d\s-]/.test(name) &&
-          !/^(?:model-|Model )\d+$/.test(name),
+          name.length >= 4 && /[\d\s-]/.test(name) && !isSynthetic(name),
       )
       .sort((a, b) => b.length - a.length)
       .map(escapeRegExp);
@@ -590,7 +603,7 @@ export function makeSanitizer({ roots }) {
     const words = [...models.keys()]
       .filter((name) =>
         !/[\d\s-]/.test(name) || name.length < 4
-          ? !/^(?:model-|Model )\d+$/.test(name) && name !== "default"
+          ? !isSynthetic(name) && name !== "default"
           : false,
       )
       .sort((a, b) => b.length - a.length)
@@ -607,7 +620,7 @@ export function makeSanitizer({ roots }) {
     const key = kind === "model-" ? found.toLowerCase() : found;
     if (!models.has(key)) {
       modelCount += 1;
-      models.set(key, `${kind}${modelCount}`);
+      models.set(key, minted(`${kind}${modelCount}`));
     }
     return models.get(key);
   }
@@ -633,7 +646,7 @@ export function makeSanitizer({ roots }) {
       const id = modelId(value);
       if (isModel(value, key) && id !== undefined && !models.has(id)) {
         modelCount += 1;
-        models.set(id, `model-${modelCount}`);
+        models.set(id, minted(`model-${modelCount}`));
       }
       if (isModel(value, key)) {
         const n = models.get(id)?.slice(6) ?? String((modelCount += 1));
@@ -647,9 +660,9 @@ export function makeSanitizer({ roots }) {
           if (
             typeof value[field] === "string" &&
             !models.has(value[field]) &&
-            !/^(?:redacted|model-\d+|Model \d+)$/.test(value[field])
+            !isSynthetic(value[field])
           )
-            models.set(value[field], label);
+            models.set(value[field], minted(label));
       }
       for (const [name, entry] of Object.entries(value))
         findModels(entry, name);
@@ -751,7 +764,7 @@ export function makeSanitizer({ roots }) {
     if ((ACCOUNT_RULES.get(account.root) ?? []).some((rule) => rule.test(at)))
       return value;
     if (typeof value === "string")
-      return PLACEHOLDER.test(value) ? value : "redacted";
+      return isSynthetic(value) ? value : "redacted";
     if (typeof value === "number") return 0;
     if (typeof value === "boolean") return false;
     return value;
@@ -771,10 +784,10 @@ export function makeSanitizer({ roots }) {
   // Every key of a usage map keyed by model is a model, whatever its form.
   const accountKey = (name, base) =>
     MODEL_KEYED.has(base.root) && base.path.length === 0
-      ? PLACEHOLDER.test(name)
+      ? isSynthetic(name)
         ? name
         : (models.get(name) ?? modelPlaceholder(name, "model-"))
-      : PLACEHOLDER.test(name) ||
+      : isSynthetic(name) ||
           (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
             !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
         ? name
@@ -792,11 +805,17 @@ export function makeSanitizer({ roots }) {
     ) {
       // A synthetic handle has a form no real one can take (`process-N`, or
       // -N for a number), so its provenance is never inferred from a value.
-      if (PROCESS_HANDLE.test(String(value))) return value;
+      if (
+        generated.has(String(value)) ||
+        (trusted && PROCESS_HANDLE.test(String(value)))
+      )
+        return value;
       if (!processes.has(String(value)))
         processes.set(String(value), processes.size + 1);
       const n = processes.get(String(value));
-      return typeof value === "number" ? -n : `process-${n}`;
+      const handle = typeof value === "number" ? -n : `process-${n}`;
+      minted(String(handle));
+      return handle;
     }
     if (!opaque && typeof value === "number") {
       if (TOKENS.test(key)) return tokenCount(key);
@@ -805,7 +824,7 @@ export function makeSanitizer({ roots }) {
     // A provider's signature over a response fingerprints the conversation;
     // each gets a stable pseudonym, so a delta and its full block still match.
     if (SIGNATURE_KEYS.has(key) && typeof value === "string" && value !== "")
-      return PLACEHOLDER.test(value)
+      return isSynthetic(value)
         ? value
         : pseudonym(signatures, value, "signature");
     if (!opaque && isTime(key)) {
@@ -817,7 +836,7 @@ export function makeSanitizer({ roots }) {
     // Inside a catalog entry the allow-list holds at every depth, under
     // opaque keys too.
     if (typeof value === "string" && catalog) {
-      if (PLACEHOLDER.test(value)) return value;
+      if (isSynthetic(value)) return value;
       if (isCatalogName(catalog.path))
         return pseudonym(catalogNames, value, catalog.kind);
       return CATALOG_KEEP.get(key)?.has(value) ? value : "redacted";
@@ -837,10 +856,10 @@ export function makeSanitizer({ roots }) {
         ((inModel && MODEL_FIELDS.has(key)) || key === "resolvedModel") &&
         value !== "default" &&
         !models.has(value) &&
-        !/^(?:model-|Model )\d+$/.test(value)
+        !isSynthetic(value)
       ) {
         modelCount += 1;
-        models.set(value, `model-${modelCount}`);
+        models.set(value, minted(`model-${modelCount}`));
       }
       if (
         models.has(value) &&
@@ -912,11 +931,11 @@ export function makeSanitizer({ roots }) {
             // one, a plain identifier is a protocol field name.
             const renamed =
               !opaque && CATALOG_KEYED.has(key)
-                ? PLACEHOLDER.test(scrubbed)
+                ? isSynthetic(scrubbed)
                   ? scrubbed
                   : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
                 : (base || catalog) && opaque
-                  ? PLACEHOLDER.test(scrubbed)
+                  ? isSynthetic(scrubbed)
                     ? scrubbed
                     : pseudonym(keyNames, scrubbed, "key")
                   : base

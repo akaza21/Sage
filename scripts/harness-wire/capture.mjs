@@ -174,9 +174,14 @@ function resanitize(out, harnesses, work) {
           .map((name) => path.join(dir, name))
       : [];
   });
-  if (left.length)
+  const done = fs
+    .readdirSync(out)
+    .filter((name) => /^\.resanitize-\d+-[0-9a-f]{8}\.committed$/.test(name));
+  if (left.length || done.length)
     throw new Error(
-      `an interrupted --resanitize left ${left.join(", ")}: put each .bak back in place of its file and delete the .tmp files, then rerun`,
+      done.length
+        ? `an interrupted --resanitize had replaced every file (${done.join(", ")}): delete its leftover .bak and .tmp files and the marker, then rerun; ${left.join(", ")}`
+        : `an interrupted --resanitize left ${left.join(", ")} before replacing every file: put each .bak back in place of its file and delete the .tmp files, then rerun`,
     );
   resanitizeLocked(
     out,
@@ -201,7 +206,9 @@ function resanitizeLocked(out, harnesses, work, run) {
             ? 1
             : a.localeCompare(b),
       );
+    // The committed corpus is already scrubbed: its placeholders are trusted.
     const sanitizer = makeSanitizer({
+      trusted: true,
       roots: [
         ...files.flatMap((file) => {
           const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
@@ -318,7 +325,12 @@ function resanitizeLocked(out, harnesses, work, run) {
         fs.rmSync(path.join(dir, `${file}.${run}.tmp`), { force: true });
     throw error;
   }
+  // Every file is in place: the marker says so before any backup goes, so
+  // a run stopped while removing them is known to have committed.
+  const committed = path.join(out, `.resanitize-${run}.committed`);
+  fs.writeFileSync(committed, "");
   for (const target of swapped) fs.rmSync(`${target}.${run}.bak`);
+  fs.rmSync(committed);
 }
 
 async function main() {
