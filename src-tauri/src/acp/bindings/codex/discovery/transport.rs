@@ -294,6 +294,9 @@ impl CodexProcessTransport {
             self.control
                 .terminate_zero_before(TreeExit::ProtocolFailure, cleanup_end)
         } else {
+            // The run's answer is in; the reader stops taking output, so
+            // Codex can never block on a full stdout pipe during its grace.
+            self.reader.close_events();
             graceful_exit::end_tree_before(&self.control, TreeExit::ParentShutdown, cleanup_end)
         };
         let (_, zero) = ended.map_err(|_| CodexDiscoveryRunError::Cleanup)?;

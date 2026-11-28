@@ -50,7 +50,10 @@ pub(crate) fn end_tree_before(
     reason: super::TreeExit,
     deadline: Instant,
 ) -> Result<(super::TreeExit, super::ZeroProcessToken), sage_process::error::LaunchError> {
-    control.request_graceful_termination(reason, grace_before(deadline))?;
+    // An absolute end no later than `deadline`, so the wait below always
+    // claims the grace and kills the tree, however late this thread runs.
+    let kill_at = (Instant::now() + grace_before(deadline)).min(deadline);
+    control.request_graceful_termination_until(reason, kill_at)?;
     control.wait_zero_before(deadline)
 }
 

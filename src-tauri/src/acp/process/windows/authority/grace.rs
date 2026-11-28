@@ -17,10 +17,20 @@ impl TreeControl {
         reason: TreeExit,
         grace: Duration,
     ) -> Result<(), LaunchError> {
+        self.request_graceful_termination_until(reason, Instant::now() + grace)
+    }
+
+    /// Like [`Self::request_graceful_termination`], with the grace ending at
+    /// `kill_at`.
+    pub(crate) fn request_graceful_termination_until(
+        &self,
+        reason: TreeExit,
+        kill_at: Instant,
+    ) -> Result<(), LaunchError> {
         locked(&self.0.termination)?.request_graceful(
             reason,
             || self.native_exit_if_exited(),
-            Instant::now() + grace,
+            kill_at,
         );
         Ok(())
     }

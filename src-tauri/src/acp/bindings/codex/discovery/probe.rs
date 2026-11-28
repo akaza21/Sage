@@ -335,13 +335,20 @@ impl<'a> ProbeTransport<'a> {
     /// Zero processes are proven only once the root is reaped, the whole
     /// tree is empty and its output has ended by `cleanup_end`; teardown
     /// never waits past it.
-    fn tear_down(&mut self, cleanup_end: Instant) -> Result<(), CodexDiscoveryRunError> {
+    fn tear_down(
+        &mut self,
+        cleanup_end: Instant,
+        finished: bool,
+    ) -> Result<(), CodexDiscoveryRunError> {
         let Some(Running { mut child, tree }) = self.running.take() else {
             return Ok(());
         };
         self.stdin = None;
-        let now = Instant::now();
-        self.drain_output(now + graceful_exit::grace_before(cleanup_end));
+        // Only a probe that finished cleanly may be saving a refreshed sign-in;
+        // a failed or abandoned one is ended now.
+        if finished {
+            self.drain_output(Instant::now() + graceful_exit::grace_before(cleanup_end));
+        }
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
         let zero = reap_root(child, cleanup_end, &self.unresolved)
@@ -444,17 +451,17 @@ impl DiscoveryTransport for ProbeTransport<'_> {
 
     fn terminate_zero(
         &mut self,
-        _: bool,
+        failed: bool,
         deadline: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        self.tear_down(deadline.cleanup_end())?;
+        self.tear_down(deadline.cleanup_end(), !failed)?;
         Ok(DiscoveryZeroProcess::reaped(PROBE_EPOCH))
     }
 }
 
 impl Drop for ProbeTransport<'_> {
     fn drop(&mut self) {
-        let _ = self.tear_down(self.cleanup_end);
+        let _ = self.tear_down(self.cleanup_end, false);
     }
 }
 

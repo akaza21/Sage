@@ -266,3 +266,18 @@ fn a_probe_grace_fits_inside_its_cleanup_deadline() {
         "zero was proven by the deadline: {elapsed:?}"
     );
 }
+
+#[test]
+fn a_caller_running_late_still_kills_the_tree() {
+    let control = tree(80, &ignores_eof_script());
+    // The cleanup deadline has already passed when the caller gets to run.
+    let deadline = Instant::now();
+    std::thread::sleep(Duration::from_millis(50));
+    let _ = end_tree_before(&control, TreeExit::ParentShutdown, deadline);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_ne!(
+        control.native_exit_code_if_exited(),
+        Ok(None),
+        "the grace ended no later than the deadline, so the tree was killed"
+    );
+}

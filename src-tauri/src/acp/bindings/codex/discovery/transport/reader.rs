@@ -112,7 +112,7 @@ impl ReaderThread {
         }
     }
 
-    fn close_events(&mut self) {
+    pub(super) fn close_events(&mut self) {
         // Drop before waking: the producer must observe disconnection even if
         // it has not parked yet. This also releases a full queue during cleanup.
         self.events.take();

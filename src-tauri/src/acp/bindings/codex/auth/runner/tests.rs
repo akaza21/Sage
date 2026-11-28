@@ -182,7 +182,8 @@ fn cancel_response_and_failed_completion_may_race_in_either_order() {
             Ok(CodexAuthOutcome::Cancelled)
         );
         assert_eq!(transport.writes[4]["method"], "account/login/cancel");
-        assert_settled(&transport, false);
+        // A cancelled login saved no sign-in, so it gets no exit grace.
+        assert_settled(&transport, true);
     }
 }
 
