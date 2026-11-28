@@ -624,32 +624,33 @@ describe("AcpChatProjection", () => {
       [...workedGroups(work)!.querySelectorAll(".acp-tool-rollup__label")].map(
         (label) => label.textContent,
       );
-    expect(labels()).toEqual(["Ran a command, read a file"]);
-    const rollup =
-      container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
-    expect(rollup).not.toBeNull();
-    rollup!.open = true;
-    fireEvent(rollup!, new Event("toggle"));
+    expect(labels()).toEqual(["Ran npm run check", "Explored files"]);
+    const [command, read] = workedGroups(work)!.querySelectorAll<HTMLDetailsElement>(
+      ".acp-tool-rollup",
+    );
+    read!.open = true;
+    fireEvent(read!, new Event("toggle"));
     expect(labels()).toEqual([
-      "Ran a command, read a file",
       "Ran npm run check",
+      "Explored files",
       "Read main.ts",
     ]);
-    for (const member of rollup!.querySelectorAll<HTMLDetailsElement>(
+    command!.open = true;
+    fireEvent(command!, new Event("toggle"));
+    const file = read!.querySelector<HTMLDetailsElement>(
       ".acp-tool-rollup__items > .acp-tool-rollup__row > details",
-    )) {
-      expect(member).not.toHaveAttribute("open");
-      member.open = true;
-      fireEvent(member, new Event("toggle"));
-    }
+    )!;
+    expect(file).not.toHaveAttribute("open");
+    file.open = true;
+    fireEvent(file, new Event("toggle"));
     expect(
-      [...rollup!.querySelectorAll(".acp-tool-compact")].map((card) =>
-        card.getAttribute("data-acp-item-id"),
+      [...workedGroups(work)!.querySelectorAll(".acp-tool-compact")].map(
+        (card) => card.getAttribute("data-acp-item-id"),
       ),
     ).toEqual(["earlier-command", "later-read"]);
   });
 
-  it("summarises adjacent mixed completed tools in one chronological row", async () => {
+  it("splits adjacent completed tools into one chronological row per kind family", async () => {
     const next = page("completed");
     const file = (
       id: string,
@@ -715,7 +716,7 @@ describe("AcpChatProjection", () => {
           ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
       ].map((row) => row.textContent?.trim()),
-    ).toEqual(["Edited a file, read files, ran a command"]);
+    ).toEqual(["Edited files", "Explored files", "Ran npm test"]);
   });
 
   it("interleaves running assistant prose and activity rows in transcript order", async () => {
@@ -2091,20 +2092,14 @@ describe("AcpChatProjection", () => {
     );
 
     toggleWorked(document.querySelector(".chat-transcript-work"));
-    const group = document.querySelector<HTMLDetailsElement>(
-      '.acp-tool-rollup[data-activity-kind="mixed"]',
-    )!;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
-
-    const readDisclosure = document.querySelector<HTMLDetailsElement>(
-      '.acp-tool-rollup[data-activity-kind="read"]',
-    );
-    expect(readDisclosure).not.toBeNull();
-    if (!readDisclosure)
-      throw new Error("Expected the read activity disclosure");
-    readDisclosure.open = true;
-    fireEvent(readDisclosure, new Event("toggle"));
+    // Open the read and browse rows, then each one's per-call row.
+    for (let pass = 0; pass < 2; pass += 1)
+      for (const row of document.querySelectorAll<HTMLDetailsElement>(
+        ".acp-tool-rollup:not([open])",
+      )) {
+        row.open = true;
+        fireEvent(row, new Event("toggle"));
+      }
 
     expect(screen.getByText("main.ts")).toBeInTheDocument();
     expect(

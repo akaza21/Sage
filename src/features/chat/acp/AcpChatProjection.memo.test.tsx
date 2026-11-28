@@ -44,6 +44,7 @@ describe("AcpChatProjection", () => {
     vi.doMock("./TurnHeader", () => ({ TurnHeader: turnHeader }));
     vi.doMock("./TurnEditSummary", () => ({
       TurnEditSummary: turnEditSummary,
+      DockTerminals: () => null,
     }));
     const { AcpChatProjection: MemoProjection } =
       await import("./AcpChatProjection");

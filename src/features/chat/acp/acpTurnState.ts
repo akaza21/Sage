@@ -124,9 +124,11 @@ export function chronologicalTurnItems(
     .filter(
       (item) =>
         !attachmentIds.has(item.id) &&
+        // Settled reasoning stays only when it has a summary to open to.
         !(
           item.kind === "thoughtSummary" &&
-          terminalItemLifecycles.has(item.lifecycle)
+          terminalItemLifecycles.has(item.lifecycle) &&
+          !item.payload.summary.trim()
         ) &&
         !(item.kind === "text" && item.payload.role === "user") &&
         !(terminal && item.kind === "text" && !item.payload.text.trim()),

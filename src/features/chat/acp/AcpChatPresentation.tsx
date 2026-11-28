@@ -122,7 +122,9 @@ export const Turn = memo(
         )
       : undefined;
     const liveThought = newestItems.find(
-      (item) => item.kind === "thoughtSummary",
+      (item) =>
+        item.kind === "thoughtSummary" &&
+        !terminalItemLifecycles.has(item.lifecycle),
     );
     const failureItem =
       turn.state === "failed" ? turnReasonErrorItem(turn) : undefined;
@@ -135,9 +137,8 @@ export const Turn = memo(
         item.id !== finalAnswer?.id &&
         !(terminal && item.kind === "plan") &&
         (item.kind !== "thoughtSummary" ||
-          (terminalItemLifecycles.has(item.lifecycle)
-            ? item.payload.summary.trim() !== ""
-            : !terminal && item.id === liveThought?.id)),
+          terminalItemLifecycles.has(item.lifecycle) ||
+          (!terminal && item.id === liveThought?.id)),
     );
     const text = finalAnswer?.payload.text;
     // Rust forks only the latest Turn.

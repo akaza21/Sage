@@ -403,7 +403,10 @@ describe("ChatTranscript answer actions", () => {
     const { container } = await renderTranscript(next);
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+    // The prompt keeps its own hover row; no answer row sits under the turn.
+    expect(
+      container.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
   });
 
   it.each([

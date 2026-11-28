@@ -942,20 +942,17 @@ describe("ToolActivityRollup", () => {
     );
 
     const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
-    expect(row?.querySelector("summary")).toHaveTextContent("Editing main.ts");
+    expect(row?.querySelector("summary")).toHaveTextContent("Editing files");
     expect(row?.querySelector(".acp-tool-rollup__label")).toHaveClass(
       "acp-live-shimmer",
     );
     expect(row?.querySelector("summary .acp-state")).toBeNull();
     expect(
-      row?.querySelector("summary svg[data-activity-icon='edit']"),
-    ).not.toBeNull();
-    expect(
       row?.querySelectorAll("summary .acp-tool-rollup__summary-copy svg"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
-  it("draws the icon of the same latest live child that names the row", () => {
+  it("splits a live search and a live command into their own rows", () => {
     const live = (item: ToolItem): ToolItem => ({
       ...item,
       lifecycle: "streaming",
@@ -974,12 +971,11 @@ describe("ToolActivityRollup", () => {
         interactive
       />,
     );
-    const summary = document.querySelector(".acp-tool-rollup > summary");
-    expect(summary).toHaveTextContent("Running node build.js");
-    expect(summary?.querySelector("svg[data-activity-icon]")).toHaveAttribute(
-      "data-activity-icon",
-      "execute",
-    );
+    expect(
+      [...document.querySelectorAll(".acp-tool-rollup > summary")].map(
+        (summary) => summary.textContent,
+      ),
+    ).toEqual(["Exploring files", "Running node build.js"]);
   });
 
   it.each([
@@ -1077,7 +1073,7 @@ describe("ToolActivityRollup", () => {
         expect(screen.queryByRole("status", { name: "Running" })).toBeNull();
         expect(
           row.querySelectorAll(".acp-tool-rollup__summary-copy svg"),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
       });
     },
   );
@@ -1323,7 +1319,7 @@ describe("ToolActivityRollup", () => {
     );
   });
 
-  it("uses concise activity labels with semantic icons", () => {
+  it("uses concise activity labels without kind icons", () => {
     const { rerender } = render(
       <ToolActivityRollup
         rollup={{
@@ -1335,8 +1331,8 @@ describe("ToolActivityRollup", () => {
       />,
     );
 
-    expect(screen.getByText("Edited main.ts")).toBeVisible();
-    expect(document.querySelector('[data-activity-icon="edit"]')).toBeVisible();
+    expect(screen.getByText("Edited files")).toBeVisible();
+    expect(document.querySelector("summary svg:not(.acp-tool-rollup__chevron)")).toBeNull();
 
     rerender(
       <ToolActivityRollup
@@ -1350,9 +1346,7 @@ describe("ToolActivityRollup", () => {
     );
 
     expect(screen.getByText("Ran a command")).toBeVisible();
-    expect(
-      document.querySelector('[data-activity-icon="execute"]'),
-    ).toBeVisible();
+    expect(document.querySelector("summary svg:not(.acp-tool-rollup__chevron)")).toBeNull();
   });
 
   it("keeps a generic write projection out of the edited-file rollup", () => {
@@ -1472,21 +1466,15 @@ describe("ToolActivityRollup", () => {
   });
 
   it.each([
-    [["read", "read", "execute"], "Read files, ran a command"],
-    [
-      ["mcp", "webSearch", "other", "execute"],
-      "Used OpenAI Developer Docs and Search Service integrations, used a tool, ran a command",
-    ],
+    [["read", "read"], "Explored files"],
+    [["edit", "delete"], "Edited files"],
+    [["execute", "execute"], "Ran commands"],
     [["mcp", "mcp"], "Used OpenAI Developer Docs integration"],
     [["imageView"], "Viewed an image"],
     [["imageView", "imageView"], "Viewed images"],
-    [["webSearch"], "Web run"],
-    [["search", "read"], "Explored files, read a file"],
-    [
-      ["read", "edit", "think", "switchMode"],
-      "Read a file, edited a file, used tools",
-    ],
-    [["other", "read", "think"], "Used tools, read a file"],
+    [["webSearch"], "Searched the web"],
+    [["search", "read"], "Explored files"],
+    [["other", "other"], "Used tools"],
   ] as const)("words a finished %j group as %s", (kinds, expected) => {
     const items = kinds.map((kind, index) => {
       const item = tool(
@@ -1518,7 +1506,7 @@ describe("ToolActivityRollup", () => {
     expect(label).not.toMatch(/activity ·/);
   });
 
-  it("names the current child of a live group and keeps finished groups apart", () => {
+  it("names a live group by its kind family, or by its running command", () => {
     const read = tool("read", "read", [mainFile]);
     const live = {
       ...tool("live", "execute"),
@@ -1526,18 +1514,18 @@ describe("ToolActivityRollup", () => {
       terminalAt: null,
     };
     live.payload.inputSummary = "node build.js";
-    expect(toolRollupLabel("mixed", [read, live])).toBe(
+    expect(toolRollupLabel("execute", [tool("done", "execute"), live])).toBe(
       "Running node build.js",
     );
     expect(
-      toolRollupLabel("mixed", [
-        live,
-        { ...read, toolState: "inProgress" as const },
+      toolRollupLabel("read", [
+        read,
+        { ...read, id: "read-2", toolState: "inProgress" as const },
       ]),
-    ).toBe("Reading main.ts");
+    ).toBe("Exploring files");
     const mcp = tool("mcp", "mcp");
     expect(
-      toolRollupLabel("mixed", [read, { ...mcp, toolState: "inProgress" }]),
+      toolRollupLabel("mcp", [mcp, { ...mcp, toolState: "inProgress" }]),
     ).toBe("tool");
   });
 });
