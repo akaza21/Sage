@@ -2,7 +2,6 @@ import { useId } from "react";
 import { type AcpItem } from "../../../domain/acp";
 import { type ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOpenIntent } from "../../../domain/agentArtifact";
-import { ToolKindIcon } from "./ToolKindIcon";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { CompactToolItem } from "./CompactToolItem";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
@@ -82,11 +81,8 @@ export function ToolItem({
         </span>
       ) : null}
       <header className="acp-tool-card__header">
-        {visualState === "inProgress" ? (
-          <ToolRunningIndicator />
-        ) : (
-          <ToolKindIcon kind={kind} />
-        )}
+        {/* Worked-for rows carry no kind icon; only a running call marks. */}
+        {visualState === "inProgress" ? <ToolRunningIndicator /> : null}
         <strong>{label}</strong>
         {duration ? (
           <span className="acp-tool-card__duration">{duration}</span>

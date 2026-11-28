@@ -154,15 +154,13 @@ describe("tool render matrix", () => {
   });
 
   it.each(presentations)(
-    "renders the %s kind with an icon, title and status",
+    "renders the %s kind with a title and status, without a kind icon",
     (kind, presentation) => {
       const { container } = render(<ToolItem item={item(presentation)} />);
       const card = container.querySelector(".acp-tool-card");
 
       expect(card).toHaveAttribute("data-activity-kind", kind);
-      expect(
-        card?.querySelector(`[data-tool-kind-icon="${kind}"]`),
-      ).not.toBeNull();
+      expect(card?.querySelector("[data-tool-kind-icon]")).toBeNull();
       if (presentation.kind === "mcp") {
         const identity = `${presentation.serverLabel} · ${presentation.toolLabel}`;
         expect(screen.getAllByText(identity)).toHaveLength(1);

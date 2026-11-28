@@ -705,9 +705,8 @@ describe("ToolItem", async () => {
       />,
     );
     const header = container.querySelector(".acp-tool-card__header");
-    expect(
-      header?.querySelector('[data-tool-kind-icon="execute"]'),
-    ).not.toBeNull();
+    // Settled cards carry no leading kind icon.
+    expect(header?.querySelector("svg")).toBeNull();
     expect(header).toHaveTextContent("Run command");
     expect(header).toHaveTextContent("Completed");
     expect(header?.querySelector(".acp-tool-card__duration")).toHaveTextContent(
