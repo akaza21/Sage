@@ -50,7 +50,7 @@ fn acp_replay_preserves_prompt_id_across_config_and_cancel() {
     assert_eq!(frames[1]["id"], 42);
     assert_eq!(
         frames[2],
-        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":"default"}}})
+        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":super::acp::config_options("default")}}})
     );
     assert_eq!(frames[3]["id"], 44);
     assert_eq!(
@@ -218,18 +218,31 @@ fn the_claude_config_journey_resumes_in_the_defaults_and_answers_each_change() {
     let resumed = &reply(2)["result"];
     assert_eq!(resumed["sessionId"], session);
     assert_eq!(resumed["modes"]["currentModeId"], "default");
-    assert_eq!(resumed["configOptions"][0]["currentValue"], "fixture-model");
-    assert_eq!(resumed["configOptions"][1]["currentValue"], "medium");
+    let option = |options: &Value, id: &str| {
+        options
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|option| option["id"] == id)
+            .unwrap()["currentValue"]
+            .clone()
+    };
+    assert_eq!(option(&resumed["configOptions"], "mode"), "default");
+    assert_eq!(option(&resumed["configOptions"], "model"), "fixture-model");
+    assert_eq!(option(&resumed["configOptions"], "effort"), "medium");
     assert_eq!(
-        reply(3)["result"]["configOptions"][0]["currentValue"],
+        option(&reply(3)["result"]["configOptions"], "model"),
         "fixture-model-deep"
     );
     assert_eq!(reply(4)["error"]["code"], -32602);
     let mode = frames
         .iter()
-        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "current_mode_update")
+        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "config_option_update")
         .unwrap();
-    assert_eq!(frames[mode]["params"]["update"]["currentModeId"], "plan");
+    assert_eq!(
+        option(&frames[mode]["params"]["update"]["configOptions"], "mode"),
+        "plan"
+    );
     assert_eq!(frames[mode + 1]["id"], 5);
     assert!(
         frames

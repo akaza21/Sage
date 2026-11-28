@@ -57,15 +57,39 @@ pub(super) fn await_request(
                 }
                 continue;
             }
-            let result = if method == Some("session/set_config_option") {
-                json!({"configOptions":config_options()})
+            let params = &request["params"];
+            // claude-agent-acp 0.76.0 keeps the permission mode as the `mode`
+            // config option. set_mode publishes the options in a
+            // config_option_update before it answers; set_config_option returns
+            // them. A mode it does not list is refused.
+            let requested = if method == Some("session/set_mode") {
+                Some(&params["modeId"])
+            } else if params["configId"] == "mode" {
+                Some(&params["value"])
             } else {
-                // claude-agent-acp announces the new mode before it answers.
-                let mode = request["params"]["modeId"].clone();
+                None
+            };
+            if let Some(requested) = requested {
+                let Some(mode) = PLAIN_MODES
+                    .into_iter()
+                    .find(|mode| Some(*mode) == requested.as_str())
+                else {
+                    codex::emit_json(
+                        output,
+                        state,
+                        &json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Invalid value"}}),
+                    )?;
+                    continue;
+                };
+                state.acp_mode = mode;
+            }
+            let result = if method == Some("session/set_config_option") {
+                json!({"configOptions":config_options(state.acp_mode)})
+            } else {
                 codex::emit_json(
                     output,
                     state,
-                    &json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":mode}}}),
+                    &json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":config_options(state.acp_mode)}}}),
                 )?;
                 json!({})
             };
@@ -163,6 +187,8 @@ impl AcpConfig {
 
     fn options(&self) -> Value {
         json!([
+            {"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":self.mode,
+             "options":[{"value":"default","name":"Default"},{"value":"acceptEdits","name":"Accept edits"},{"value":"plan","name":"Plan"},{"value":"auto","name":"Auto"}]},
             {"id":"model","name":"Model","category":"model","type":"select","currentValue":self.model,
              "options":[{"value":MODELS[0],"name":"Synthetic replay"},{"value":MODELS[1],"name":"Synthetic replay deep"}]},
             {"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":self.effort,
@@ -192,11 +218,15 @@ impl AcpConfig {
             };
             self.mode = mode;
             return vec![
-                json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"current_mode_update","currentModeId":mode}}}),
+                json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":self.options()}}}),
                 json!({"jsonrpc":"2.0","id":id,"result":{}}),
             ];
         }
         match params["configId"].as_str() {
+            Some("mode") => match pick(&MODES, &params["value"]) {
+                Some(mode) => self.mode = mode,
+                None => return vec![refused],
+            },
             Some("model") => match pick(&MODELS, &params["value"]) {
                 Some(model) => self.model = model,
                 None => return vec![refused],
@@ -234,8 +264,16 @@ fn elicitation_echo(response: &Value) -> Result<String, FixtureError> {
     })
 }
 
-fn config_options() -> Value {
-    json!([{ "id":"model", "name":"Model", "category":"model", "type":"select", "currentValue":"fixture-model", "options":[{"value":"fixture-model","name":"Synthetic replay"}] }])
+/// The plain session's permission modes, first being the adapter's default.
+/// claude-agent-acp 0.76.0 always lists Auto.
+pub(super) const PLAIN_MODES: [&str; 3] = ["default", "plan", "auto"];
+
+pub(super) fn config_options(mode: &str) -> Value {
+    json!([
+        { "id":"mode", "name":"Mode", "category":"mode", "type":"select", "currentValue":mode,
+          "options":[{"value":"default","name":"Default"},{"value":"plan","name":"Plan"},{"value":"auto","name":"Auto"}] },
+        { "id":"model", "name":"Model", "category":"model", "type":"select", "currentValue":"fixture-model", "options":[{"value":"fixture-model","name":"Synthetic replay"}] }
+    ])
 }
 
 pub(super) fn emit(
@@ -339,7 +377,8 @@ pub(super) fn emit(
                     session
                 }
                 "acpSession" => {
-                    json!({"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"}]},"configOptions":config_options()})
+                    state.acp_mode = PLAIN_MODES[0];
+                    json!({"sessionId":SESSION,"modes":{"currentModeId":PLAIN_MODES[0],"availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"}]},"configOptions":config_options(PLAIN_MODES[0])})
                 }
                 _ => json!({}),
             };
