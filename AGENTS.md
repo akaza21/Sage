@@ -42,7 +42,12 @@
 - Use one active production-code writer per checkout.
 - Do not overwrite changes from another task.
 - Keep production modules focused and ordinarily below 400 non-comment lines.
-- Add tests for changed behavior.
+- Check every user-visible change live against the real backend:
+  `npm run dev -- --port <port>`, then open `http://127.0.0.1:<port>/`. The
+  TypeScript simulator (`tests/ui/simulator`, `npm run dev:ui-fixture`) is a
+  Playwright fixture only and never counts as a live check.
+- Add tests for changed behavior. A test locks real input and output or a
+  fixed bug; do not mock Sage's own modules, and fake only the native IPC edge.
 - Run `npm run check` before handing off frontend or policy changes.
 - Run Rust formatting, Clippy, and tests when a Rust toolchain is available.
 - Do not add dependencies without documenting size and runtime impact.
