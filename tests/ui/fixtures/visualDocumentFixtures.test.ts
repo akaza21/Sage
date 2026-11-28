@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { browserEditor } from "../../../src/services/browserEditor";
+import { browserEditor } from "../simulator/browserEditor";
 import {
   editorContent,
   editorDocument,

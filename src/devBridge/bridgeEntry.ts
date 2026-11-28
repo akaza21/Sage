@@ -10,7 +10,8 @@ if (!element) {
 const root = element;
 
 // Remove the single-use pairing code from the address before any other
-// module evaluates.
+// module evaluates. Under `npm run dev` there is none: the bridge pairs from
+// the run the dev server publishes.
 const pairingCode = location.hash.slice(1);
 history.replaceState(history.state, "", location.pathname + location.search);
 

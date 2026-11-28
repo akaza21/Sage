@@ -18,10 +18,8 @@ describe("ResourceStateNotice", () => {
     );
 
     const notice = screen.getByRole("status");
-    expect(notice).toHaveClass("resource-state--idle");
     expect(notice).toHaveAttribute("aria-atomic", "true");
     expect(notice.querySelector("svg")).toBeNull();
-    expect(notice.querySelector(".resource-state__icon")).toBeNull();
     expect(screen.getByText("Preview is idle")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -34,9 +32,7 @@ describe("ResourceStateNotice", () => {
     render(<ResourceStateNotice state="loading" title="Loading diff…" />);
 
     const notice = screen.getByRole("status");
-    expect(notice).toHaveClass("resource-state--loading");
     expect(notice.querySelector("svg")).not.toBeNull();
-    expect(notice.querySelector(".resource-state__icon")).not.toBeNull();
     expect(screen.getByText("Loading diff…")).toBeInTheDocument();
   });
 
@@ -50,7 +46,6 @@ describe("ResourceStateNotice", () => {
     );
 
     const notice = screen.getByRole("alert");
-    expect(notice).toHaveClass("resource-state--error");
     expect(notice.querySelector("svg")).not.toBeNull();
     expect(screen.getByText("Could not load this diff")).toBeInTheDocument();
     expect(

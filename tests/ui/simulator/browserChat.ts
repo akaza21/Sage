@@ -4,8 +4,8 @@ import type {
   ProjectLayoutRequest,
   RenameChatRequest,
   WorkbenchTab,
-} from "../domain/workbench";
-import { canonicalChatTitle } from "../domain/chatTitle";
+} from "../../../src/domain/workbench";
+import { canonicalChatTitle } from "../../../src/domain/chatTitle";
 
 const MAX_BROWSER_MESSAGES = 500;
 export const MAX_BROWSER_CHATS = 64;
@@ -304,4 +304,4 @@ export function appendBrowserSimulatorTurn(
   }
   return [...current, ...turn];
 }
-import { utf8ByteLength } from "../domain/text";
+import { utf8ByteLength } from "../../../src/domain/text";

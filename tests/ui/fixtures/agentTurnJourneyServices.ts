@@ -1,5 +1,5 @@
 import type { SageProjectId } from "../../../src/domain/acp";
-import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
+import { getWorkbenchPorts } from "../simulator/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../src/services/acpDesktop";
 import { desktop } from "../../../src/services/desktop";
 import {

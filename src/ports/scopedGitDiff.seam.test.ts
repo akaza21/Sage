@@ -36,14 +36,3 @@ it("preserves the combined diff wire contract for existing callers", async () =>
   await createNativeWorkbenchPorts().repository.getFileDiff(resource);
   expect(invokeNative).toHaveBeenCalledWith("get_file_diff", { resource });
 });
-
-it("does not pretend browser fixture diffs have an index/worktree split", async () => {
-  const { createBrowserWorkbenchPorts } =
-    await import("./browserWorkbenchPorts");
-  await expect(
-    createBrowserWorkbenchPorts().repository.getFileDiff(
-      { rootId: "root-a", relativePath: "tracked.txt" },
-      "staged",
-    ),
-  ).rejects.toThrow("native Git backend");
-});

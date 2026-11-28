@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { projectNewChatDraft } from "../../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../../app/store";
-import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../../tests/ui/simulator/browserDesktop";
 import { noteDraftFiles } from "./draftFileHandoff";
 
 const native = vi.hoisted(() => ({

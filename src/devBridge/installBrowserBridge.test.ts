@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,6 +11,8 @@ import { MAX_MESSAGE_BYTES } from "./limits";
 class FakeSocket extends EventTarget {
   static readonly OPEN = 1;
   static latest: FakeSocket;
+  /** Runs once listeners are attached, as a real socket connects later. */
+  static onCreate?: (socket: FakeSocket) => void;
   readyState = 0;
   bufferedAmount = 0;
   binaryType = "blob";
@@ -19,6 +21,7 @@ class FakeSocket extends EventTarget {
   constructor(readonly url: string) {
     super();
     FakeSocket.latest = this;
+    queueMicrotask(() => FakeSocket.onCreate?.(this));
   }
   send(data: string) {
     const request = JSON.parse(data);
@@ -49,6 +52,7 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
 });
 afterEach(() => {
+  FakeSocket.onCreate = undefined;
   cleanup();
   FakeSocket.latest?.close();
   document.body.replaceChildren();
@@ -475,4 +479,144 @@ it("includes bytes already buffered on the socket in the send budget", async () 
   const accepted = invoke("get_bootstrap_snapshot");
   socket.receive({ id: socket.sent.at(-1)!.id, ok: "within budget" });
   await expect(accepted).resolves.toBe("within budget");
+});
+
+describe("pairing from the run `npm run dev` publishes", () => {
+  const runA = "1".repeat(32);
+  const runB = "2".repeat(32);
+  const codeA = "c".repeat(64);
+  const codeB = "d".repeat(64);
+  const sessionA = "b".repeat(64);
+  const sessionB = "e".repeat(64);
+  let server: { record?: unknown; gone: boolean };
+  let live: Record<string, string>;
+  let credentials: unknown[];
+  let refused: number;
+  const reload = vi.fn();
+
+  beforeEach(() => {
+    history.replaceState(null, "", "/src/devBridge/bridge.html");
+    // The dev server's /__sage/bridge-run route, at the network edge.
+    server = { gone: false };
+    vi.stubGlobal("fetch", async (url: string) => {
+      expect(url).toBe("/__sage/bridge-run");
+      if (server.gone) return new Response("{}", { status: 404 });
+      return server.record
+        ? new Response(JSON.stringify(server.record))
+        : new Response("{}", { status: 503 });
+    });
+    // Bridge ports with a live backend, and the session each grants.
+    live = {};
+    credentials = [];
+    refused = 0;
+    FakeSocket.onCreate = (socket) => {
+      const session = live[new URL(socket.url).port];
+      if (!session) {
+        refused++;
+        socket.close();
+        return;
+      }
+      socket.onRequest = (frame) => {
+        if (socket.sent.length > 1) return;
+        credentials.push(frame);
+        socket.receive({ session });
+      };
+      socket.open();
+    };
+  });
+  afterEach(() => {
+    // The tab's socket drops at teardown; a dev server without a backend ends its wait.
+    server.gone = true;
+  });
+
+  it("waits for the backend, pairs with the run's code, and a reload resumes the session", async () => {
+    live["40001"] = sessionA;
+    const first = installBrowserBridge("", { reload });
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        "Waiting for the Sage backend",
+      ),
+    );
+    server.record = { run: runA, bridgePort: 40001, code: codeA };
+    await first;
+    expect(credentials).toEqual([{ pairingCode: codeA }]);
+    expect(document.body.textContent).not.toContain("Waiting");
+
+    server.record = { run: runA, bridgePort: 40001 };
+    await installBrowserBridge("", { reload });
+    expect(credentials.at(-1)).toEqual({ session: sessionA });
+  });
+
+  it("tells a second tab that another tab holds the run once that run stays current", async () => {
+    live["40001"] = sessionA;
+    // Another tab already spent the code; this tab has no session for the run.
+    server.record = { run: runA, bridgePort: 40001 };
+    const started = Date.now();
+    await expect(installBrowserBridge("", { reload })).rejects.toThrow(
+      "This backend is paired with another tab; close it or restart npm run dev.",
+    );
+    expect(Date.now() - started).toBeGreaterThanOrEqual(5_000);
+    expect(credentials).toEqual([]);
+  }, 15_000);
+
+  it("a tab opened during a rebuild skips the old spent run and pairs with the next one", async () => {
+    // The old run's code was spent; its backend is rebuilding.
+    server.record = { run: runA, bridgePort: 40001 };
+    live["40002"] = sessionB;
+    const installing = installBrowserBridge("", { reload });
+    await new Promise((settle) => setTimeout(settle, 1_000));
+    server.record = { run: runB, bridgePort: 40002, code: codeB };
+    await installing;
+    expect(credentials).toEqual([{ pairingCode: codeB }]);
+  });
+
+  it("returns to discovery when the published run's backend is gone and pairs with the next run", async () => {
+    // The record outlived its backend: nothing listens on 40001 any more.
+    server.record = { run: runA, bridgePort: 40001, code: codeA };
+    live["40002"] = sessionB;
+    const installing = installBrowserBridge("", { reload });
+    await waitFor(() => expect(refused).toBeGreaterThanOrEqual(2));
+    server.record = { run: runB, bridgePort: 40002, code: codeB };
+    await installing;
+    expect(credentials).toEqual([{ pairingCode: codeB }]);
+  });
+
+  it("reconnects to the same live backend by session after a transient drop, then reloads", async () => {
+    live["40001"] = sessionA;
+    server.record = { run: runA, bridgePort: 40001, code: codeA };
+    await installBrowserBridge("", { reload });
+    server.record = { run: runA, bridgePort: 40001 };
+    const paired = FakeSocket.latest;
+
+    paired.close();
+    expect(document.body.textContent).toContain("Reconnecting");
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(credentials).toEqual([
+      { pairingCode: codeA },
+      { session: sessionA },
+    ]);
+    // The probe released the session for the reloaded page.
+    expect(FakeSocket.latest).not.toBe(paired);
+    expect(FakeSocket.latest.readyState).toBe(3);
+  });
+
+  it("after a backend restart reloads only once the next run is published, then pairs with its code", async () => {
+    live["40001"] = sessionA;
+    server.record = { run: runA, bridgePort: 40001, code: codeA };
+    await installBrowserBridge("", { reload });
+    server.record = { run: runA, bridgePort: 40001 };
+
+    delete live["40001"];
+    FakeSocket.latest.close();
+    await waitFor(() => expect(refused).toBeGreaterThanOrEqual(2));
+    expect(reload).not.toHaveBeenCalled();
+    live["40002"] = sessionB;
+    server.record = { run: runB, bridgePort: 40002, code: codeB };
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1), {
+      timeout: 3_000,
+    });
+
+    await installBrowserBridge("", { reload });
+    expect(credentials.at(-1)).toEqual({ pairingCode: codeB });
+  });
 });

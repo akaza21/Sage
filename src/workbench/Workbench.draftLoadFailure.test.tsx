@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { AgentCenterKeeper } from "./WorkbenchContinuity";

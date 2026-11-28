@@ -11,7 +11,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 import { useSideChatState } from "./sideChatState";

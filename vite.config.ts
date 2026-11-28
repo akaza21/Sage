@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import type { OutputOptions } from "rolldown";
+import { devBridgeRunPlugin } from "./scripts/devBridgeRun";
 import { htmlCompletionSchemaPlugin } from "./scripts/htmlCompletionSchema";
 import { desktopReactRuntimeProjectionPlugin } from "./scripts/reactRuntimeProjection";
 
@@ -11,9 +12,13 @@ const host = process.env.TAURI_DEV_HOST;
 const sourceMaps = process.env.SAGE_BUILD_SOURCEMAPS === "1";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const workbenchRuntime = path.join(root, "src/ports/workbenchRuntime.ts");
-const desktopWorkbenchRuntime = path.join(
+const workbenchRuntimeTest = path.join(
   root,
-  "src/ports/workbenchRuntime.desktop.ts",
+  "src/ports/workbenchRuntime.test.ts",
+);
+const simulatorWorkbenchRuntime = path.join(
+  root,
+  "tests/ui/simulator/workbenchRuntime.ts",
 );
 const devWatchIgnoredRoots = new Set([
   "src-tauri",
@@ -21,9 +26,11 @@ const devWatchIgnoredRoots = new Set([
   "work",
   "output",
   "local-evidence",
+  ".sage-dev",
 ]);
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
+export const UI_FIXTURE_MODE = "ui-fixture";
 
 /**
  * Keep startup dependencies and bounded editor-core dependencies separate.
@@ -116,26 +123,49 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   },
 ];
 
-export function resolveDesktopNativeWorkbenchRuntime(
+// The browser simulator is a test fixture. Only these mode/command pairs swap
+// the app's runtime import for it: Playwright's dev server and Vitest. The production runtime's own test keeps the
+// real module.
+const SIMULATOR_MODES: Readonly<Record<string, string>> = {
+  [UI_FIXTURE_MODE]: "serve",
+  test: "serve",
+};
+
+export function resolveSimulatorWorkbenchRuntime(
   command: string,
   mode: string,
   source: string,
   importer?: string,
 ): string | undefined {
-  if (command !== "build" || mode !== DESKTOP_NATIVE_BUILD_MODE) {
-    return undefined;
-  }
-  const resolved =
-    source.startsWith(".") && importer
-      ? path.resolve(path.dirname(importer), source)
+  if (SIMULATOR_MODES[mode] !== command) return undefined;
+  const from = importer && path.resolve(importer.split("?")[0]!);
+  if (from === workbenchRuntimeTest) return undefined;
+  const resolved = source.startsWith("/src/")
+    ? path.join(root, source)
+    : source.startsWith(".") && from
+      ? path.resolve(path.dirname(from), source)
       : path.resolve(source);
   if (resolved === workbenchRuntime || `${resolved}.ts` === workbenchRuntime) {
-    return desktopWorkbenchRuntime;
+    return simulatorWorkbenchRuntime;
   }
   return undefined;
 }
 
-export function desktopNativeWorkbenchRuntimePlugin(
+export function simulatorWorkbenchRuntimePlugin(
+  command: string,
+  mode: string,
+): Plugin | undefined {
+  if (SIMULATOR_MODES[mode] !== command) return undefined;
+  return {
+    name: "sage-simulator-workbench-runtime",
+    enforce: "pre",
+    resolveId(source, importer) {
+      return resolveSimulatorWorkbenchRuntime(command, mode, source, importer);
+    },
+  };
+}
+
+export function desktopNativeBuildTargetPlugin(
   command: string,
   mode: string,
 ): Plugin | undefined {
@@ -143,16 +173,7 @@ export function desktopNativeWorkbenchRuntimePlugin(
     return undefined;
   }
   return {
-    name: "sage-desktop-native-workbench-runtime",
-    enforce: "pre",
-    resolveId(source, importer) {
-      return resolveDesktopNativeWorkbenchRuntime(
-        command,
-        mode,
-        source,
-        importer,
-      );
-    },
+    name: "sage-desktop-native-build-target",
     generateBundle() {
       this.emitFile({
         type: "asset",
@@ -168,14 +189,32 @@ export default defineConfig(({ command, mode }) => ({
   plugins: [
     react(),
     desktopReactRuntimeProjectionPlugin(command, mode),
-    desktopNativeWorkbenchRuntimePlugin(command, mode),
+    desktopNativeBuildTargetPlugin(command, mode),
+    simulatorWorkbenchRuntimePlugin(command, mode),
     htmlCompletionSchemaPlugin(),
+    devBridgeRunPlugin(),
   ],
   clearScreen: false,
   server: {
     port: 1420,
     strictPort: true,
     host: host ?? "127.0.0.1",
+    // Every page, the HMR client and the Tauri window load from the dev
+    // server's own origin; no other site may read its responses.
+    cors: false,
+    fs: {
+      // Replaces Vite 8's default list, so the defaults are repeated. An old
+      // throwaway profile left in a checkout (.sage-dev/) is never served.
+      deny: [
+        ".env",
+        ".env.*",
+        "*.{crt,pem,key,p12,pfx,cer,der}",
+        ".npmrc",
+        ".yarnrc.yml",
+        "**/.git/**",
+        "**/.sage-dev/**",
+      ],
+    },
     hmr: host
       ? {
           protocol: "ws",

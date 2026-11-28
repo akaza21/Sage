@@ -3,7 +3,7 @@ import type {
   ArchivedChatSummary,
   ChatMessage,
   ProjectTransitionResult,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import {
   browserSnapshot as snapshot,
   resetBrowserDirectories,

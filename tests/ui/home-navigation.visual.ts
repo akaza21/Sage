@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 async function savedChats(page: Page) {
   return page.evaluate(async () => {
     const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+      await import("/tests/ui/simulator/workbenchRuntime.ts");
     const snapshot = await getWorkbenchPorts().project.getBootstrapSnapshot();
     return {
       tabs: snapshot.tabs,

@@ -9,13 +9,16 @@ import {
   type ResourceRef,
   type TextFile,
   type WorkspaceEntry,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import {
   createInjectedEditorWatchDelivery,
   type EditorExternalWatchNotice,
   type EditorWatchSubscription,
-} from "../domain/editorWatch";
-import { parentResource, resourceKey } from "../domain/resourceIdentity";
+} from "../../../src/domain/editorWatch";
+import {
+  parentResource,
+  resourceKey,
+} from "../../../src/domain/resourceIdentity";
 import { browserDirectories } from "./browserWorkspaceFixture";
 
 const ABSENT_VERSION = {
@@ -353,4 +356,4 @@ export const browserEditor = {
   watch,
   changeOnDisk,
 };
-import { utf8ByteLength, utf8Bytes } from "../domain/text";
+import { utf8ByteLength, utf8Bytes } from "../../../src/domain/text";
