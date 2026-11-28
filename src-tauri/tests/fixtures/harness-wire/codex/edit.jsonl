@@ -1,5 +1,5 @@
 {"direction":"out","ms":7,"frame":{"id":1,"method":"initialize","params":{"clientInfo":{"name":"sage","title":"Sage","version":"0.1.0"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["turn/diff/updated","item/fileChange/outputDelta"]}}},"step":{"command":"initialize"}}
-{"direction":"in","ms":695,"frame":{"id":1,"result":{"userAgent":"sage/0.167.1 (Windows 10.0.26100; x86_64) unknown (sage; 0.1.0)","codexHome":"C:\\fixture-workspace\\config","platformFamily":"windows","platformOs":"windows"}}}
+{"direction":"in","ms":695,"frame":{"id":1,"result":{"userAgent":"sage/0.167.1 (Windows 0.0.0; x86_64) unknown (sage; 0.1.0)","codexHome":"C:\\fixture-workspace\\config","platformFamily":"windows","platformOs":"windows"}}}
 {"direction":"out","ms":695,"frame":{"method":"initialized"}}
 {"direction":"out","ms":695,"frame":{"id":2,"method":"thread/start","params":{"model":null,"cwd":"C:\\fixture-workspace\\repo","approvalPolicy":"never","sandbox":"read-only","ephemeral":false}},"step":{"command":"session"}}
 {"direction":"in","ms":696,"frame":{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"fixture-host","installationId":"00000000-0000-4000-8000-000000000001","environmentId":null},"emittedAtMs":1800000036355}}

@@ -152,6 +152,21 @@ function resanitize(out, harnesses, work) {
     throw error;
   }
   try {
+    // A crashed run's originals (`.bak`) or staged files (`.tmp`) are never
+    // committed or overwritten: restore or remove them first.
+    const left = harnesses.flatMap((harness) => {
+      const dir = path.join(out, harness);
+      return fs.existsSync(dir)
+        ? fs
+            .readdirSync(dir)
+            .filter((name) => /\.\d+-[0-9a-f]{8}\.(?:bak|tmp)$/.test(name))
+            .map((name) => path.join(dir, name))
+        : [];
+    });
+    if (left.length)
+      throw new Error(
+        `an interrupted --resanitize left ${left.join(", ")}: put each .bak back in place of its file and delete the .tmp files, then rerun`,
+      );
     resanitizeLocked(
       out,
       harnesses,
@@ -206,6 +221,10 @@ function resanitizeLocked(out, harnesses, work, run) {
     // key but not their value (neutral.mjs).
     const undeclared = undeclaredPaths(harness);
     const moved = new Map();
+    // The scrubbed frame of each commands.jsonl line, by its old hash.
+    const stored = new Map();
+    const resolve = (record) =>
+      [...stored].find(([hash]) => hash.startsWith(record.sha256))?.[1];
     // Every transcript is rewritten and its references checked in memory
     // first; only then are the files replaced, so a failure leaves the
     // corpus as it was.
@@ -215,6 +234,7 @@ function resanitizeLocked(out, harnesses, work, run) {
       const after = neutralizeUndeclared(
         sanitizer.records(before.map((line) => JSON.parse(line))),
         undeclared,
+        resolve,
       ).map((record) => {
         if (!record.ref) return JSON.stringify(record);
         const old = [...moved.keys()].find((hash) =>
@@ -232,9 +252,10 @@ function resanitizeLocked(out, harnesses, work, run) {
       if (file === "commands.jsonl" && after.length !== before.length)
         throw new Error("commands.jsonl changed length; recapture instead");
       if (file === "commands.jsonl")
-        before.forEach((line, at) =>
-          moved.set(digest(line), digest(after[at])),
-        );
+        before.forEach((line, at) => {
+          moved.set(digest(line), digest(after[at]));
+          stored.set(digest(line), JSON.parse(after[at]).frame);
+        });
       staged.set(file, `${after.join("\n")}\n`);
     }
     // The capture's own notes (args, gaps, stderr tails) carry the same

@@ -72,11 +72,26 @@ function neutralizeAt(value, segments, keys) {
 }
 
 // Neutralizes, in place, every undeclared field of each record's frame.
-export function neutralizeUndeclared(records, paths) {
+// A record that refers to a stored line (`{ ref, sha256 }`) takes part in
+// pairing requests with replies through `resolve(record)`, its stored frame,
+// so every inline reply gets its right kind; the stored line itself is
+// neutralized where it is stored.
+export function neutralizeUndeclared(
+  records,
+  paths,
+  resolve = () => undefined,
+) {
   if (!paths.size) return records;
-  const framed = records.filter((record) => record.frame);
+  const framed = records
+    .map((record) => ({
+      record,
+      direction: record.direction,
+      frame: record.frame ?? (record.ref ? resolve(record) : undefined),
+    }))
+    .filter((entry) => entry.frame);
   const keys = new Map();
   [...kinded(framed)].forEach(({ direction, kind }, at) => {
+    if (!framed[at].record.frame) return;
     for (const segments of paths.get(`${direction} ${kind}`) ?? [])
       neutralizeAt(framed[at].frame, segments, keys);
   });

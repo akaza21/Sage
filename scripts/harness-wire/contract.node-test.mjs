@@ -206,3 +206,119 @@ test("a second --resanitize refuses to run while a corpus is locked", () => {
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
+
+test("a reply to a request stored by reference still gets its kind, so its undeclared fields are neutralized", () => {
+  const request = {
+    type: "control_request",
+    request_id: "1",
+    request: { subtype: "initialize" },
+  };
+  const paths = new Map([
+    [
+      "in control_response/success/initialize",
+      [["response", "response", "analytics_disabled"]],
+    ],
+  ]);
+  const records = neutralizeUndeclared(
+    [
+      { direction: "out", ref: "commands.jsonl", sha256: "abc" },
+      {
+        direction: "in",
+        frame: {
+          type: "control_response",
+          response: {
+            subtype: "success",
+            request_id: "1",
+            response: { analytics_disabled: true },
+          },
+        },
+      },
+    ],
+    paths,
+    (record) => (record.sha256 === "abc" ? request : undefined),
+  );
+  assert.equal(records[1].frame.response.response.analytics_disabled, false);
+  assert.deepEqual(records[0], {
+    direction: "out",
+    ref: "commands.jsonl",
+    sha256: "abc",
+  });
+});
+
+test("--resanitize refuses to run over an interrupted run's backups", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-left-"));
+  try {
+    fs.mkdirSync(path.join(out, "pi"));
+    fs.writeFileSync(path.join(out, "pi", "edit.jsonl.123-0a1b2c3d.bak"), "");
+    const run = spawnSync(
+      process.execPath,
+      [
+        "scripts/harness-wire/capture.mjs",
+        "--out",
+        out,
+        "--harness",
+        "pi",
+        "--resanitize",
+        "--work",
+        out,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /interrupted --resanitize left/);
+    assert.equal(fs.existsSync(path.join(out, ".resanitize.lock")), false);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("every value in the committed corpus is one a person reviewed", async () => {
+  const { unreviewed } = await import("./allowed.mjs");
+  for (const harness of ["claude", "codex", "pi"])
+    assert.deepEqual(
+      unreviewed(harness),
+      [],
+      `${harness}: run allowed.mjs, review, then --write`,
+    );
+});
+
+test("an unreviewed string, key, number or account path fails with its path", async () => {
+  const { unreviewed, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    const write = (frame) =>
+      fs.writeFileSync(
+        path.join(corpus, "x", "t.jsonl"),
+        `${JSON.stringify({ direction: "in", frame })}\n`,
+      );
+    write({ type: "ok", account: { type: "chatgpt" }, n: 1 });
+    writeReviewed("x", corpus, root);
+    assert.deepEqual(unreviewed("x", corpus, root), []);
+    write({
+      type: "someone@private",
+      account: { type: "chatgpt", plan: "pro" },
+      n: 2,
+      usage: { output_tokens: 7 },
+    });
+    const problems = unreviewed("x", corpus, root).join("\n");
+    assert.match(
+      problems,
+      /t\.jsonl:1\.type: string "someone@private" is not reviewed/,
+    );
+    assert.match(
+      problems,
+      /t\.jsonl:1\.account\.plan: account path "account:plan" is not reviewed/,
+    );
+    assert.match(problems, /t\.jsonl:1\.n: number under n 2 is not reviewed/);
+    assert.match(
+      problems,
+      /output_tokens: 7 is neither 0 nor output_tokens's placeholder 50/,
+    );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

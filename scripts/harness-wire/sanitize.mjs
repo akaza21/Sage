@@ -66,7 +66,7 @@ const LIMITS = [
     WINDOW.map((field) => `${window}.${field}`),
   ),
 ];
-const ACCOUNT_RULES = new Map(
+export const ACCOUNT_RULES = new Map(
   Object.entries({
     account: ["type"],
     organization: [],
@@ -126,7 +126,7 @@ const RUN_IDS = new Map(
 // enums and every number, boolean and null keep their value, and every other
 // string at any depth (descriptions, prompts, paths, icons) is "redacted". A
 // field that names an entry uses the same pseudonym, inside tool inputs too.
-const CATALOGS = new Map(
+export const CATALOGS = new Map(
   Object.entries({
     commands: "command",
     slash_commands: "command",
@@ -162,7 +162,7 @@ const CATALOG_REFS = new Set([
 // Maps keyed by an account's own ids.
 const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
 // Maps keyed by model.
-const MODEL_KEYED = new Set(["modelUsage"]);
+export const MODEL_KEYED = new Set(["modelUsage"]);
 // Maps keyed by catalog entries: each key uses the entry's pseudonym.
 const CATALOG_KEYED = new Map(Object.entries({ by_type: "agent" }));
 // A provider's own message, tool-use and call ids.
@@ -180,8 +180,16 @@ const MCP_CALL_NAMES = new Set([
   "pluginId",
   "mcpAppResourceUri",
 ]);
+// The capturing machine's operating system build, as a user agent states it.
+const OS_VERSION = /\b(Windows|Mac OS X|macOS|Darwin|Linux) \d+(?:\.\d+)+/g;
+// A long directory listing line (`ls -l`): its owner, group and date are
+// the capturing machine's.
+const LISTING =
+  /^([-bcdlps][rwxsStT-]{9}[.+@]?\s+\d+\s+)\S+\s+\S+(\s+\d+\s+)[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4})/gm;
+// A 16-hex-digit folder in a path.
+const HEX_SEGMENT = /(?<=[\\/])[0-9a-f]{16}(?=[\\/])/g;
 // Lists whose elements are model descriptors.
-const MODEL_LISTS = new Set(["models", "availableModels"]);
+export const MODEL_LISTS = new Set(["models", "availableModels"]);
 // Fields of a model descriptor, and fields elsewhere that name a model.
 const MODEL_FIELDS = new Set([
   "id",
@@ -202,9 +210,9 @@ const MODEL_KEYS = new Set([
   "normalModelSlug",
 ]);
 // Token counts and costs of the captured turns, as fixed synthetic values.
-const TOKENS = /tokens(?:_delta)?$|^(?:cacheRead|cacheWrite)$/i;
+export const TOKENS = /tokens(?:_delta)?$|^(?:cacheRead|cacheWrite)$/i;
 // Distinct per kind, so a replay still tells input, output and cache apart.
-const tokenCount = (key) =>
+export const tokenCount = (key) =>
   /output/i.test(key)
     ? 50
     : /reasoning/i.test(key)
@@ -215,7 +223,7 @@ const tokenCount = (key) =>
           ? 20
           : 100;
 const SIGNATURE_KEYS = new Set(["signature", "encrypted_content"]);
-const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
+export const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
 // Absolute times move to a fixed epoch, one offset per unit for the whole
 // capture, so every interval between them holds.
 const TIME_KEY = /(?:At|Ms|_at|_time|Time|stamp)$/;
@@ -319,6 +327,7 @@ export function makeSanitizer({ roots }) {
   const catalogNames = new Map();
   const keyNames = new Map();
   const signatures = new Map();
+  const hexSegments = new Map();
   const mcpServer = (server) =>
     PLACEHOLDER.test(server)
       ? server
@@ -421,6 +430,19 @@ export function makeSanitizer({ roots }) {
       out = out.replace(wordPattern, (match) => models.get(match));
     const runs = runIdPattern();
     if (runs) out = out.replace(runs, (match) => runIds.get(match));
+    out = out
+      .replace(OS_VERSION, "$1 0.0.0")
+      .replace(LISTING, "$1user group$2Jan 15 08:00");
+    // A hash a harness derives for a folder (Claude Code's per-project temp
+    // directory) comes from the capture's own paths.
+    out = out.replace(HEX_SEGMENT, (match) =>
+      /^0{12}/.test(match)
+        ? match
+        : (hexSegments.get(match) ??
+          hexSegments
+            .set(match, String(hexSegments.size + 1).padStart(16, "0"))
+            .get(match)),
+    );
     out = out.replace(PROVIDER_ID, (match, prefix) => {
       if (!providerIds.has(match))
         providerIds.set(

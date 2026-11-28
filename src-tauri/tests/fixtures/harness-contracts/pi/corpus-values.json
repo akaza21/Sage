@@ -1,0 +1,149 @@
+{
+  "strings": [
+    "",
+    "--mode",
+    "00000000-0000-4000-8000-000000000001",
+    "1.5.0",
+    "builtin",
+    "C:\\fixture-workspace\\config\\sessions\\--C--fixture-workspace-repo--\\2027-01-15T08-00-00-000Z_00000000-0000-4000-8000-000000000001.jsonl",
+    "C:\\fixture-workspace\\empty-home\\sessions\\--C--fixture-workspace-repo--\\2027-01-15T08-00-18-188Z_00000000-0000-4000-8000-000000000001.jsonl",
+    "command-1",
+    "command-2",
+    "completed",
+    "extension",
+    "get_available_models",
+    "get_commands",
+    "get_state",
+    "model-1",
+    "No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key. See:\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\providers.md\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\models.md",
+    "off",
+    "one-at-a-time",
+    "pi",
+    "Pi has no built-in subagent tool",
+    "Pi has no plan mode",
+    "pi-1-1",
+    "pi-1-2",
+    "pi-1-3",
+    "pi-1-4",
+    "pi-1-5",
+    "prompt",
+    "redacted",
+    "Reply with the single word ok.",
+    "response",
+    "rpc",
+    "temporary",
+    "the prompt was refused: No API key found for the selected model.",
+    "top-level"
+  ],
+  "keys": [
+    "api",
+    "args",
+    "auth-fail",
+    "autoCompactionEnabled",
+    "baseUrl",
+    "bytes",
+    "cacheRead",
+    "cacheWrite",
+    "code",
+    "command",
+    "commands",
+    "contextWindow",
+    "cost",
+    "data",
+    "description",
+    "edit",
+    "error",
+    "exit",
+    "firstFrameMs",
+    "followUpMode",
+    "frames",
+    "gaps",
+    "harness",
+    "id",
+    "image",
+    "input",
+    "isCompacting",
+    "isStreaming",
+    "maxTokens",
+    "message",
+    "messageCount",
+    "model",
+    "models",
+    "name",
+    "origin",
+    "outcome",
+    "output",
+    "path",
+    "pendingMessageCount",
+    "plan-approve",
+    "plan-decline",
+    "provider",
+    "reasoning",
+    "scenarios",
+    "scope",
+    "sessionFile",
+    "sessionId",
+    "shell",
+    "signal",
+    "source",
+    "sourceInfo",
+    "stderrTail",
+    "steeringMode",
+    "subagent",
+    "success",
+    "thinkingLevel",
+    "type",
+    "version"
+  ],
+  "numbers": {
+    "bytes": [
+      2507,
+      3166
+    ],
+    "cacheRead": [
+      0
+    ],
+    "cacheWrite": [
+      0
+    ],
+    "code": [
+      0
+    ],
+    "contextWindow": [
+      0
+    ],
+    "firstFrameMs": [
+      739,
+      782
+    ],
+    "frames": [
+      8,
+      10
+    ],
+    "input": [
+      0
+    ],
+    "maxTokens": [
+      0
+    ],
+    "messageCount": [
+      0
+    ],
+    "output": [
+      0
+    ],
+    "pendingMessageCount": [
+      0
+    ]
+  },
+  "contextPaths": [
+    "commands:[].description",
+    "commands:[].name",
+    "commands:[].source",
+    "commands:[].sourceInfo",
+    "commands:[].sourceInfo.origin",
+    "commands:[].sourceInfo.path",
+    "commands:[].sourceInfo.scope",
+    "commands:[].sourceInfo.source"
+  ]
+}

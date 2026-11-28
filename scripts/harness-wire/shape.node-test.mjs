@@ -1174,3 +1174,32 @@ test("a word-like model id is replaced in prose but never as a bare value", () =
   assert.equal(turn.frame.message, `Using ${sonnet} today, then ${o3}.`);
   assert.equal(turn.frame.kind, "sonnet");
 });
+
+test("a folder hash in a path gets a stable pseudonym", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const one = sanitizer.text(
+    "/home/Temp/claude/c0e836b11d3726f3/tasks/a.output",
+  );
+  assert.equal(one, "/home/Temp/claude/0000000000000001/tasks/a.output");
+  assert.equal(sanitizer.text(one), one);
+  assert.equal(
+    sanitizer.text("sha c0e836b11d3726f3 alone"),
+    "sha c0e836b11d3726f3 alone",
+  );
+});
+
+test("a directory listing's owner, group and date and an OS build carry nothing of the machine", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  assert.equal(
+    sanitizer.text(
+      "-rw-r--r-- 1 HP 197121 119 Nov 26 22:29 repo/CONTRIBUTING.md\n1 repo/CONTRIBUTING.md",
+    ),
+    "-rw-r--r-- 1 user group 119 Jan 15 08:00 repo/CONTRIBUTING.md\n1 repo/CONTRIBUTING.md",
+  );
+  assert.equal(
+    sanitizer.text(
+      "sage/0.167.1 (Windows 10.0.26100; x86_64) unknown (sage; 0.1.0)",
+    ),
+    "sage/0.167.1 (Windows 0.0.0; x86_64) unknown (sage; 0.1.0)",
+  );
+});
