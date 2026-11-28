@@ -790,3 +790,87 @@ test("configured catalogs, unapproved account keys, run ids and a usage status c
     /acme|Acme|b8nnzn53z|allowed_warning/,
   );
 });
+
+test("catalog entries keep only a pseudonymous name and structural enums, and references follow them", () => {
+  const [init, skills, call] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        terminal_slash_commands: ["acme-deploy"],
+        agents: ["acme-expert", "general-purpose"],
+        plugins: [
+          { name: "acme-plugin", path: "/opt/acme", source: "redacted" },
+        ],
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        skills: [
+          {
+            name: "acme-skill",
+            scope: "user",
+            enabled: true,
+            shortDescription: "Acme secrets",
+            interface: {
+              shortDescription: "Acme",
+              defaultPrompt: "Use $acme-skill",
+              iconSmall: "/acme/icon.svg",
+            },
+            path: "/home/acme/skills/acme-skill/SKILL.md",
+          },
+        ],
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        task_id: "a1234",
+        message: {
+          content: [
+            { type: "tool_use", input: { subagent_type: "acme-expert" } },
+          ],
+        },
+        note: "Output at /tmp/a1234.output",
+      },
+    },
+  ]);
+  assert.deepEqual(init.frame.terminal_slash_commands, ["command-1"]);
+  assert.deepEqual(init.frame.agents, ["agent-1", "agent-2"]);
+  assert.deepEqual(init.frame.plugins, [
+    { name: "plugin-1", path: "redacted", source: "redacted" },
+  ]);
+  assert.deepEqual(skills.frame.skills, [
+    {
+      name: "skill-1",
+      scope: "user",
+      enabled: true,
+      shortDescription: "redacted",
+      interface: {
+        shortDescription: "redacted",
+        defaultPrompt: "redacted",
+        iconSmall: "redacted",
+      },
+      path: "redacted",
+    },
+  ]);
+  assert.equal(call.frame.message.content[0].input.subagent_type, "agent-1");
+  assert.equal(call.frame.task_id, "task-1");
+  assert.equal(call.frame.note, "Output at /tmp/task-1.output");
+  assert.doesNotMatch(JSON.stringify([init, skills, call]), /acme|Acme|a1234/);
+});
+
+test("a map keyed by agent type uses the agents' pseudonyms", () => {
+  const [init, result] = makeSanitizer({ roots: [] }).records([
+    { direction: "in", frame: { agents: ["acme-expert"] } },
+    {
+      direction: "in",
+      frame: { subagents: { by_type: { "acme-expert": 1, "acme-other": 2 } } },
+    },
+  ]);
+  assert.deepEqual(init.frame.agents, ["agent-1"]);
+  assert.deepEqual(result.frame.subagents.by_type, {
+    "agent-1": 1,
+    "agent-2": 2,
+  });
+});

@@ -442,7 +442,7 @@
       "stop_reason",
       "subagent_stats",
       "subagent_stats.by_type",
-      "subagent_stats.by_type.general-purpose",
+      "subagent_stats.by_type.agent-3",
       "subagent_stats.completed",
       "subagent_stats.failed",
       "subagent_stats.killed",

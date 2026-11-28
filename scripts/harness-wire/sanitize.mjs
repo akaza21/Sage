@@ -72,7 +72,6 @@ const ACCOUNT_RULES = new Map(
     organization: [],
     subscription: [],
     credits: [],
-    agents: ["[].name"],
     rate_limit_info: ["status", "rateLimitType", "utilization", "resetsAt"],
     rateLimits: LIMITS,
     rateLimitsByLimitId: LIMITS.map((field) => `*.${field}`),
@@ -120,26 +119,28 @@ const RUN_IDS = new Map(
     agentId: "agent",
   }),
 );
-// Command, skill and agent catalogs an account can configure: names become
-// stable pseudonyms and descriptions "redacted"; a field that names one of
-// them uses the same pseudonym.
+// Command, skill, agent, plugin and MCP server catalogs an account can
+// configure. Inside an element only an allow-list survives: its name (or the
+// element itself, when a string) becomes a stable pseudonym, the CATALOG_KEEP
+// enums and every number, boolean and null keep their value, and every other
+// string at any depth (descriptions, prompts, paths, icons) is "redacted". A
+// field that names an entry uses the same pseudonym, inside tool inputs too.
 const CATALOGS = new Map(
   Object.entries({
     commands: "command",
     slash_commands: "command",
+    terminal_slash_commands: "command",
     availableCommands: "command",
     skills: "skill",
     agents: "agent",
+    plugins: "plugin",
+    mcp_servers: "server",
   }),
 );
-const CATALOG_TEXT = new Set([
-  "description",
-  "argumentHint",
-  "argument_hint",
-  "hint",
-  "whenToUse",
-  "when_to_use",
-]);
+const CATALOG_KEEP = new Set(["scope", "source", "origin", "type", "status"]);
+// Values the sanitizer itself writes.
+const PLACEHOLDER =
+  /^(?:redacted|(?:model|command|skill|agent|plugin|server|key|run|task)-\d+|Model \d+)$/;
 const CATALOG_REFS = new Set([
   "command",
   "commandName",
@@ -150,6 +151,8 @@ const CATALOG_REFS = new Set([
 ]);
 // Maps keyed by an account's own ids.
 const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
+// Maps keyed by catalog entries: each key uses the entry's pseudonym.
+const CATALOG_KEYED = new Map(Object.entries({ by_type: "agent" }));
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
@@ -365,7 +368,10 @@ export function makeSanitizer({ roots }) {
   function runIdPattern() {
     if (runSize === runIds.size) return runPattern;
     runSize = runIds.size;
+    // Ids under four characters carry no identity and would match ordinary
+    // words, so text keeps them; the id fields themselves are always replaced.
     const ids = [...runIds.keys()]
+      .filter((id) => id.length >= 4)
       .sort((a, b) => b.length - a.length)
       .map(escapeRegExp);
     runPattern = ids.length
@@ -380,7 +386,7 @@ export function makeSanitizer({ roots }) {
         if (
           RUN_IDS.has(key) &&
           typeof entry === "string" &&
-          entry.length >= 6 &&
+          entry !== "" &&
           !/^(?:run|task|agent)-\d+$/.test(entry)
         )
           pseudonym(runIds, entry, RUN_IDS.get(key));
@@ -527,9 +533,7 @@ export function makeSanitizer({ roots }) {
     if ((ACCOUNT_RULES.get(account.root) ?? []).some((rule) => rule.test(at)))
       return value;
     if (typeof value === "string")
-      return /^(?:redacted|model-\d+|Model \d+)$/.test(value)
-        ? value
-        : "redacted";
+      return PLACEHOLDER.test(value) ? value : "redacted";
     if (typeof value === "number") return 0;
     if (typeof value === "boolean") return false;
     return value;
@@ -567,14 +571,17 @@ export function makeSanitizer({ roots }) {
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
       return CREDENTIAL_EXPIRY;
     if (!opaque && typeof value === "string" && catalog) {
-      if (catalog.field === "name" || catalog.field === "")
-        return /^(?:command|skill|agent)-\d+$/.test(value)
-          ? value
-          : pseudonym(catalogNames, value, catalog.kind);
-      if (CATALOG_TEXT.has(catalog.field)) return "redacted";
+      if (PLACEHOLDER.test(value)) return value;
+      if (
+        catalog.path.length === 0 ||
+        (catalog.path.length === 1 && catalog.path[0] === "name")
+      )
+        return pseudonym(catalogNames, value, catalog.kind);
+      return CATALOG_KEEP.has(key) ? value : "redacted";
     }
+    if (RUN_IDS.has(key) && typeof value === "string" && runIds.has(value))
+      return runIds.get(value);
     if (
-      !opaque &&
       typeof value === "string" &&
       CATALOG_REFS.has(key) &&
       catalogNames.has(value.replace(/^\//, ""))
@@ -625,9 +632,11 @@ export function makeSanitizer({ roots }) {
             false,
             opaque,
             element,
-            !opaque && CATALOGS.has(key)
-              ? { kind: CATALOGS.get(key), field: "" }
-              : null,
+            catalog
+              ? { kind: catalog.kind, path: [...catalog.path, "[]"] }
+              : !opaque && CATALOGS.has(key)
+                ? { kind: CATALOGS.get(key), path: [] }
+                : null,
           ),
         );
     }
@@ -644,7 +653,13 @@ export function makeSanitizer({ roots }) {
         Object.entries(opaque ? value : usage(value)).map(([name, entry]) => {
           const scrubbed = text(name);
           const renamed =
-            base && !opaque ? accountKey(scrubbed, base) : scrubbed;
+            !opaque && CATALOG_KEYED.has(key)
+              ? PLACEHOLDER.test(scrubbed)
+                ? scrubbed
+                : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
+              : base && !opaque
+                ? accountKey(scrubbed, base)
+                : scrubbed;
           return [
             renamed,
             walk(
@@ -653,8 +668,8 @@ export function makeSanitizer({ roots }) {
               model,
               opaque || OPAQUE.has(name),
               base && { root: base.root, path: [...base.path, renamed] },
-              catalog && catalog.field === ""
-                ? { kind: catalog.kind, field: name }
+              catalog
+                ? { kind: catalog.kind, path: [...catalog.path, name] }
                 : null,
             ),
           ];
