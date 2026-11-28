@@ -25,17 +25,17 @@ impl TreeControl {
         Ok(())
     }
 
-    /// Lets a pending grace run until `deadline` at most, then kills the job
-    /// if the root has not exited by itself.
+    /// When this wait lasts past a pending grace, lets the grace run out and
+    /// kills the job then if the root has not exited by itself.
     pub(super) fn finish_grace(&self, deadline: Instant) -> Result<(), LaunchError> {
-        let Some(kill_at) = locked(&self.0.termination)?.take_kill_at() else {
+        let Some(kill_at) = locked(&self.0.termination)?.claim_grace(deadline) else {
             return Ok(());
         };
         let mut root = Root {
             control: self,
             killed: Ok(()),
         };
-        graceful_exit::exit_or_kill(&mut root, kill_at.min(deadline));
+        graceful_exit::exit_or_kill(&mut root, kill_at);
         root.killed
     }
 

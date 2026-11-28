@@ -39,19 +39,19 @@ impl TreeControl {
         Ok(())
     }
 
-    /// Lets a pending grace run until `deadline` at most, then kills the root
-    /// if it has not exited by itself.
+    /// When this wait lasts past a pending grace, lets the grace run out and
+    /// kills the root then if it has not exited by itself.
     pub(super) fn finish_grace(&self, deadline: Instant) -> Result<(), LaunchError> {
         let Some(kill_at) = self
             .0
             .termination
             .lock()
             .map_err(|_| LaunchError::ContainmentFailure)?
-            .take_kill_at()
+            .claim_grace(deadline)
         else {
             return Ok(());
         };
-        graceful_exit::exit_or_kill(&mut Root(self), kill_at.min(deadline));
+        graceful_exit::exit_or_kill(&mut Root(self), kill_at);
         Ok(())
     }
 

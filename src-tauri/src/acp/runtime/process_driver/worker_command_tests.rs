@@ -8,7 +8,6 @@ use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision},
 };
-use sage_core::limits::LIMITS;
 
 use super::*;
 

@@ -62,10 +62,15 @@ where
                 );
             }
         }
-        exit.state.close_stdin_after_durable_completed();
-        // A shutdown Sage asked for leaves the harness the grace to exit on
-        // its own; a failed runtime is ended now.
-        let requested = if exit.shutdown.is_some() {
+        // A shutdown Sage asked for leaves a harness whose stdin it closed the
+        // grace to exit on its own; a failed runtime is ended now.
+        let graceful = if exit.shutdown.is_some() {
+            exit.state.close_stdin_for_shutdown()
+        } else {
+            exit.state.close_stdin_after_durable_completed();
+            false
+        };
+        let requested = if graceful {
             control.request_graceful_termination(exit.reason, graceful_exit::EXIT_GRACE)
         } else {
             control.request_termination(exit.reason)

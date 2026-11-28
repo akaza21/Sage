@@ -231,6 +231,8 @@ pub(super) struct TerminationRecord {
     /// Set by a graceful request: the root's stdin is closed and the tree is
     /// killed only if the root is still running at this instant.
     kill_at: Option<Instant>,
+    /// A waiter has taken on killing the tree at `kill_at`.
+    grace_claimed: bool,
 }
 
 impl TerminationRecord {
@@ -259,10 +261,15 @@ impl TerminationRecord {
         self.kill_at = None;
     }
 
-    /// The pending grace's end, claimed by exactly one waiter, which kills
-    /// the tree then if the root is still running.
-    pub(super) fn take_kill_at(&mut self) -> Option<Instant> {
-        self.kill_at.take()
+    /// The pending grace's end, for exactly one waiter that waits at least
+    /// that long; it kills the tree then if the root is still running. A
+    /// shorter wait never ends the grace early.
+    pub(super) fn claim_grace(&mut self, deadline: Instant) -> Option<Instant> {
+        let kill_at = self.kill_at.filter(|kill_at| *kill_at <= deadline)?;
+        if std::mem::replace(&mut self.grace_claimed, true) {
+            return None;
+        }
+        Some(kill_at)
     }
 
     /// How long a wait for the tree must allow: a pending grace's end, then

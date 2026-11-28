@@ -31,16 +31,25 @@ impl Drop for Scratch {
 /// Reads stdin to its end, then takes about a second (a sign-in refresh still
 /// in flight) before it writes `marker` and exits.
 fn finishes_after_eof_script(marker: &Path) -> String {
+    finishes_after_eof_script_in(marker, 1)
+}
+
+/// Like [`finishes_after_eof_script`], taking about `seconds` after stdin ends.
+fn finishes_after_eof_script_in(marker: &Path, seconds: u32) -> String {
     #[cfg(windows)]
     {
         format!(
-            "%SystemRoot%\\System32\\findstr.exe x >nul & %SystemRoot%\\System32\\PING.EXE -n 2 127.0.0.1 >nul & type nul > {}",
+            "%SystemRoot%\\System32\\findstr.exe x >nul & %SystemRoot%\\System32\\PING.EXE -n {} 127.0.0.1 >nul & type nul > {}",
+            seconds + 1,
             marker.display()
         )
     }
     #[cfg(not(windows))]
     {
-        format!("cat >/dev/null; sleep 1; : > '{}'", marker.display())
+        format!(
+            "cat >/dev/null; sleep {seconds}; : > '{}'",
+            marker.display()
+        )
     }
 }
 
@@ -175,7 +184,7 @@ fn closing_several_harnesses_gives_each_its_grace_at_once() {
     let controls: Vec<_> = markers
         .iter()
         .zip(74..)
-        .map(|(marker, epoch)| tree(epoch, &finishes_after_eof_script(marker)))
+        .map(|(marker, epoch)| tree(epoch, &finishes_after_eof_script_in(marker, 2)))
         .collect();
     let begun = Instant::now();
     let exits = close_all(&controls, |control| {
@@ -190,10 +199,36 @@ fn closing_several_harnesses_gives_each_its_grace_at_once() {
         markers.iter().all(|marker| marker.exists()),
         "every harness saved its work"
     );
-    // Each needs about a second after its stdin closes; one after another
-    // would take three.
+    // Each needs about two seconds after its stdin closes; one after another
+    // would take six.
     assert!(
-        elapsed < Duration::from_millis(2_500),
+        elapsed < Duration::from_millis(4_500),
         "closed in parallel: {elapsed:?}"
+    );
+}
+
+#[test]
+fn a_short_wait_never_ends_the_grace_early() {
+    let control = tree(77, &ignores_eof_script());
+    let begun = Instant::now();
+    control
+        .request_graceful_termination(TreeExit::Cancelled, Duration::from_millis(1_500))
+        .unwrap();
+    assert_eq!(
+        control
+            .wait_zero_before(Instant::now() + Duration::from_millis(200))
+            .map(|(exit, _zero)| exit),
+        Err(sage_process::error::LaunchError::Deadline)
+    );
+    assert_eq!(
+        control.native_exit_code_if_exited(),
+        Ok(None),
+        "a wait shorter than the grace does not kill the harness"
+    );
+    let (exit, _zero) = control.wait_zero().unwrap();
+    assert_eq!(exit, TreeExit::Cancelled);
+    assert!(
+        begun.elapsed() >= Duration::from_millis(1_500),
+        "killed at the grace's end"
     );
 }
