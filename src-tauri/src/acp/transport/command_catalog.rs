@@ -18,6 +18,10 @@ pub(crate) enum CommandWirePath {
     Update,
     Data,
     Commands,
+    /// A subtree the binding discards unread, such as the settings echo in a
+    /// reply Sage only waits for. The frame byte, node and depth budgets
+    /// still bound it; the per-collection caps guard only what Sage reads.
+    Unread,
     #[default]
     Other,
 }
@@ -56,6 +60,7 @@ impl CommandWirePath {
             (Self::Params, "update") => Self::Update,
             (Self::Update, "availableCommands") | (Self::Data, "commands") => Self::Commands,
             (Self::Rpc, "data") => Self::Data,
+            (Self::Unread, _) => Self::Unread,
             _ => Self::Other,
         }
     }
@@ -63,6 +68,7 @@ impl CommandWirePath {
     pub(crate) fn element(self) -> Self {
         match self {
             Self::Elements(next) => *next,
+            Self::Unread => Self::Unread,
             _ => Self::Other,
         }
     }
@@ -70,7 +76,15 @@ impl CommandWirePath {
     pub(crate) fn array_limit(self) -> u64 {
         match self {
             Self::Commands => RAW_COMMANDS,
+            Self::Unread => LIMITS.wire.json_nodes,
             _ => LIMITS.wire.array_entries,
+        }
+    }
+
+    pub(crate) fn member_limit(self) -> u64 {
+        match self {
+            Self::Unread => LIMITS.wire.json_nodes,
+            _ => LIMITS.wire.object_members,
         }
     }
 }

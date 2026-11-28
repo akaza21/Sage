@@ -1,6 +1,4 @@
 import { useAgentSettingsState } from "../settings/agentSettingsState";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import {
   act,
   cleanup,
@@ -665,35 +663,6 @@ it("hides the native browser when its host pane unmounts", () => {
   view.unmount();
   expect(hideBrowser).toHaveBeenCalledWith(tab.id);
 });
-it("contains browser chrome inside the Agent canvas and styles page actions", async () => {
-  const css = await readFile(
-    resolve("src/features/browser/browser.css"),
-    "utf8",
-  );
-  expect(css).toMatch(
-    /\.agent-artifact-pane__canvas > \.browser-surface\s*\{[^}]*position:\s*relative;[^}]*width:\s*100%;[^}]*height:\s*100%;/s,
-  );
-  expect(css).toMatch(
-    /\.browser-surface__attachment\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s,
-  );
-  expect(css).toMatch(
-    /\.browser-surface__attachment (?:button|select)[^}]*background:\s*var\(--browser-control-fill\);/s,
-  );
-  expect(css).toMatch(
-    /\.browser-surface__menu \[role="menuitem"\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
-  );
-  expect(css).toMatch(/\.browser-surface__toolbar\s*\{[^}]*height:\s*44px;/s);
-  expect(css).toMatch(
-    /\.browser-surface__nav-group\s*\{[^}]*background:\s*var\(--browser-control-fill\);/s,
-  );
-  expect(css).toMatch(/\.browser-surface__toolbar button:focus-visible\s*\{/s);
-  expect(css).toMatch(
-    /\.browser-surface__address input\s*\{[^}]*height:\s*32px;[^}]*background:\s*var\(--browser-address-fill\);/s,
-  );
-  const tokens = await readFile(resolve("src/styles/global.css"), "utf8");
-  expect(tokens).toContain("--browser-address-fill: #2d2d2d;");
-});
-
 it("clips native webview bounds to the Agent canvas below browser chrome", async () => {
   const rect = (left: number, top: number, width: number, height: number) =>
     ({

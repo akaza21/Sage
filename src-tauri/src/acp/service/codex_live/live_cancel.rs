@@ -20,7 +20,7 @@ impl Lane<'_> {
         if &owner.project_id != project || &owner.chat_id != chat {
             return Ok(());
         }
-        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close);
+        let deadline = Instant::now() + crate::acp::process::graceful_exit::close_budget();
         if self.has_runtime_recovery_for(&owner) {
             return self
                 .shutdown_codex_recovery(deadline)

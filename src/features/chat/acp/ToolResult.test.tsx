@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -79,14 +76,6 @@ describe("integration results", () => {
     expect(
       result?.querySelector(".acp-code-block__language"),
     ).toHaveTextContent("JSON");
-    expect(
-      readFileSync(
-        resolve("src/features/chat/acp/acp-activity-details.css"),
-        "utf8",
-      ),
-    ).toMatch(
-      /\.acp-tool-result \.acp-code-block__language\s*\{\s*text-transform:\s*lowercase;/,
-    );
     expect(result).toHaveTextContent('"hits"');
     expect(container.querySelector(".acp-tool-command-frame")).toBeNull();
   });

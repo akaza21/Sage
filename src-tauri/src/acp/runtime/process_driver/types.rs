@@ -126,6 +126,12 @@ pub(crate) trait ProcessTreeControl {
     type ZeroProof;
 
     fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError>;
+    /// An intentional close: the harness's stdin is already closed, and it
+    /// is left [`EXIT_GRACE`](crate::acp::process::graceful_exit::EXIT_GRACE)
+    /// to exit on its own before the tree is killed.
+    fn request_graceful_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
+        self.request_termination(reason)
+    }
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError>;
     fn log_wait_handle_observation(&self, _: &'static str) {}
     fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
@@ -182,6 +188,14 @@ impl ProcessTreeControl for TreeControl {
 
     fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
         TreeControl::request_termination(self, reason)
+    }
+
+    fn request_graceful_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
+        TreeControl::request_graceful_termination(
+            self,
+            reason,
+            crate::acp::process::graceful_exit::EXIT_GRACE,
+        )
     }
 
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {

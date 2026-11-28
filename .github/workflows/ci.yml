@@ -166,8 +166,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-    # Measured on ubuntu-latest: Vitest alone takes about 12 minutes (425
-    # files), before the budget lanes, build and policy checks.
+    # Vitest runs in its own sharded job below; this job runs the rest of
+    # `npm run check` in the same order.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -184,7 +184,33 @@ jobs:
       # The policy check reads the workspace through `cargo metadata`.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
-      - run: npm run check
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run test:budgets
+      - run: npm run build
+      - run: npm run test:web-bundle
+      - run: npm run check:policy
+
+  vitest:
+    name: Vitest (${{ matrix.shard }}/3)
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    # One unsharded run takes about 5.5 minutes on ubuntu-latest; Vitest
+    # splits the files across the three shards, so every file still runs.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test -- --shard=${{ matrix.shard }}/3
 
   smoke-cli:
     name: Windows budget lane (browser)
@@ -247,8 +273,8 @@ jobs:
         if: always()
         run: node scripts/beta0001-installed-smoke-guardian-journal.mjs "$env:SAGE_GUARDIAN_PHASE_JOURNAL"
 
-  rust:
-    name: Rust (${{ matrix.os }})
+  rust-lint:
+    name: Rust lint (${{ matrix.os }})
     needs: plan
     if: needs.plan.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
@@ -257,11 +283,7 @@ jobs:
       # binaries cost to compile, link and cache. Locally the dev profile keeps
       # line tables for backtraces.
       CARGO_PROFILE_DEV_DEBUG: 0
-    # A cold-cache run builds and runs the parallel test phase in about 20
-    # minutes on ubuntu-latest, before Clippy, the serial phases and the
-    # release check. The macOS runner is the slowest lane: its parallel phase
-    # alone takes 30 to 43 minutes, and its serial phases about 6 more.
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -307,6 +329,65 @@ jobs:
       # Library targets only: no dev-dependency enables a test-support
       # feature, so the production configuration is linted as well.
       - run: cargo clippy --workspace --lib --features "${{ matrix.lint-features }}" -- -D warnings
+      - run: cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    env:
+      # CI never attaches a debugger, and debug info is most of what the test
+      # binaries cost to compile, link and cache. Locally the dev profile keeps
+      # line tables for backtraces.
+      CARGO_PROFILE_DEV_DEBUG: 0
+    # The Rust work runs as three jobs on separate runners: lint, tests, and
+    # the browser-bridge and release builds. Each keeps its own cache, saved
+    # from main. A cold-cache run of this job builds and runs the parallel
+    # test phase in about 20 minutes on ubuntu-latest. The macOS runner is the
+    # slowest lane: its parallel phase alone takes 30 to 43 minutes, and its
+    # serial phases about 6 more.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          # Branches restore main's cache instead of each writing their own,
+          # which would evict it under the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+          # Keep Sage's own build outputs too. tauri::generate_context! writes
+          # the window icon into the crate's OUT_DIR while rustc runs, and
+          # Cargo marks a crate stale when an input is newer than the start of
+          # its compile. When the restored cache has no OUT_DIR, the first
+          # test phase creates that file and the next phase recompiles the
+          # whole crate (about two and a half minutes on ubuntu-latest).
+          cache-workspace-crates: true
+      - name: Create Tauri frontend placeholder
+        run: >-
+          node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
       # The parallel phase includes the shared-contract suites
       # (workspace_notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
@@ -315,7 +396,58 @@ jobs:
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
       - name: Test app preview serially
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
-      - run: cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings
+
+  rust-bridge:
+    name: Rust bridge and release (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    env:
+      # CI never attaches a debugger, and debug info is most of what the test
+      # binaries cost to compile, link and cache. Locally the dev profile keeps
+      # line tables for backtraces.
+      CARGO_PROFILE_DEV_DEBUG: 0
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rust-matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          # Branches restore main's cache instead of each writing their own,
+          # which would evict it under the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+          # Keep Sage's own build outputs too. tauri::generate_context! writes
+          # the window icon into the crate's OUT_DIR while rustc runs, and
+          # Cargo marks a crate stale when an input is newer than the start of
+          # its compile. When the restored cache has no OUT_DIR, the first
+          # test phase creates that file and the next phase recompiles the
+          # whole crate (about two and a half minutes on ubuntu-latest).
+          cache-workspace-crates: true
+      - name: Create Tauri frontend placeholder
+        run: >-
+          node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
       - run: "cargo test -p sage --features browser-bridge --lib dev_bridge::"
       - run: cargo check -p sage --release --lib
 
@@ -328,8 +460,11 @@ jobs:
       - security
       - plan
       - frontend
+      - vitest
       - smoke-cli
+      - rust-lint
       - rust
+      - rust-bridge
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -339,9 +474,12 @@ jobs:
           PLAN: ${{ needs.plan.result }}
           FRONTEND: ${{ needs.frontend.result }}
           FRONTEND_PLANNED: ${{ needs.plan.outputs.frontend }}
+          VITEST: ${{ needs.vitest.result }}
           SMOKE_CLI: ${{ needs.smoke-cli.result }}
           SMOKE_CLI_PLANNED: ${{ needs.plan.outputs.windows }}
+          RUST_LINT: ${{ needs.rust-lint.result }}
           RUST: ${{ needs.rust.result }}
+          RUST_BRIDGE: ${{ needs.rust-bridge.result }}
           RUST_PLANNED: ${{ needs.plan.outputs.rust }}
           RUST_OS: ${{ needs.plan.outputs.rust-os }}
         run: |
@@ -358,13 +496,19 @@ jobs:
           require "Security" "true" "$SECURITY"
           test "$PLAN" = "success"
           require "Frontend and policy" "$FRONTEND_PLANNED" "$FRONTEND"
+          require "Vitest" "$FRONTEND_PLANNED" "$VITEST"
           require "Windows budget lane" "$SMOKE_CLI_PLANNED" "$SMOKE_CLI"
+          require "Rust lint" "$RUST_PLANNED" "$RUST_LINT"
           require "Rust" "$RUST_PLANNED" "$RUST"
+          require "Rust bridge and release" "$RUST_PLANNED" "$RUST_BRIDGE"
           {
             echo "### Verified in this run"
             echo "- Security: $SECURITY"
             echo "- Frontend and policy: $FRONTEND"
+            echo "- Vitest: $VITEST"
+            echo "- Rust lint on $RUST_OS: $RUST_LINT"
             echo "- Rust on $RUST_OS: $RUST"
+            echo "- Rust bridge and release on $RUST_OS: $RUST_BRIDGE"
             echo "- Windows budget lane: $SMOKE_CLI"
             for platform in windows macos; do
               case "$RUST_OS" in

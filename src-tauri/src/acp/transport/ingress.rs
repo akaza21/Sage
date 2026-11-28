@@ -44,7 +44,9 @@ pub(crate) fn validate_structure_with_catalog(
 ) -> Result<(), StructuralError> {
     validate_numeric_tokens(frame.as_bytes())?;
     match validate_with_path(frame, CommandWirePath::Other) {
-        Err(StructuralError::ArrayTooLarge) => validate_with_path(frame, catalog()),
+        Err(StructuralError::ArrayTooLarge | StructuralError::ObjectTooLarge) => {
+            validate_with_path(frame, catalog())
+        }
         result => result,
     }
 }
@@ -174,7 +176,7 @@ impl<'de> Visitor<'de> for NodeVisitor<'_> {
         let mut keys = BTreeSet::new();
         while let Some(key) = map.next_key::<String>()? {
             count += 1;
-            if count > LIMITS.wire.object_members {
+            if count > self.path.member_limit() {
                 return Err(de::Error::custom("object-members"));
             }
             if key.len() as u64 > LIMITS.wire.decoded_key_bytes {

@@ -184,7 +184,7 @@ impl RuntimeHost {
     }
 
     pub(super) fn cleanup_timeout(&self) -> Duration {
-        let native = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let native = crate::acp::process::graceful_exit::close_budget();
         #[cfg(any(test, all(windows, feature = "acp-fixture")))]
         if let Some(TimeoutOverride::Deadline { cleanup, .. }) = self.timeout_override {
             return native.min(cleanup.saturating_duration_since(Instant::now()));

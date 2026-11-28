@@ -1,0 +1,5565 @@
+{
+  "harness": "claude",
+  "version": "2.1.332",
+  "source": "@anthropic-ai/claude-agent-sdk@0.3.332 sdk.d.ts",
+  "in": {
+    "active_goal": ["SDKActiveGoalMessage"],
+    "assistant": ["SDKAssistantMessage"],
+    "auth_status": ["SDKAuthStatusMessage"],
+    "control_cancel_request": ["SDKControlCancelRequest"],
+    "control_request/apply_flag_settings": [
+      "control_request/apply_flag_settings"
+    ],
+    "control_request/background_tasks": ["control_request/background_tasks"],
+    "control_request/can_use_tool": ["control_request/can_use_tool"],
+    "control_request/cancel_async_message": [
+      "control_request/cancel_async_message"
+    ],
+    "control_request/elicitation": ["control_request/elicitation"],
+    "control_request/file_suggestions": ["control_request/file_suggestions"],
+    "control_request/get_binary_version": [
+      "control_request/get_binary_version"
+    ],
+    "control_request/get_context_usage": ["control_request/get_context_usage"],
+    "control_request/get_hooks_listing": ["control_request/get_hooks_listing"],
+    "control_request/get_session_cost": ["control_request/get_session_cost"],
+    "control_request/get_settings": ["control_request/get_settings"],
+    "control_request/get_task_output": ["control_request/get_task_output"],
+    "control_request/get_usage": ["control_request/get_usage"],
+    "control_request/hook_callback": ["control_request/hook_callback"],
+    "control_request/initialize": ["control_request/initialize"],
+    "control_request/interrupt": ["control_request/interrupt"],
+    "control_request/list_models": ["control_request/list_models"],
+    "control_request/list_permission_rules": [
+      "control_request/list_permission_rules"
+    ],
+    "control_request/mcp_call": ["control_request/mcp_call"],
+    "control_request/mcp_message": ["control_request/mcp_message"],
+    "control_request/mcp_read_resource": ["control_request/mcp_read_resource"],
+    "control_request/mcp_reconnect": ["control_request/mcp_reconnect"],
+    "control_request/mcp_set_servers": ["control_request/mcp_set_servers"],
+    "control_request/mcp_status": ["control_request/mcp_status"],
+    "control_request/mcp_toggle": ["control_request/mcp_toggle"],
+    "control_request/read_file": ["control_request/read_file"],
+    "control_request/register_repo_root": [
+      "control_request/register_repo_root"
+    ],
+    "control_request/reload_output_styles": [
+      "control_request/reload_output_styles"
+    ],
+    "control_request/reload_plugins": ["control_request/reload_plugins"],
+    "control_request/reload_skills": ["control_request/reload_skills"],
+    "control_request/rename_session": ["control_request/rename_session"],
+    "control_request/request_user_dialog": [
+      "control_request/request_user_dialog"
+    ],
+    "control_request/rewind_files": ["control_request/rewind_files"],
+    "control_request/seed_read_state": ["control_request/seed_read_state"],
+    "control_request/set_color": ["control_request/set_color"],
+    "control_request/set_has_subscribers": [
+      "control_request/set_has_subscribers"
+    ],
+    "control_request/set_max_thinking_tokens": [
+      "control_request/set_max_thinking_tokens"
+    ],
+    "control_request/set_model": ["control_request/set_model"],
+    "control_request/set_permission_mode": [
+      "control_request/set_permission_mode"
+    ],
+    "control_request/stop_task": ["control_request/stop_task"],
+    "control_request/update_settings": ["control_request/update_settings"],
+    "control_response/error/apply_flag_settings": [
+      "control_response/error/apply_flag_settings"
+    ],
+    "control_response/error/background_tasks": [
+      "control_response/error/background_tasks"
+    ],
+    "control_response/error/can_use_tool": [
+      "control_response/error/can_use_tool"
+    ],
+    "control_response/error/cancel_async_message": [
+      "control_response/error/cancel_async_message"
+    ],
+    "control_response/error/elicitation": [
+      "control_response/error/elicitation"
+    ],
+    "control_response/error/file_suggestions": [
+      "control_response/error/file_suggestions"
+    ],
+    "control_response/error/get_binary_version": [
+      "control_response/error/get_binary_version"
+    ],
+    "control_response/error/get_context_usage": [
+      "control_response/error/get_context_usage"
+    ],
+    "control_response/error/get_hooks_listing": [
+      "control_response/error/get_hooks_listing"
+    ],
+    "control_response/error/get_session_cost": [
+      "control_response/error/get_session_cost"
+    ],
+    "control_response/error/get_settings": [
+      "control_response/error/get_settings"
+    ],
+    "control_response/error/get_task_output": [
+      "control_response/error/get_task_output"
+    ],
+    "control_response/error/get_usage": ["control_response/error/get_usage"],
+    "control_response/error/hook_callback": [
+      "control_response/error/hook_callback"
+    ],
+    "control_response/error/initialize": ["control_response/error/initialize"],
+    "control_response/error/interrupt": ["control_response/error/interrupt"],
+    "control_response/error/list_models": [
+      "control_response/error/list_models"
+    ],
+    "control_response/error/list_permission_rules": [
+      "control_response/error/list_permission_rules"
+    ],
+    "control_response/error/mcp_call": ["control_response/error/mcp_call"],
+    "control_response/error/mcp_message": [
+      "control_response/error/mcp_message"
+    ],
+    "control_response/error/mcp_read_resource": [
+      "control_response/error/mcp_read_resource"
+    ],
+    "control_response/error/mcp_reconnect": [
+      "control_response/error/mcp_reconnect"
+    ],
+    "control_response/error/mcp_set_servers": [
+      "control_response/error/mcp_set_servers"
+    ],
+    "control_response/error/mcp_status": ["control_response/error/mcp_status"],
+    "control_response/error/mcp_toggle": ["control_response/error/mcp_toggle"],
+    "control_response/error/read_file": ["control_response/error/read_file"],
+    "control_response/error/register_repo_root": [
+      "control_response/error/register_repo_root"
+    ],
+    "control_response/error/reload_output_styles": [
+      "control_response/error/reload_output_styles"
+    ],
+    "control_response/error/reload_plugins": [
+      "control_response/error/reload_plugins"
+    ],
+    "control_response/error/reload_skills": [
+      "control_response/error/reload_skills"
+    ],
+    "control_response/error/rename_session": [
+      "control_response/error/rename_session"
+    ],
+    "control_response/error/request_user_dialog": [
+      "control_response/error/request_user_dialog"
+    ],
+    "control_response/error/rewind_files": [
+      "control_response/error/rewind_files"
+    ],
+    "control_response/error/seed_read_state": [
+      "control_response/error/seed_read_state"
+    ],
+    "control_response/error/set_color": ["control_response/error/set_color"],
+    "control_response/error/set_has_subscribers": [
+      "control_response/error/set_has_subscribers"
+    ],
+    "control_response/error/set_max_thinking_tokens": [
+      "control_response/error/set_max_thinking_tokens"
+    ],
+    "control_response/error/set_model": ["control_response/error/set_model"],
+    "control_response/error/set_permission_mode": [
+      "control_response/error/set_permission_mode"
+    ],
+    "control_response/error/stop_task": ["control_response/error/stop_task"],
+    "control_response/error/update_settings": [
+      "control_response/error/update_settings"
+    ],
+    "control_response/success/apply_flag_settings": [
+      "control_response/success/apply_flag_settings"
+    ],
+    "control_response/success/background_tasks": [
+      "control_response/success/background_tasks"
+    ],
+    "control_response/success/can_use_tool": [
+      "control_response/success/can_use_tool"
+    ],
+    "control_response/success/cancel_async_message": [
+      "control_response/success/cancel_async_message"
+    ],
+    "control_response/success/elicitation": [
+      "control_response/success/elicitation"
+    ],
+    "control_response/success/file_suggestions": [
+      "control_response/success/file_suggestions"
+    ],
+    "control_response/success/get_binary_version": [
+      "control_response/success/get_binary_version"
+    ],
+    "control_response/success/get_context_usage": [
+      "control_response/success/get_context_usage"
+    ],
+    "control_response/success/get_hooks_listing": [
+      "control_response/success/get_hooks_listing"
+    ],
+    "control_response/success/get_session_cost": [
+      "control_response/success/get_session_cost"
+    ],
+    "control_response/success/get_settings": [
+      "control_response/success/get_settings"
+    ],
+    "control_response/success/get_task_output": [
+      "control_response/success/get_task_output"
+    ],
+    "control_response/success/get_usage": [
+      "control_response/success/get_usage"
+    ],
+    "control_response/success/hook_callback": [
+      "control_response/success/hook_callback"
+    ],
+    "control_response/success/initialize": [
+      "control_response/success/initialize"
+    ],
+    "control_response/success/interrupt": [
+      "control_response/success/interrupt"
+    ],
+    "control_response/success/list_models": [
+      "control_response/success/list_models"
+    ],
+    "control_response/success/list_permission_rules": [
+      "control_response/success/list_permission_rules"
+    ],
+    "control_response/success/mcp_call": ["control_response/success/mcp_call"],
+    "control_response/success/mcp_message": [
+      "control_response/success/mcp_message"
+    ],
+    "control_response/success/mcp_read_resource": [
+      "control_response/success/mcp_read_resource"
+    ],
+    "control_response/success/mcp_reconnect": [
+      "control_response/success/mcp_reconnect"
+    ],
+    "control_response/success/mcp_set_servers": [
+      "control_response/success/mcp_set_servers"
+    ],
+    "control_response/success/mcp_status": [
+      "control_response/success/mcp_status"
+    ],
+    "control_response/success/mcp_toggle": [
+      "control_response/success/mcp_toggle"
+    ],
+    "control_response/success/read_file": [
+      "control_response/success/read_file"
+    ],
+    "control_response/success/register_repo_root": [
+      "control_response/success/register_repo_root"
+    ],
+    "control_response/success/reload_output_styles": [
+      "control_response/success/reload_output_styles"
+    ],
+    "control_response/success/reload_plugins": [
+      "control_response/success/reload_plugins"
+    ],
+    "control_response/success/reload_skills": [
+      "control_response/success/reload_skills"
+    ],
+    "control_response/success/rename_session": [
+      "control_response/success/rename_session"
+    ],
+    "control_response/success/request_user_dialog": [
+      "control_response/success/request_user_dialog"
+    ],
+    "control_response/success/rewind_files": [
+      "control_response/success/rewind_files"
+    ],
+    "control_response/success/seed_read_state": [
+      "control_response/success/seed_read_state"
+    ],
+    "control_response/success/set_color": [
+      "control_response/success/set_color"
+    ],
+    "control_response/success/set_has_subscribers": [
+      "control_response/success/set_has_subscribers"
+    ],
+    "control_response/success/set_max_thinking_tokens": [
+      "control_response/success/set_max_thinking_tokens"
+    ],
+    "control_response/success/set_model": [
+      "control_response/success/set_model"
+    ],
+    "control_response/success/set_permission_mode": [
+      "control_response/success/set_permission_mode"
+    ],
+    "control_response/success/stop_task": [
+      "control_response/success/stop_task"
+    ],
+    "control_response/success/update_settings": [
+      "control_response/success/update_settings"
+    ],
+    "conversation_reset": ["SDKConversationResetMessage"],
+    "keep_alive": ["SDKKeepAliveMessage"],
+    "prompt_suggestion": ["SDKPromptSuggestionMessage"],
+    "rate_limit_event": ["SDKRateLimitEvent"],
+    "result/error_during_execution": ["SDKResultError"],
+    "result/error_max_budget_usd": ["SDKResultError"],
+    "result/error_max_structured_output_retries": ["SDKResultError"],
+    "result/error_max_turns": ["SDKResultError"],
+    "result/success": ["SDKResultSuccess"],
+    "stream_event/content_block_delta/citations_delta": [
+      "stream_event/content_block_delta/citations_delta"
+    ],
+    "stream_event/content_block_delta/compaction_delta": [
+      "stream_event/content_block_delta/compaction_delta"
+    ],
+    "stream_event/content_block_delta/input_json_delta": [
+      "stream_event/content_block_delta/input_json_delta"
+    ],
+    "stream_event/content_block_delta/signature_delta": [
+      "stream_event/content_block_delta/signature_delta"
+    ],
+    "stream_event/content_block_delta/text_delta": [
+      "stream_event/content_block_delta/text_delta"
+    ],
+    "stream_event/content_block_delta/thinking_delta": [
+      "stream_event/content_block_delta/thinking_delta"
+    ],
+    "stream_event/content_block_start/advisor_tool_result": [
+      "stream_event/content_block_start/advisor_tool_result"
+    ],
+    "stream_event/content_block_start/bash_code_execution_tool_result": [
+      "stream_event/content_block_start/bash_code_execution_tool_result"
+    ],
+    "stream_event/content_block_start/code_execution_tool_result": [
+      "stream_event/content_block_start/code_execution_tool_result"
+    ],
+    "stream_event/content_block_start/compaction": [
+      "stream_event/content_block_start/compaction"
+    ],
+    "stream_event/content_block_start/container_upload": [
+      "stream_event/content_block_start/container_upload"
+    ],
+    "stream_event/content_block_start/fallback": [
+      "stream_event/content_block_start/fallback"
+    ],
+    "stream_event/content_block_start/mcp_tool_listing": [
+      "stream_event/content_block_start/mcp_tool_listing"
+    ],
+    "stream_event/content_block_start/mcp_tool_result": [
+      "stream_event/content_block_start/mcp_tool_result"
+    ],
+    "stream_event/content_block_start/mcp_tool_use": [
+      "stream_event/content_block_start/mcp_tool_use"
+    ],
+    "stream_event/content_block_start/redacted_thinking": [
+      "stream_event/content_block_start/redacted_thinking"
+    ],
+    "stream_event/content_block_start/server_tool_use": [
+      "stream_event/content_block_start/server_tool_use"
+    ],
+    "stream_event/content_block_start/text": [
+      "stream_event/content_block_start/text"
+    ],
+    "stream_event/content_block_start/text_editor_code_execution_tool_result": [
+      "stream_event/content_block_start/text_editor_code_execution_tool_result"
+    ],
+    "stream_event/content_block_start/thinking": [
+      "stream_event/content_block_start/thinking"
+    ],
+    "stream_event/content_block_start/tool_search_tool_result": [
+      "stream_event/content_block_start/tool_search_tool_result"
+    ],
+    "stream_event/content_block_start/tool_use": [
+      "stream_event/content_block_start/tool_use"
+    ],
+    "stream_event/content_block_start/web_fetch_tool_result": [
+      "stream_event/content_block_start/web_fetch_tool_result"
+    ],
+    "stream_event/content_block_start/web_search_tool_result": [
+      "stream_event/content_block_start/web_search_tool_result"
+    ],
+    "stream_event/content_block_stop": ["stream_event/content_block_stop"],
+    "stream_event/message_delta": ["stream_event/message_delta"],
+    "stream_event/message_start": ["stream_event/message_start"],
+    "stream_event/message_stop": ["stream_event/message_stop"],
+    "system/api_retry": ["SDKAPIRetryMessage"],
+    "system/background_tasks_changed": ["SDKBackgroundTasksChangedMessage"],
+    "system/commands_changed": ["SDKCommandsChangedMessage"],
+    "system/compact_boundary": ["SDKCompactBoundaryMessage"],
+    "system/control_request_progress": ["SDKControlRequestProgressMessage"],
+    "system/elicitation_complete": ["SDKElicitationCompleteMessage"],
+    "system/files_persisted": ["SDKFilesPersistedEvent"],
+    "system/hook_progress": ["SDKHookProgressMessage"],
+    "system/hook_response": ["SDKHookResponseMessage"],
+    "system/hook_started": ["SDKHookStartedMessage"],
+    "system/informational": ["SDKInformationalMessage"],
+    "system/init": ["SDKSystemMessage"],
+    "system/local_command_output": ["SDKLocalCommandOutputMessage"],
+    "system/memory_recall": ["SDKMemoryRecallMessage"],
+    "system/mirror_error": ["SDKMirrorErrorMessage"],
+    "system/model_refusal_fallback": ["SDKModelRefusalFallbackMessage"],
+    "system/model_refusal_no_fallback": ["SDKModelRefusalNoFallbackMessage"],
+    "system/notification": ["SDKNotificationMessage"],
+    "system/permission_denied": ["SDKPermissionDeniedMessage"],
+    "system/plugin_install": ["SDKPluginInstallMessage"],
+    "system/session_state_changed": ["SDKSessionStateChangedMessage"],
+    "system/session_writes_lost": ["SDKSessionWritesLostMessage"],
+    "system/status": ["SDKStatusMessage"],
+    "system/task_notification": ["SDKTaskNotificationMessage"],
+    "system/task_progress": ["SDKTaskProgressMessage"],
+    "system/task_started": ["SDKTaskStartedMessage"],
+    "system/task_updated": ["SDKTaskUpdatedMessage"],
+    "system/thinking_tokens": ["SDKThinkingTokensMessage"],
+    "system/worker_shutting_down": ["SDKWorkerShuttingDownMessage"],
+    "tool_progress": ["SDKToolProgressMessage"],
+    "tool_use_summary": ["SDKToolUseSummaryMessage"],
+    "user": ["SDKUserMessage", "SDKUserMessageReplay"]
+  },
+  "out": {
+    "control_cancel_request": ["SDKControlCancelRequest"],
+    "control_request/apply_flag_settings": [
+      "control_request/apply_flag_settings#2"
+    ],
+    "control_request/background_tasks": ["control_request/background_tasks#2"],
+    "control_request/can_use_tool": ["control_request/can_use_tool#2"],
+    "control_request/cancel_async_message": [
+      "control_request/cancel_async_message#2"
+    ],
+    "control_request/elicitation": ["control_request/elicitation#2"],
+    "control_request/file_suggestions": ["control_request/file_suggestions#2"],
+    "control_request/get_binary_version": [
+      "control_request/get_binary_version#2"
+    ],
+    "control_request/get_context_usage": [
+      "control_request/get_context_usage#2"
+    ],
+    "control_request/get_hooks_listing": [
+      "control_request/get_hooks_listing#2"
+    ],
+    "control_request/get_session_cost": ["control_request/get_session_cost#2"],
+    "control_request/get_settings": ["control_request/get_settings#2"],
+    "control_request/get_task_output": ["control_request/get_task_output#2"],
+    "control_request/get_usage": ["control_request/get_usage#2"],
+    "control_request/hook_callback": ["control_request/hook_callback#2"],
+    "control_request/initialize": ["control_request/initialize#2"],
+    "control_request/interrupt": ["control_request/interrupt#2"],
+    "control_request/list_models": ["control_request/list_models#2"],
+    "control_request/list_permission_rules": [
+      "control_request/list_permission_rules#2"
+    ],
+    "control_request/mcp_call": ["control_request/mcp_call#2"],
+    "control_request/mcp_message": ["control_request/mcp_message#2"],
+    "control_request/mcp_read_resource": [
+      "control_request/mcp_read_resource#2"
+    ],
+    "control_request/mcp_reconnect": ["control_request/mcp_reconnect#2"],
+    "control_request/mcp_set_servers": ["control_request/mcp_set_servers#2"],
+    "control_request/mcp_status": ["control_request/mcp_status#2"],
+    "control_request/mcp_toggle": ["control_request/mcp_toggle#2"],
+    "control_request/read_file": ["control_request/read_file#2"],
+    "control_request/register_repo_root": [
+      "control_request/register_repo_root#2"
+    ],
+    "control_request/reload_output_styles": [
+      "control_request/reload_output_styles#2"
+    ],
+    "control_request/reload_plugins": ["control_request/reload_plugins#2"],
+    "control_request/reload_skills": ["control_request/reload_skills#2"],
+    "control_request/rename_session": ["control_request/rename_session#2"],
+    "control_request/request_user_dialog": [
+      "control_request/request_user_dialog#2"
+    ],
+    "control_request/rewind_files": ["control_request/rewind_files#2"],
+    "control_request/seed_read_state": ["control_request/seed_read_state#2"],
+    "control_request/set_color": ["control_request/set_color#2"],
+    "control_request/set_has_subscribers": [
+      "control_request/set_has_subscribers#2"
+    ],
+    "control_request/set_max_thinking_tokens": [
+      "control_request/set_max_thinking_tokens#2"
+    ],
+    "control_request/set_model": ["control_request/set_model#2"],
+    "control_request/set_permission_mode": [
+      "control_request/set_permission_mode#2"
+    ],
+    "control_request/stop_task": ["control_request/stop_task#2"],
+    "control_request/update_settings": ["control_request/update_settings#2"],
+    "control_response/error/apply_flag_settings": [
+      "control_response/error/apply_flag_settings#2"
+    ],
+    "control_response/error/background_tasks": [
+      "control_response/error/background_tasks#2"
+    ],
+    "control_response/error/can_use_tool": [
+      "control_response/error/can_use_tool#2"
+    ],
+    "control_response/error/cancel_async_message": [
+      "control_response/error/cancel_async_message#2"
+    ],
+    "control_response/error/elicitation": [
+      "control_response/error/elicitation#2"
+    ],
+    "control_response/error/file_suggestions": [
+      "control_response/error/file_suggestions#2"
+    ],
+    "control_response/error/get_binary_version": [
+      "control_response/error/get_binary_version#2"
+    ],
+    "control_response/error/get_context_usage": [
+      "control_response/error/get_context_usage#2"
+    ],
+    "control_response/error/get_hooks_listing": [
+      "control_response/error/get_hooks_listing#2"
+    ],
+    "control_response/error/get_session_cost": [
+      "control_response/error/get_session_cost#2"
+    ],
+    "control_response/error/get_settings": [
+      "control_response/error/get_settings#2"
+    ],
+    "control_response/error/get_task_output": [
+      "control_response/error/get_task_output#2"
+    ],
+    "control_response/error/get_usage": ["control_response/error/get_usage#2"],
+    "control_response/error/hook_callback": [
+      "control_response/error/hook_callback#2"
+    ],
+    "control_response/error/initialize": [
+      "control_response/error/initialize#2"
+    ],
+    "control_response/error/interrupt": ["control_response/error/interrupt#2"],
+    "control_response/error/list_models": [
+      "control_response/error/list_models#2"
+    ],
+    "control_response/error/list_permission_rules": [
+      "control_response/error/list_permission_rules#2"
+    ],
+    "control_response/error/mcp_call": ["control_response/error/mcp_call#2"],
+    "control_response/error/mcp_message": [
+      "control_response/error/mcp_message#2"
+    ],
+    "control_response/error/mcp_read_resource": [
+      "control_response/error/mcp_read_resource#2"
+    ],
+    "control_response/error/mcp_reconnect": [
+      "control_response/error/mcp_reconnect#2"
+    ],
+    "control_response/error/mcp_set_servers": [
+      "control_response/error/mcp_set_servers#2"
+    ],
+    "control_response/error/mcp_status": [
+      "control_response/error/mcp_status#2"
+    ],
+    "control_response/error/mcp_toggle": [
+      "control_response/error/mcp_toggle#2"
+    ],
+    "control_response/error/read_file": ["control_response/error/read_file#2"],
+    "control_response/error/register_repo_root": [
+      "control_response/error/register_repo_root#2"
+    ],
+    "control_response/error/reload_output_styles": [
+      "control_response/error/reload_output_styles#2"
+    ],
+    "control_response/error/reload_plugins": [
+      "control_response/error/reload_plugins#2"
+    ],
+    "control_response/error/reload_skills": [
+      "control_response/error/reload_skills#2"
+    ],
+    "control_response/error/rename_session": [
+      "control_response/error/rename_session#2"
+    ],
+    "control_response/error/request_user_dialog": [
+      "control_response/error/request_user_dialog#2"
+    ],
+    "control_response/error/rewind_files": [
+      "control_response/error/rewind_files#2"
+    ],
+    "control_response/error/seed_read_state": [
+      "control_response/error/seed_read_state#2"
+    ],
+    "control_response/error/set_color": ["control_response/error/set_color#2"],
+    "control_response/error/set_has_subscribers": [
+      "control_response/error/set_has_subscribers#2"
+    ],
+    "control_response/error/set_max_thinking_tokens": [
+      "control_response/error/set_max_thinking_tokens#2"
+    ],
+    "control_response/error/set_model": ["control_response/error/set_model#2"],
+    "control_response/error/set_permission_mode": [
+      "control_response/error/set_permission_mode#2"
+    ],
+    "control_response/error/stop_task": ["control_response/error/stop_task#2"],
+    "control_response/error/update_settings": [
+      "control_response/error/update_settings#2"
+    ],
+    "control_response/success/apply_flag_settings": [
+      "control_response/success/apply_flag_settings#2"
+    ],
+    "control_response/success/background_tasks": [
+      "control_response/success/background_tasks#2"
+    ],
+    "control_response/success/can_use_tool": [
+      "control_response/success/can_use_tool#2"
+    ],
+    "control_response/success/cancel_async_message": [
+      "control_response/success/cancel_async_message#2"
+    ],
+    "control_response/success/elicitation": [
+      "control_response/success/elicitation#2"
+    ],
+    "control_response/success/file_suggestions": [
+      "control_response/success/file_suggestions#2"
+    ],
+    "control_response/success/get_binary_version": [
+      "control_response/success/get_binary_version#2"
+    ],
+    "control_response/success/get_context_usage": [
+      "control_response/success/get_context_usage#2"
+    ],
+    "control_response/success/get_hooks_listing": [
+      "control_response/success/get_hooks_listing#2"
+    ],
+    "control_response/success/get_session_cost": [
+      "control_response/success/get_session_cost#2"
+    ],
+    "control_response/success/get_settings": [
+      "control_response/success/get_settings#2"
+    ],
+    "control_response/success/get_task_output": [
+      "control_response/success/get_task_output#2"
+    ],
+    "control_response/success/get_usage": [
+      "control_response/success/get_usage#2"
+    ],
+    "control_response/success/hook_callback": [
+      "control_response/success/hook_callback#2"
+    ],
+    "control_response/success/initialize": [
+      "control_response/success/initialize#2"
+    ],
+    "control_response/success/interrupt": [
+      "control_response/success/interrupt#2"
+    ],
+    "control_response/success/list_models": [
+      "control_response/success/list_models#2"
+    ],
+    "control_response/success/list_permission_rules": [
+      "control_response/success/list_permission_rules#2"
+    ],
+    "control_response/success/mcp_call": [
+      "control_response/success/mcp_call#2"
+    ],
+    "control_response/success/mcp_message": [
+      "control_response/success/mcp_message#2"
+    ],
+    "control_response/success/mcp_read_resource": [
+      "control_response/success/mcp_read_resource#2"
+    ],
+    "control_response/success/mcp_reconnect": [
+      "control_response/success/mcp_reconnect#2"
+    ],
+    "control_response/success/mcp_set_servers": [
+      "control_response/success/mcp_set_servers#2"
+    ],
+    "control_response/success/mcp_status": [
+      "control_response/success/mcp_status#2"
+    ],
+    "control_response/success/mcp_toggle": [
+      "control_response/success/mcp_toggle#2"
+    ],
+    "control_response/success/read_file": [
+      "control_response/success/read_file#2"
+    ],
+    "control_response/success/register_repo_root": [
+      "control_response/success/register_repo_root#2"
+    ],
+    "control_response/success/reload_output_styles": [
+      "control_response/success/reload_output_styles#2"
+    ],
+    "control_response/success/reload_plugins": [
+      "control_response/success/reload_plugins#2"
+    ],
+    "control_response/success/reload_skills": [
+      "control_response/success/reload_skills#2"
+    ],
+    "control_response/success/rename_session": [
+      "control_response/success/rename_session#2"
+    ],
+    "control_response/success/request_user_dialog": [
+      "control_response/success/request_user_dialog#2"
+    ],
+    "control_response/success/rewind_files": [
+      "control_response/success/rewind_files#2"
+    ],
+    "control_response/success/seed_read_state": [
+      "control_response/success/seed_read_state#2"
+    ],
+    "control_response/success/set_color": [
+      "control_response/success/set_color#2"
+    ],
+    "control_response/success/set_has_subscribers": [
+      "control_response/success/set_has_subscribers#2"
+    ],
+    "control_response/success/set_max_thinking_tokens": [
+      "control_response/success/set_max_thinking_tokens#2"
+    ],
+    "control_response/success/set_model": [
+      "control_response/success/set_model#2"
+    ],
+    "control_response/success/set_permission_mode": [
+      "control_response/success/set_permission_mode#2"
+    ],
+    "control_response/success/stop_task": [
+      "control_response/success/stop_task#2"
+    ],
+    "control_response/success/update_settings": [
+      "control_response/success/update_settings#2"
+    ],
+    "keep_alive": ["SDKKeepAliveMessage"],
+    "user": ["SDKUserMessage"]
+  },
+  "types": {
+    "AccountInfo": {
+      "apiKeySource": [],
+      "apiProvider": [],
+      "email": [],
+      "organization": [],
+      "subscriptionType": [],
+      "tokenSource": []
+    },
+    "AgentInfo": { "description": [], "model": [], "name": [] },
+    "AssistantMessageParam": {
+      "content": [
+        "BashCodeExecutionToolResultBlockParam",
+        "CodeExecutionToolResultBlockParam",
+        "ContainerUploadBlockParam",
+        "DocumentBlockParam",
+        "ImageBlockParam",
+        "RedactedThinkingBlockParam",
+        "SearchResultBlockParam",
+        "ServerToolUseBlockParam",
+        "TextBlockParam",
+        "TextEditorCodeExecutionToolResultBlockParam",
+        "ThinkingBlockParam",
+        "ToolResultBlockParam",
+        "ToolSearchToolResultBlockParam",
+        "ToolUseBlockParam",
+        "WebFetchToolResultBlockParam",
+        "WebSearchToolResultBlockParam"
+      ],
+      "role": []
+    },
+    "Base64ImageSource": { "data": [], "media_type": [], "type": [] },
+    "Base64PDFSource": { "data": [], "media_type": [], "type": [] },
+    "BashCodeExecutionOutputBlockParam": { "file_id": [], "type": [] },
+    "BashCodeExecutionResultBlockParam": {
+      "content": ["BashCodeExecutionOutputBlockParam"],
+      "return_code": [],
+      "stderr": [],
+      "stdout": [],
+      "type": []
+    },
+    "BashCodeExecutionToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "content": [
+        "BashCodeExecutionResultBlockParam",
+        "BashCodeExecutionToolResultErrorParam"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BashCodeExecutionToolResultErrorParam": { "error_code": [], "type": [] },
+    "BetaAdvisorMessageIterationUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "input_tokens": [],
+      "model": [],
+      "output_tokens": [],
+      "type": []
+    },
+    "BetaAdvisorRedactedResultBlock": {
+      "encrypted_content": [],
+      "stop_reason": [],
+      "type": []
+    },
+    "BetaAdvisorResultBlock": { "stop_reason": [], "text": [], "type": [] },
+    "BetaAdvisorTool20260301": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "caching": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "max_tokens": [],
+      "max_uses": [],
+      "model": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaAdvisorToolResultBlock": {
+      "content": [
+        "BetaAdvisorRedactedResultBlock",
+        "BetaAdvisorResultBlock",
+        "BetaAdvisorToolResultErrorObject"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaAdvisorToolResultErrorObject": { "error_code": [], "type": [] },
+    "BetaBase64PDFSource": { "data": [], "media_type": [], "type": [] },
+    "BetaBashCodeExecutionOutputBlock": { "file_id": [], "type": [] },
+    "BetaBashCodeExecutionResultBlock": {
+      "content": ["BetaBashCodeExecutionOutputBlock"],
+      "return_code": [],
+      "stderr": [],
+      "stdout": [],
+      "type": []
+    },
+    "BetaBashCodeExecutionToolResultBlock": {
+      "content": [
+        "BetaBashCodeExecutionResultBlock",
+        "BetaBashCodeExecutionToolResultErrorObject"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaBashCodeExecutionToolResultErrorObject": {
+      "error_code": [],
+      "type": []
+    },
+    "BetaBrowserCloseTabConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserDoubleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserFileUploadConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserFindConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserFormInputConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserGetPageTextConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserHoldKeyConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserHoverConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserJavascriptExecConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserKeyConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserLeftClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserLeftClickDragConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserLeftMouseDownConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserLeftMouseUpConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserListTabsConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserMiddleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserMouseMoveConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserNavigateConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserNewTabConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserReadConsoleConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserReadNetworkConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserReadPageConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserRightClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserScreenshotConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserScrollConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserScrollToConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserSwitchTabConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserToolset20260801": {
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "configs": ["BetaBrowserToolsetConfigs"],
+      "type": []
+    },
+    "BetaBrowserToolsetConfigs": {
+      "close_tab": ["BetaBrowserCloseTabConfig"],
+      "double_click": ["BetaBrowserDoubleClickConfig"],
+      "file_upload": ["BetaBrowserFileUploadConfig"],
+      "find": ["BetaBrowserFindConfig"],
+      "form_input": ["BetaBrowserFormInputConfig"],
+      "get_page_text": ["BetaBrowserGetPageTextConfig"],
+      "hold_key": ["BetaBrowserHoldKeyConfig"],
+      "hover": ["BetaBrowserHoverConfig"],
+      "javascript_exec": ["BetaBrowserJavascriptExecConfig"],
+      "key": ["BetaBrowserKeyConfig"],
+      "left_click": ["BetaBrowserLeftClickConfig"],
+      "left_click_drag": ["BetaBrowserLeftClickDragConfig"],
+      "left_mouse_down": ["BetaBrowserLeftMouseDownConfig"],
+      "left_mouse_up": ["BetaBrowserLeftMouseUpConfig"],
+      "list_tabs": ["BetaBrowserListTabsConfig"],
+      "middle_click": ["BetaBrowserMiddleClickConfig"],
+      "mouse_move": ["BetaBrowserMouseMoveConfig"],
+      "navigate": ["BetaBrowserNavigateConfig"],
+      "new_tab": ["BetaBrowserNewTabConfig"],
+      "read_console": ["BetaBrowserReadConsoleConfig"],
+      "read_network": ["BetaBrowserReadNetworkConfig"],
+      "read_page": ["BetaBrowserReadPageConfig"],
+      "right_click": ["BetaBrowserRightClickConfig"],
+      "screenshot": ["BetaBrowserScreenshotConfig"],
+      "scroll": ["BetaBrowserScrollConfig"],
+      "scroll_to": ["BetaBrowserScrollToConfig"],
+      "switch_tab": ["BetaBrowserSwitchTabConfig"],
+      "triple_click": ["BetaBrowserTripleClickConfig"],
+      "type": ["BetaBrowserTypeConfig"],
+      "wait": ["BetaBrowserWaitConfig"],
+      "zoom": ["BetaBrowserZoomConfig"]
+    },
+    "BetaBrowserTripleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserTypeConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserWaitConfig": { "defer_loading": [], "enabled": [] },
+    "BetaBrowserZoomConfig": { "defer_loading": [], "enabled": [] },
+    "BetaCacheControlEphemeral": { "ttl": [], "type": [] },
+    "BetaCacheCreation": {
+      "ephemeral_1h_input_tokens": [],
+      "ephemeral_5m_input_tokens": []
+    },
+    "BetaCacheMissMessagesChanged": {
+      "cache_missed_input_tokens": [],
+      "type": []
+    },
+    "BetaCacheMissModelChanged": {
+      "cache_missed_input_tokens": [],
+      "type": []
+    },
+    "BetaCacheMissPreviousMessageNotFound": { "type": [] },
+    "BetaCacheMissSystemChanged": {
+      "cache_missed_input_tokens": [],
+      "type": []
+    },
+    "BetaCacheMissToolsChanged": {
+      "cache_missed_input_tokens": [],
+      "type": []
+    },
+    "BetaCacheMissUnavailable": { "type": [] },
+    "BetaCitationCharLocation": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_char_index": [],
+      "file_id": [],
+      "start_char_index": [],
+      "type": []
+    },
+    "BetaCitationConfig": { "enabled": [] },
+    "BetaCitationContentBlockLocation": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_block_index": [],
+      "file_id": [],
+      "start_block_index": [],
+      "type": []
+    },
+    "BetaCitationPageLocation": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_page_number": [],
+      "file_id": [],
+      "start_page_number": [],
+      "type": []
+    },
+    "BetaCitationSearchResultLocation": {
+      "cited_text": [],
+      "end_block_index": [],
+      "search_result_index": [],
+      "source": [],
+      "start_block_index": [],
+      "title": [],
+      "type": []
+    },
+    "BetaCitationsConfigParam": { "enabled": [] },
+    "BetaCitationsDelta": {
+      "citation": [
+        "BetaCitationCharLocation",
+        "BetaCitationContentBlockLocation",
+        "BetaCitationPageLocation",
+        "BetaCitationSearchResultLocation",
+        "BetaCitationsWebSearchResultLocation"
+      ],
+      "type": []
+    },
+    "BetaCitationsWebSearchResultLocation": {
+      "cited_text": [],
+      "encrypted_index": [],
+      "title": [],
+      "type": [],
+      "url": []
+    },
+    "BetaClearThinking20251015EditResponse": {
+      "cleared_input_tokens": [],
+      "cleared_thinking_turns": [],
+      "type": []
+    },
+    "BetaClearToolUses20250919EditResponse": {
+      "cleared_input_tokens": [],
+      "cleared_tool_uses": [],
+      "type": []
+    },
+    "BetaCodeExecutionOutputBlock": { "file_id": [], "type": [] },
+    "BetaCodeExecutionResultBlock": {
+      "content": ["BetaCodeExecutionOutputBlock"],
+      "return_code": [],
+      "stderr": [],
+      "stdout": [],
+      "type": []
+    },
+    "BetaCodeExecutionTool20250522": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaCodeExecutionTool20250825": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaCodeExecutionTool20260120": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaCodeExecutionTool20260521": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaCodeExecutionToolResultBlock": {
+      "content": [
+        "BetaCodeExecutionResultBlock",
+        "BetaCodeExecutionToolResultErrorObject",
+        "BetaEncryptedCodeExecutionResultBlock"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaCodeExecutionToolResultErrorObject": { "error_code": [], "type": [] },
+    "BetaCompactionBlock": {
+      "content": [],
+      "encrypted_content": [],
+      "signature": [],
+      "tool_changes": [
+        "BetaResponseToolAdditionBlock",
+        "BetaResponseToolRemovalBlock"
+      ],
+      "type": []
+    },
+    "BetaCompactionContentBlockDelta": {
+      "content": [],
+      "encrypted_content": [],
+      "type": []
+    },
+    "BetaCompactionIterationUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "input_tokens": [],
+      "output_tokens": [],
+      "type": []
+    },
+    "BetaComputerCursorPositionConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerDoubleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerHoldKeyConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerKeyConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerLeftClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerLeftClickDragConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerLeftMouseDownConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerLeftMouseUpConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerMiddleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerMouseMoveConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerRightClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerScreenshotConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerScrollConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerToolset20260801": {
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "configs": ["BetaComputerToolsetConfigs"],
+      "type": []
+    },
+    "BetaComputerToolsetConfigs": {
+      "cursor_position": ["BetaComputerCursorPositionConfig"],
+      "double_click": ["BetaComputerDoubleClickConfig"],
+      "hold_key": ["BetaComputerHoldKeyConfig"],
+      "key": ["BetaComputerKeyConfig"],
+      "left_click": ["BetaComputerLeftClickConfig"],
+      "left_click_drag": ["BetaComputerLeftClickDragConfig"],
+      "left_mouse_down": ["BetaComputerLeftMouseDownConfig"],
+      "left_mouse_up": ["BetaComputerLeftMouseUpConfig"],
+      "middle_click": ["BetaComputerMiddleClickConfig"],
+      "mouse_move": ["BetaComputerMouseMoveConfig"],
+      "right_click": ["BetaComputerRightClickConfig"],
+      "screenshot": ["BetaComputerScreenshotConfig"],
+      "scroll": ["BetaComputerScrollConfig"],
+      "triple_click": ["BetaComputerTripleClickConfig"],
+      "type": ["BetaComputerTypeConfig"],
+      "wait": ["BetaComputerWaitConfig"],
+      "zoom": ["BetaComputerZoomConfig"]
+    },
+    "BetaComputerTripleClickConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerTypeConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerWaitConfig": { "defer_loading": [], "enabled": [] },
+    "BetaComputerZoomConfig": { "defer_loading": [], "enabled": [] },
+    "BetaContainer": {
+      "expires_at": [],
+      "id": [],
+      "skills": ["BetaContainerSkill"]
+    },
+    "BetaContainerSkill": { "skill_id": [], "type": [], "version": [] },
+    "BetaContainerUploadBlock": { "file_id": [], "type": [] },
+    "BetaContextManagementResponse": {
+      "applied_edits": [
+        "BetaClearThinking20251015EditResponse",
+        "BetaClearToolUses20250919EditResponse"
+      ]
+    },
+    "BetaDiagnostics": {
+      "cache_miss_reason": [
+        "BetaCacheMissMessagesChanged",
+        "BetaCacheMissModelChanged",
+        "BetaCacheMissPreviousMessageNotFound",
+        "BetaCacheMissSystemChanged",
+        "BetaCacheMissToolsChanged",
+        "BetaCacheMissUnavailable"
+      ]
+    },
+    "BetaDirectCaller": { "type": [] },
+    "BetaDocumentBlock": {
+      "citations": ["BetaCitationConfig"],
+      "source": ["BetaBase64PDFSource", "BetaPlainTextSource"],
+      "title": [],
+      "type": []
+    },
+    "BetaEncryptedCodeExecutionResultBlock": {
+      "content": ["BetaCodeExecutionOutputBlock"],
+      "encrypted_stdout": [],
+      "return_code": [],
+      "stderr": [],
+      "type": []
+    },
+    "BetaFallbackBlock": {
+      "from": ["BetaFallbackInfo"],
+      "to": ["BetaFallbackInfo"],
+      "trigger": ["BetaFallbackRefusalTrigger"],
+      "type": []
+    },
+    "BetaFallbackCreditNotApplied": {
+      "reason": [],
+      "remove_to_redeem": [],
+      "type": []
+    },
+    "BetaFallbackCreditRedeemed": { "type": [] },
+    "BetaFallbackCreditUsage": {
+      "status": ["BetaFallbackCreditNotApplied", "BetaFallbackCreditRedeemed"]
+    },
+    "BetaFallbackInfo": { "model": [] },
+    "BetaFallbackMessageIterationUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "input_tokens": [],
+      "model": [],
+      "output_tokens": [],
+      "type": []
+    },
+    "BetaFallbackRefusalTrigger": { "category": [], "type": [] },
+    "BetaInputJSONDelta": { "partial_json": [], "type": [] },
+    "BetaMCPTool": {
+      "description": [],
+      "input_schema": ["BetaMCPTool.input_schema"],
+      "name": []
+    },
+    "BetaMCPTool.input_schema": { "*": [] },
+    "BetaMCPToolDefaultConfig": { "defer_loading": [], "enabled": [] },
+    "BetaMCPToolListingBlock": {
+      "mcp_server_name": [],
+      "tools": ["BetaMCPTool"],
+      "type": []
+    },
+    "BetaMCPToolParam": {
+      "description": [],
+      "input_schema": ["BetaMCPToolParam.input_schema"],
+      "name": []
+    },
+    "BetaMCPToolParam.input_schema": { "*": [] },
+    "BetaMCPToolResultBlock": {
+      "content": ["BetaTextBlock"],
+      "is_error": [],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaMCPToolUseBlock": {
+      "id": [],
+      "input": [],
+      "name": [],
+      "server_name": [],
+      "type": []
+    },
+    "BetaMCPToolset": {
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "configs": ["BetaMCPToolset.configs"],
+      "default_config": ["BetaMCPToolDefaultConfig"],
+      "mcp_server_name": [],
+      "tools": ["BetaMCPToolParam"],
+      "type": []
+    },
+    "BetaMCPToolset.configs": { "*": [] },
+    "BetaMemoryTool20250818": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaMemoryTool20250818.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaMemoryTool20250818.input_examples": { "*": [] },
+    "BetaMessage": {
+      "container": ["BetaContainer"],
+      "content": [
+        "BetaAdvisorToolResultBlock",
+        "BetaBashCodeExecutionToolResultBlock",
+        "BetaCodeExecutionToolResultBlock",
+        "BetaCompactionBlock",
+        "BetaContainerUploadBlock",
+        "BetaFallbackBlock",
+        "BetaMCPToolListingBlock",
+        "BetaMCPToolResultBlock",
+        "BetaMCPToolUseBlock",
+        "BetaRedactedThinkingBlock",
+        "BetaServerToolUseBlock",
+        "BetaTextBlock",
+        "BetaTextEditorCodeExecutionToolResultBlock",
+        "BetaThinkingBlock",
+        "BetaToolSearchToolResultBlock",
+        "BetaToolUseBlock",
+        "BetaWebFetchToolResultBlock",
+        "BetaWebSearchToolResultBlock"
+      ],
+      "context_management": ["BetaContextManagementResponse"],
+      "diagnostics": ["BetaDiagnostics"],
+      "id": [],
+      "input_transformations": [
+        "BetaThinkingDroppedInputTransformation",
+        "BetaThinkingMismatchAllowedInputTransformation"
+      ],
+      "model": [],
+      "role": [],
+      "stop_details": ["BetaRefusalStopDetails"],
+      "stop_reason": [],
+      "stop_sequence": [],
+      "type": [],
+      "usage": ["BetaUsage"]
+    },
+    "BetaMessageDeltaUsage": {
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "fallback_credit": ["BetaFallbackCreditUsage"],
+      "input_tokens": [],
+      "iterations": [
+        "BetaAdvisorMessageIterationUsage",
+        "BetaCompactionIterationUsage",
+        "BetaFallbackMessageIterationUsage",
+        "BetaMessageIterationUsage"
+      ],
+      "output_tokens": [],
+      "output_tokens_details": ["BetaOutputTokensDetails"],
+      "server_tool_use": ["BetaServerToolUsage"]
+    },
+    "BetaMessageIterationUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "input_tokens": [],
+      "model": [],
+      "output_tokens": [],
+      "type": []
+    },
+    "BetaOutputTokensDetails": { "thinking_tokens": [] },
+    "BetaPlainTextSource": { "data": [], "media_type": [], "type": [] },
+    "BetaRawContentBlockStopEvent": { "index": [], "type": [] },
+    "BetaRawMessageStartEvent": { "message": ["BetaMessage"], "type": [] },
+    "BetaRawMessageStopEvent": { "type": [] },
+    "BetaRedactedThinkingBlock": { "data": [], "type": [] },
+    "BetaRefusalStopDetails": {
+      "category": [],
+      "explanation": [],
+      "fallback_credit_token": [],
+      "fallback_has_prefill_claim": [],
+      "recommended_model": [],
+      "type": []
+    },
+    "BetaResponseTool": {
+      "allowed_callers": [],
+      "defer_loading": [],
+      "description": [],
+      "eager_input_streaming": [],
+      "input_examples": ["BetaResponseTool.input_examples"],
+      "input_schema": ["BetaResponseToolInputSchema"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaResponseTool.input_examples": { "*": [] },
+    "BetaResponseToolAdditionBlock": {
+      "tool": [
+        "BetaResponseToolChangeMCPToolReference",
+        "BetaResponseToolChangeMCPToolsetReference",
+        "BetaResponseToolChangeToolReference",
+        "BetaToolChangeToolDefinition"
+      ],
+      "type": []
+    },
+    "BetaResponseToolChangeMCPToolReference": {
+      "name": [],
+      "server_name": [],
+      "type": []
+    },
+    "BetaResponseToolChangeMCPToolsetReference": {
+      "server_name": [],
+      "type": []
+    },
+    "BetaResponseToolChangeToolReference": { "name": [], "type": [] },
+    "BetaResponseToolInputSchema": {
+      "*": [],
+      "properties": [],
+      "required": [],
+      "type": []
+    },
+    "BetaResponseToolRemovalBlock": {
+      "tool": [
+        "BetaResponseToolChangeMCPToolReference",
+        "BetaResponseToolChangeMCPToolsetReference",
+        "BetaResponseToolChangeToolReference"
+      ],
+      "type": []
+    },
+    "BetaServerToolCaller": { "tool_id": [], "type": [] },
+    "BetaServerToolCaller20260120": { "tool_id": [], "type": [] },
+    "BetaServerToolUsage": {
+      "web_fetch_requests": [],
+      "web_search_requests": []
+    },
+    "BetaServerToolUseBlock": {
+      "caller": [
+        "BetaDirectCaller",
+        "BetaServerToolCaller",
+        "BetaServerToolCaller20260120"
+      ],
+      "id": [],
+      "input": [],
+      "name": [],
+      "type": []
+    },
+    "BetaSignatureDelta": { "signature": [], "type": [] },
+    "BetaTextBlock": {
+      "citations": [
+        "BetaCitationCharLocation",
+        "BetaCitationContentBlockLocation",
+        "BetaCitationPageLocation",
+        "BetaCitationSearchResultLocation",
+        "BetaCitationsWebSearchResultLocation"
+      ],
+      "text": [],
+      "type": []
+    },
+    "BetaTextDelta": { "text": [], "type": [] },
+    "BetaTextEditorCodeExecutionCreateResultBlock": {
+      "is_file_update": [],
+      "type": []
+    },
+    "BetaTextEditorCodeExecutionStrReplaceResultBlock": {
+      "lines": [],
+      "new_lines": [],
+      "new_start": [],
+      "old_lines": [],
+      "old_start": [],
+      "type": []
+    },
+    "BetaTextEditorCodeExecutionToolResultBlock": {
+      "content": [
+        "BetaTextEditorCodeExecutionCreateResultBlock",
+        "BetaTextEditorCodeExecutionStrReplaceResultBlock",
+        "BetaTextEditorCodeExecutionToolResultErrorObject",
+        "BetaTextEditorCodeExecutionViewResultBlock"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaTextEditorCodeExecutionToolResultErrorObject": {
+      "error_code": [],
+      "error_message": [],
+      "type": []
+    },
+    "BetaTextEditorCodeExecutionViewResultBlock": {
+      "content": [],
+      "file_type": [],
+      "num_lines": [],
+      "start_line": [],
+      "total_lines": [],
+      "type": []
+    },
+    "BetaThinkingBlock": { "signature": [], "thinking": [], "type": [] },
+    "BetaThinkingDelta": { "estimated_tokens": [], "thinking": [], "type": [] },
+    "BetaThinkingDroppedInputTransformation": {
+      "path": [],
+      "reason": [],
+      "type": []
+    },
+    "BetaThinkingMismatchAllowedInputTransformation": {
+      "path": [],
+      "reason": [],
+      "type": []
+    },
+    "BetaToolBash20241022": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolBash20241022.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolBash20241022.input_examples": { "*": [] },
+    "BetaToolBash20250124": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolBash20250124.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolBash20250124.input_examples": { "*": [] },
+    "BetaToolChangeToolDefinition": {
+      "definition": [
+        "BetaAdvisorTool20260301",
+        "BetaBrowserToolset20260801",
+        "BetaCodeExecutionTool20250522",
+        "BetaCodeExecutionTool20250825",
+        "BetaCodeExecutionTool20260120",
+        "BetaCodeExecutionTool20260521",
+        "BetaComputerToolset20260801",
+        "BetaMCPToolset",
+        "BetaMemoryTool20250818",
+        "BetaResponseTool",
+        "BetaToolBash20241022",
+        "BetaToolBash20250124",
+        "BetaToolComputerUse20241022",
+        "BetaToolComputerUse20250124",
+        "BetaToolComputerUse20251124",
+        "BetaToolSearchToolBm25_20251119",
+        "BetaToolSearchToolRegex20251119",
+        "BetaToolTextEditor20241022",
+        "BetaToolTextEditor20250124",
+        "BetaToolTextEditor20250429",
+        "BetaToolTextEditor20250728",
+        "BetaWebFetchTool20250910",
+        "BetaWebFetchTool20260209",
+        "BetaWebFetchTool20260309",
+        "BetaWebFetchTool20260318",
+        "BetaWebSearchTool20250305",
+        "BetaWebSearchTool20260209",
+        "BetaWebSearchTool20260318"
+      ],
+      "type": []
+    },
+    "BetaToolComputerUse20241022": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "display_height_px": [],
+      "display_number": [],
+      "display_width_px": [],
+      "input_examples": ["BetaToolComputerUse20241022.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolComputerUse20241022.input_examples": { "*": [] },
+    "BetaToolComputerUse20250124": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "display_height_px": [],
+      "display_number": [],
+      "display_width_px": [],
+      "input_examples": ["BetaToolComputerUse20250124.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolComputerUse20250124.input_examples": { "*": [] },
+    "BetaToolComputerUse20251124": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "display_height_px": [],
+      "display_number": [],
+      "display_width_px": [],
+      "enable_zoom": [],
+      "input_examples": ["BetaToolComputerUse20251124.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolComputerUse20251124.input_examples": { "*": [] },
+    "BetaToolReferenceBlock": { "tool_name": [], "type": [] },
+    "BetaToolSearchToolBm25_20251119": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolSearchToolRegex20251119": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolSearchToolResultBlock": {
+      "content": [
+        "BetaToolSearchToolResultErrorObject",
+        "BetaToolSearchToolSearchResultBlock"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaToolSearchToolResultErrorObject": {
+      "error_code": [],
+      "error_message": [],
+      "type": []
+    },
+    "BetaToolSearchToolSearchResultBlock": {
+      "tool_references": ["BetaToolReferenceBlock"],
+      "type": []
+    },
+    "BetaToolTextEditor20241022": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolTextEditor20241022.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolTextEditor20241022.input_examples": { "*": [] },
+    "BetaToolTextEditor20250124": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolTextEditor20250124.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolTextEditor20250124.input_examples": { "*": [] },
+    "BetaToolTextEditor20250429": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolTextEditor20250429.input_examples"],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolTextEditor20250429.input_examples": { "*": [] },
+    "BetaToolTextEditor20250728": {
+      "allowed_callers": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "input_examples": ["BetaToolTextEditor20250728.input_examples"],
+      "max_characters": [],
+      "name": [],
+      "strict": [],
+      "type": []
+    },
+    "BetaToolTextEditor20250728.input_examples": { "*": [] },
+    "BetaToolUseBlock": {
+      "caller": [
+        "BetaDirectCaller",
+        "BetaServerToolCaller",
+        "BetaServerToolCaller20260120"
+      ],
+      "id": [],
+      "input": [],
+      "name": [],
+      "toolset_name": [],
+      "type": []
+    },
+    "BetaUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "fallback_credit": ["BetaFallbackCreditUsage"],
+      "inference_geo": [],
+      "input_tokens": [],
+      "iterations": [
+        "BetaAdvisorMessageIterationUsage",
+        "BetaCompactionIterationUsage",
+        "BetaFallbackMessageIterationUsage",
+        "BetaMessageIterationUsage"
+      ],
+      "output_tokens": [],
+      "output_tokens_details": ["BetaOutputTokensDetails"],
+      "server_tool_use": ["BetaServerToolUsage"],
+      "service_tier": [],
+      "speed": []
+    },
+    "BetaUserLocation": {
+      "city": [],
+      "country": [],
+      "region": [],
+      "timezone": [],
+      "type": []
+    },
+    "BetaWebFetchBlock": {
+      "content": ["BetaDocumentBlock"],
+      "retrieved_at": [],
+      "type": [],
+      "url": []
+    },
+    "BetaWebFetchTool20250910": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "citations": ["BetaCitationsConfigParam"],
+      "defer_loading": [],
+      "max_content_tokens": [],
+      "max_uses": [],
+      "name": [],
+      "strict": [],
+      "type": [],
+      "url_sources": ["BetaWebFetchURLSources"]
+    },
+    "BetaWebFetchTool20260209": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "citations": ["BetaCitationsConfigParam"],
+      "defer_loading": [],
+      "max_content_tokens": [],
+      "max_uses": [],
+      "name": [],
+      "strict": [],
+      "type": [],
+      "url_sources": ["BetaWebFetchURLSources"]
+    },
+    "BetaWebFetchTool20260309": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "citations": ["BetaCitationsConfigParam"],
+      "defer_loading": [],
+      "max_content_tokens": [],
+      "max_uses": [],
+      "name": [],
+      "strict": [],
+      "type": [],
+      "url_sources": ["BetaWebFetchURLSources"],
+      "use_cache": []
+    },
+    "BetaWebFetchTool20260318": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "citations": ["BetaCitationsConfigParam"],
+      "defer_loading": [],
+      "max_content_tokens": [],
+      "max_uses": [],
+      "name": [],
+      "response_inclusion": [],
+      "strict": [],
+      "type": [],
+      "url_sources": ["BetaWebFetchURLSources"],
+      "use_cache": []
+    },
+    "BetaWebFetchToolResultBlock": {
+      "caller": [
+        "BetaDirectCaller",
+        "BetaServerToolCaller",
+        "BetaServerToolCaller20260120"
+      ],
+      "content": ["BetaWebFetchBlock", "BetaWebFetchToolResultErrorBlock"],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaWebFetchToolResultErrorBlock": { "error_code": [], "type": [] },
+    "BetaWebFetchURLSourceAll": { "type": [] },
+    "BetaWebFetchURLSourceExcept": {
+      "tools": ["BetaWebFetchURLSourceToolReference"],
+      "type": []
+    },
+    "BetaWebFetchURLSourceNone": { "type": [] },
+    "BetaWebFetchURLSourceOnly": {
+      "tools": ["BetaWebFetchURLSourceToolReference"],
+      "type": []
+    },
+    "BetaWebFetchURLSourceToolReference": { "name": [], "type": [] },
+    "BetaWebFetchURLSources": {
+      "client_tool_results": [
+        "BetaWebFetchURLSourceAll",
+        "BetaWebFetchURLSourceExcept",
+        "BetaWebFetchURLSourceNone",
+        "BetaWebFetchURLSourceOnly"
+      ],
+      "server_tool_results": [
+        "BetaWebFetchURLSourceAll",
+        "BetaWebFetchURLSourceExcept",
+        "BetaWebFetchURLSourceNone",
+        "BetaWebFetchURLSourceOnly"
+      ],
+      "user_input": ["BetaWebFetchURLSourceAll", "BetaWebFetchURLSourceNone"]
+    },
+    "BetaWebSearchResultBlock": {
+      "encrypted_content": [],
+      "page_age": [],
+      "title": [],
+      "type": [],
+      "url": []
+    },
+    "BetaWebSearchTool20250305": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "max_uses": [],
+      "name": [],
+      "strict": [],
+      "type": [],
+      "user_location": ["BetaUserLocation"]
+    },
+    "BetaWebSearchTool20260209": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "max_uses": [],
+      "name": [],
+      "strict": [],
+      "type": [],
+      "user_location": ["BetaUserLocation"]
+    },
+    "BetaWebSearchTool20260318": {
+      "allowed_callers": [],
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "cache_control": ["BetaCacheControlEphemeral"],
+      "defer_loading": [],
+      "max_uses": [],
+      "name": [],
+      "response_inclusion": [],
+      "strict": [],
+      "type": [],
+      "user_location": ["BetaUserLocation"]
+    },
+    "BetaWebSearchToolResultBlock": {
+      "caller": [
+        "BetaDirectCaller",
+        "BetaServerToolCaller",
+        "BetaServerToolCaller20260120"
+      ],
+      "content": [
+        "BetaWebSearchResultBlock",
+        "BetaWebSearchToolResultErrorObject"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "BetaWebSearchToolResultErrorObject": { "error_code": [], "type": [] },
+    "BrowserStateBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "state_changes": [
+        "BrowserStateChangeDownloadCompleted",
+        "BrowserStateChangeDownloadFailed",
+        "BrowserStateChangeDownloadStarted",
+        "BrowserStateChangeTabOpened"
+      ],
+      "tabs": ["BrowserStateTabEntry"],
+      "type": []
+    },
+    "BrowserStateChangeDownloadCompleted": {
+      "download_id": [],
+      "path": [],
+      "size_bytes": [],
+      "type": [],
+      "url": []
+    },
+    "BrowserStateChangeDownloadFailed": {
+      "download_id": [],
+      "error": [],
+      "type": [],
+      "url": []
+    },
+    "BrowserStateChangeDownloadStarted": {
+      "download_id": [],
+      "type": [],
+      "url": []
+    },
+    "BrowserStateChangeTabOpened": { "tab_id": [], "type": [] },
+    "BrowserStateTabEntry": {
+      "active": [],
+      "tab_id": [],
+      "title": [],
+      "url": []
+    },
+    "CacheControlEphemeral": { "ttl": [], "type": [] },
+    "CitationCharLocationParam": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_char_index": [],
+      "start_char_index": [],
+      "type": []
+    },
+    "CitationContentBlockLocationParam": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_block_index": [],
+      "start_block_index": [],
+      "type": []
+    },
+    "CitationPageLocationParam": {
+      "cited_text": [],
+      "document_index": [],
+      "document_title": [],
+      "end_page_number": [],
+      "start_page_number": [],
+      "type": []
+    },
+    "CitationSearchResultLocationParam": {
+      "cited_text": [],
+      "end_block_index": [],
+      "search_result_index": [],
+      "source": [],
+      "start_block_index": [],
+      "title": [],
+      "type": []
+    },
+    "CitationWebSearchResultLocationParam": {
+      "cited_text": [],
+      "encrypted_index": [],
+      "title": [],
+      "type": [],
+      "url": []
+    },
+    "CitationsConfigParam": { "enabled": [] },
+    "CodeExecutionOutputBlockParam": { "file_id": [], "type": [] },
+    "CodeExecutionResultBlockParam": {
+      "content": ["CodeExecutionOutputBlockParam"],
+      "return_code": [],
+      "stderr": [],
+      "stdout": [],
+      "type": []
+    },
+    "CodeExecutionToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "content": [
+        "CodeExecutionResultBlockParam",
+        "CodeExecutionToolResultErrorParam",
+        "EncryptedCodeExecutionResultBlockParam"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "CodeExecutionToolResultErrorParam": { "error_code": [], "type": [] },
+    "ContainerUploadBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "file_id": [],
+      "type": []
+    },
+    "ContentBlockSource": {
+      "content": ["ImageBlockParam", "TextBlockParam"],
+      "type": []
+    },
+    "ControlErrorResponse": {
+      "error": [],
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "subtype": []
+    },
+    "ControlResponse": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["Record#2"],
+      "subtype": []
+    },
+    "Delta": {
+      "container": ["BetaContainer"],
+      "stop_details": ["BetaRefusalStopDetails"],
+      "stop_reason": [],
+      "stop_sequence": []
+    },
+    "DirectCaller": { "type": [] },
+    "DocumentBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "citations": ["CitationsConfigParam"],
+      "context": [],
+      "source": [
+        "Base64PDFSource",
+        "ContentBlockSource",
+        "FileDocumentSource",
+        "PlainTextSource",
+        "URLPDFSource"
+      ],
+      "title": [],
+      "type": []
+    },
+    "EncryptedCodeExecutionResultBlockParam": {
+      "content": ["CodeExecutionOutputBlockParam"],
+      "encrypted_stdout": [],
+      "return_code": [],
+      "stderr": [],
+      "type": []
+    },
+    "FileDocumentSource": { "file_id": [], "type": [] },
+    "FileImageSource": { "file_id": [], "type": [] },
+    "ImageBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "source": ["Base64ImageSource", "FileImageSource", "URLImageSource"],
+      "transformations": ["ImageTransformationsParam"],
+      "type": []
+    },
+    "ImageTransformationsParam": { "oversized_image": [] },
+    "McpClaudeAIProxyServerConfig": {
+      "id": [],
+      "timeout": [],
+      "type": [],
+      "url": []
+    },
+    "McpHttpServerConfig": {
+      "alwaysLoad": [],
+      "headers": ["Record#5"],
+      "timeout": [],
+      "tools": ["McpServerToolPolicy"],
+      "type": [],
+      "url": []
+    },
+    "McpSSEServerConfig": {
+      "alwaysLoad": [],
+      "headers": ["Record#5"],
+      "timeout": [],
+      "tools": ["McpServerToolPolicy"],
+      "type": [],
+      "url": []
+    },
+    "McpSdkServerConfig": {
+      "name": [],
+      "timeout": [],
+      "tools": ["McpServerToolPolicy"],
+      "type": []
+    },
+    "McpServerProvenance": { "name": [], "source": [] },
+    "McpServerStatus": {
+      "config": [
+        "McpClaudeAIProxyServerConfig",
+        "McpHttpServerConfig",
+        "McpSSEServerConfig",
+        "McpSdkServerConfig",
+        "McpStdioServerConfig"
+      ],
+      "error": [],
+      "name": [],
+      "scope": [],
+      "serverInfo": ["McpServerStatus.serverInfo"],
+      "source": [],
+      "status": [],
+      "tools": ["McpServerStatus.tools"]
+    },
+    "McpServerStatus.serverInfo": { "name": [], "version": [] },
+    "McpServerStatus.tools": {
+      "_meta": ["Record#2"],
+      "annotations": ["McpServerStatus.tools.annotations"],
+      "description": [],
+      "name": []
+    },
+    "McpServerStatus.tools.annotations": {
+      "destructive": [],
+      "openWorld": [],
+      "readOnly": []
+    },
+    "McpServerToolPolicy": {
+      "name": [],
+      "org_max_permission": [],
+      "permission_policy": []
+    },
+    "McpStdioServerConfig": {
+      "alwaysLoad": [],
+      "args": [],
+      "command": [],
+      "env": [],
+      "timeout": [],
+      "type": []
+    },
+    "ModelInfo": {
+      "description": [],
+      "displayName": [],
+      "resolvedModel": [],
+      "supportedEffortLevels": [],
+      "supportsAdaptiveThinking": [],
+      "supportsAutoMode": [],
+      "supportsEffort": [],
+      "supportsFastMode": [],
+      "value": []
+    },
+    "NonNullableUsage": {
+      "cache_creation": ["BetaCacheCreation"],
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "fallback_credit": ["BetaFallbackCreditUsage"],
+      "inference_geo": [],
+      "input_tokens": [],
+      "iterations": [
+        "BetaAdvisorMessageIterationUsage",
+        "BetaCompactionIterationUsage",
+        "BetaFallbackMessageIterationUsage",
+        "BetaMessageIterationUsage"
+      ],
+      "output_tokens": [],
+      "output_tokens_details": ["BetaOutputTokensDetails"],
+      "server_tool_use": ["BetaServerToolUsage"],
+      "service_tier": [],
+      "speed": []
+    },
+    "Partial": {
+      "ConfigChange": ["SDKHookCallbackMatcher"],
+      "CwdChanged": ["SDKHookCallbackMatcher"],
+      "DirectoryAdded": ["SDKHookCallbackMatcher"],
+      "Elicitation": ["SDKHookCallbackMatcher"],
+      "ElicitationResult": ["SDKHookCallbackMatcher"],
+      "FileChanged": ["SDKHookCallbackMatcher"],
+      "InstructionsLoaded": ["SDKHookCallbackMatcher"],
+      "MessageDisplay": ["SDKHookCallbackMatcher"],
+      "Notification": ["SDKHookCallbackMatcher"],
+      "PermissionDenied": ["SDKHookCallbackMatcher"],
+      "PermissionRequest": ["SDKHookCallbackMatcher"],
+      "PostCompact": ["SDKHookCallbackMatcher"],
+      "PostModelSwitch": ["SDKHookCallbackMatcher"],
+      "PostToolBatch": ["SDKHookCallbackMatcher"],
+      "PostToolUse": ["SDKHookCallbackMatcher"],
+      "PostToolUseFailure": ["SDKHookCallbackMatcher"],
+      "PreCompact": ["SDKHookCallbackMatcher"],
+      "PreModelSwitch": ["SDKHookCallbackMatcher"],
+      "PreSkillShellCommand": ["SDKHookCallbackMatcher"],
+      "PreToolUse": ["SDKHookCallbackMatcher"],
+      "SessionEnd": ["SDKHookCallbackMatcher"],
+      "SessionStart": ["SDKHookCallbackMatcher"],
+      "Setup": ["SDKHookCallbackMatcher"],
+      "Stop": ["SDKHookCallbackMatcher"],
+      "StopFailure": ["SDKHookCallbackMatcher"],
+      "SubagentStart": ["SDKHookCallbackMatcher"],
+      "SubagentStop": ["SDKHookCallbackMatcher"],
+      "TaskCompleted": ["SDKHookCallbackMatcher"],
+      "TaskCreated": ["SDKHookCallbackMatcher"],
+      "TeammateIdle": ["SDKHookCallbackMatcher"],
+      "UserPromptExpansion": ["SDKHookCallbackMatcher"],
+      "UserPromptSubmit": ["SDKHookCallbackMatcher"],
+      "WorktreeCreate": ["SDKHookCallbackMatcher"],
+      "WorktreeRemove": ["SDKHookCallbackMatcher"]
+    },
+    "PermissionRuleValue": { "ruleContent": [], "toolName": [] },
+    "PlainTextSource": { "data": [], "media_type": [], "type": [] },
+    "Record": { "*": [] },
+    "Record#2": { "*": [] },
+    "Record#3": { "*": [] },
+    "Record#4": { "*": [] },
+    "Record#5": { "*": [] },
+    "Record#6": { "*": [] },
+    "Record#7": { "*": [] },
+    "Record#8": { "*": [] },
+    "RedactedThinkingBlockParam": { "data": [], "type": [] },
+    "SDKAPIRetryMessage": {
+      "attempt": [],
+      "error": [],
+      "error_status": [],
+      "max_retries": [],
+      "no_response": ["SDKAPIRetryMessage.no_response"],
+      "retry_delay_ms": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKAPIRetryMessage.no_response": { "retry_wait_ms": [], "waited_ms": [] },
+    "SDKActiveGoalMessage": {
+      "session_id": [],
+      "type": [],
+      "uuid": ["*"],
+      "value": ["SDKActiveGoalMessage.value"]
+    },
+    "SDKActiveGoalMessage.value": {
+      "condition": [],
+      "iterations": [],
+      "last_reason": [],
+      "set_at": [],
+      "tokens_at_start": []
+    },
+    "SDKAssistantMessage": {
+      "aborted": [],
+      "agent_id": [],
+      "context_usage": ["SDKContextUsage"],
+      "error": [],
+      "message": ["BetaMessage"],
+      "parent_tool_use_id": [],
+      "request_id": [],
+      "resume_reason": [],
+      "resumed_from_incomplete_thinking": [],
+      "session_id": [],
+      "subagent_type": [],
+      "supersedes": ["*"],
+      "task_description": [],
+      "timestamp": [],
+      "type": [],
+      "usage_report": ["SDKUsageReport"],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "SDKAuthStatusMessage": {
+      "error": [],
+      "isAuthenticating": [],
+      "output": [],
+      "session_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKBackgroundTasksChangedMessage": {
+      "session_id": [],
+      "subtype": [],
+      "tasks": ["SDKBackgroundTasksChangedMessage.tasks"],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKBackgroundTasksChangedMessage.tasks": {
+      "ambient": [],
+      "description": [],
+      "parent_task_id": [],
+      "run_id": [],
+      "subagent_type": [],
+      "task_id": [],
+      "task_type": []
+    },
+    "SDKCommandsChangedMessage": {
+      "commands": ["SlashCommand"],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKCompactBoundaryMessage": {
+      "compact_metadata": ["SDKCompactBoundaryMessage.compact_metadata"],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKCompactBoundaryMessage.compact_metadata": {
+      "duration_ms": [],
+      "post_tokens": [],
+      "pre_tokens": [],
+      "preserved_messages": [
+        "SDKCompactBoundaryMessage.compact_metadata.preserved_messages"
+      ],
+      "preserved_segment": [
+        "SDKCompactBoundaryMessage.compact_metadata.preserved_segment"
+      ],
+      "trigger": []
+    },
+    "SDKCompactBoundaryMessage.compact_metadata.preserved_messages": {
+      "anchor_uuid": ["*"],
+      "uuids": ["*"]
+    },
+    "SDKCompactBoundaryMessage.compact_metadata.preserved_segment": {
+      "anchor_uuid": ["*"],
+      "head_uuid": ["*"],
+      "tail_uuid": ["*"]
+    },
+    "SDKContextUsage": {
+      "agents": ["SDKContextUsage.agents"],
+      "categories": ["SDKContextUsageCategory"],
+      "mcp_tools": ["SDKContextUsage.mcp_tools"],
+      "memory_files": ["SDKContextUsage.memory_files"],
+      "model": [],
+      "over_limit": ["SDKContextUsage.over_limit"],
+      "percentage": [],
+      "raw_max_tokens": [],
+      "skills": ["SDKContextUsage.skills"],
+      "total_tokens": []
+    },
+    "SDKContextUsage.agents": { "agent_type": [], "source": [], "tokens": [] },
+    "SDKContextUsage.mcp_tools": {
+      "name": [],
+      "server_name": [],
+      "tokens": []
+    },
+    "SDKContextUsage.memory_files": { "path": [], "tokens": [], "type": [] },
+    "SDKContextUsage.over_limit": { "kind": [], "tokens_over": [] },
+    "SDKContextUsage.skills": {
+      "name": [],
+      "plugin_name": [],
+      "source": [],
+      "tokens": []
+    },
+    "SDKContextUsageCategory": { "kind": [], "name": [], "tokens": [] },
+    "SDKControlApplyFlagSettingsRequest": { "settings": [], "subtype": [] },
+    "SDKControlBackgroundTasksRequest": { "subtype": [], "tool_use_id": [] },
+    "SDKControlCancelAsyncMessageRequest": {
+      "message_uuid": [],
+      "subtype": []
+    },
+    "SDKControlCancelRequest": { "request_id": [], "type": [] },
+    "SDKControlElicitationRequest": {
+      "description": [],
+      "display_name": [],
+      "elicitation_id": [],
+      "mcp_server_name": [],
+      "message": [],
+      "mode": [],
+      "property_order": [],
+      "requested_schema": ["Record#2"],
+      "subtype": [],
+      "title": [],
+      "url": []
+    },
+    "SDKControlFileSuggestionsRequest": { "query": [], "subtype": [] },
+    "SDKControlGetBinaryVersionRequest": { "subtype": [] },
+    "SDKControlGetContextUsageRequest": { "detail": [], "subtype": [] },
+    "SDKControlGetContextUsageResponse": {
+      "agents": ["SDKControlGetContextUsageResponse.agents"],
+      "apiUsage": ["SDKControlGetContextUsageResponse.apiUsage"],
+      "autoCompactThreshold": [],
+      "categories": ["SDKControlGetContextUsageResponse.categories"],
+      "deferredBuiltinTools": [
+        "SDKControlGetContextUsageResponse.deferredBuiltinTools"
+      ],
+      "gridRows": ["SDKControlGetContextUsageResponse.gridRows"],
+      "isAutoCompactEnabled": [],
+      "maxTokens": [],
+      "mcpInstructions": ["SDKControlGetContextUsageResponse.mcpInstructions"],
+      "mcpTools": ["SDKControlGetContextUsageResponse.mcpTools"],
+      "memoryFiles": ["SDKControlGetContextUsageResponse.memoryFiles"],
+      "messageBreakdown": [
+        "SDKControlGetContextUsageResponse.messageBreakdown"
+      ],
+      "model": [],
+      "percentage": [],
+      "rawMaxTokens": [],
+      "skills": ["SDKControlGetContextUsageResponse.skills"],
+      "slashCommands": ["SDKControlGetContextUsageResponse.slashCommands"],
+      "systemPromptSections": [
+        "SDKControlGetContextUsageResponse.systemPromptSections"
+      ],
+      "systemTools": ["SDKControlGetContextUsageResponse.systemTools"],
+      "totalTokens": []
+    },
+    "SDKControlGetContextUsageResponse.agents": {
+      "agentType": [],
+      "path": [],
+      "pluginId": [],
+      "source": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.apiUsage": {
+      "cache_creation_input_tokens": [],
+      "cache_read_input_tokens": [],
+      "input_tokens": [],
+      "output_tokens": []
+    },
+    "SDKControlGetContextUsageResponse.categories": {
+      "color": [],
+      "id": [],
+      "isDeferred": [],
+      "kind": [],
+      "name": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.deferredBuiltinTools": {
+      "isLoaded": [],
+      "name": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.gridRows": {
+      "categoryName": [],
+      "color": [],
+      "isFilled": [],
+      "percentage": [],
+      "squareFullness": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.mcpInstructions": {
+      "serverName": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.mcpTools": {
+      "isLoaded": [],
+      "name": [],
+      "serverName": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.memoryFiles": {
+      "path": [],
+      "tokens": [],
+      "type": []
+    },
+    "SDKControlGetContextUsageResponse.messageBreakdown": {
+      "assistantMessageTokens": [],
+      "attachmentTokens": [],
+      "attachmentsByType": [
+        "SDKControlGetContextUsageResponse.messageBreakdown.attachmentsByType"
+      ],
+      "redirectedContextTokens": [],
+      "toolCallTokens": [],
+      "toolCallsByType": [
+        "SDKControlGetContextUsageResponse.messageBreakdown.toolCallsByType"
+      ],
+      "toolResultTokens": [],
+      "unattributedTokens": [],
+      "userMessageTokens": []
+    },
+    "SDKControlGetContextUsageResponse.messageBreakdown.attachmentsByType": {
+      "name": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.messageBreakdown.toolCallsByType": {
+      "callTokens": [],
+      "name": [],
+      "resultTokens": []
+    },
+    "SDKControlGetContextUsageResponse.skills": {
+      "includedSkills": [],
+      "skillFrontmatter": [
+        "SDKControlGetContextUsageResponse.skills.skillFrontmatter"
+      ],
+      "tokens": [],
+      "totalSkills": []
+    },
+    "SDKControlGetContextUsageResponse.skills.skillFrontmatter": {
+      "name": [],
+      "path": [],
+      "pluginId": [],
+      "pluginName": [],
+      "source": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.slashCommands": {
+      "includedCommands": [],
+      "tokens": [],
+      "totalCommands": []
+    },
+    "SDKControlGetContextUsageResponse.systemPromptSections": {
+      "name": [],
+      "tokens": []
+    },
+    "SDKControlGetContextUsageResponse.systemTools": {
+      "name": [],
+      "tokens": []
+    },
+    "SDKControlGetHooksListingRequest": { "subtype": [] },
+    "SDKControlGetHooksListingResponse": {
+      "bareMode": ["SDKControlGetHooksListingResponse.bareMode"],
+      "errors": ["SDKSettingsParseError"],
+      "eventCatalog": ["SDKControlGetHooksListingResponse.eventCatalog"],
+      "events": ["SDKControlGetHooksListingResponse.events"],
+      "hooks": ["SDKControlGetHooksListingResponse.hooks"],
+      "policy": ["SDKControlGetHooksListingResponse.policy"],
+      "safeMode": ["SDKControlGetHooksListingResponse.safeMode"]
+    },
+    "SDKControlGetHooksListingResponse.bareMode": { "exitHint": [] },
+    "SDKControlGetHooksListingResponse.eventCatalog": {
+      "name": [],
+      "summary": [],
+      "supportsMatcher": []
+    },
+    "SDKControlGetHooksListingResponse.events": {
+      "hookCount": [],
+      "name": [],
+      "summary": [],
+      "supportsMatcher": []
+    },
+    "SDKControlGetHooksListingResponse.hooks": {
+      "commandText": [],
+      "condition": [],
+      "contentLabel": [],
+      "disabled": [],
+      "displayText": [],
+      "editable": ["SDKControlGetHooksListingResponse.hooks.editable"],
+      "event": [],
+      "matcher": [],
+      "pluginName": [],
+      "runsInBackground": [],
+      "runsOnce": [],
+      "source": [],
+      "sourceLabel": [],
+      "statusMessage": [],
+      "timeout": [],
+      "type": []
+    },
+    "SDKControlGetHooksListingResponse.hooks.editable": {
+      "config": ["Record#2"],
+      "headersRedacted": [],
+      "matcher": []
+    },
+    "SDKControlGetHooksListingResponse.policy": {
+      "allDisabled": [],
+      "disabledByPolicy": [],
+      "managedOnly": [],
+      "pluginOnly": [],
+      "policyHookCount": [],
+      "policyUnreadable": []
+    },
+    "SDKControlGetHooksListingResponse.safeMode": {
+      "exitHint": [],
+      "managedHooksStillApply": []
+    },
+    "SDKControlGetSessionCostRequest": { "subtype": [] },
+    "SDKControlGetSettingsRequest": { "subtype": [] },
+    "SDKControlGetTaskOutputRequest": { "subtype": [], "task_id": [] },
+    "SDKControlGetTaskOutputResponse": {
+      "output": [],
+      "total_bytes": [],
+      "truncated": []
+    },
+    "SDKControlGetUsageRequest": { "skip_behaviors": [], "subtype": [] },
+    "SDKControlGetUsageResponse": {
+      "behaviors": ["SDKControlGetUsageResponse.behaviors"],
+      "rate_limits": ["SDKControlGetUsageResponse.rate_limits"],
+      "rate_limits_available": [],
+      "session": ["SDKControlGetUsageResponse.session"],
+      "subscription_type": []
+    },
+    "SDKControlGetUsageResponse.behaviors": {
+      "day": ["SDKControlGetUsageResponse.behaviors.day"],
+      "week": ["SDKControlGetUsageResponse.behaviors.week"]
+    },
+    "SDKControlGetUsageResponse.behaviors.day": {
+      "agents": ["SDKControlGetUsageResponse.behaviors.day.agents"],
+      "behaviors": ["SDKControlGetUsageResponse.behaviors.day.behaviors"],
+      "fix": ["SDKControlGetUsageResponse.behaviors.day.fix"],
+      "mcp_servers": ["SDKControlGetUsageResponse.behaviors.day.mcp_servers"],
+      "plugins": ["SDKControlGetUsageResponse.behaviors.day.plugins"],
+      "recommendations": [
+        "SDKControlGetUsageResponse.behaviors.day.recommendations"
+      ],
+      "request_count": [],
+      "session_count": [],
+      "skills": ["SDKControlGetUsageResponse.behaviors.day.skills"]
+    },
+    "SDKControlGetUsageResponse.behaviors.day.agents": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.behaviors": {
+      "count": [],
+      "key": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.fix": {
+      "keys": [],
+      "messages": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.mcp_servers": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.plugins": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.recommendations": {
+      "detail": [],
+      "key": [],
+      "pct": [],
+      "title": []
+    },
+    "SDKControlGetUsageResponse.behaviors.day.skills": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week": {
+      "agents": ["SDKControlGetUsageResponse.behaviors.week.agents"],
+      "behaviors": ["SDKControlGetUsageResponse.behaviors.week.behaviors"],
+      "fix": ["SDKControlGetUsageResponse.behaviors.week.fix"],
+      "mcp_servers": ["SDKControlGetUsageResponse.behaviors.week.mcp_servers"],
+      "plugins": ["SDKControlGetUsageResponse.behaviors.week.plugins"],
+      "recommendations": [
+        "SDKControlGetUsageResponse.behaviors.week.recommendations"
+      ],
+      "request_count": [],
+      "session_count": [],
+      "skills": ["SDKControlGetUsageResponse.behaviors.week.skills"]
+    },
+    "SDKControlGetUsageResponse.behaviors.week.agents": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.behaviors": {
+      "count": [],
+      "key": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.fix": {
+      "keys": [],
+      "messages": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.mcp_servers": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.plugins": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.recommendations": {
+      "detail": [],
+      "key": [],
+      "pct": [],
+      "title": []
+    },
+    "SDKControlGetUsageResponse.behaviors.week.skills": {
+      "name": [],
+      "pct": []
+    },
+    "SDKControlGetUsageResponse.rate_limits": {
+      "extra_usage": ["SDKControlGetUsageResponse.rate_limits.extra_usage"],
+      "five_hour": ["SDKControlGetUsageResponse.rate_limits.five_hour"],
+      "model_scoped": ["SDKControlGetUsageResponse.rate_limits.model_scoped"],
+      "seven_day": ["SDKControlGetUsageResponse.rate_limits.seven_day"],
+      "seven_day_oauth_apps": [
+        "SDKControlGetUsageResponse.rate_limits.seven_day_oauth_apps"
+      ],
+      "seven_day_opus": [
+        "SDKControlGetUsageResponse.rate_limits.seven_day_opus"
+      ],
+      "seven_day_sonnet": [
+        "SDKControlGetUsageResponse.rate_limits.seven_day_sonnet"
+      ]
+    },
+    "SDKControlGetUsageResponse.rate_limits.extra_usage": {
+      "currency": [],
+      "is_enabled": [],
+      "monthly_limit": [],
+      "used_credits": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.five_hour": {
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.model_scoped": {
+      "display_name": [],
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.seven_day": {
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.seven_day_oauth_apps": {
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.seven_day_opus": {
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.rate_limits.seven_day_sonnet": {
+      "resets_at": [],
+      "utilization": []
+    },
+    "SDKControlGetUsageResponse.session": {
+      "model_usage": ["Record"],
+      "total_api_duration_ms": [],
+      "total_cost_usd": [],
+      "total_duration_ms": [],
+      "total_lines_added": [],
+      "total_lines_removed": []
+    },
+    "SDKControlInitializeRequest": {
+      "agentProgressSummaries": [],
+      "agents": ["Record#6"],
+      "appendSystemPrompt": [],
+      "excludeDynamicSections": [],
+      "forwardSubagentText": [],
+      "hooks": ["Partial"],
+      "jsonSchema": ["Record#2"],
+      "mcpServers": ["Record#7"],
+      "perTaskStopAffordance": [],
+      "planModeInstructions": [],
+      "plugins": ["SdkPluginConfig"],
+      "promptSuggestions": [],
+      "sdkMcpServerConfigs": ["Record#3"],
+      "sdkMcpServerManifests": ["Record#4"],
+      "sdkMcpServerManifestsOrigin": [],
+      "sdkMcpServers": [],
+      "skills": [],
+      "subtype": [],
+      "supportedDialogKinds": [],
+      "systemPrompt": [],
+      "systemPromptSnapshot": [],
+      "title": [],
+      "toolAliases": ["Record#5"]
+    },
+    "SDKControlInitializeResponse": {
+      "account": ["AccountInfo"],
+      "agents": ["AgentInfo"],
+      "available_output_styles": [],
+      "claude_code_version": [],
+      "commands": ["SlashCommand"],
+      "fast_mode_disabled_reason": [],
+      "fast_mode_state": [],
+      "hook_on_failure_supported": [],
+      "hooks_applied": [],
+      "mcp_servers_applied": [],
+      "models": ["ModelInfo"],
+      "output_style": [],
+      "plugins_applied": [],
+      "sdk_mcp_manifests_parked": ["Record#8"]
+    },
+    "SDKControlInterruptRequest": { "cancel_queued": [], "subtype": [] },
+    "SDKControlInterruptResponse": { "cancelled": [], "still_queued": [] },
+    "SDKControlListModelsRequest": { "subtype": [] },
+    "SDKControlListPermissionRulesRequest": { "subtype": [] },
+    "SDKControlListPermissionRulesResponse": {
+      "state": ["SDKControlPermissionRulesState"]
+    },
+    "SDKControlMcpCallRequest": {
+      "arguments": [],
+      "check_permissions": [],
+      "expires_at": [],
+      "input_files": ["SDKControlMcpCallRequest.input_files"],
+      "output_files": ["SDKControlMcpCallRequest.output_files"],
+      "result_not_for_model": [],
+      "soft_error_result": [],
+      "subtype": [],
+      "timeout_ms": [],
+      "tool": []
+    },
+    "SDKControlMcpCallRequest.input_files": { "lane_path": [], "name": [] },
+    "SDKControlMcpCallRequest.output_files": {
+      "if_match": [],
+      "lane_path": [],
+      "name": []
+    },
+    "SDKControlMcpMessageRequest": {
+      "message": [
+        "SDKControlMcpMessageRequest.message",
+        "SDKControlMcpMessageRequest.message#2",
+        "SDKControlMcpMessageRequest.message#3",
+        "SDKControlMcpMessageRequest.message#4"
+      ],
+      "server_name": [],
+      "subtype": []
+    },
+    "SDKControlMcpMessageRequest.message": {
+      "id": [],
+      "jsonrpc": [],
+      "method": [],
+      "params": ["SDKControlMcpMessageRequest.message.params"]
+    },
+    "SDKControlMcpMessageRequest.message#2": {
+      "jsonrpc": [],
+      "method": [],
+      "params": ["SDKControlMcpMessageRequest.message#2.params"]
+    },
+    "SDKControlMcpMessageRequest.message#2.params": {
+      "*": [],
+      "_meta": ["SDKControlMcpMessageRequest.message#2.params._meta"]
+    },
+    "SDKControlMcpMessageRequest.message#2.params._meta": {
+      "*": [],
+      "io.modelcontextprotocol/related-task": [
+        "SDKControlMcpMessageRequest.message#2.params._meta.io.modelcontextprotocol/related-task"
+      ],
+      "progressToken": []
+    },
+    "SDKControlMcpMessageRequest.message#2.params._meta.io.modelcontextprotocol/related-task": {
+      "taskId": []
+    },
+    "SDKControlMcpMessageRequest.message#3": {
+      "id": [],
+      "jsonrpc": [],
+      "result": ["SDKControlMcpMessageRequest.message#3.result"]
+    },
+    "SDKControlMcpMessageRequest.message#3.result": {
+      "*": [],
+      "_meta": ["SDKControlMcpMessageRequest.message#3.result._meta"]
+    },
+    "SDKControlMcpMessageRequest.message#3.result._meta": {
+      "*": [],
+      "io.modelcontextprotocol/related-task": [
+        "SDKControlMcpMessageRequest.message#3.result._meta.io.modelcontextprotocol/related-task"
+      ],
+      "progressToken": []
+    },
+    "SDKControlMcpMessageRequest.message#3.result._meta.io.modelcontextprotocol/related-task": {
+      "taskId": []
+    },
+    "SDKControlMcpMessageRequest.message#4": {
+      "error": ["SDKControlMcpMessageRequest.message#4.error"],
+      "id": [],
+      "jsonrpc": []
+    },
+    "SDKControlMcpMessageRequest.message#4.error": {
+      "code": [],
+      "data": ["*"],
+      "message": []
+    },
+    "SDKControlMcpMessageRequest.message.params": {
+      "*": [],
+      "_meta": ["SDKControlMcpMessageRequest.message.params._meta"]
+    },
+    "SDKControlMcpMessageRequest.message.params._meta": {
+      "*": [],
+      "io.modelcontextprotocol/related-task": [
+        "SDKControlMcpMessageRequest.message.params._meta.io.modelcontextprotocol/related-task"
+      ],
+      "progressToken": []
+    },
+    "SDKControlMcpMessageRequest.message.params._meta.io.modelcontextprotocol/related-task": {
+      "taskId": []
+    },
+    "SDKControlMcpReadResourceRequest": {
+      "serverName": [],
+      "subtype": [],
+      "uri": []
+    },
+    "SDKControlMcpReadResourceResponse": {
+      "contents": ["SDKControlMcpReadResourceResponse.contents"]
+    },
+    "SDKControlMcpReadResourceResponse.contents": {
+      "_meta": ["Record#2"],
+      "blob": [],
+      "mimeType": [],
+      "text": [],
+      "uri": []
+    },
+    "SDKControlMcpReconnectRequest": { "serverName": [], "subtype": [] },
+    "SDKControlMcpSetServersRequest": {
+      "servers": ["Record#7"],
+      "subtype": []
+    },
+    "SDKControlMcpStatusRequest": { "liveReply": [], "subtype": [] },
+    "SDKControlMcpToggleRequest": {
+      "enabled": [],
+      "serverName": [],
+      "subtype": []
+    },
+    "SDKControlPermissionRequest": {
+      "agent_id": [],
+      "blocked_path": [],
+      "classifier_approvable": [],
+      "decision_reason": [],
+      "decision_reason_type": [],
+      "default_to_no": [],
+      "description": [],
+      "display_name": [],
+      "input": [],
+      "matched_ask_rule": ["SDKControlPermissionRequest.matched_ask_rule"],
+      "mcp_server": ["McpServerProvenance"],
+      "permission_suggestions": [
+        "SDKControlPermissionRequest.permission_suggestions",
+        "SDKControlPermissionRequest.permission_suggestions#2",
+        "SDKControlPermissionRequest.permission_suggestions#3",
+        "SDKControlPermissionRequest.permission_suggestions#4",
+        "SDKControlPermissionRequest.permission_suggestions#5",
+        "SDKControlPermissionRequest.permission_suggestions#6"
+      ],
+      "requires_user_interaction": [],
+      "subtype": [],
+      "suppress_always_allow_rule": [],
+      "title": [],
+      "tool_name": [],
+      "tool_use_id": []
+    },
+    "SDKControlPermissionRequest.matched_ask_rule": {
+      "rule_content": [],
+      "source": [],
+      "tool_name": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions": {
+      "behavior": [],
+      "destination": [],
+      "rules": ["PermissionRuleValue"],
+      "type": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions#2": {
+      "behavior": [],
+      "destination": [],
+      "rules": ["PermissionRuleValue"],
+      "type": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions#3": {
+      "behavior": [],
+      "destination": [],
+      "rules": ["PermissionRuleValue"],
+      "type": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions#4": {
+      "destination": [],
+      "mode": [],
+      "type": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions#5": {
+      "destination": [],
+      "directories": [],
+      "type": []
+    },
+    "SDKControlPermissionRequest.permission_suggestions#6": {
+      "destination": [],
+      "directories": [],
+      "type": []
+    },
+    "SDKControlPermissionRulesState": {
+      "errors": ["SDKSettingsParseError"],
+      "managedOnly": [],
+      "originalCwd": [],
+      "rules": ["SDKPermissionRuleEntry"],
+      "withheld": [],
+      "workspaceDirectories": ["SDKPermissionWorkspaceDirectory"]
+    },
+    "SDKControlReadFileRequest": {
+      "encoding": [],
+      "max_bytes": [],
+      "path": [],
+      "subtype": []
+    },
+    "SDKControlReadFileResponse": {
+      "absPath": [],
+      "contents": [],
+      "encoding": [],
+      "lossy": [],
+      "truncated": []
+    },
+    "SDKControlRegisterRepoRootRequest": {
+      "directory": [],
+      "reload_claude_md": [],
+      "reload_plugins": [],
+      "reload_skills": [],
+      "subtype": []
+    },
+    "SDKControlReloadOutputStylesRequest": { "subtype": [] },
+    "SDKControlReloadOutputStylesResponse": { "available_output_styles": [] },
+    "SDKControlReloadPluginsRequest": {
+      "add_plugins": ["SdkPluginConfig"],
+      "hold_on_cache_impact": [],
+      "refuse_if_busy": [],
+      "subtype": []
+    },
+    "SDKControlReloadPluginsResponse": {
+      "agents": ["AgentInfo"],
+      "cache_impact": ["SDKControlReloadPluginsResponse.cache_impact"],
+      "commands": ["SlashCommand"],
+      "error_count": [],
+      "held": [],
+      "mcpServers": ["McpServerStatus"],
+      "plugins": ["SDKControlReloadPluginsResponse.plugins"]
+    },
+    "SDKControlReloadPluginsResponse.cache_impact": {
+      "lsp_tool_change": [],
+      "mcp_servers_added": [],
+      "mcp_servers_removed": []
+    },
+    "SDKControlReloadPluginsResponse.plugins": {
+      "name": [],
+      "path": [],
+      "source": [],
+      "version": []
+    },
+    "SDKControlReloadSkillsRequest": { "subtype": [] },
+    "SDKControlReloadSkillsResponse": { "skills": ["SlashCommand"] },
+    "SDKControlRenameSessionRequest": {
+      "session_id": [],
+      "source": [],
+      "subtype": [],
+      "title": []
+    },
+    "SDKControlRequest": {
+      "request": [
+        "SDKControlApplyFlagSettingsRequest",
+        "SDKControlBackgroundTasksRequest",
+        "SDKControlCancelAsyncMessageRequest",
+        "SDKControlElicitationRequest",
+        "SDKControlFileSuggestionsRequest",
+        "SDKControlGetBinaryVersionRequest",
+        "SDKControlGetContextUsageRequest",
+        "SDKControlGetHooksListingRequest",
+        "SDKControlGetSessionCostRequest",
+        "SDKControlGetSettingsRequest",
+        "SDKControlGetTaskOutputRequest",
+        "SDKControlGetUsageRequest",
+        "SDKControlInitializeRequest",
+        "SDKControlInterruptRequest",
+        "SDKControlListModelsRequest",
+        "SDKControlListPermissionRulesRequest",
+        "SDKControlMcpCallRequest",
+        "SDKControlMcpMessageRequest",
+        "SDKControlMcpReadResourceRequest",
+        "SDKControlMcpReconnectRequest",
+        "SDKControlMcpSetServersRequest",
+        "SDKControlMcpStatusRequest",
+        "SDKControlMcpToggleRequest",
+        "SDKControlPermissionRequest",
+        "SDKControlReadFileRequest",
+        "SDKControlRegisterRepoRootRequest",
+        "SDKControlReloadOutputStylesRequest",
+        "SDKControlReloadPluginsRequest",
+        "SDKControlReloadSkillsRequest",
+        "SDKControlRenameSessionRequest",
+        "SDKControlRequestUserDialogRequest",
+        "SDKControlRewindFilesRequest",
+        "SDKControlSeedReadStateRequest",
+        "SDKControlSetColorRequest",
+        "SDKControlSetHasSubscribersRequest",
+        "SDKControlSetMaxThinkingTokensRequest",
+        "SDKControlSetModelRequest",
+        "SDKControlSetPermissionModeRequest",
+        "SDKControlStopTaskRequest",
+        "SDKControlUpdateSettingsRequest",
+        "SDKHookCallbackRequest"
+      ],
+      "request_id": [],
+      "type": []
+    },
+    "SDKControlRequestProgressMessage": {
+      "attempt": [],
+      "error_status": [],
+      "max_retries": [],
+      "request_id": [],
+      "retry_delay_ms": [],
+      "session_id": [],
+      "status": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKControlRequestUserDialogRequest": {
+      "dialog_kind": [],
+      "payload": ["Record#2"],
+      "subtype": [],
+      "tool_use_id": []
+    },
+    "SDKControlRewindFilesRequest": {
+      "dry_run": [],
+      "subtype": [],
+      "user_message_id": []
+    },
+    "SDKControlSeedReadStateRequest": {
+      "mtime": [],
+      "path": [],
+      "subtype": []
+    },
+    "SDKControlSetColorRequest": { "color": [], "subtype": [] },
+    "SDKControlSetHasSubscribersRequest": {
+      "has_subscribers": [],
+      "subtype": []
+    },
+    "SDKControlSetMaxThinkingTokensRequest": {
+      "max_thinking_tokens": [],
+      "subtype": [],
+      "thinking_display": []
+    },
+    "SDKControlSetModelRequest": { "model": [], "subtype": [] },
+    "SDKControlSetPermissionModeRequest": { "mode": [], "subtype": [] },
+    "SDKControlSetPermissionModeResponse": { "mode": [] },
+    "SDKControlStopTaskRequest": { "subtype": [], "task_id": [] },
+    "SDKControlUpdateSettingsRequest": {
+      "settings": [],
+      "source": [],
+      "subtype": []
+    },
+    "SDKConversationResetMessage": {
+      "new_conversation_id": ["*"],
+      "session_id": [],
+      "timestamp": [],
+      "trigger": [],
+      "type": [],
+      "user_message_uuid": [],
+      "uuid": ["*"]
+    },
+    "SDKDeferredToolUse": { "id": [], "input": [], "name": [] },
+    "SDKElicitationCompleteMessage": {
+      "elicitation_id": [],
+      "mcp_server_name": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKFilesPersistedEvent": {
+      "failed": ["SDKFilesPersistedEvent.failed"],
+      "files": ["SDKFilesPersistedEvent.files"],
+      "processed_at": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKFilesPersistedEvent.failed": { "error": [], "filename": [] },
+    "SDKFilesPersistedEvent.files": { "file_id": [], "filename": [] },
+    "SDKHookCallbackMatcher": {
+      "hookCallbackIds": [],
+      "matcher": [],
+      "onFailure": [],
+      "timeout": []
+    },
+    "SDKHookCallbackRequest": {
+      "callback_id": [],
+      "input": [],
+      "subtype": [],
+      "tool_use_id": []
+    },
+    "SDKHookProgressMessage": {
+      "hook_event": [],
+      "hook_id": [],
+      "hook_name": [],
+      "output": [],
+      "session_id": [],
+      "stderr": [],
+      "stdout": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKHookResponseMessage": {
+      "exit_code": [],
+      "hook_event": [],
+      "hook_id": [],
+      "hook_name": [],
+      "outcome": [],
+      "output": [],
+      "session_id": [],
+      "stderr": [],
+      "stdout": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKHookStartedMessage": {
+      "hook_event": [],
+      "hook_id": [],
+      "hook_name": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKInformationalMessage": {
+      "content": [],
+      "level": [],
+      "prevent_continuation": [],
+      "session_id": [],
+      "subtype": [],
+      "tag": [],
+      "tool_use_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKKeepAliveMessage": { "type": [] },
+    "SDKLocalCommandOutputMessage": {
+      "content": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKMcpResourceLink": {
+      "annotations": ["Record#2"],
+      "description": [],
+      "mimeType": [],
+      "name": [],
+      "size": [],
+      "title": [],
+      "uri": []
+    },
+    "SDKMemoryRecallMessage": {
+      "memories": ["SDKMemoryRecallMessage.memories"],
+      "mode": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKMemoryRecallMessage.memories": {
+      "content": [],
+      "path": [],
+      "scope": []
+    },
+    "SDKMirrorErrorMessage": {
+      "error": [],
+      "key": ["SDKMirrorErrorMessage.key"],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKMirrorErrorMessage.key": {
+      "projectKey": [],
+      "sessionId": [],
+      "subpath": []
+    },
+    "SDKModelRefusalFallbackMessage": {
+      "api_refusal_category": [],
+      "api_refusal_explanation": [],
+      "content": [],
+      "direction": [],
+      "fallback_model": [],
+      "original_model": [],
+      "refused_user_message_uuid": [],
+      "request_id": [],
+      "retracted_message_uuids": [],
+      "scope": [],
+      "session_id": [],
+      "subtype": [],
+      "trigger": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKModelRefusalNoFallbackMessage": {
+      "api_refusal_category": [],
+      "api_refusal_explanation": [],
+      "content": [],
+      "original_model": [],
+      "refused_user_message_uuid": [],
+      "request_id": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKNotificationMessage": {
+      "color": [],
+      "key": [],
+      "priority": [],
+      "session_id": [],
+      "subtype": [],
+      "text": [],
+      "timeout_ms": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKPermissionDenial": {
+      "tool_input": ["Record#2"],
+      "tool_name": [],
+      "tool_use_id": []
+    },
+    "SDKPermissionDeniedMessage": {
+      "agent_id": [],
+      "decision_reason": [],
+      "decision_reason_type": [],
+      "message": [],
+      "session_id": [],
+      "subtype": [],
+      "tool_name": [],
+      "tool_use_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKPermissionRuleDescription": {
+      "emphasis": [],
+      "prefix": [],
+      "suffix": []
+    },
+    "SDKPermissionRuleEntry": {
+      "behavior": [],
+      "description": ["SDKPermissionRuleDescription"],
+      "editability": [],
+      "notInEffect": [],
+      "rule": [],
+      "source": []
+    },
+    "SDKPermissionWorkspaceDirectory": { "path": [], "source": [] },
+    "SDKPluginInstallMessage": {
+      "error": [],
+      "name": [],
+      "session_id": [],
+      "status": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKPromptSuggestionMessage": {
+      "session_id": [],
+      "suggestion": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKRateLimitEvent": {
+      "rate_limit_info": ["SDKRateLimitInfo"],
+      "session_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKRateLimitInfo": {
+      "canUserPurchaseCredits": [],
+      "errorCode": [],
+      "hasChargeableSavedPaymentMethod": [],
+      "isUsingOverage": [],
+      "limitScope": [],
+      "overageDisabledReason": [],
+      "overageEnabled": [],
+      "overageInUse": [],
+      "overageResetsAt": [],
+      "overageStatus": [],
+      "rateLimitType": [],
+      "resetsAt": [],
+      "status": [],
+      "surpassedThreshold": [],
+      "utilization": []
+    },
+    "SDKResultError": {
+      "credential_expires_at": [],
+      "duration_api_ms": [],
+      "duration_ms": [],
+      "errors": [],
+      "fast_mode_disabled_reason": [],
+      "fast_mode_state": [],
+      "invalid_config_file": ["SDKResultError.invalid_config_file"],
+      "is_error": [],
+      "modelUsage": ["Record"],
+      "num_turns": [],
+      "origin": [
+        "SDKUserMessage.origin",
+        "SDKUserMessage.origin#2",
+        "SDKUserMessage.origin#3",
+        "SDKUserMessage.origin#4",
+        "SDKUserMessage.origin#5",
+        "SDKUserMessage.origin#6",
+        "SDKUserMessage.origin#7",
+        "SDKUserMessage.origin#8",
+        "SDKUserMessage.origin#9"
+      ],
+      "permission_denials": ["SDKPermissionDenial"],
+      "queued_turn_count": [],
+      "result_index": [],
+      "resume_reason": [],
+      "session_id": [],
+      "startup_failure_reason": [],
+      "stop_reason": [],
+      "subtype": [],
+      "terminal_reason": [],
+      "total_cost_usd": [],
+      "type": [],
+      "usage": ["NonNullableUsage"],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "SDKResultError.invalid_config_file": {
+      "backup_path": [],
+      "backup_searched": [],
+      "is_global": [],
+      "path": []
+    },
+    "SDKResultSuccess": {
+      "api_error_status": [],
+      "credential_expires_at": [],
+      "deferred_tool_use": ["SDKDeferredToolUse"],
+      "duration_api_ms": [],
+      "duration_ms": [],
+      "fast_mode_disabled_reason": [],
+      "fast_mode_state": [],
+      "first_content_frame_ms": [],
+      "first_stream_post_ack_ms": [],
+      "first_stream_post_ms": [],
+      "first_stream_post_queue_wait_ms": [],
+      "first_stream_post_queued_behind": [],
+      "first_stream_post_wall_ms": [],
+      "first_text_post_ms": [],
+      "first_text_post_queue_wait_ms": [],
+      "first_text_post_queued_behind": [],
+      "first_text_post_wall_ms": [],
+      "is_error": [],
+      "local_command": [],
+      "modelUsage": ["Record"],
+      "num_turns": [],
+      "origin": [
+        "SDKUserMessage.origin",
+        "SDKUserMessage.origin#2",
+        "SDKUserMessage.origin#3",
+        "SDKUserMessage.origin#4",
+        "SDKUserMessage.origin#5",
+        "SDKUserMessage.origin#6",
+        "SDKUserMessage.origin#7",
+        "SDKUserMessage.origin#8",
+        "SDKUserMessage.origin#9"
+      ],
+      "permission_denials": ["SDKPermissionDenial"],
+      "queued_turn_count": [],
+      "request_sent_wall_ms": [],
+      "result": [],
+      "result_index": [],
+      "resume_reason": [],
+      "session_id": [],
+      "stop_reason": [],
+      "structured_output": ["*"],
+      "subtype": [],
+      "terminal_reason": [],
+      "time_origin_ms": [],
+      "time_to_request_from_spawn_ms": [],
+      "time_to_request_ms": [],
+      "total_cost_usd": [],
+      "ttft_ms": [],
+      "ttft_stream_ms": [],
+      "type": [],
+      "usage": ["NonNullableUsage"],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"],
+      "warm_spare_claimed": []
+    },
+    "SDKSessionStateChangedMessage": {
+      "session_id": [],
+      "state": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKSessionWritesLostMessage": {
+      "error_code": [],
+      "lost": [],
+      "session_id": [],
+      "subtype": [],
+      "transcript_session_ids": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKSettingsParseError": { "file": [], "message": [], "path": [] },
+    "SDKStatusMessage": {
+      "compact_error": [],
+      "compact_result": [],
+      "permissionMode": [],
+      "session_id": [],
+      "status": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKSystemMessage": {
+      "agents": [],
+      "apiKeySource": [],
+      "betas": [],
+      "capabilities": [],
+      "claude_code_version": [],
+      "cwd": [],
+      "effort": [],
+      "fast_mode_disabled_reason": [],
+      "fast_mode_state": [],
+      "mcp_servers": ["SDKSystemMessage.mcp_servers"],
+      "model": [],
+      "output_style": [],
+      "permissionMode": [],
+      "plugin_errors": ["SDKSystemMessage.plugin_errors"],
+      "plugins": ["SDKSystemMessage.plugins"],
+      "session_id": [],
+      "skills": [],
+      "slash_commands": [],
+      "subtype": [],
+      "terminal_slash_commands": [],
+      "tools": [],
+      "type": [],
+      "uuid": ["*"],
+      "view_mode": []
+    },
+    "SDKSystemMessage.mcp_servers": { "name": [], "source": [], "status": [] },
+    "SDKSystemMessage.plugin_errors": {
+      "managed_lock": ["SDKSystemMessage.plugin_errors.managed_lock"],
+      "message": [],
+      "path": [],
+      "plugin": [],
+      "type": []
+    },
+    "SDKSystemMessage.plugin_errors.managed_lock": {
+      "marketplace": [],
+      "name": [],
+      "plugin_enabled": []
+    },
+    "SDKSystemMessage.plugins": { "name": [], "path": [], "version": [] },
+    "SDKTaskNotificationMessage": {
+      "ambient": [],
+      "output_file": [],
+      "reason": [],
+      "resource_links": ["SDKMcpResourceLink"],
+      "run_id": [],
+      "session_id": [],
+      "skip_transcript": [],
+      "status": [],
+      "subtype": [],
+      "summary": [],
+      "task_id": [],
+      "tool_use_id": [],
+      "type": [],
+      "usage": ["SDKTaskNotificationMessage.usage"],
+      "uuid": ["*"]
+    },
+    "SDKTaskNotificationMessage.usage": {
+      "duration_ms": [],
+      "tool_uses": [],
+      "total_tokens": []
+    },
+    "SDKTaskProgressMessage": {
+      "description": [],
+      "last_tool_name": [],
+      "run_id": [],
+      "session_id": [],
+      "subagent_type": [],
+      "subtype": [],
+      "summary": [],
+      "task_id": [],
+      "tool_use_id": [],
+      "type": [],
+      "usage": ["SDKTaskProgressMessage.usage"],
+      "uuid": ["*"]
+    },
+    "SDKTaskProgressMessage.usage": {
+      "duration_ms": [],
+      "tool_uses": [],
+      "total_tokens": []
+    },
+    "SDKTaskStartedMessage": {
+      "ambient": [],
+      "description": [],
+      "is_backgrounded": [],
+      "parent_task_id": [],
+      "prompt": [],
+      "run_id": [],
+      "session_id": [],
+      "skip_transcript": [],
+      "spawn_depth": [],
+      "subagent_type": [],
+      "subtype": [],
+      "task_id": [],
+      "task_type": [],
+      "tool_use_id": [],
+      "type": [],
+      "uuid": ["*"],
+      "workflow_name": []
+    },
+    "SDKTaskUpdatedMessage": {
+      "patch": ["SDKTaskUpdatedMessage.patch"],
+      "run_id": [],
+      "session_id": [],
+      "subtype": [],
+      "task_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKTaskUpdatedMessage.patch": {
+      "description": [],
+      "end_time": [],
+      "error": [],
+      "is_backgrounded": [],
+      "status": [],
+      "total_paused_ms": []
+    },
+    "SDKThinkingTokensMessage": {
+      "estimated_tokens": [],
+      "estimated_tokens_delta": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "user_message_uuid": [],
+      "uuid": ["*"]
+    },
+    "SDKToolProgressMessage": {
+      "elapsed_time_seconds": [],
+      "heartbeat": [],
+      "parent_tool_use_id": [],
+      "session_id": [],
+      "subagent_retry": ["SDKToolProgressMessage.subagent_retry"],
+      "subagent_type": [],
+      "task_id": [],
+      "tool_name": [],
+      "tool_use_id": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKToolProgressMessage.subagent_retry": {
+      "agent_id": [],
+      "attempt": [],
+      "error_category": [],
+      "error_status": [],
+      "max_retries": [],
+      "retry_delay_ms": []
+    },
+    "SDKToolUseSummaryMessage": {
+      "preceding_tool_use_ids": [],
+      "session_id": [],
+      "summary": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKUsageReport": {
+      "rate_limits": ["SDKUsageReport.rate_limits"],
+      "session": ["SDKUsageReport.session"]
+    },
+    "SDKUsageReport.rate_limits": {
+      "extra_usage": ["SDKUsageReport.rate_limits.extra_usage"],
+      "limits": ["SDKUsageReport.rate_limits.limits"]
+    },
+    "SDKUsageReport.rate_limits.extra_usage": {
+      "currency": [],
+      "is_enabled": [],
+      "monthly_limit": [],
+      "used_credits": [],
+      "utilization": []
+    },
+    "SDKUsageReport.rate_limits.limits": {
+      "group": [],
+      "is_active": [],
+      "kind": [],
+      "percent": [],
+      "resets_at": [],
+      "scope": ["SDKUsageReport.rate_limits.limits.scope"],
+      "severity": []
+    },
+    "SDKUsageReport.rate_limits.limits.scope": {
+      "model": ["SDKUsageReport.rate_limits.limits.scope.model"],
+      "surface": ["SDKUsageReport.rate_limits.limits.scope.surface"]
+    },
+    "SDKUsageReport.rate_limits.limits.scope.model": { "display_name": [] },
+    "SDKUsageReport.rate_limits.limits.scope.surface": { "display_name": [] },
+    "SDKUsageReport.session": {
+      "model_usage": ["Record"],
+      "total_api_duration_ms": [],
+      "total_cost_usd": [],
+      "total_duration_ms": [],
+      "total_lines_added": [],
+      "total_lines_removed": []
+    },
+    "SDKUserMessage": {
+      "agent_id": [],
+      "client_composed": [],
+      "inline_pastes": [],
+      "isSynthetic": [],
+      "message": [
+        "AssistantMessageParam",
+        "SystemMessageParam",
+        "UserMessageParam"
+      ],
+      "origin": [
+        "SDKUserMessage.origin",
+        "SDKUserMessage.origin#2",
+        "SDKUserMessage.origin#3",
+        "SDKUserMessage.origin#4",
+        "SDKUserMessage.origin#5",
+        "SDKUserMessage.origin#6",
+        "SDKUserMessage.origin#7",
+        "SDKUserMessage.origin#8",
+        "SDKUserMessage.origin#9"
+      ],
+      "parent_tool_use_id": [],
+      "pasted_content": [
+        "BashCodeExecutionToolResultBlockParam",
+        "CodeExecutionToolResultBlockParam",
+        "ContainerUploadBlockParam",
+        "DocumentBlockParam",
+        "ImageBlockParam",
+        "RedactedThinkingBlockParam",
+        "SearchResultBlockParam",
+        "ServerToolUseBlockParam",
+        "TextBlockParam",
+        "TextEditorCodeExecutionToolResultBlockParam",
+        "ThinkingBlockParam",
+        "ToolResultBlockParam",
+        "ToolSearchToolResultBlockParam",
+        "ToolUseBlockParam",
+        "WebFetchToolResultBlockParam",
+        "WebSearchToolResultBlockParam"
+      ],
+      "priority": [],
+      "session_id": [],
+      "shouldQuery": [],
+      "subagent_type": [],
+      "task_description": [],
+      "timestamp": [],
+      "tool_use_result": ["*"],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKUserMessage.origin": { "kind": [] },
+    "SDKUserMessage.origin#2": { "kind": [], "server": [] },
+    "SDKUserMessage.origin#3": {
+      "body": [],
+      "from": [],
+      "fromMode": [],
+      "fromSession": [],
+      "kind": [],
+      "name": [],
+      "senderTaskId": [],
+      "verifiedPeerPid": []
+    },
+    "SDKUserMessage.origin#4": {
+      "fireReason": [],
+      "kind": [],
+      "runId": [],
+      "subkind": []
+    },
+    "SDKUserMessage.origin#5": { "kind": [] },
+    "SDKUserMessage.origin#6": { "kind": [] },
+    "SDKUserMessage.origin#7": { "from": [], "kind": [], "senderTaskId": [] },
+    "SDKUserMessage.origin#8": { "kind": [] },
+    "SDKUserMessage.origin#9": { "kind": [] },
+    "SDKUserMessageReplay": {
+      "client_composed": [],
+      "file_attachments": ["*"],
+      "isReplay": [],
+      "isSynthetic": [],
+      "message": [
+        "AssistantMessageParam",
+        "SystemMessageParam",
+        "UserMessageParam"
+      ],
+      "origin": [
+        "SDKUserMessage.origin",
+        "SDKUserMessage.origin#2",
+        "SDKUserMessage.origin#3",
+        "SDKUserMessage.origin#4",
+        "SDKUserMessage.origin#5",
+        "SDKUserMessage.origin#6",
+        "SDKUserMessage.origin#7",
+        "SDKUserMessage.origin#8",
+        "SDKUserMessage.origin#9"
+      ],
+      "parent_tool_use_id": [],
+      "priority": [],
+      "session_id": [],
+      "shouldQuery": [],
+      "timestamp": [],
+      "tool_use_result": ["*"],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SDKWorkerShuttingDownMessage": {
+      "reason": [],
+      "session_id": [],
+      "subtype": [],
+      "type": [],
+      "uuid": ["*"]
+    },
+    "SdkPluginConfig": { "path": [], "skipMcpDiscovery": [], "type": [] },
+    "SearchResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "citations": ["CitationsConfigParam"],
+      "content": ["TextBlockParam"],
+      "source": [],
+      "title": [],
+      "type": []
+    },
+    "ServerToolCaller": { "tool_id": [], "type": [] },
+    "ServerToolCaller20260120": { "tool_id": [], "type": [] },
+    "ServerToolUseBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "caller": [
+        "DirectCaller",
+        "ServerToolCaller",
+        "ServerToolCaller20260120"
+      ],
+      "id": [],
+      "input": [],
+      "name": [],
+      "type": []
+    },
+    "SlashCommand": {
+      "aliases": [],
+      "argumentHint": [],
+      "builtin": [],
+      "description": [],
+      "name": []
+    },
+    "SystemMessageParam": { "content": ["TextBlockParam"], "role": [] },
+    "TextBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "citations": [
+        "CitationCharLocationParam",
+        "CitationContentBlockLocationParam",
+        "CitationPageLocationParam",
+        "CitationSearchResultLocationParam",
+        "CitationWebSearchResultLocationParam"
+      ],
+      "text": [],
+      "type": []
+    },
+    "TextEditorCodeExecutionCreateResultBlockParam": {
+      "is_file_update": [],
+      "type": []
+    },
+    "TextEditorCodeExecutionStrReplaceResultBlockParam": {
+      "lines": [],
+      "new_lines": [],
+      "new_start": [],
+      "old_lines": [],
+      "old_start": [],
+      "type": []
+    },
+    "TextEditorCodeExecutionToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "content": [
+        "TextEditorCodeExecutionCreateResultBlockParam",
+        "TextEditorCodeExecutionStrReplaceResultBlockParam",
+        "TextEditorCodeExecutionToolResultErrorParam",
+        "TextEditorCodeExecutionViewResultBlockParam"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "TextEditorCodeExecutionToolResultErrorParam": {
+      "error_code": [],
+      "error_message": [],
+      "type": []
+    },
+    "TextEditorCodeExecutionViewResultBlockParam": {
+      "content": [],
+      "file_type": [],
+      "num_lines": [],
+      "start_line": [],
+      "total_lines": [],
+      "type": []
+    },
+    "ThinkingBlockParam": { "signature": [], "thinking": [], "type": [] },
+    "ToolReferenceBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "tool_name": [],
+      "type": []
+    },
+    "ToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "content": [
+        "BrowserStateBlockParam",
+        "DocumentBlockParam",
+        "ImageBlockParam",
+        "SearchResultBlockParam",
+        "TextBlockParam",
+        "ToolReferenceBlockParam"
+      ],
+      "is_error": [],
+      "tool_use_id": [],
+      "toolset_name": [],
+      "type": []
+    },
+    "ToolSearchToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "content": [
+        "ToolSearchToolResultErrorParam",
+        "ToolSearchToolSearchResultBlockParam"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "ToolSearchToolResultErrorParam": {
+      "error_code": [],
+      "error_message": [],
+      "type": []
+    },
+    "ToolSearchToolSearchResultBlockParam": {
+      "tool_references": ["ToolReferenceBlockParam"],
+      "type": []
+    },
+    "ToolUseBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "caller": [
+        "DirectCaller",
+        "ServerToolCaller",
+        "ServerToolCaller20260120"
+      ],
+      "id": [],
+      "input": [],
+      "name": [],
+      "toolset_name": [],
+      "type": []
+    },
+    "URLImageSource": { "type": [], "url": [] },
+    "URLPDFSource": { "type": [], "url": [] },
+    "UserMessageParam": {
+      "content": [
+        "BashCodeExecutionToolResultBlockParam",
+        "CodeExecutionToolResultBlockParam",
+        "ContainerUploadBlockParam",
+        "DocumentBlockParam",
+        "ImageBlockParam",
+        "RedactedThinkingBlockParam",
+        "SearchResultBlockParam",
+        "ServerToolUseBlockParam",
+        "TextBlockParam",
+        "TextEditorCodeExecutionToolResultBlockParam",
+        "ThinkingBlockParam",
+        "ToolResultBlockParam",
+        "ToolSearchToolResultBlockParam",
+        "ToolUseBlockParam",
+        "WebFetchToolResultBlockParam",
+        "WebSearchToolResultBlockParam"
+      ],
+      "role": []
+    },
+    "WebFetchBlockParam": {
+      "content": ["DocumentBlockParam"],
+      "retrieved_at": [],
+      "type": [],
+      "url": []
+    },
+    "WebFetchToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "caller": [
+        "DirectCaller",
+        "ServerToolCaller",
+        "ServerToolCaller20260120"
+      ],
+      "content": ["WebFetchBlockParam", "WebFetchToolResultErrorBlockParam"],
+      "tool_use_id": [],
+      "type": []
+    },
+    "WebFetchToolResultErrorBlockParam": { "error_code": [], "type": [] },
+    "WebSearchResultBlockParam": {
+      "encrypted_content": [],
+      "page_age": [],
+      "title": [],
+      "type": [],
+      "url": []
+    },
+    "WebSearchToolRequestErrorObject": { "error_code": [], "type": [] },
+    "WebSearchToolResultBlockParam": {
+      "cache_control": ["CacheControlEphemeral"],
+      "caller": [
+        "DirectCaller",
+        "ServerToolCaller",
+        "ServerToolCaller20260120"
+      ],
+      "content": [
+        "WebSearchResultBlockParam",
+        "WebSearchToolRequestErrorObject"
+      ],
+      "tool_use_id": [],
+      "type": []
+    },
+    "control_request/apply_flag_settings": {
+      "request": ["SDKControlApplyFlagSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/apply_flag_settings#2": {
+      "request": ["SDKControlApplyFlagSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/background_tasks": {
+      "request": ["SDKControlBackgroundTasksRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/background_tasks#2": {
+      "request": ["SDKControlBackgroundTasksRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/can_use_tool": {
+      "request": ["SDKControlPermissionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/can_use_tool#2": {
+      "request": ["SDKControlPermissionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/cancel_async_message": {
+      "request": ["SDKControlCancelAsyncMessageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/cancel_async_message#2": {
+      "request": ["SDKControlCancelAsyncMessageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/elicitation": {
+      "request": ["SDKControlElicitationRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/elicitation#2": {
+      "request": ["SDKControlElicitationRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/file_suggestions": {
+      "request": ["SDKControlFileSuggestionsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/file_suggestions#2": {
+      "request": ["SDKControlFileSuggestionsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_binary_version": {
+      "request": ["SDKControlGetBinaryVersionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_binary_version#2": {
+      "request": ["SDKControlGetBinaryVersionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_context_usage": {
+      "request": ["SDKControlGetContextUsageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_context_usage#2": {
+      "request": ["SDKControlGetContextUsageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_hooks_listing": {
+      "request": ["SDKControlGetHooksListingRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_hooks_listing#2": {
+      "request": ["SDKControlGetHooksListingRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_session_cost": {
+      "request": ["SDKControlGetSessionCostRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_session_cost#2": {
+      "request": ["SDKControlGetSessionCostRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_settings": {
+      "request": ["SDKControlGetSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_settings#2": {
+      "request": ["SDKControlGetSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_task_output": {
+      "request": ["SDKControlGetTaskOutputRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_task_output#2": {
+      "request": ["SDKControlGetTaskOutputRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_usage": {
+      "request": ["SDKControlGetUsageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/get_usage#2": {
+      "request": ["SDKControlGetUsageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/hook_callback": {
+      "request": ["SDKHookCallbackRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/hook_callback#2": {
+      "request": ["SDKHookCallbackRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/initialize": {
+      "request": ["SDKControlInitializeRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/initialize#2": {
+      "request": ["SDKControlInitializeRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/interrupt": {
+      "request": ["SDKControlInterruptRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/interrupt#2": {
+      "request": ["SDKControlInterruptRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/list_models": {
+      "request": ["SDKControlListModelsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/list_models#2": {
+      "request": ["SDKControlListModelsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/list_permission_rules": {
+      "request": ["SDKControlListPermissionRulesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/list_permission_rules#2": {
+      "request": ["SDKControlListPermissionRulesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_call": {
+      "request": ["SDKControlMcpCallRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_call#2": {
+      "request": ["SDKControlMcpCallRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_message": {
+      "request": ["SDKControlMcpMessageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_message#2": {
+      "request": ["SDKControlMcpMessageRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_read_resource": {
+      "request": ["SDKControlMcpReadResourceRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_read_resource#2": {
+      "request": ["SDKControlMcpReadResourceRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_reconnect": {
+      "request": ["SDKControlMcpReconnectRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_reconnect#2": {
+      "request": ["SDKControlMcpReconnectRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_set_servers": {
+      "request": ["SDKControlMcpSetServersRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_set_servers#2": {
+      "request": ["SDKControlMcpSetServersRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_status": {
+      "request": ["SDKControlMcpStatusRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_status#2": {
+      "request": ["SDKControlMcpStatusRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_toggle": {
+      "request": ["SDKControlMcpToggleRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/mcp_toggle#2": {
+      "request": ["SDKControlMcpToggleRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/read_file": {
+      "request": ["SDKControlReadFileRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/read_file#2": {
+      "request": ["SDKControlReadFileRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/register_repo_root": {
+      "request": ["SDKControlRegisterRepoRootRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/register_repo_root#2": {
+      "request": ["SDKControlRegisterRepoRootRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_output_styles": {
+      "request": ["SDKControlReloadOutputStylesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_output_styles#2": {
+      "request": ["SDKControlReloadOutputStylesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_plugins": {
+      "request": ["SDKControlReloadPluginsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_plugins#2": {
+      "request": ["SDKControlReloadPluginsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_skills": {
+      "request": ["SDKControlReloadSkillsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/reload_skills#2": {
+      "request": ["SDKControlReloadSkillsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/rename_session": {
+      "request": ["SDKControlRenameSessionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/rename_session#2": {
+      "request": ["SDKControlRenameSessionRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/request_user_dialog": {
+      "request": ["SDKControlRequestUserDialogRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/request_user_dialog#2": {
+      "request": ["SDKControlRequestUserDialogRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/rewind_files": {
+      "request": ["SDKControlRewindFilesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/rewind_files#2": {
+      "request": ["SDKControlRewindFilesRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/seed_read_state": {
+      "request": ["SDKControlSeedReadStateRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/seed_read_state#2": {
+      "request": ["SDKControlSeedReadStateRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_color": {
+      "request": ["SDKControlSetColorRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_color#2": {
+      "request": ["SDKControlSetColorRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_has_subscribers": {
+      "request": ["SDKControlSetHasSubscribersRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_has_subscribers#2": {
+      "request": ["SDKControlSetHasSubscribersRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_max_thinking_tokens": {
+      "request": ["SDKControlSetMaxThinkingTokensRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_max_thinking_tokens#2": {
+      "request": ["SDKControlSetMaxThinkingTokensRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_model": {
+      "request": ["SDKControlSetModelRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_model#2": {
+      "request": ["SDKControlSetModelRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_permission_mode": {
+      "request": ["SDKControlSetPermissionModeRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/set_permission_mode#2": {
+      "request": ["SDKControlSetPermissionModeRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/stop_task": {
+      "request": ["SDKControlStopTaskRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/stop_task#2": {
+      "request": ["SDKControlStopTaskRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/update_settings": {
+      "request": ["SDKControlUpdateSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_request/update_settings#2": {
+      "request": ["SDKControlUpdateSettingsRequest"],
+      "request_id": [],
+      "type": []
+    },
+    "control_response/error/apply_flag_settings": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/apply_flag_settings#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/background_tasks": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/background_tasks#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/can_use_tool": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/can_use_tool#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/cancel_async_message": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/cancel_async_message#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/elicitation": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/elicitation#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/file_suggestions": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/file_suggestions#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_binary_version": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_binary_version#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_context_usage": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_context_usage#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_hooks_listing": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_hooks_listing#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_session_cost": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_session_cost#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_settings": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_settings#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_task_output": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_task_output#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_usage": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/get_usage#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/hook_callback": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/hook_callback#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/initialize": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/initialize#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/interrupt": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/interrupt#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/list_models": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/list_models#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/list_permission_rules": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/list_permission_rules#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_call": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_call#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_message": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_message#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_read_resource": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_read_resource#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_reconnect": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_reconnect#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_set_servers": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_set_servers#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_status": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_status#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_toggle": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/mcp_toggle#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/read_file": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/read_file#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/register_repo_root": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/register_repo_root#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_output_styles": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_output_styles#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_plugins": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_plugins#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_skills": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/reload_skills#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/rename_session": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/rename_session#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/request_user_dialog": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/request_user_dialog#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/rewind_files": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/rewind_files#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/seed_read_state": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/seed_read_state#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_color": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_color#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_has_subscribers": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_has_subscribers#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_max_thinking_tokens": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_max_thinking_tokens#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_model": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_model#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_permission_mode": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/set_permission_mode#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/stop_task": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/stop_task#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/update_settings": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/error/update_settings#2": {
+      "response": ["ControlErrorResponse"],
+      "type": []
+    },
+    "control_response/success/apply_flag_settings": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/apply_flag_settings#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/background_tasks": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/background_tasks#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/can_use_tool": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/can_use_tool#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/cancel_async_message": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/cancel_async_message#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/elicitation": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/elicitation#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/file_suggestions": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/file_suggestions#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_binary_version": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_binary_version#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_context_usage": {
+      "response": ["control_response/success/get_context_usage.response"],
+      "type": []
+    },
+    "control_response/success/get_context_usage#2": {
+      "response": ["control_response/success/get_context_usage#2.response"],
+      "type": []
+    },
+    "control_response/success/get_context_usage#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetContextUsageResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_context_usage.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetContextUsageResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_hooks_listing": {
+      "response": ["control_response/success/get_hooks_listing.response"],
+      "type": []
+    },
+    "control_response/success/get_hooks_listing#2": {
+      "response": ["control_response/success/get_hooks_listing#2.response"],
+      "type": []
+    },
+    "control_response/success/get_hooks_listing#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetHooksListingResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_hooks_listing.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetHooksListingResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_session_cost": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_session_cost#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_settings": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_settings#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/get_task_output": {
+      "response": ["control_response/success/get_task_output.response"],
+      "type": []
+    },
+    "control_response/success/get_task_output#2": {
+      "response": ["control_response/success/get_task_output#2.response"],
+      "type": []
+    },
+    "control_response/success/get_task_output#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetTaskOutputResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_task_output.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetTaskOutputResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_usage": {
+      "response": ["control_response/success/get_usage.response"],
+      "type": []
+    },
+    "control_response/success/get_usage#2": {
+      "response": ["control_response/success/get_usage#2.response"],
+      "type": []
+    },
+    "control_response/success/get_usage#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetUsageResponse"],
+      "subtype": []
+    },
+    "control_response/success/get_usage.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlGetUsageResponse"],
+      "subtype": []
+    },
+    "control_response/success/hook_callback": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/hook_callback#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/initialize": {
+      "response": ["control_response/success/initialize.response"],
+      "type": []
+    },
+    "control_response/success/initialize#2": {
+      "response": ["control_response/success/initialize#2.response"],
+      "type": []
+    },
+    "control_response/success/initialize#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlInitializeResponse"],
+      "subtype": []
+    },
+    "control_response/success/initialize.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlInitializeResponse"],
+      "subtype": []
+    },
+    "control_response/success/interrupt": {
+      "response": ["control_response/success/interrupt.response"],
+      "type": []
+    },
+    "control_response/success/interrupt#2": {
+      "response": ["control_response/success/interrupt#2.response"],
+      "type": []
+    },
+    "control_response/success/interrupt#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlInterruptResponse"],
+      "subtype": []
+    },
+    "control_response/success/interrupt.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlInterruptResponse"],
+      "subtype": []
+    },
+    "control_response/success/list_models": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/list_models#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/list_permission_rules": {
+      "response": ["control_response/success/list_permission_rules.response"],
+      "type": []
+    },
+    "control_response/success/list_permission_rules#2": {
+      "response": ["control_response/success/list_permission_rules#2.response"],
+      "type": []
+    },
+    "control_response/success/list_permission_rules#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlListPermissionRulesResponse"],
+      "subtype": []
+    },
+    "control_response/success/list_permission_rules.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlListPermissionRulesResponse"],
+      "subtype": []
+    },
+    "control_response/success/mcp_call": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_call#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_message": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_message#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_read_resource": {
+      "response": ["control_response/success/mcp_read_resource.response"],
+      "type": []
+    },
+    "control_response/success/mcp_read_resource#2": {
+      "response": ["control_response/success/mcp_read_resource#2.response"],
+      "type": []
+    },
+    "control_response/success/mcp_read_resource#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlMcpReadResourceResponse"],
+      "subtype": []
+    },
+    "control_response/success/mcp_read_resource.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlMcpReadResourceResponse"],
+      "subtype": []
+    },
+    "control_response/success/mcp_reconnect": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_reconnect#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_set_servers": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_set_servers#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_status": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_status#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_toggle": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/mcp_toggle#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/read_file": {
+      "response": ["control_response/success/read_file.response"],
+      "type": []
+    },
+    "control_response/success/read_file#2": {
+      "response": ["control_response/success/read_file#2.response"],
+      "type": []
+    },
+    "control_response/success/read_file#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReadFileResponse"],
+      "subtype": []
+    },
+    "control_response/success/read_file.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReadFileResponse"],
+      "subtype": []
+    },
+    "control_response/success/register_repo_root": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/register_repo_root#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/reload_output_styles": {
+      "response": ["control_response/success/reload_output_styles.response"],
+      "type": []
+    },
+    "control_response/success/reload_output_styles#2": {
+      "response": ["control_response/success/reload_output_styles#2.response"],
+      "type": []
+    },
+    "control_response/success/reload_output_styles#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadOutputStylesResponse"],
+      "subtype": []
+    },
+    "control_response/success/reload_output_styles.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadOutputStylesResponse"],
+      "subtype": []
+    },
+    "control_response/success/reload_plugins": {
+      "response": ["control_response/success/reload_plugins.response"],
+      "type": []
+    },
+    "control_response/success/reload_plugins#2": {
+      "response": ["control_response/success/reload_plugins#2.response"],
+      "type": []
+    },
+    "control_response/success/reload_plugins#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadPluginsResponse"],
+      "subtype": []
+    },
+    "control_response/success/reload_plugins.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadPluginsResponse"],
+      "subtype": []
+    },
+    "control_response/success/reload_skills": {
+      "response": ["control_response/success/reload_skills.response"],
+      "type": []
+    },
+    "control_response/success/reload_skills#2": {
+      "response": ["control_response/success/reload_skills#2.response"],
+      "type": []
+    },
+    "control_response/success/reload_skills#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadSkillsResponse"],
+      "subtype": []
+    },
+    "control_response/success/reload_skills.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlReloadSkillsResponse"],
+      "subtype": []
+    },
+    "control_response/success/rename_session": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/rename_session#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/request_user_dialog": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/request_user_dialog#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/rewind_files": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/rewind_files#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/seed_read_state": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/seed_read_state#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_color": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_color#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_has_subscribers": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_has_subscribers#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_max_thinking_tokens": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_max_thinking_tokens#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_model": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_model#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/set_permission_mode": {
+      "response": ["control_response/success/set_permission_mode.response"],
+      "type": []
+    },
+    "control_response/success/set_permission_mode#2": {
+      "response": ["control_response/success/set_permission_mode#2.response"],
+      "type": []
+    },
+    "control_response/success/set_permission_mode#2.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlSetPermissionModeResponse"],
+      "subtype": []
+    },
+    "control_response/success/set_permission_mode.response": {
+      "pending_elicitation_requests": ["SDKControlRequest"],
+      "pending_permission_requests": ["SDKControlRequest"],
+      "pending_user_dialog_requests": ["SDKControlRequest"],
+      "request_id": [],
+      "response": ["SDKControlSetPermissionModeResponse"],
+      "subtype": []
+    },
+    "control_response/success/stop_task": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/stop_task#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/update_settings": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "control_response/success/update_settings#2": {
+      "response": ["ControlResponse"],
+      "type": []
+    },
+    "stream_event/content_block_delta/citations_delta": {
+      "event": ["stream_event/content_block_delta/citations_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/citations_delta.event": {
+      "delta": ["BetaCitationsDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_delta/compaction_delta": {
+      "event": ["stream_event/content_block_delta/compaction_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/compaction_delta.event": {
+      "delta": ["BetaCompactionContentBlockDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_delta/input_json_delta": {
+      "event": ["stream_event/content_block_delta/input_json_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/input_json_delta.event": {
+      "delta": ["BetaInputJSONDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_delta/signature_delta": {
+      "event": ["stream_event/content_block_delta/signature_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/signature_delta.event": {
+      "delta": ["BetaSignatureDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_delta/text_delta": {
+      "event": ["stream_event/content_block_delta/text_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/text_delta.event": {
+      "delta": ["BetaTextDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_delta/thinking_delta": {
+      "event": ["stream_event/content_block_delta/thinking_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_delta/thinking_delta.event": {
+      "delta": ["BetaThinkingDelta"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/advisor_tool_result": {
+      "event": ["stream_event/content_block_start/advisor_tool_result.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/advisor_tool_result.event": {
+      "content_block": ["BetaAdvisorToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/bash_code_execution_tool_result": {
+      "event": [
+        "stream_event/content_block_start/bash_code_execution_tool_result.event"
+      ],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/bash_code_execution_tool_result.event": {
+      "content_block": ["BetaBashCodeExecutionToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/code_execution_tool_result": {
+      "event": [
+        "stream_event/content_block_start/code_execution_tool_result.event"
+      ],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/code_execution_tool_result.event": {
+      "content_block": ["BetaCodeExecutionToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/compaction": {
+      "event": ["stream_event/content_block_start/compaction.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/compaction.event": {
+      "content_block": ["BetaCompactionBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/container_upload": {
+      "event": ["stream_event/content_block_start/container_upload.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/container_upload.event": {
+      "content_block": ["BetaContainerUploadBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/fallback": {
+      "event": ["stream_event/content_block_start/fallback.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/fallback.event": {
+      "content_block": ["BetaFallbackBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/mcp_tool_listing": {
+      "event": ["stream_event/content_block_start/mcp_tool_listing.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/mcp_tool_listing.event": {
+      "content_block": ["BetaMCPToolListingBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/mcp_tool_result": {
+      "event": ["stream_event/content_block_start/mcp_tool_result.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/mcp_tool_result.event": {
+      "content_block": ["BetaMCPToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/mcp_tool_use": {
+      "event": ["stream_event/content_block_start/mcp_tool_use.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/mcp_tool_use.event": {
+      "content_block": ["BetaMCPToolUseBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/redacted_thinking": {
+      "event": ["stream_event/content_block_start/redacted_thinking.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/redacted_thinking.event": {
+      "content_block": ["BetaRedactedThinkingBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/server_tool_use": {
+      "event": ["stream_event/content_block_start/server_tool_use.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/server_tool_use.event": {
+      "content_block": ["BetaServerToolUseBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/text": {
+      "event": ["stream_event/content_block_start/text.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/text.event": {
+      "content_block": ["BetaTextBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/text_editor_code_execution_tool_result": {
+      "event": [
+        "stream_event/content_block_start/text_editor_code_execution_tool_result.event"
+      ],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/text_editor_code_execution_tool_result.event": {
+      "content_block": ["BetaTextEditorCodeExecutionToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/thinking": {
+      "event": ["stream_event/content_block_start/thinking.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/thinking.event": {
+      "content_block": ["BetaThinkingBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/tool_search_tool_result": {
+      "event": [
+        "stream_event/content_block_start/tool_search_tool_result.event"
+      ],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/tool_search_tool_result.event": {
+      "content_block": ["BetaToolSearchToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/tool_use": {
+      "event": ["stream_event/content_block_start/tool_use.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/tool_use.event": {
+      "content_block": ["BetaToolUseBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/web_fetch_tool_result": {
+      "event": ["stream_event/content_block_start/web_fetch_tool_result.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/web_fetch_tool_result.event": {
+      "content_block": ["BetaWebFetchToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_start/web_search_tool_result": {
+      "event": [
+        "stream_event/content_block_start/web_search_tool_result.event"
+      ],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/content_block_start/web_search_tool_result.event": {
+      "content_block": ["BetaWebSearchToolResultBlock"],
+      "index": [],
+      "type": []
+    },
+    "stream_event/content_block_stop": {
+      "event": ["BetaRawContentBlockStopEvent"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/message_delta": {
+      "event": ["stream_event/message_delta.event"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/message_delta.event": {
+      "context_management": ["BetaContextManagementResponse"],
+      "delta": ["Delta"],
+      "input_transformations": [
+        "BetaThinkingDroppedInputTransformation",
+        "BetaThinkingMismatchAllowedInputTransformation"
+      ],
+      "type": [],
+      "usage": ["BetaMessageDeltaUsage"]
+    },
+    "stream_event/message_start": {
+      "event": ["BetaRawMessageStartEvent"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    },
+    "stream_event/message_stop": {
+      "event": ["BetaRawMessageStopEvent"],
+      "parent_tool_use_id": [],
+      "resume_reason": [],
+      "session_id": [],
+      "ttft_ms": [],
+      "type": [],
+      "user_message_uuid": [],
+      "user_message_uuids": [],
+      "uuid": ["*"]
+    }
+  }
+}

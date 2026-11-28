@@ -19,38 +19,41 @@ function jobBlock(workflow, jobId) {
 test("BETA-0001 macOS CI compiles and tests the named shared contracts", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const plan = jobBlock(workflow, "plan");
-  const rust = jobBlock(workflow, "rust");
+  const rustJobs = ["rust-lint", "rust", "rust-bridge"].map((job) =>
+    jobBlock(workflow, job),
+  );
+  const rust = rustJobs[1];
   const mergeGate = jobBlock(workflow, "merge-gate");
 
   // The macOS leg is part of the full Rust matrix, requested on demand.
-  assert.match(
-    rust,
-    /include:\s*\$\{\{\s*fromJSON\(needs\.plan\.outputs\.rust-matrix\)\s*\}\}/,
-  );
+  for (const job of rustJobs) {
+    assert.match(
+      job,
+      /include:\s*\$\{\{\s*fromJSON\(needs\.plan\.outputs\.rust-matrix\)\s*\}\}/,
+    );
+  }
   assert.match(plan, /macos\) macos=true ;;/);
   assert.match(plan, /all\) windows=true; macos=true ;;/);
   assert.match(plan, /rust_os\+=',"macos-latest"'/);
 
   const placeholder =
     "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"";
-  assert.ok(
-    rust.includes(placeholder),
-    "Rust matrix must create the Tauri frontend placeholder",
-  );
-  assert.ok(
-    rust.indexOf(placeholder) <
-      rust.indexOf(
-        'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
-      ),
-    "Rust frontend placeholder must be created before Clippy",
-  );
+  // Every Rust job builds `sage`, whose generate_context! needs dist/.
+  for (const job of rustJobs) {
+    const firstBuild = job.search(/run: ["']?cargo (?:clippy|test|check) /);
+    assert.ok(firstBuild > 0, "Rust job must build sage");
+    assert.ok(
+      job.includes(placeholder) && job.indexOf(placeholder) < firstBuild,
+      "Rust frontend placeholder must be created before the first build",
+    );
+  }
   for (const command of [
     "cargo fmt --all -- --check",
     'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
     "cargo check -p sage --release --lib",
   ]) {
     assert.ok(
-      rust.includes(command),
+      rustJobs.some((job) => job.includes(command)),
       `full Rust matrix must retain ${command}`,
     );
   }
@@ -68,5 +71,10 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
   }
 
   assert.match(mergeGate, /needs:[\s\S]*?-\s*plan[\s\S]*?-\s*rust/);
+  assert.match(mergeGate, /require "Rust lint" "\$RUST_PLANNED" "\$RUST_LINT"/);
   assert.match(mergeGate, /require "Rust" "\$RUST_PLANNED" "\$RUST"/);
+  assert.match(
+    mergeGate,
+    /require "Rust bridge and release" "\$RUST_PLANNED" "\$RUST_BRIDGE"/,
+  );
 });

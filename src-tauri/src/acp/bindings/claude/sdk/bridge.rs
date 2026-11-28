@@ -87,6 +87,8 @@ enum Pending {
     Interrupt,
     Withdraw(String),
     Control,
+    /// A control answered by a request Sage only waits for.
+    Barrier,
     /// A `rewind_files` that restores; its reply names the files restored.
     Restore,
     Passive(controls::PassiveRequest),
@@ -99,6 +101,35 @@ enum Pending {
         Option<std::path::PathBuf>,
         sage_acp_protocol::contract::SageTurnId,
     ),
+}
+
+impl Pending {
+    /// Whether a success reply's payload goes unread: Sage only waits for it.
+    fn discards_reply(&self) -> bool {
+        matches!(
+            self,
+            Self::Session(_) | Self::Barrier | Self::Fork(_) | Self::ForkAt(..) | Self::Abandoned
+        )
+    }
+
+    fn acp_id(self) -> Option<Value> {
+        match self {
+            Self::Initialize(id)
+            | Self::Session(id)
+            | Self::Mode { id, .. }
+            | Self::Option { id, .. } => Some(id),
+            Self::Interrupt
+            | Self::Commands
+            | Self::Withdraw(_)
+            | Self::Control
+            | Self::Barrier
+            | Self::Restore
+            | Self::Passive(_)
+            | Self::Abandoned
+            | Self::Fork(_)
+            | Self::ForkAt(..) => None,
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -37,6 +37,36 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    pub(crate) fn request_host_termination(&mut self) -> Result<(), DriverError> {
+        self.end_by_host(false)
+    }
+
+    /// A close Sage chose: the harness is left the exit grace to finish on its own.
+    pub(crate) fn request_host_close(&mut self) -> Result<(), DriverError> {
+        self.end_by_host(true)
+    }
+
+    fn end_by_host(&mut self, graceful: bool) -> Result<(), DriverError> {
+        match self.state {
+            DriverState::Running => {
+                self.transport.close();
+                let reason = tree_exit(TeardownCause::HostTermination);
+                if graceful {
+                    self.control.request_graceful_termination(reason)
+                } else {
+                    self.control.request_termination(reason)
+                }
+                .map_err(|_| DriverError::Tree)?;
+                self.state = DriverState::TeardownRequired(TeardownCause::HostTermination);
+                Ok(())
+            }
+            DriverState::TeardownRequired(TeardownCause::HostTermination) => Ok(()),
+            DriverState::TeardownRequired(ref cause) => {
+                Err(DriverError::TeardownRequired(cause.clone()))
+            }
+        }
+    }
+
     pub(crate) fn title_poll_deadline_millis(&self) -> Option<i64> {
         self.pump
             .title_pending()

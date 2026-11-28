@@ -3,6 +3,12 @@
 // into <out>/<harness>/. Local tooling for the Omen; it spends real harness
 // usage and is never part of a gate.
 //
+// Signed-in scenarios run on the harness's own config dir and sign-in, as Sage
+// runs it, in a scratch repository; no sign-in file is ever copied, because a
+// token refreshed inside a copy leaves the owner's real one stale
+// (config-env.mjs). So a capture can list the account's own plugins, skills or
+// servers: triage every added name in `shape.mjs --diff` before committing.
+//
 //   node scripts/harness-wire/capture.mjs --out <dir> [--harness claude,codex,pi]
 //        [--scenario shell,edit] [--model <claude model>] [--work <scratch dir>]
 //
@@ -16,6 +22,12 @@ import path from "node:path";
 import * as claude from "./claude.mjs";
 import * as codex from "./codex.mjs";
 import * as pi from "./pi.mjs";
+import {
+  assertEmptyHome,
+  configRoots,
+  freshScratch,
+  scenarioEnv,
+} from "./config-env.mjs";
 import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
@@ -83,7 +95,7 @@ function readTranscriptLines(file) {
 }
 
 function scratchRepo(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
+  freshScratch(dir);
   const repo = path.join(dir, "repo");
   fs.mkdirSync(path.join(repo, "src"), { recursive: true });
   fs.writeFileSync(
@@ -114,17 +126,7 @@ function scratchRepo(dir) {
   git("commit", "-q", "-m", "initial");
   const emptyHome = path.join(dir, "empty-home");
   fs.mkdirSync(emptyHome, { recursive: true });
-  return { repo, emptyHome, configHome: path.join(dir, "config") };
-}
-
-// A config home holding only the harness's sign-in files.
-function seedConfig(configHome, config) {
-  fs.mkdirSync(configHome, { recursive: true });
-  for (const name of config.files) {
-    const source = path.join(os.homedir(), ...config.from, name);
-    if (fs.existsSync(source))
-      fs.copyFileSync(source, path.join(configHome, name));
-  }
+  return { repo, emptyHome };
 }
 
 // Scrubs an already written capture again, on the host and with the --work
@@ -140,7 +142,7 @@ function resanitize(out, harnesses, work) {
         roots: [
           [path.join(scratch, "repo"), "repo"],
           [path.join(scratch, "empty-home"), "empty-home"],
-          [path.join(scratch, "config"), "config"],
+          ...configRoots(DRIVERS[harness].CONFIG, process.env),
           [work, "work"],
         ],
       });
@@ -165,9 +167,16 @@ async function main() {
   const harnesses = option("harness", "claude,codex,pi").split(",");
   const only = option("scenario", "").split(",").filter(Boolean);
   const model = option("model", undefined);
-  const work = option("work", path.join(os.tmpdir(), "sage-wire-capture"));
-  if (process.argv.includes("--resanitize"))
+  if (process.argv.includes("--resanitize")) {
+    const work = option("work");
+    if (!work)
+      throw new Error("--resanitize needs the --work the capture used");
     return resanitize(out, harnesses, work);
+  }
+  // A new scratch dir for every run: the capture never clears an old one.
+  const work =
+    option("work") ??
+    fs.mkdtempSync(path.join(os.tmpdir(), "sage-wire-capture-"));
   const image = await twoColourPng();
   let failures = 0;
   for (const harness of harnesses) {
@@ -187,23 +196,20 @@ async function main() {
     );
     for (const scenario of scenarios) {
       const scratch = path.join(work, `${harness}-${scenario}`);
-      const { repo, emptyHome, configHome } = scratchRepo(scratch);
-      seedConfig(configHome, driver.CONFIG);
+      const { repo, emptyHome } = scratchRepo(scratch);
+      assertEmptyHome(emptyHome);
       process.stdout.write(`${harness}/${scenario} ... `);
       const result = await driver.run(scenario, {
         cwd: repo,
-        env: process.env,
-        emptyHome,
-        configHome,
+        env: scenarioEnv(driver.CONFIG, scenario, process.env, emptyHome),
         image,
         model,
       });
-      fs.rmSync(configHome, { recursive: true, force: true });
       const sanitizer = makeSanitizer({
         roots: [
           [repo, "repo"],
           [emptyHome, "empty-home"],
-          [configHome, "config"],
+          ...configRoots(driver.CONFIG, process.env),
           [work, "work"],
         ],
       });

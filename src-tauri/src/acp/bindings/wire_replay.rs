@@ -68,7 +68,7 @@ pub(crate) fn scenarios(harness: &str) -> Vec<String> {
 }
 
 pub(crate) struct Record {
-    out: bool,
+    pub(crate) out: bool,
     step: Option<Value>,
     pub(crate) frame: Value,
 }

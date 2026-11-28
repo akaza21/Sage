@@ -296,10 +296,16 @@ impl AdmittedClaudeSdkBinding {
 }
 
 pub(crate) fn launch_environment() -> Vec<(OsString, OsString)> {
+    environment_from(|key| std::env::var_os(key))
+}
+
+/// Only values the user set pass through: Claude Code keys its macOS Keychain
+/// login by CLAUDE_CONFIG_DIR whenever it is set, even to the default folder.
+fn environment_from(read: impl Fn(&str) -> Option<OsString>) -> Vec<(OsString, OsString)> {
     crate::acp::bindings::claude::LAUNCH_ENVIRONMENT_KEYS
         .iter()
         .filter_map(|key| {
-            std::env::var_os(key)
+            read(key)
                 .filter(|value| !value.is_empty())
                 .map(|value| (OsString::from(key), value))
         })
@@ -419,6 +425,27 @@ impl ClaudeSdkBindingRegistration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unset_config_directory_stays_unset_in_the_child_environment() {
+        let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        let read = |config: Option<&str>| {
+            environment_from(move |key| match key {
+                "CLAUDE_CONFIG_DIR" => config.map(OsString::from),
+                key if key == home => Some(OsString::from("/home/sage")),
+                _ => None,
+            })
+        };
+        assert_eq!(read(None), vec![(home.into(), "/home/sage".into())]);
+        assert_eq!(read(Some("")), vec![(home.into(), "/home/sage".into())]);
+        assert_eq!(
+            read(Some("/elsewhere/.claude")),
+            vec![
+                ("CLAUDE_CONFIG_DIR".into(), "/elsewhere/.claude".into()),
+                (home.into(), "/home/sage".into()),
+            ]
+        );
+    }
 
     #[test]
     fn admits_every_release_from_the_supported_minimum() {
