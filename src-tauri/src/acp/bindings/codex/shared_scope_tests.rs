@@ -19,7 +19,7 @@ fn written(outbound: Result<Outbound, RouterError>) -> Value {
 }
 
 fn only(routed: Routed) -> (LeaseSlot, Value) {
-    assert!(routed.reply.is_none());
+    assert!(routed.replies.is_empty() && routed.fault.is_none());
     let [delivery] = <[_; 1]>::try_from(routed.deliveries).expect("one delivery");
     delivery
 }
@@ -79,6 +79,7 @@ fn interleaved_thread_frames_reach_only_their_chat_and_process_frames_reach_both
         "account/rateLimits/updated",
         "account/updated",
         "configWarning",
+        "remoteControl/status/changed",
     ] {
         let routed = router
             .inbound(json!({"method": method, "params": {}}))
@@ -114,7 +115,7 @@ fn a_server_request_for_a_thread_no_chat_owns_is_refused_so_the_process_never_wa
         "params": {"threadId": "gone", "turnId": "t", "serverName": "spike"}});
     let routed = router.inbound(elicit).unwrap();
     assert!(routed.deliveries.is_empty());
-    let reply = routed.reply.expect("a refusal");
+    let [reply] = <[_; 1]>::try_from(routed.replies).expect("one refusal");
     assert_eq!(reply["id"], json!(4));
     assert!(reply["error"]["code"].is_i64());
 }
@@ -146,7 +147,7 @@ fn a_released_chat_gets_nothing_more_and_its_slot_serves_the_next_chat() {
         a,
         json!({"id": 9, "method": "thread/unsubscribe", "params": {"threadId": A}}),
     ));
-    assert_eq!(router.release(a), Ok(vec![A.to_owned()]));
+    assert_eq!(router.release(a), Ok((vec![A.to_owned()], Vec::new())));
     assert_eq!(
         router
             .inbound(json!({"id": pending["id"], "result": {}}))
@@ -160,7 +161,7 @@ fn a_released_chat_gets_nothing_more_and_its_slot_serves_the_next_chat() {
     let next = router.admit().unwrap();
     assert_eq!(next, a);
     // Resuming the still-loaded thread gives it to the new chat.
-    router.bind_thread(next, A).unwrap();
+    assert_eq!(router.bind_thread(next, A), Ok(Routed::default()));
     assert_eq!(router.bind_thread(b, A), Err(RouterError::ThreadOwned));
 }
 
@@ -206,4 +207,140 @@ fn a_chat_with_too_many_requests_waiting_is_refused_instead_of_queued() {
         b,
         json!({"id": 1, "method": "thread/read", "params": {"threadId": B}}),
     ));
+}
+
+fn approval(id: u64, thread: &str) -> Value {
+    json!({"id": id, "method": "item/commandExecution/requestApproval",
+        "params": {"kind": "command", "threadId": thread, "turnId": "t", "itemId": "exec-1"}})
+}
+
+fn refused_ids(routed: &Routed) -> Vec<Value> {
+    routed
+        .replies
+        .iter()
+        .map(|reply| reply["id"].clone())
+        .collect()
+}
+
+#[test]
+fn reading_another_chats_thread_answers_the_reader_without_moving_the_thread() {
+    let (mut router, a, b) = two_threads();
+    let read = json!({"id": 3, "method": "thread/read", "params": {"threadId": A}});
+    let host = written(router.outbound(b, read))["id"].clone();
+    let mut reply = thread_started(A);
+    reply["id"] = host;
+    let (to, frame) = only(router.inbound(reply).unwrap());
+    assert_eq!((to, frame["id"].clone()), (b, json!(3)));
+    assert_eq!(router.owner(A), Some(a));
+}
+
+#[test]
+fn a_resume_of_a_thread_another_chat_holds_is_still_answered_and_reported() {
+    let (mut router, a, b) = two_threads();
+    let resume = json!({"id": 4, "method": "thread/resume", "params": {"threadId": A}});
+    let host = written(router.outbound(b, resume))["id"].clone();
+    let mut reply = thread_started(A);
+    reply["id"] = host;
+    let routed = router.inbound(reply).unwrap();
+    assert_eq!(routed.deliveries.len(), 1);
+    assert_eq!(routed.deliveries[0].0, b);
+    assert_eq!(routed.deliveries[0].1["id"], json!(4));
+    assert_eq!(routed.fault, Some((b, RouterError::ThreadOwned)));
+    assert_eq!(router.owner(A), Some(a));
+}
+
+#[test]
+fn an_error_response_comes_back_to_its_chat_under_the_chats_own_id() {
+    let (mut router, _, b) = two_threads();
+    let resume = json!({"id": "r-1", "method": "thread/resume", "params": {"threadId": "lost"}});
+    let host = written(router.outbound(b, resume))["id"].clone();
+    let error = json!({"id": host, "error": {"code": -32600, "message": "no rollout found for thread id lost"}});
+    let (to, frame) = only(router.inbound(error).unwrap());
+    assert_eq!((to, frame["id"].clone()), (b, json!("r-1")));
+    assert_eq!(router.owner("lost"), None);
+}
+
+#[test]
+fn closing_a_chat_refuses_the_approvals_it_never_answered() {
+    let (mut router, a, _) = two_threads();
+    only(router.inbound(approval(11, A)).unwrap());
+    only(router.inbound(approval(12, A)).unwrap());
+    let (threads, refusals) = router.release(a).unwrap();
+    assert_eq!(threads, vec![A.to_owned()]);
+    let ids: Vec<_> = refusals.iter().map(|reply| reply["id"].clone()).collect();
+    assert_eq!(ids, vec![json!(11), json!(12)]);
+    // Codex keeps the released thread loaded for a while; its next approval
+    // is refused at once rather than held.
+    assert_eq!(
+        refused_ids(&router.inbound(approval(13, A)).unwrap()),
+        vec![json!(13)]
+    );
+}
+
+#[test]
+fn an_approval_over_a_chats_bound_is_refused_rather_than_left_waiting() {
+    let (mut router, a, _) = two_threads();
+    for id in 0..64 {
+        assert_eq!(only(router.inbound(approval(id, A)).unwrap()).0, a);
+    }
+    let routed = router.inbound(approval(64, A)).unwrap();
+    assert!(routed.deliveries.is_empty());
+    assert_eq!(refused_ids(&routed), vec![json!(64)]);
+}
+
+#[test]
+fn a_server_request_naming_no_thread_is_refused_and_shown_to_no_chat() {
+    let (mut router, _, _) = two_threads();
+    let routed = router
+        .inbound(json!({"id": 4242, "method": "attestation/generate", "params": {}}))
+        .unwrap();
+    assert!(routed.deliveries.is_empty());
+    assert_eq!(refused_ids(&routed), vec![json!(4242)]);
+}
+
+#[test]
+fn frames_that_beat_the_thread_start_response_reach_the_chat_once_it_owns_the_thread() {
+    let mut router = HostRouter::new(CodexScope);
+    let a = router.admit().unwrap();
+    let start = json!({"id": 2, "method": "thread/start", "params": {}});
+    let host = written(router.outbound(a, start))["id"].clone();
+    let early = json!({"method": "thread/started", "params": {"thread": {"id": A}}});
+    assert_eq!(router.inbound(early.clone()).unwrap(), Routed::default());
+    let mut reply = thread_started(A);
+    reply["id"] = host;
+    let routed = router.inbound(reply).unwrap();
+    let methods: Vec<_> = routed
+        .deliveries
+        .iter()
+        .map(|(slot, frame)| (*slot, frame.get("method").cloned()))
+        .collect();
+    assert_eq!(methods, vec![(a, None), (a, Some(json!("thread/started")))]);
+}
+
+#[test]
+fn an_approval_for_a_thread_no_chat_ever_takes_is_refused_by_the_second_sweep() {
+    let (mut router, _, _) = two_threads();
+    let child = "01a22200-0000-7000-8000-0000000000ff";
+    assert_eq!(
+        router.inbound(approval(21, child)).unwrap(),
+        Routed::default()
+    );
+    assert!(router.sweep_unowned().is_empty());
+    let refusals = router.sweep_unowned();
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(refusals[0]["id"], json!(21));
+}
+
+#[test]
+fn answers_to_the_hosts_own_requests_go_to_the_host_not_a_chat() {
+    let (mut router, _, _) = two_threads();
+    let id = router.host_request_id().unwrap();
+    let routed = router
+        .inbound(json!({"id": id, "result": {"account": null}}))
+        .unwrap();
+    assert!(routed.deliveries.is_empty());
+    assert_eq!(
+        routed.host,
+        Some(json!({"id": id, "result": {"account": null}}))
+    );
 }

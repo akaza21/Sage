@@ -19,6 +19,12 @@ impl ScopePolicy for CodexScope {
             .and_then(Value::as_str)
     }
 
+    fn opens_thread(&self, method: &str) -> bool {
+        // `thread/read` and `thread/rollback` also answer with `result.thread`
+        // but do not give the asking chat the thread.
+        matches!(method, "thread/start" | "thread/resume" | "thread/fork")
+    }
+
     fn thread_in_result<'a>(&self, result: &'a Value) -> Option<&'a str> {
         result.get("thread")?.get("id")?.as_str()
     }
