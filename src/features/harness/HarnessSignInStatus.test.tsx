@@ -155,6 +155,49 @@ it("rechecks signed-out Claude on return within the cache TTL", async () => {
   expect(harnessSignInStatus("cli-fixture").state).toBe("signedIn");
   expect(screen.queryByText("Claude Code isn't signed in")).toBeNull();
 });
+it("offers one sign-in row per harness and shows its focus recheck inline", async () => {
+  install("account-fixture");
+  await act(async () => {
+    await refreshHarnessSignIn("cli-fixture");
+  });
+  render(<HarnessAccountMenu avatar="W" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Account: sign-in needed" }),
+  );
+  await screen.findByRole("menu");
+  expect(
+    screen.getAllByRole("menuitem").map((item) => item.textContent),
+  ).toEqual(["Claude CodeSign in", "CodexSign in"]);
+  let complete!: (value: {
+    loggedIn: boolean;
+    accountReadStartedAt: number;
+  }) => void;
+  vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  act(() => {
+    fireEvent.focus(window);
+  });
+  const claude = screen.getByRole("menuitem", {
+    name: "Sign in to Claude Code",
+  });
+  expect(claude).toHaveTextContent("Checking…");
+  // The row stays focusable, so keyboard focus stays in the open menu.
+  expect(claude).toHaveAttribute("aria-disabled", "true");
+  expect(claude).toHaveFocus();
+  await act(async () => {
+    complete({ loggedIn: true, accountReadStartedAt: ++nativeTime });
+  });
+  expect(
+    screen.queryByRole("menuitem", { name: "Sign in to Claude Code" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Sign in to Codex" }),
+  ).toHaveTextContent("Sign in");
+});
 it.each(harnesses)(
   "$name can sign in from the account menu",
   async (harness) => {

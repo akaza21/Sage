@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDefinition } from "../../domain/harness";
-import { refreshHarnessSignIn, startHarnessSignIn } from "./harnessSignIn";
+import {
+  harnessSignInChecking,
+  refreshHarnessSignIn,
+  startHarnessSignIn,
+  subscribeHarnessSignInChecking,
+} from "./harnessSignIn";
 import { signInProvider } from "./harnessSignInProvider";
 
+/**
+ * A menu item is the harness's one sign-in row: Sage rechecks the account on
+ * window focus and after a sign-in, so the row shows that check inline
+ * instead of offering a second Check row. `check` is the chat recovery's
+ * explicit read after a refused turn.
+ */
 export function HarnessLoginAction({
   harness,
   menuItem = false,
@@ -21,10 +32,14 @@ export function HarnessLoginAction({
   );
   const canCancel = useWorkbenchStore(
     (state) =>
-      menuItem &&
-      !check &&
-      state.pendingHarnessSignIn?.bindingId === harness.bindingId,
+      menuItem && state.pendingHarnessSignIn?.bindingId === harness.bindingId,
   );
+  // A background read keeps the row focusable, so focus stays in the menu.
+  const checking =
+    useSyncExternalStore(
+      subscribeHarnessSignInChecking,
+      () => menuItem && harnessSignInChecking(harness.id),
+    ) && !canCancel;
   return (
     <>
       <button
@@ -35,13 +50,13 @@ export function HarnessLoginAction({
           canCancel
             ? `Cancel sign-in to ${harness.name}`
             : check
-              ? menuItem
-                ? `Check sign-in for ${harness.name}`
-                : "Check sign-in"
+              ? "Check sign-in"
               : `Sign in to ${harness.name}`
         }
+        aria-disabled={checking || undefined}
         disabled={!!checkRequirement || (canCancel ? cancelling : busy)}
         onClick={() => {
+          if (checking) return;
           setError(null);
           if (canCancel) {
             setCancelling(true);
@@ -74,13 +89,13 @@ export function HarnessLoginAction({
         <span>
           {canCancel
             ? "Cancel sign-in"
-            : busy
-              ? check
-                ? "Checking\u2026"
-                : "Signing in\u2026"
-              : check
-                ? "Check sign-in"
-                : "Sign in"}
+            : busy && !check
+              ? "Signing in…"
+              : busy || checking
+                ? "Checking…"
+                : check
+                  ? "Check sign-in"
+                  : "Sign in"}
         </span>
       </button>
       {checkRequirement ? <span>{checkRequirement}</span> : null}

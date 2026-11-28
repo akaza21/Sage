@@ -141,7 +141,6 @@ export function HarnessAccountMenu({ avatar }: { avatar: string }) {
           {needsSignIn.map((harness) => (
             <div key={harness.id} role="none">
               <HarnessLoginAction harness={harness} menuItem />
-              <HarnessLoginAction harness={harness} menuItem check />
             </div>
           ))}
         </MenuPart>
