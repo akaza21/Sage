@@ -83,7 +83,7 @@ impl<T> VoiceSlot<T> {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VoiceEvent<'a> {
     id: &'a str,

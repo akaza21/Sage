@@ -62,7 +62,8 @@ export function useComposerDictation(
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
   }, [cancel, suspended]);
-  const nativeSupported = isTauriRuntime() && /win|mac/i.test(navigator.platform);
+  const nativeSupported =
+    isTauriRuntime() && /win|mac/i.test(navigator.platform);
   const supported = nativeSupported || Boolean(browserRecognition());
   const disabled = !supported || suspended;
   const start = async () => {
@@ -97,9 +98,10 @@ export function useComposerDictation(
     } catch (cause) {
       if (generation.current !== request) return;
       cancel();
+      // Native start rejects with the engine's own message string.
       setError(
-        cause instanceof Error
-          ? cause.message
+        typeof cause === "string"
+          ? cause
           : "Dictation could not start. Check microphone access.",
       );
     }
