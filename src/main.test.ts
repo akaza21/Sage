@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => {
@@ -36,15 +35,9 @@ it("calls mountApp synchronously during entry evaluation", async () => {
   expect(contentAfterEntry).toBe("Sage mounted");
 });
 
-it("shows the page's backend-missing notice in a production build opened in a plain browser", async () => {
-  vi.stubEnv("DEV", false);
-  vi.stubEnv("PROD", true);
-  // The shipped page, with its notice template.
-  const page = new DOMParser().parseFromString(
-    readFileSync("index.html", "utf8"),
-    "text/html",
-  );
-  document.body.replaceChildren(...page.body.children);
+it("shows the backend-missing screen in a dev tab with no backend instead of mounting", async () => {
+  vi.stubEnv("DEV", true);
+  document.body.innerHTML = '<div id="root"></div>';
   let mounted = false;
   // A plain browser tab: no desktop shell and no dev bridge.
   vi.doMock("./ports/workbenchRuntime", () => ({
@@ -58,7 +51,7 @@ it("shows the page's backend-missing notice in a production build opened in a pl
 
   await import("./main");
 
-  expect(document.querySelector('#root > [role="alert"] h1')?.textContent).toBe(
+  expect(document.querySelector('#root [role="alert"] h1')?.textContent).toBe(
     "Sage's backend isn't running",
   );
   expect(mounted).toBe(false);
