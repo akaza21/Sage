@@ -240,7 +240,7 @@ it("keeps prior-session rows visible but entirely noninteractive", async () => {
   ).toBeEnabled();
 });
 
-it("renders no file summary until its portal container exists", async () => {
+it("renders the chat's file summary in the transcript once a dock exists, never in the dock", async () => {
   const props = {
     page: snapshotPage(),
     hasEarlier: false,
@@ -256,13 +256,15 @@ it("renders no file summary until its portal container exists", async () => {
   const anchor = document.createElement("div");
   container.append(anchor);
   rerender(<AcpChatPresentation {...props} editSummaryContainer={anchor} />);
-  expect(
-    await within(anchor).findByRole("region", {
-      name: "Files edited in this chat",
-    }),
-  ).toBeVisible();
+  const card = await screen.findByRole("region", {
+    name: "Files edited in this chat",
+  });
+  expect(card).toBeVisible();
+  expect(anchor).not.toContainElement(card);
   rerender(<AcpChatPresentation {...props} />);
-  expect(anchor).toBeEmptyDOMElement();
+  expect(
+    screen.queryByRole("region", { name: "Files edited in this chat" }),
+  ).toBeNull();
 });
 
 it("opens the originating saved Diff and records only the chosen retained Turn review", async () => {

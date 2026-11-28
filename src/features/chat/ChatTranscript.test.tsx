@@ -202,7 +202,7 @@ const footerCopies = () => {
 };
 
 describe("ChatTranscript answer actions", () => {
-  it("places isolated chat disclosures outside the scrolling transcript and resets them on owner change", async () => {
+  it("places each chat's changed-files card inside its own transcript and resets it on owner change", async () => {
     const first = snapshotPage();
     const second = structuredClone(first);
     second.chatId = "chat-b" as never;
@@ -216,8 +216,8 @@ describe("ChatTranscript answer actions", () => {
       name: "Files edited in this chat",
     });
     expect(summaries).toHaveLength(2);
-    expect(summaries[0].closest(".message-list")).toBeNull();
-    expect(summaries[0].parentElement).toHaveClass("chat-edit-summary-zone");
+    expect(summaries[0].closest(".message-list")).not.toBeNull();
+    expect(summaries[0].closest(".chat-edit-summary-zone")).toBeNull();
     const firstPill = within(summaries[0]).getByRole("button", {
       name: /1 file changed/,
     });

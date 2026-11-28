@@ -63,46 +63,24 @@ const mcp: ToolPresentation = {
 it.each([
   ["mcp", mcp],
   ["webSearch", { kind: "webSearch", label: "Web search" } as const],
-] as const)(
-  "gives %s rows Codex's command glyph, not a plug (s5/f0405)",
-  (kind, presentation) => {
-    const { container } = render(
-      <ToolActivityRollup
-        rollup={{
-          kind,
-          commandActivity: "ordinary",
-          items: [tool(presentation)],
-        }}
-        interactive
-      />,
-    );
-    const icon = container.querySelector("summary svg[data-activity-icon]");
-    expect(icon).toHaveClass("lucide-command");
-    expect(icon).toHaveAttribute("fill", "none");
-    expect(icon).toHaveAttribute("stroke", "currentColor");
-    expect(icon?.querySelector("path")).not.toBeNull();
-    expect(icon?.textContent).toBe("");
-    expect(container.querySelector(".lucide-plug")).toBeNull();
-  },
-);
-
-it("draws command rows with Codex's terminal-square icon and thin row strokes (s5/f0405, s6/f0526)", () => {
+  ["execute", undefined],
+] as const)("draws a %s row with no leading kind icon, only its chevron", (kind, presentation) => {
   const { container } = render(
     <ToolActivityRollup
       rollup={{
-        kind: "execute",
+        kind,
         commandActivity: "ordinary",
-        items: [tool(shell)],
+        items: [tool(presentation ?? shell)],
       }}
       interactive
     />,
   );
-  const icon = container.querySelector("summary svg[data-activity-icon]");
-  expect(icon).toHaveClass("lucide-square-terminal");
-  expect(container.querySelector(".lucide-terminal")).toBeNull();
+  const icons = container.querySelectorAll("summary svg");
+  expect(icons).toHaveLength(1);
+  expect(icons[0]).toHaveClass("acp-tool-rollup__chevron");
 });
 
-it("opens a Web run row to its plaintext result block (s5/f0405)", () => {
+it("opens a Searched the web row through its Web run row to the plaintext result (s5/f0405)", () => {
   const web = tool({ kind: "webSearch", label: "Web search" });
   web.payload.inputSummary = "synthetic native replay";
   const { container } = render(
@@ -119,11 +97,17 @@ it("opens a Web run row to its plaintext result block (s5/f0405)", () => {
   );
   const row = container.querySelector("details.acp-tool-rollup")!;
   const summary = row.querySelector("summary")!;
-  expect(summary).toHaveTextContent("Web run");
+  expect(summary).toHaveTextContent("Searched the web");
   expect(row.querySelector(".acp-tool-result")).toBeNull();
   expect(summary.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
   (row as HTMLDetailsElement).open = true;
   fireEvent(row, new Event("toggle"));
+  const run = row.querySelector<HTMLDetailsElement>(
+    ".acp-tool-rollup__items details",
+  )!;
+  expect(run.querySelector("summary")).toHaveTextContent("Web run");
+  run.open = true;
+  fireEvent(run, new Event("toggle"));
   const result = row.querySelector(".acp-tool-result");
   expect(result?.querySelector(".acp-code-block__language")).toHaveTextContent(
     "plaintext",

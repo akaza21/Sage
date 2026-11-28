@@ -30,18 +30,15 @@ function ToolActivityRollup({
 
 afterEach(cleanup);
 
-it("removes dead partial chrome and reveals rollup chevrons only on interaction", async () => {
+it("removes dead partial chrome and turns the always-visible row chevron when open", async () => {
   const css = await readFile("src/features/chat/acp/acp-chat.css", "utf8");
   const detailCss = await readFile(
     "src/features/chat/acp/acp-activity-details.css",
     "utf8",
   );
   expect(css).not.toContain(".acp-message__partial");
-  expect(detailCss).toMatch(
+  expect(detailCss).not.toMatch(
     /\.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0/s,
-  );
-  expect(detailCss).toMatch(
-    /\.acp-tool-rollup > summary:focus-visible[^}]*opacity:\s*1/s,
   );
   expect(detailCss).toMatch(
     /\.acp-tool-rollup\[open\]\s*> summary\s+\.acp-tool-rollup__chevron/,
@@ -91,6 +88,12 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", as
   ).toBeTruthy();
   read.open = true;
   fireEvent(read, new Event("toggle"));
+  const file = read.querySelector<HTMLDetailsElement>(
+    ".acp-tool-rollup__items details",
+  )!;
+  expect(screen.queryByText("fixture output")).toBeNull();
+  file.open = true;
+  fireEvent(file, new Event("toggle"));
   expect(screen.getByText("fixture output")).toBeVisible();
   fireEvent.click(worked);
   expect(container.querySelector(".acp-tool-rollup")).toBeNull();
@@ -149,18 +152,18 @@ it.each<ToolPresentation>([
       expect(latest).not.toHaveAttribute("open");
       latest.open = true;
       fireEvent(latest, new Event("toggle"));
-      if (withRead) {
-        expect(rows).toHaveLength(1);
-        expect(
-          latest.querySelectorAll(
-            ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
-          ),
-        ).toHaveLength(2);
-      } else {
+      // A search joins the earlier read under Explored files; fetch and
+      // MCP calls keep their own row.
+      const joined = withRead && presentation.kind === "search";
+      expect(rows).toHaveLength(withRead && !joined ? 2 : 1);
+      const fileRows = latest.querySelectorAll(
+        ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
+      );
+      if (presentation.kind === "mcp")
         expect(
           latest.querySelector('[data-acp-item-id="tool-2"]'),
         ).toBeVisible();
-      }
+      else expect(fileRows).toHaveLength(joined ? 2 : 1);
       unmount();
     }
   },
@@ -183,7 +186,7 @@ it("keeps no padded activity group for a closed browser-only Worked", () => {
   expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
 });
 
-it("keeps one leading kind icon and no spinner when a read group mixes running and failed calls", () => {
+it("keeps no leading icon and no spinner when a read group mixes running and failed calls", () => {
   const { container } = render(
     <ToolActivityRollup
       interactive
@@ -198,7 +201,7 @@ it("keeps one leading kind icon and no spinner when a read group mixes running a
     />,
   );
   const lead = container.querySelector(".acp-tool-rollup__summary-copy")!;
-  expect(lead.querySelectorAll("svg")).toHaveLength(1);
+  expect(lead.querySelectorAll("svg")).toHaveLength(0);
   expect(lead.querySelector(".acp-tool-running")).toBeNull();
   expect(lead.querySelector(".acp-live-shimmer")).not.toBeNull();
 });
@@ -426,7 +429,7 @@ it("opens no compact rollup when Worked is opened", () => {
 });
 
 it.each(["execute", "read", "edit"] as const)(
-  "uses only the kind icon and the shimmer for a running %s row",
+  "uses no leading icon, only the shimmer, for a running %s row",
   (kind) => {
     const projection = page("running");
     projection.turns[0].items = [parityTool(kind, 1, "inProgress")];
@@ -441,7 +444,7 @@ it.each(["execute", "read", "edit"] as const)(
       />,
     );
     const lead = container.querySelector(".acp-tool-rollup__summary-copy")!;
-    expect(lead.querySelectorAll("svg")).toHaveLength(1);
+    expect(lead.querySelectorAll("svg")).toHaveLength(0);
     expect(lead.querySelector(".acp-tool-running")).toBeNull();
     expect(lead.querySelector(".acp-live-shimmer")).not.toBeNull();
   },

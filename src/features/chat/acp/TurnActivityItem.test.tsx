@@ -162,7 +162,7 @@ describe("TurnActivityItem", () => {
   });
 
   it.each(["completed", "failed", "cancelled", "unsupported"] as const)(
-    "removes thinking when the item is %s",
+    "settles thinking into a Thought for row when the item is %s",
     (lifecycle) => {
       const thought = item("thoughtSummary", {
         summary: "Checking the files.",
@@ -173,6 +173,13 @@ describe("TurnActivityItem", () => {
       );
       expect(screen.getByText("Thinking")).toBeVisible();
       rerender(<TurnActivityItem item={{ ...thought, lifecycle }} />);
+      expect(screen.queryByText("Thinking")).toBeNull();
+      expect(container).toHaveTextContent("Thought for");
+      rerender(
+        <TurnActivityItem
+          item={{ ...thought, lifecycle, payload: { summary: " " } }}
+        />,
+      );
       expect(container).toBeEmptyDOMElement();
     },
   );
@@ -270,10 +277,9 @@ describe("TurnActivityItem", () => {
         inputSummary: null,
       },
     } as unknown as Extract<AcpItem, { kind: "toolCall" }>;
-    const { container } = render(
-      <TurnActivityItem item={thought} workingItems={[waiting]} />,
-    );
-    expect(container).toBeEmptyDOMElement();
+    render(<TurnActivityItem item={thought} workingItems={[waiting]} />);
+    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(document.querySelector(".acp-live-shimmer")).toBeNull();
   });
 
   it("shows bounded current work only under the in-progress plan entry", () => {
@@ -541,8 +547,12 @@ it("shows no running tool in the plan of a failed turn", () => {
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-  const region = screen.getByRole("region", { name: "Agent plan" });
-  expect(within(region).queryByLabelText("Current activity")).toBeNull();
+  // A settled plan folds into its chip, with no live work under it.
+  expect(screen.queryByRole("region", { name: "Agent plan" })).toBeNull();
+  expect(screen.queryByLabelText("Current activity")).toBeNull();
+  expect(document.querySelector(".acp-plan-chip")).toHaveTextContent(
+    "0/1 steps",
+  );
 });
 
 function settledPage(items: readonly AcpItem[]): AcpChatPage {

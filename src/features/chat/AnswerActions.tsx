@@ -95,7 +95,7 @@ export function AnswerActions({
     >
       {prompt ? timeLabel : null}
       <AnswerActionButton
-        label={copied ? "Copied" : "Copy"}
+        label={copied ? "Copied" : prompt ? "Copy prompt" : "Copy"}
         onClick={() => void copyAnswer()}
       >
         <CopyIcon size={14} aria-hidden="true" />

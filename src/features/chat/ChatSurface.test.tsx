@@ -311,6 +311,15 @@ async function expandReadActivity() {
   const summary = disclosure.querySelector("summary");
   if (!summary) throw new Error("Expected the read activity summary");
   if (!disclosure.open) fireEvent.click(summary);
+  // "Explored files" opens to one row per file; open the file's row too.
+  const file = await waitFor(() => {
+    const found = disclosure.querySelector<HTMLDetailsElement>(
+      ".acp-tool-rollup__items .acp-tool-rollup",
+    );
+    if (!found) throw new Error("Expected the file row");
+    return found;
+  });
+  if (!file.open) fireEvent.click(file.querySelector("summary")!);
 }
 
 beforeEach(() => {
