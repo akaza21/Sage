@@ -136,47 +136,54 @@ function scratchRepo(dir) {
 // transcript first, so a model a catalog in one transcript names is replaced
 // the same way in all; a frame stored once in commands.jsonl and referenced
 // by hash from another transcript keeps its reference.
-// One re-scrub of a corpus at a time: an exclusive lock file in it, and
-// staging and backup names of this run's own, so no run touches another's.
-function resanitize(out, harnesses, work) {
-  const lock = path.join(out, ".resanitize.lock");
+// One writer of a corpus at a time, capture or re-scrub: an exclusive lock
+// file in it for the whole run.
+async function withCorpusLock(out, run) {
+  fs.mkdirSync(out, { recursive: true });
+  const lock = path.join(out, ".corpus.lock");
   let held;
   try {
     held = fs.openSync(lock, "wx");
   } catch (error) {
     if (error.code === "EEXIST")
       throw new Error(
-        `${lock} exists: another --resanitize is running, or one crashed (remove it once none is)`,
+        `${lock} exists: another capture or --resanitize is running, or one crashed (remove it once none is)`,
         { cause: error },
       );
     throw error;
   }
   try {
-    // A crashed run's originals (`.bak`) or staged files (`.tmp`) are never
-    // committed or overwritten: restore or remove them first.
-    const left = harnesses.flatMap((harness) => {
-      const dir = path.join(out, harness);
-      return fs.existsSync(dir)
-        ? fs
-            .readdirSync(dir)
-            .filter((name) => /\.\d+-[0-9a-f]{8}\.(?:bak|tmp)$/.test(name))
-            .map((name) => path.join(dir, name))
-        : [];
-    });
-    if (left.length)
-      throw new Error(
-        `an interrupted --resanitize left ${left.join(", ")}: put each .bak back in place of its file and delete the .tmp files, then rerun`,
-      );
-    resanitizeLocked(
-      out,
-      harnesses,
-      work,
-      `${process.pid}-${randomBytes(4).toString("hex")}`,
-    );
+    return await run();
   } finally {
     fs.closeSync(held);
     fs.rmSync(lock, { force: true });
   }
+}
+
+// A re-scrub stages and backs up under names of its own run, so an
+// interrupted one is found and never overwritten.
+function resanitize(out, harnesses, work) {
+  // A crashed run's originals (`.bak`) or staged files (`.tmp`) are never
+  // committed or overwritten: restore or remove them first.
+  const left = harnesses.flatMap((harness) => {
+    const dir = path.join(out, harness);
+    return fs.existsSync(dir)
+      ? fs
+          .readdirSync(dir)
+          .filter((name) => /\.\d+-[0-9a-f]{8}\.(?:bak|tmp)$/.test(name))
+          .map((name) => path.join(dir, name))
+      : [];
+  });
+  if (left.length)
+    throw new Error(
+      `an interrupted --resanitize left ${left.join(", ")}: put each .bak back in place of its file and delete the .tmp files, then rerun`,
+    );
+  resanitizeLocked(
+    out,
+    harnesses,
+    work,
+    `${process.pid}-${randomBytes(4).toString("hex")}`,
+  );
 }
 
 function resanitizeLocked(out, harnesses, work, run) {
@@ -324,8 +331,12 @@ async function main() {
     const work = option("work");
     if (!work)
       throw new Error("--resanitize needs the --work the capture used");
-    return resanitize(out, harnesses, work);
+    return withCorpusLock(out, () => resanitize(out, harnesses, work));
   }
+  return withCorpusLock(out, () => capture(out, harnesses, only, model));
+}
+
+async function capture(out, harnesses, only, model) {
   // A new scratch dir for every run: the capture never clears an old one.
   const work =
     option("work") ??

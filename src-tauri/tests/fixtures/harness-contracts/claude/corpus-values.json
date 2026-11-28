@@ -1,4 +1,24 @@
 {
+  "files": {
+    "auth-fail.jsonl": "f6bc7e9357e0bf87b53f29309969bdfb6a213f019da980badedc0b556cadf6a3",
+    "auth-fail.replay.json": "09db1b9c60971f6f07b2146f769e6ea56429e33674606a25e154cc8f8dd59beb",
+    "commands.jsonl": "faa9f682c08decc9c341bbdede8dbbd9972d396b85c53c91ade96d77a204f298",
+    "commands.replay.json": "8811c7265d1b6477fcdc2e405b6aacf1f5b3d79a472456fef040e5c705f6e0e8",
+    "edit.jsonl": "cf284a2ac71ded4a660e574fc1b0f1c4e1e7bb432a8addf8a644cc84459c2c56",
+    "edit.replay.json": "93416e43550f477f32ed218e1bf5a66e0fb1ba30f7d50255db773b1a5dd119a4",
+    "image.jsonl": "56cf85f5a5968601b036e9730bd5cdcd9120330e76c7943e2b7ded07f8433b1f",
+    "image.replay.json": "f0d9f519ef4df3a996c4e552aa51202ca582660f8bd55a57eabb82977dd4206f",
+    "meta.json": "e6fc34abc3a7160eabb590e9d95e0d0f406589c300212e065427fb5f1e2a5661",
+    "plan-approve.jsonl": "495a06493c7c79886853cfa47d970ae84b2ebfd0eef0b0085eee891c57d0a9f5",
+    "plan-approve.replay.json": "151dd69f1411f2b821d823cb39f26b02adcaad2f8a5e394d168798aaa744ac57",
+    "plan-decline.jsonl": "be18393076d9a98d19de4f955a738458a6a114eb7e109e118f72937b11a2f342",
+    "plan-decline.replay.json": "243677217ee3b7108d33a0a158ead52cd7a3e05daafb15cca872754719452f86",
+    "shape.json": "21ffb8c4180fc9d9554a523efaf40b3e7acbf944532c9f7fe30eed75d9bf8de5",
+    "shell.jsonl": "3f306283defa701d855392899edb23093c109c2dec5fa95d829251eabfdf2311",
+    "shell.replay.json": "afbbe34102789b917be785aeb2ca498ccdaae170c0d7997fa5fea11a5f4d4ea1",
+    "subagent.jsonl": "36b0b9f85555b2b89b6dfb692e09bf799861f62bc0f04148c97382dba8c697eb",
+    "subagent.replay.json": "0b0a00ea42ac5640ce5da4b77feae5624efeb7d2ac263a6f381f2a0ac3d13eab"
+  },
   "strings": [
     "",
     "\n\n>",

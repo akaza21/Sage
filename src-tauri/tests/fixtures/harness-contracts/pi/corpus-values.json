@@ -1,4 +1,12 @@
 {
+  "files": {
+    "auth-fail.jsonl": "65e97782e07e9de81174cf2ae285365d39ea29c32e2b7f9bf212260fecc92e4f",
+    "auth-fail.replay.json": "0a4bc8a32f1f11a003a7d9bda73954a99d04529b662e9e9c25ce60912daccd93",
+    "commands.jsonl": "5e1277a7217882462e71887fc1d29c08ea3131fd0c7be3d6995a52db6e089d7a",
+    "commands.replay.json": "91b6e10bea6cdae1699286d02f7ee09d1855b1a106d952c61635f3fea8362997",
+    "meta.json": "61c9651dbf461d3eab2454502eda697309368e2dfd90f24f16f16cc1265db042",
+    "shape.json": "8f6f82b4893581845962823cae9a1cfc59c90e30b2f7e2930564da974b390f21"
+  },
   "strings": [
     "",
     "--mode",

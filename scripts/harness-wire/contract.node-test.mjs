@@ -185,7 +185,7 @@ test("a neutralized object keeps no key of its own, only pseudonyms and scrubbed
 test("a second --resanitize refuses to run while a corpus is locked", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-lock-"));
   try {
-    fs.writeFileSync(path.join(out, ".resanitize.lock"), "");
+    fs.writeFileSync(path.join(out, ".corpus.lock"), "");
     const run = spawnSync(
       process.execPath,
       [
@@ -201,7 +201,7 @@ test("a second --resanitize refuses to run while a corpus is locked", () => {
       { encoding: "utf8" },
     );
     assert.notEqual(run.status, 0);
-    assert.match(run.stderr, /another --resanitize is running/);
+    assert.match(run.stderr, /another capture or --resanitize is running/);
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }
@@ -266,7 +266,7 @@ test("--resanitize refuses to run over an interrupted run's backups", () => {
     );
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /interrupted --resanitize left/);
-    assert.equal(fs.existsSync(path.join(out, ".resanitize.lock")), false);
+    assert.equal(fs.existsSync(path.join(out, ".corpus.lock")), false);
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }
@@ -442,14 +442,50 @@ test("a model added to a usage map fails the reviewed-value check", async () => 
     write({ "model-5": { contextWindow: 1 }, "model-4": { contextWindow: 1 } });
     writeReviewed("x", corpus, root);
     write({ "model-5": { contextWindow: 1 } });
-    assert.deepEqual(unreviewed("x", corpus, root), []);
-    write({ "model-5": { contextWindow: 1 } });
     writeReviewed("x", corpus, root);
     write({ "model-5": { contextWindow: 1 }, "model-4": { contextWindow: 1 } });
     assert.match(
       unreviewed("x", corpus, root).join("\n"),
       /placeholder "t\.jsonl:1\.frame\.modelUsage\{model-4\}" is not reviewed/,
     );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a value swapped between positions, or an unexpected file, fails the reviewed-value check", async () => {
+  const { unreviewed, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-swap-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    const write = (primary, secondary) =>
+      fs.writeFileSync(
+        path.join(corpus, "x", "t.jsonl"),
+        `${JSON.stringify({
+          direction: "in",
+          frame: {
+            rateLimits: {
+              primary: { windowDurationMins: primary },
+              secondary: { windowDurationMins: secondary },
+            },
+          },
+        })}\n`,
+      );
+    write(300, 10080);
+    writeReviewed("x", corpus, root);
+    assert.deepEqual(unreviewed("x", corpus, root), []);
+    write(10080, 300);
+    assert.deepEqual(unreviewed("x", corpus, root), [
+      "x/t.jsonl: changed since it was reviewed",
+    ]);
+    write(300, 10080);
+    fs.writeFileSync(path.join(corpus, "x", "notes.txt"), "someone@private\n");
+    assert.deepEqual(unreviewed("x", corpus, root), [
+      "x/notes.txt: is not a reviewed file",
+    ]);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

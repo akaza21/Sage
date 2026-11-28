@@ -1,4 +1,20 @@
 {
+  "files": {
+    "auth-fail.jsonl": "f12498794a05fee96667428cee705d2b488d2bcb0a6963fa8e0a5a66faa7af55",
+    "auth-fail.replay.json": "efc99834c24e5f17546bebfab3376166ca9030ee7b78c98defa6d2dcffe5cef4",
+    "commands.jsonl": "73f577fcfa0721164dad27a454b5701b09ccc5c343e272206020f9f8a2e8494d",
+    "commands.replay.json": "7b98cdbd10fadcb020bcb9d7841375e81fa4fa1afec32564101fb8494f0372d7",
+    "edit.jsonl": "d2b3523b9e26866bea2935db514108c41cd1f0e8ed1887597931019e185b2980",
+    "edit.replay.json": "57abdd1288ab103106df07c013503d166d3e8da5d49ba6f29de9f8cd9f8b9a14",
+    "image.jsonl": "3cf6d99b87ea377df90177fa1c7b4b26c98c444eb2521323a0515e0d281ec2b7",
+    "image.replay.json": "c23a8939a5ff7cd722b6933f7893205767be52da2b1eef46bf0112afbaacee4f",
+    "meta.json": "4f9704c74bcf01e2d98a7dc4d01eb1b0dd29b120b3476b416405f8faeb5f4afb",
+    "shape.json": "1e49569be8cce6516a9fa8c6851416742051c9711bf7e51c778023086c213b00",
+    "shell.jsonl": "abdd35f9e87f9ca03ca2cb02660a90b35f937f92f83d72e6847bb4459b3242a3",
+    "shell.replay.json": "11231c462d99615774b16f5ad48c74ee845a5c3766293360829cf9faf89ec1cc",
+    "subagent.jsonl": "985ad1b639e1c32ddab0c4f34bf3129a28c622e577569cc4fa8ef042bd5b8b0d",
+    "subagent.replay.json": "cea115cac3b345f5eae1871c69c061d3ac44b32af391b58ec68f76d14fc1dea1"
+  },
   "strings": [
     "",
     "\r\n",

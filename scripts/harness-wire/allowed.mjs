@@ -9,10 +9,12 @@
 //   numbers       every number, by the key it sits under
 //   flags         every boolean, where it is (file:line and indexed path)
 //   placeholders  every pseudonym (model-N, command-N, ...), where it is
+//   files         the digest of every file in the corpus folder
 //   contextPaths  every key path under an account, plan, usage, model,
 //                 catalog or org object, as `<root>:<path>`
 // A number under a scrubbed key (tokens, cost, usage, pid) must also equal
 // its placeholder. Run with --write only to record a reviewed change.
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -170,6 +172,31 @@ function serialize(found) {
   };
 }
 
+// The digest of every file in a harness's corpus folder, whatever it is
+// (transcripts, projections, shapes, meta, anything unexpected), with line
+// endings normalized so every checkout agrees. A reviewed digest pins every
+// value at every position: a value that moves, or a file that appears,
+// fails until a person reviews it.
+export function corpusDigests(dir) {
+  return Object.fromEntries(
+    fs
+      .readdirSync(dir)
+      .sort()
+      .map((name) => {
+        const file = path.join(dir, name);
+        if (!fs.statSync(file).isFile()) return [name, "not a file"];
+        const bytes = fs
+          .readFileSync(file)
+          .toString("latin1")
+          .replace(/\r\n/g, "\n");
+        return [
+          name,
+          createHash("sha256").update(bytes, "latin1").digest("hex"),
+        ];
+      }),
+  );
+}
+
 // Every value of the corpus outside its reviewed set, with where it is.
 export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   const found = corpusValues(path.join(corpus, harness));
@@ -177,6 +204,22 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   if (!fs.existsSync(file)) return [`${harness}: no ${VALUES_FILE}`];
   const allowed = JSON.parse(fs.readFileSync(file, "utf8"));
   const out = found.fixed.map((problem) => `${harness}/${problem}`);
+  const digests = corpusDigests(path.join(corpus, harness));
+  const reviewed = allowed.files ?? {};
+  for (const name of new Set([
+    ...Object.keys(digests),
+    ...Object.keys(reviewed),
+  ]))
+    if (digests[name] !== reviewed[name])
+      out.push(
+        `${harness}/${name}: ${
+          !(name in reviewed)
+            ? "is not a reviewed file"
+            : !(name in digests)
+              ? "was reviewed but is gone"
+              : "changed since it was reviewed"
+        }`,
+      );
   const missing = (label, map, set) => {
     for (const [value, at] of map)
       if (!set.has(value))
@@ -203,7 +246,11 @@ export function writeReviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   if (found.fixed.length) throw new Error(found.fixed.join("\n"));
   fs.writeFileSync(
     path.join(root, harness, VALUES_FILE),
-    `${JSON.stringify(serialize(found), null, 2)}\n`,
+    `${JSON.stringify(
+      { files: corpusDigests(path.join(corpus, harness)), ...serialize(found) },
+      null,
+      2,
+    )}\n`,
   );
 }
 
