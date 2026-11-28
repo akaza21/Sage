@@ -25,10 +25,25 @@ export interface ResolveResourceRepositoryResult {
   repository: RepositoryRef | null;
 }
 
+/** One row of a folder-of-repositories list. */
+export interface RepositorySummary {
+  ref: RepositoryRef;
+  state: "repository" | "unavailable";
+  branch: string | null;
+  changeCount: number;
+  changesOverflowed: boolean;
+  message: string | null;
+}
+
 export interface DiscoverProjectRepositoriesResult {
   projectId: string;
   transitionEpoch: number;
   refs: RepositoryRef[];
+  /**
+   * Branch and change count for repositories found directly inside a root
+   * that is outside any Git work tree; absent from older backends.
+   */
+  summaries?: RepositorySummary[];
   truncated: boolean;
 }
 
