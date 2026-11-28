@@ -28,6 +28,7 @@ import {
   freshScratch,
   scenarioEnv,
 } from "./config-env.mjs";
+import { neutralizeUndeclared, undeclaredPaths } from "./neutral.mjs";
 import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
@@ -167,6 +168,9 @@ function resanitize(out, harnesses, work) {
     for (const file of files)
       sanitizer.learn(lines(file).map((line) => JSON.parse(line)));
     // The new hash of each commands.jsonl line, by its old hash.
+    // Fields the harness sends beyond its published definitions keep their
+    // key but not their value (neutral.mjs).
+    const undeclared = undeclaredPaths(harness);
     const moved = new Map();
     // Every transcript is rewritten and its references checked in memory
     // first; only then are the files replaced, so a failure leaves the
@@ -174,22 +178,23 @@ function resanitize(out, harnesses, work) {
     const staged = new Map();
     for (const file of files) {
       const before = lines(file);
-      const after = sanitizer
-        .records(before.map((line) => JSON.parse(line)))
-        .map((record) => {
-          if (!record.ref) return JSON.stringify(record);
-          const old = [...moved.keys()].find((hash) =>
-            hash.startsWith(record.sha256),
+      const after = neutralizeUndeclared(
+        sanitizer.records(before.map((line) => JSON.parse(line))),
+        undeclared,
+      ).map((record) => {
+        if (!record.ref) return JSON.stringify(record);
+        const old = [...moved.keys()].find((hash) =>
+          hash.startsWith(record.sha256),
+        );
+        if (!old)
+          throw new Error(
+            `${file}: no ${record.ref} line has digest ${record.sha256}`,
           );
-          if (!old)
-            throw new Error(
-              `${file}: no ${record.ref} line has digest ${record.sha256}`,
-            );
-          return JSON.stringify({
-            ...record,
-            sha256: moved.get(old).slice(0, record.sha256.length),
-          });
+        return JSON.stringify({
+          ...record,
+          sha256: moved.get(old).slice(0, record.sha256.length),
         });
+      });
       if (file === "commands.jsonl" && after.length !== before.length)
         throw new Error("commands.jsonl changed length; recapture instead");
       if (file === "commands.jsonl")

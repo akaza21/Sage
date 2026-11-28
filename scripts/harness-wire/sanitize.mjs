@@ -54,6 +54,63 @@ const MODEL_ID =
   /\b(?:claude-(?:opus|sonnet|haiku|fable)|gpt)-\d+(?:[.-][0-9a-z]+)*/g;
 const MODEL_NAME =
   /\b(?:GPT-\d[\d.]*(?: [A-Z][a-z]+)?|(?:Claude )?(?:Opus|Sonnet|Haiku|Fable) \d[\d.]*)/g;
+// Objects that describe the capturing account rather than the protocol: its
+// account, plan, organization, rate limits, credits and the models it can
+// use. Inside one, only the keys a binding reads keep their values.
+const ACCOUNT_OBJECTS = new Set([
+  "account",
+  "organization",
+  "subscription",
+  "rate_limit_info",
+  "rateLimits",
+  "rateLimitsByLimitId",
+  "rate_limits",
+  "credits",
+  "models",
+  "modelUsage",
+]);
+const ACCOUNT_KEEP = new Set([
+  // Model catalogs (Claude Code, Codex, Pi).
+  "value",
+  "id",
+  "name",
+  "model",
+  "modelId",
+  "displayName",
+  "description",
+  "provider",
+  "contextWindow",
+  "supportsEffort",
+  "supportedEffortLevels",
+  "defaultReasoningEffort",
+  "supportedReasoningEfforts",
+  "reasoningEffort",
+  "isDefault",
+  "hidden",
+  "resolvedModel",
+  // Rate limits and usage windows.
+  "status",
+  "rateLimitType",
+  "utilization",
+  "resetsAt",
+  "resets_at",
+  "usedPercent",
+  "windowDurationMins",
+  "rateLimitReachedType",
+  "spendControlReached",
+  "limitId",
+  "limitName",
+  "planType",
+  "ordinaryUsageAllowed",
+  "rate_limits_available",
+  "subscription_type",
+  "model_scoped",
+  "display_name",
+  // Account kind and sign-in method.
+  "type",
+  "requiresOpenaiAuth",
+  "authMode",
+]);
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
@@ -284,28 +341,32 @@ export function makeSanitizer({ roots }) {
     if (typeof out.utilization === "number") out.utilization = 0.1;
     if (typeof out.resetsAt === "number")
       out.resetsAt = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
-    if (typeof out.balance === "string") out.balance = "0";
-    // The account's credit and extra-usage state, as neutral values the
-    // protocol allows; `status` and `rateLimitType` stay, as Sage reads them.
-    for (const flag of [
-      "hasCredits",
-      "unlimited",
-      "isUsingOverage",
-      "overageInUse",
-      "overageEnabled",
-    ])
-      if (typeof out[flag] === "boolean") out[flag] = false;
-    if (typeof out.surpassedThreshold === "number")
-      out.surpassedThreshold = 0.5;
-    if (typeof out.overageStatus === "string") out.overageStatus = "allowed";
-    if (typeof out.overageDisabledReason === "string")
-      out.overageDisabledReason = "unknown";
-    if (typeof out.overageResetsAt === "number")
-      out.overageResetsAt = USAGE_EPOCH;
     return out;
   };
 
-  const walk = (value, key, inModel = false, opaque = false) => {
+  // Allow-list inside an account, billing, rate-limit, plan, organization or
+  // model-catalog object: a value a binding does not read becomes a fixed
+  // placeholder of its type.
+  const kept = (key, value, inAccount) => {
+    if (!inAccount || ACCOUNT_KEEP.has(key)) return value;
+    if (typeof value === "string")
+      return /^(?:redacted|model-\d+|Model \d+)$/.test(value)
+        ? value
+        : "redacted";
+    if (typeof value === "number") return 0;
+    if (typeof value === "boolean") return false;
+    return value;
+  };
+
+  const walk = (
+    value,
+    key,
+    inModel = false,
+    opaque = false,
+    inAccount = false,
+  ) => kept(key, scrub(value, key, inModel, opaque, inAccount), inAccount);
+
+  const scrub = (value, key, inModel, opaque, inAccount) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
@@ -336,14 +397,15 @@ export function makeSanitizer({ roots }) {
             !isSynced(entry) &&
             !(typeof entry === "string" && synced.has(entry)),
         )
-        .map((entry) => walk(entry, key, false, opaque));
+        .map((entry) => walk(entry, key, false, opaque, inAccount));
     }
     if (value && typeof value === "object") {
       const model = isModel(value);
+      const account = inAccount || model || ACCOUNT_OBJECTS.has(key);
       return Object.fromEntries(
         Object.entries(opaque ? value : usage(value)).map(([name, entry]) => [
           text(name),
-          walk(entry, name, model, opaque || OPAQUE.has(name)),
+          walk(entry, name, model, opaque || OPAQUE.has(name), account),
         ]),
       );
     }

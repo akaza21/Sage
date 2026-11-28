@@ -57,5 +57,8 @@
     "in system/init: + ultrathink_typed_raises",
     "in system/task_notification: + summary_is_report",
     "in user: + tool_result_meta"
+  ],
+  "readBySage": [
+    "in control_response/success/initialize: + response.response.current_permission_mode"
   ]
 }

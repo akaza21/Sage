@@ -79,13 +79,15 @@ for (const harness of harnesses) {
         /req_(?!0{32})[0-9A-Za-z]{16}/,
         /\b(?:msg|toolu|srvtoolu|call|resp)_(?!0{12})[0-9A-Za-z]{12}/,
         /"credential_expires_at":"(?!2027-01-01T00:00:00\.000Z)/,
-        /"usedPercent":(?!10[,}])\d/,
-        /"utilization":(?!0\.1[,}])\d/,
-        /"resetsAt":(?!180\d{7}[,}])\d/,
+        // Normalized, or neutral (0) where the field is undeclared.
+        /"usedPercent":(?!(?:10|0)[,}])\d/,
+        /"utilization":(?!(?:0\.1|0)[,}])\d/,
+        /"resetsAt":(?!(?:180\d{7}|0)[,}])\d/,
         /"(?:hasCredits|unlimited|isUsingOverage|overageInUse|overageEnabled)":true/,
-        /"overageDisabledReason":"(?!unknown")/,
-        /"overageStatus":"(?!allowed")/,
-        /"surpassedThreshold":(?!0\.5[,}])\d/,
+        /"overageDisabledReason":"(?!redacted")/,
+        /"overageStatus":"(?!redacted")/,
+        /"surpassedThreshold":(?!0[,}])\d/,
+        /"(?:email|subscriptionType|apiProvider|organization[A-Za-z]*)":"(?!redacted")/,
       ])
         assert.doesNotMatch(body, pattern, name);
     }
@@ -330,7 +332,7 @@ test("the account's usage and the provider's request ids are normalized", () => 
   assert.deepEqual(credits, {
     hasCredits: false,
     unlimited: false,
-    balance: "0",
+    balance: "redacted",
   });
   const [claude] = makeSanitizer({ roots: [] }).records([
     {
@@ -355,10 +357,10 @@ test("the account's usage and the provider's request ids are normalized", () => 
     rateLimitType: "seven_day",
     utilization: 0.1,
     resetsAt: 1800000000,
-    overageStatus: "allowed",
-    overageDisabledReason: "unknown",
+    overageStatus: "redacted",
+    overageDisabledReason: "redacted",
     isUsingOverage: false,
-    surpassedThreshold: 0.5,
+    surpassedThreshold: 0,
   });
   assert.equal(
     failure.frame.params.error.additionalDetails,
@@ -574,4 +576,51 @@ test("a model's id or name is redacted in keys and free text, a command named af
     offer.frame.result.message,
     /^Switch to Model \d+\. Fast mode uses Model \d+\.$/,
   );
+});
+
+test("inside an account, rate-limit or catalog object only the keys a binding reads keep their values", () => {
+  const [init] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        type: "control_response",
+        response: {
+          response: {
+            account: {
+              email: "x",
+              subscriptionType: "max",
+              apiProvider: "firstParty",
+            },
+            models: [
+              {
+                value: "default",
+                displayName: "D",
+                supportsEffort: true,
+                supportsFastMode: true,
+                price: 4,
+              },
+            ],
+            commands: [{ name: "review", description: "Review the branch" }],
+          },
+        },
+      },
+    },
+  ]);
+  const reply = init.frame.response.response;
+  assert.deepEqual(reply.account, {
+    email: "redacted",
+    subscriptionType: "redacted",
+    apiProvider: "redacted",
+  });
+  assert.deepEqual(reply.models[0], {
+    value: "default",
+    displayName: "redacted",
+    supportsEffort: true,
+    supportsFastMode: false,
+    price: 0,
+  });
+  // Outside those objects, protocol values stay.
+  assert.deepEqual(reply.commands, [
+    { name: "review", description: "Review the branch" },
+  ]);
 });
