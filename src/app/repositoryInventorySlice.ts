@@ -5,7 +5,11 @@ import {
   rootRepositoryStatus,
   sameRepository,
 } from "../domain/repositoryInventory";
-import type { RepositoryRef, RootRepositoryStatus } from "../domain/workbench";
+import type {
+  RepositoryRef,
+  RepositorySummary,
+  RootRepositoryStatus,
+} from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -17,6 +21,8 @@ export interface RepositoryInventorySlice {
   repositoryInventoryPhase: RepositoryInventoryPhase;
   repositoryInventoryError: string | null;
   repositoryRefs: RepositoryRef[];
+  /** Folder-of-repositories rows; empty when the root is itself a repository. */
+  repositorySummaries: RepositorySummary[];
   repositoryDiscoveryTruncated: boolean;
   repositoryInventoryProjectScope: string | null;
   repositoryInventoryRequestGeneration: number;
@@ -25,8 +31,14 @@ export interface RepositoryInventorySlice {
   repositoryStatusPhase: RepositoryStatusPhase;
   repositoryStatusError: string | null;
   repositoryStatusRequestGeneration: number;
-  loadRepositoryInventory: () => Promise<void>;
-  selectRepository: (repository: RepositoryRef) => Promise<void>;
+  /** `background` keeps the shown list and changes until fresh ones arrive. */
+  loadRepositoryInventory: (options?: {
+    background?: boolean;
+  }) => Promise<void>;
+  selectRepository: (
+    repository: RepositoryRef,
+    options?: { background?: boolean },
+  ) => Promise<void>;
 }
 
 function canLoad(state: WorkbenchState): boolean {
@@ -51,6 +63,7 @@ export const createRepositoryInventorySlice: StateCreator<
   repositoryInventoryPhase: "idle",
   repositoryInventoryError: null,
   repositoryRefs: [],
+  repositorySummaries: [],
   repositoryDiscoveryTruncated: false,
   repositoryInventoryProjectScope: null,
   repositoryInventoryRequestGeneration: 0,
@@ -60,15 +73,20 @@ export const createRepositoryInventorySlice: StateCreator<
   repositoryStatusError: null,
   repositoryStatusRequestGeneration: 0,
 
-  loadRepositoryInventory: async () => {
+  loadRepositoryInventory: async (options) => {
     const current = get();
     const projectId = current.project?.id;
     const scope = projectScope(current);
+    const background =
+      options?.background === true &&
+      current.repositoryInventoryProjectScope === scope &&
+      current.repositoryInventoryPhase === "ready";
     if (current.repositoryInventoryProjectScope !== scope) {
       set({
         repositoryInventoryPhase: "idle",
         repositoryInventoryError: null,
         repositoryRefs: [],
+        repositorySummaries: [],
         repositoryDiscoveryTruncated: false,
         repositoryInventoryProjectScope: scope,
         repositoryInventoryRequestGeneration: nextProjectGeneration(
@@ -91,7 +109,7 @@ export const createRepositoryInventorySlice: StateCreator<
       get().repositoryInventoryRequestGeneration,
     );
     set({
-      repositoryInventoryPhase: "loading",
+      repositoryInventoryPhase: background ? "ready" : "loading",
       repositoryInventoryError: null,
       repositoryInventoryRequestGeneration: requestGeneration,
     });
@@ -112,21 +130,29 @@ export const createRepositoryInventorySlice: StateCreator<
         return;
       }
       const selected = get().selectedRepository;
-      const nextSelected =
-        selected && result.refs.some((ref) => sameRepository(ref, selected))
-          ? selected
-          : (result.refs[0] ?? null);
+      const kept =
+        selected !== null &&
+        result.refs.some((ref) => sameRepository(ref, selected));
+      const nextSelected = kept ? selected : (result.refs[0] ?? null);
+      const keepStatus = background && kept;
       set({
         repositoryInventoryPhase: "ready",
         repositoryRefs: result.refs,
+        repositorySummaries: result.summaries ?? [],
         repositoryDiscoveryTruncated: result.truncated,
         repositoryInventoryProjectScope: scope,
         selectedRepository: nextSelected,
-        selectedRepositoryStatus: null,
-        repositoryStatusError: null,
-        repositoryStatusPhase: nextSelected ? "loading" : "idle",
+        ...(keepStatus
+          ? {}
+          : {
+              selectedRepositoryStatus: null,
+              repositoryStatusError: null,
+              repositoryStatusPhase: nextSelected ? "loading" : "idle",
+            }),
       });
-      if (nextSelected) await get().selectRepository(nextSelected);
+      if (nextSelected) {
+        await get().selectRepository(nextSelected, { background: keepStatus });
+      }
     } catch (error) {
       if (
         matchesProjectIntent(get(), projectGeneration, projectId) &&
@@ -137,6 +163,7 @@ export const createRepositoryInventorySlice: StateCreator<
           repositoryInventoryPhase: "error",
           repositoryInventoryError: errorMessage(error),
           repositoryRefs: [],
+          repositorySummaries: [],
           repositoryDiscoveryTruncated: false,
           repositoryInventoryProjectScope: scope,
           selectedRepository: null,
@@ -147,7 +174,7 @@ export const createRepositoryInventorySlice: StateCreator<
     }
   },
 
-  selectRepository: async (repository) => {
+  selectRepository: async (repository, options) => {
     if (!canLoad(get())) return;
     const projectId = get().project?.id;
     if (!projectId) return;
@@ -160,13 +187,24 @@ export const createRepositoryInventorySlice: StateCreator<
       repository,
       get().repositories.roots,
     );
-    set({
-      selectedRepository: repository,
-      selectedRepositoryStatus: rootStatus,
-      repositoryStatusPhase: isRootRepository(repository) ? "ready" : "loading",
-      repositoryStatusError: null,
-      repositoryStatusRequestGeneration: requestGeneration,
-    });
+    const quiet =
+      options?.background === true &&
+      !isRootRepository(repository) &&
+      sameRepository(get().selectedRepository, repository) &&
+      get().selectedRepositoryStatus !== null;
+    set(
+      quiet
+        ? { repositoryStatusRequestGeneration: requestGeneration }
+        : {
+            selectedRepository: repository,
+            selectedRepositoryStatus: rootStatus,
+            repositoryStatusPhase: isRootRepository(repository)
+              ? "ready"
+              : "loading",
+            repositoryStatusError: null,
+            repositoryStatusRequestGeneration: requestGeneration,
+          },
+    );
     if (isRootRepository(repository)) return;
     try {
       const result =

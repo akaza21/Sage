@@ -39,6 +39,7 @@ mod remotes;
 pub mod revert;
 pub mod sequence_abort;
 mod status;
+pub mod summary;
 mod workspace;
 
 #[cfg(feature = "test-support")]

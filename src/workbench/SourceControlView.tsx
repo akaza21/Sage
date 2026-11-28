@@ -5,6 +5,8 @@ import { useWorkbenchStore } from "../app/store";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
 import { SourceChangeGroups } from "./SourceChangeGroups";
 import { SourceRepositoryControl } from "./SourceRepositoryControl";
+import { SourceRepositoryList } from "./SourceRepositoryList";
+import type { RepositoryRef } from "../domain/workbench";
 import { SearchablePicker } from "../ui/SearchablePicker";
 import {
   mutateSourceGroup,
@@ -34,6 +36,12 @@ export function SourceControlView() {
   );
   const repositories = useWorkbenchStore((state) => state.repositories);
   const repositoryRefs = useWorkbenchStore((state) => state.repositoryRefs);
+  const repositorySummaries = useWorkbenchStore(
+    (state) => state.repositorySummaries,
+  );
+  const discoveryTruncated = useWorkbenchStore(
+    (state) => state.repositoryDiscoveryTruncated,
+  );
   const selectedRepository = useWorkbenchStore(
     (state) => state.selectedRepository,
   );
@@ -144,6 +152,19 @@ export function SourceControlView() {
     },
     [controlsDisabled, inventoryPhase, repositoryRefs, selectRepository],
   );
+  const pickRepository = useCallback(
+    (ref: RepositoryRef) => chooseRepository(repositoryKey(ref)),
+    [chooseRepository],
+  );
+  const listsFolderRepositories = repositorySummaries.length > 0;
+  useEffect(() => {
+    // Nested repositories have no change notifications; a folder of
+    // repositories re-reads its list when the window regains focus.
+    if (!listsFolderRepositories) return;
+    const onFocus = () => void loadRepositoryInventory({ background: true });
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [listsFolderRepositories, loadRepositoryInventory]);
 
   return (
     <>
@@ -164,7 +185,16 @@ export function SourceControlView() {
         ) : null}
       </div>
       <div className="source-control-list">
-        {repositoryRefs.length > 1 ? (
+        {repositorySummaries.length > 0 ? (
+          <SourceRepositoryList
+            refs={repositoryRefs}
+            summaries={repositorySummaries}
+            selected={selectedRepository}
+            truncated={discoveryTruncated}
+            disabled={controlsDisabled || inventoryPhase === "loading"}
+            onSelect={pickRepository}
+          />
+        ) : repositoryRefs.length > 1 ? (
           <div className="source-control-selector">
             <SearchablePicker
               ariaLabel="Select repository"

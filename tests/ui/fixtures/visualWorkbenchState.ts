@@ -322,6 +322,7 @@ export function applyVisualWorkbenchState(
     repositoryRefs: [{ rootId: ROOT_ID, relativePath: "" }],
     repositoryInventoryPhase: "ready",
     repositoryInventoryError: null,
+    repositorySummaries: [],
     repositoryDiscoveryTruncated: false,
     repositoryInventoryProjectScope: `${PROJECT_ID}\0${VISUAL_NATIVE_TRANSITION_EPOCH}\0${VISUAL_NATIVE_TRANSITION_EPOCH}`,
     selectedRepository: { rootId: ROOT_ID, relativePath: "" },
