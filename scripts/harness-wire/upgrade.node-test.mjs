@@ -56,3 +56,19 @@ test("the same release regenerating differently is a change, not up to date", ()
     ],
   });
 });
+
+test("a field that turns open is a protocol change", () => {
+  assert.deepEqual(
+    report(
+      contract("0.167.1", { payload: [] }),
+      contract("0.172.0", { payload: ["*"] }),
+    ),
+    {
+      changed: true,
+      lines: [
+        "protocol changes in codex 0.167.1 -> 0.172.0",
+        "in notify:turn/started: + payload.*",
+      ],
+    },
+  );
+});

@@ -128,10 +128,12 @@ export function violations(contract, records, label) {
   return [...lines].sort();
 }
 
-// A kind's field paths, for reading a protocol change; recursion stops at a
-// type already on the path.
+// A kind's field paths, for reading a protocol change; `a.*` marks a value
+// that admits anything, so a field turning open is a change too. Recursion
+// stops at a type already on the path.
 function paths(types, ids, prefix = "", seen = new Set(), out = new Set()) {
   for (const id of ids) {
+    if (id === "*") out.add(prefix ? `${prefix}.*` : "*");
     if (id === "*" || seen.has(id)) continue;
     for (const [key, children] of Object.entries(types[id])) {
       const name = prefix ? `${prefix}.${key}` : key;

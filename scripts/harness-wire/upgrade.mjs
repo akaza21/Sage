@@ -76,12 +76,19 @@ async function main() {
         .filter((harness) => contracts(harness).length)
         .sort();
   let changed = false;
+  let failed = false;
+  // One harness failing still reports the others, and fails the run.
   for (const target of targets) {
-    const result = await upgrade(target, write);
-    for (const line of result.lines) console.log(line);
-    changed ||= result.changed;
+    try {
+      const result = await upgrade(target, write);
+      for (const line of result.lines) console.log(line);
+      changed ||= result.changed;
+    } catch (error) {
+      console.log(`${target}: check failed: ${error.message}`);
+      failed = true;
+    }
   }
-  if (changed && !write) process.exit(1);
+  if (failed || (changed && !write)) process.exit(1);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

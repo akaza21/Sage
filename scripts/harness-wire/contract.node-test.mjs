@@ -41,5 +41,6 @@ test("an upgrade reports added and removed kinds and fields", () => {
     "in removed keep_alive",
     "in system/init: - plugins.name",
     "in system/init: + is_backgrounded",
+    "in system/init: + plugins.*",
   ]);
 });
