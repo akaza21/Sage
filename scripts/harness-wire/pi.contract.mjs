@@ -3,13 +3,13 @@
 // TypeScript protocol definitions"; Pi publishes no JSON Schema for RPC).
 // Commands go in on stdin; responses, `AgentSessionEvent`s and extension UI
 // requests come out on stdout.
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import {
   Graph,
   declarations,
+  installed,
   literals,
   members,
   variants,
@@ -30,21 +30,7 @@ function split(api, graph, map, root, discriminators, prefix = "") {
 
 export async function contract(version, work) {
   const wanted = version.match(/\d+\.\d+\.\d+/)[0];
-  execFileSync(
-    "npm",
-    [
-      "install",
-      "--ignore-scripts",
-      "--omit=optional",
-      "--no-audit",
-      "--no-fund",
-      "--prefix",
-      work,
-      `${PI}@${wanted}`,
-    ],
-    { stdio: "ignore", shell: process.platform === "win32" },
-  );
-  const dir = path.join(work, "node_modules", PI);
+  const dir = installed(`${PI}@${wanted}`, work);
   const found = JSON.parse(
     fs.readFileSync(path.join(dir, "package.json"), "utf8"),
   ).version;
