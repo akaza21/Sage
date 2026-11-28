@@ -22,31 +22,15 @@ export function launch({ cwd, env }) {
   };
 }
 
-// Every scenario runs on an agent dir seeded with the sign-in alone, so no
-// extension, skill or setting of the capturing account is recorded.
+// The capture's sign-in: the owner's own agent dir for a signed-in run
+// (config-env.mjs).
 export const CONFIG = {
   env: "PI_CODING_AGENT_DIR",
-  from: [".pi", "agent"],
-  files: ["auth.json"],
+  extra: {},
 };
 
-export async function run(
-  scenario,
-  { cwd, env, emptyHome, configHome, image },
-) {
-  const scenarioEnv = { ...env, PI_CODING_AGENT_DIR: configHome };
-  if (scenario === "auth-fail") {
-    scenarioEnv.PI_CODING_AGENT_DIR = emptyHome;
-    for (const key of [
-      "ANTHROPIC_API_KEY",
-      "OPENAI_API_KEY",
-      "GEMINI_API_KEY",
-      "OPENROUTER_API_KEY",
-    ]) {
-      delete scenarioEnv[key];
-    }
-  }
-  const spec = launch({ cwd, env: scenarioEnv });
+export async function run(scenario, { cwd, env, image }) {
+  const spec = launch({ cwd, env });
   const wire = new Wire(spec);
   let next = 0;
   const command = (type, fields = {}, step) => {
