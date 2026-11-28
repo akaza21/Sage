@@ -25,7 +25,7 @@ use win_speech as engine;
 
 #[cfg(any(windows, target_os = "macos"))]
 const EVENT: &str = "voice-input";
-const MAX_TRANSCRIPT_CHARS: usize = 4096;
+pub(crate) const MAX_TRANSCRIPT_CHARS: usize = 4096;
 const MAX_MESSAGE_CHARS: usize = 240;
 #[cfg(not(any(windows, target_os = "macos")))]
 const UNSUPPORTED: &str = "Native dictation is available on Windows and macOS only.";
@@ -53,11 +53,17 @@ pub struct VoiceInputState;
 
 struct VoiceSlot<T> {
     active: Option<(String, T)>,
+    /// The last id stopped while it held no session: a start still waiting on
+    /// permission prompts. One id, so it stays bounded.
+    stopped: Option<String>,
 }
 
 impl<T> Default for VoiceSlot<T> {
     fn default() -> Self {
-        Self { active: None }
+        Self {
+            active: None,
+            stopped: None,
+        }
     }
 }
 
@@ -80,6 +86,56 @@ impl<T> VoiceSlot<T> {
 
     fn complete(&mut self, id: &str) -> bool {
         self.take_if(id).is_some()
+    }
+
+    fn stop(&mut self, id: &str) -> Option<T> {
+        let active = self.take_if(id);
+        if active.is_none() {
+            self.stopped = Some(id.to_owned());
+        }
+        active
+    }
+
+    fn is_stopped(&self, id: &str) -> bool {
+        self.stopped.as_deref() == Some(id)
+    }
+
+    /// False when this id was stopped before its start finished.
+    fn claim(&mut self, id: &str) -> bool {
+        if self.is_stopped(id) {
+            self.stopped = None;
+            return false;
+        }
+        true
+    }
+}
+
+/// Orders an engine's callbacks against shutdown: deliveries run one at a time,
+/// none run after `close`, and `close` waits for one in flight.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Default)]
+pub(crate) struct Gate(std::sync::Mutex<bool>);
+
+#[cfg(any(target_os = "macos", test))]
+impl Gate {
+    fn closed(&self) -> std::sync::MutexGuard<'_, bool> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Runs `deliver` unless closed; it returns true when the engine finished,
+    /// which closes the gate.
+    pub(crate) fn deliver(&self, deliver: impl FnOnce() -> bool) {
+        let mut closed = self.closed();
+        if !*closed && deliver() {
+            *closed = true;
+        }
+    }
+
+    /// Closes the gate; false when it was already closed.
+    pub(crate) fn close(&self) -> bool {
+        !std::mem::replace(&mut *self.closed(), true)
     }
 }
 
@@ -189,7 +245,13 @@ fn stop_inner(_app: &AppHandle, _id: &str, _cancel: bool) -> Result<(), String> 
 #[cfg(any(windows, target_os = "macos"))]
 fn start_inner(app: &AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<VoiceInputState>();
+    // Permission prompts can wait on the user, so they run outside the lock and
+    // stop asking once this id is stopped.
+    engine::authorize(&|| state.0.lock().is_ok_and(|slot| !slot.is_stopped(&id)))?;
     let mut guard = state.0.lock().map_err(|_| "Voice input is unavailable.")?;
+    if !guard.claim(&id) {
+        return Ok(());
+    }
     if let Some((previous_id, previous)) = guard.active.take() {
         let _ = engine::close(previous, true);
         ended(app, &previous_id);
@@ -203,7 +265,7 @@ fn start_inner(app: &AppHandle, id: String) -> Result<(), String> {
 fn stop_inner(app: &AppHandle, id: &str, cancel: bool) -> Result<(), String> {
     let state = app.state::<VoiceInputState>();
     let mut guard = state.0.lock().map_err(|_| "Voice input is unavailable.")?;
-    let Some(active) = guard.take_if(id) else {
+    let Some(active) = guard.stop(id) else {
         return Ok(());
     };
     let result = engine::close(active, cancel);

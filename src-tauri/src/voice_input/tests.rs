@@ -1,4 +1,6 @@
-use super::{MAX_MESSAGE_CHARS, MAX_TRANSCRIPT_CHARS, Signal, VoiceEvent, VoiceSlot, valid_id};
+use super::{
+    Gate, MAX_MESSAGE_CHARS, MAX_TRANSCRIPT_CHARS, Signal, VoiceEvent, VoiceSlot, valid_id,
+};
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -90,4 +92,81 @@ fn stop_and_completion_race_releases_only_the_matching_session() {
     drop(slot.take_if("first"));
     assert!(!slot.complete("first"));
     assert_eq!(closed.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_stop_during_the_permission_prompts_refuses_that_start_once() {
+    let mut slot = VoiceSlot::<CloseProbe>::default();
+    assert!(slot.stop("pending").is_none());
+    assert!(slot.is_stopped("pending"));
+    assert!(!slot.is_stopped("other"));
+    assert!(!slot.claim("pending"));
+    assert!(slot.claim("pending"));
+    assert!(slot.claim("other"));
+}
+
+#[test]
+fn stopping_a_live_session_releases_it_without_refusing_later_starts() {
+    let closed = Arc::new(AtomicUsize::new(0));
+    let mut slot = VoiceSlot::default();
+    slot.replace("live".into(), CloseProbe(closed.clone()));
+    drop(slot.stop("live"));
+    assert_eq!(closed.load(Ordering::SeqCst), 1);
+    assert!(!slot.is_stopped("live"));
+}
+
+#[test]
+fn gate_close_waits_for_an_in_flight_delivery_and_blocks_later_ones() {
+    use std::sync::{Barrier, mpsc};
+    let gate = Arc::new(Gate::default());
+    let entered = Arc::new(Barrier::new(2));
+    let (release, wait) = mpsc::channel::<()>();
+    let delivering = {
+        let (gate, entered) = (gate.clone(), entered.clone());
+        std::thread::spawn(move || {
+            gate.deliver(|| {
+                entered.wait();
+                wait.recv().unwrap();
+                false
+            })
+        })
+    };
+    entered.wait();
+    let (closed_tx, closed_rx) = mpsc::channel();
+    let closer = {
+        let gate = gate.clone();
+        std::thread::spawn(move || closed_tx.send(gate.close()).unwrap())
+    };
+    assert!(
+        closed_rx
+            .recv_timeout(std::time::Duration::from_millis(100))
+            .is_err(),
+        "close must wait for the delivery in flight"
+    );
+    release.send(()).unwrap();
+    delivering.join().unwrap();
+    closer.join().unwrap();
+    assert!(closed_rx.recv().unwrap());
+    let mut ran = false;
+    gate.deliver(|| {
+        ran = true;
+        false
+    });
+    assert!(!ran);
+}
+
+#[test]
+fn a_finished_delivery_closes_the_gate_so_shutdown_does_not_complete_twice() {
+    let gate = Gate::default();
+    let mut runs = 0;
+    gate.deliver(|| {
+        runs += 1;
+        true
+    });
+    gate.deliver(|| {
+        runs += 1;
+        false
+    });
+    assert_eq!(runs, 1);
+    assert!(!gate.close());
 }

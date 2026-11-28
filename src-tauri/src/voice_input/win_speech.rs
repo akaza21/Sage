@@ -64,6 +64,11 @@ impl Drop for Active {
     }
 }
 
+/// Windows asks for microphone access itself when the session starts.
+pub(super) fn authorize(_wanted: &dyn Fn() -> bool) -> Result<(), String> {
+    Ok(())
+}
+
 pub(super) fn open(sink: Sink) -> Result<Active, String> {
     let mut active = Active::new(SpeechRecognizer::new().map_err(|_| permission_error())?);
     let constraint = SpeechRecognitionTopicConstraint::Create(

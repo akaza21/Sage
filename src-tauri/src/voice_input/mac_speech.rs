@@ -5,11 +5,7 @@
 
 use std::{
     ptr::NonNull,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, mpsc},
     time::Duration,
 };
 
@@ -22,7 +18,7 @@ use objc2_speech::{
     SFSpeechRecognizer, SFSpeechRecognizerAuthorizationStatus,
 };
 
-use super::{Signal, Sink};
+use super::{Gate, MAX_TRANSCRIPT_CHARS, Signal, Sink};
 
 pub(super) const STOP_ERROR: &str = "macOS dictation could not stop.";
 const PROMPT_WAIT: Duration = Duration::from_secs(120);
@@ -44,7 +40,7 @@ pub(super) struct Active {
     request: Retained<SFSpeechAudioBufferRecognitionRequest>,
     task: Retained<SFSpeechRecognitionTask>,
     _recognizer: Retained<SFSpeechRecognizer>,
-    closed: Arc<AtomicBool>,
+    gate: Arc<Gate>,
     halted: bool,
 }
 
@@ -55,7 +51,7 @@ unsafe impl Send for Active {}
 
 impl Active {
     fn halt(&mut self, cancel: bool) {
-        self.closed.store(true, Ordering::Release);
+        self.gate.close();
         if std::mem::replace(&mut self.halted, true) {
             return;
         }
@@ -79,17 +75,26 @@ impl Drop for Active {
     }
 }
 
-pub(super) fn open(sink: Sink) -> Result<Active, String> {
+pub(super) fn authorize(wanted: &dyn Fn() -> bool) -> Result<(), String> {
     require_usage_strings()?;
     speech_authorized()?;
-    microphone_authorized()?;
+    if !wanted() {
+        return Err("Dictation was stopped.".into());
+    }
+    microphone_authorized()
+}
+
+pub(super) fn open(sink: Sink) -> Result<Active, String> {
     // SAFETY: Speech and AVFAudio calls on objects created here; the blocks are
     // retained by the framework for as long as it calls them.
     unsafe {
         let recognizer = SFSpeechRecognizer::init(SFSpeechRecognizer::alloc())
             .filter(|recognizer| recognizer.isAvailable())
             .ok_or(UNAVAILABLE)?;
-        recognizer.setQueue(&NSOperationQueue::new());
+        // A serial queue keeps partial and final results in order.
+        let queue = NSOperationQueue::new();
+        queue.setMaxConcurrentOperationCount(1);
+        recognizer.setQueue(&queue);
         let request = SFSpeechAudioBufferRecognitionRequest::new();
         request.setShouldReportPartialResults(true);
         if recognizer.supportsOnDeviceRecognition() {
@@ -105,15 +110,15 @@ pub(super) fn open(sink: Sink) -> Result<Active, String> {
         if format.sampleRate() <= 0.0 || format.channelCount() == 0 {
             return Err("No microphone is available.".into());
         }
-        let closed = Arc::new(AtomicBool::new(false));
+        let gate = Arc::new(Gate::default());
         let task = recognizer
-            .recognitionTaskWithRequest_resultHandler(&request, &result_handler(sink, &closed));
+            .recognitionTaskWithRequest_resultHandler(&request, &result_handler(sink, &gate));
         let mut active = Active {
             engine,
             request,
             task,
             _recognizer: recognizer,
-            closed,
+            gate,
             halted: false,
         };
         let tap_request = active.request.clone();
@@ -142,41 +147,44 @@ pub(super) fn close(mut active: Active, cancel: bool) -> Result<(), ()> {
     Ok(())
 }
 
+/// Streams the cumulative transcript as partials and the last result as final.
+/// A session ends at the transcript cap, so its native result stays bounded.
 fn result_handler(
     sink: Sink,
-    closed: &Arc<AtomicBool>,
+    gate: &Arc<Gate>,
 ) -> RcBlock<dyn Fn(*mut SFSpeechRecognitionResult, *mut NSError)> {
-    let closed = closed.clone();
+    let gate = gate.clone();
     RcBlock::new(
         move |result: *mut SFSpeechRecognitionResult, error: *mut NSError| {
-            if closed.load(Ordering::Acquire) {
-                return;
-            }
             // SAFETY: the framework passes valid or null pointers for this call.
             let (result, error) = unsafe { (result.as_ref(), error.as_ref()) };
-            let mut done = error.is_some();
-            if let Some(result) = result {
-                // SAFETY: reads on a live result object.
-                let (text, last) = unsafe {
-                    (
-                        result.bestTranscription().formattedString().to_string(),
-                        result.isFinal(),
-                    )
-                };
-                sink(if last {
-                    Signal::Final(text)
-                } else {
-                    Signal::Partial(text)
-                });
-                done |= last;
-            }
-            if !done || closed.swap(true, Ordering::AcqRel) {
-                return;
-            }
-            if let Some(error) = error {
-                sink(Signal::Error(error.localizedDescription().to_string()));
-            }
-            sink(Signal::Completed);
+            gate.deliver(|| {
+                let mut done = error.is_some();
+                if let Some(result) = result {
+                    // SAFETY: reads on a live result object.
+                    let (spoken, last) = unsafe {
+                        (
+                            result.bestTranscription().formattedString(),
+                            result.isFinal(),
+                        )
+                    };
+                    let full = spoken.length() >= MAX_TRANSCRIPT_CHARS;
+                    let text = spoken.to_string();
+                    done |= last || full;
+                    sink(if done {
+                        Signal::Final(text)
+                    } else {
+                        Signal::Partial(text)
+                    });
+                }
+                if done {
+                    if let Some(error) = error {
+                        sink(Signal::Error(error.localizedDescription().to_string()));
+                    }
+                    sink(Signal::Completed);
+                }
+                done
+            });
         },
     )
 }
