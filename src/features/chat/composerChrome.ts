@@ -92,7 +92,7 @@ export function useComposerDictation(
       });
       recording.current = current;
       const active = await current.start(
-        nativeSupported ? null : (browserRecognition() ?? null),
+        nativeSupported ? null : browserRecognition(),
       );
       if (recording.current === current) setListening(active);
     } catch (cause) {
