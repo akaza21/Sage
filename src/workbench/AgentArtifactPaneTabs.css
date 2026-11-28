@@ -1,10 +1,10 @@
 .workbench--agent .agent-artifact-surface {
   --agent-pane-summary-height: 44px;
-  --agent-pane-tab-height: var(--control-height-compact);
-  --agent-pane-tab-min-width: 96px;
+  --agent-pane-tab-height: 28px;
+  --agent-pane-tab-min-width: 0;
   --agent-pane-tab-max-width: 214px;
   --agent-pane-tab-close-width: 20px;
-  --radius-agent-pane-tab: var(--radius-sm);
+  --radius-agent-pane-tab: var(--radius-pill);
   --radius-agent-pane-summary-end: 0 var(--radius-pill) var(--radius-pill) 0;
   --agent-pane-summary-fill: var(--color-panel-raised);
   --agent-pane-additions: var(--rail-approval-text);
@@ -13,7 +13,11 @@
 
 .workbench--agent .agent-artifact-pane .tab-strip {
   align-items: center;
-  background: var(--agent-shell-center);
+  background: transparent;
+}
+.workbench--agent .agent-artifact-pane .tab-strip__scroll {
+  align-items: center;
+  gap: 2px;
 }
 .workbench--agent .agent-artifact-pane .tab {
   overflow: clip;
@@ -21,14 +25,24 @@
   min-width: var(--agent-pane-tab-min-width);
   max-width: var(--agent-pane-tab-max-width);
   flex: 0 1 auto;
-  border: var(--border-width) solid transparent;
+  border: 0;
   border-radius: var(--radius-agent-pane-tab);
+  color: var(--color-text-secondary);
   background: transparent;
+  transition: background-color var(--motion-duration-fast)
+    var(--motion-ease-standard);
+}
+.workbench--agent .agent-artifact-pane .tab:hover {
+  color: var(--color-text-primary);
 }
 .workbench--agent .agent-artifact-pane .tab__activate {
   justify-content: flex-start;
-  gap: var(--space-1);
-  padding: 0 var(--space-1) 0 var(--space-2);
+  gap: 6px;
+  padding: 0 10px 0 8px;
+  color: inherit;
+}
+.workbench--agent .agent-artifact-pane .tab:is(:hover, :focus-within) .tab__activate {
+  padding-inline-end: 0;
 }
 .workbench--agent .agent-artifact-pane .tab button:focus-visible {
   outline-offset: calc(-1 * var(--focus-ring-offset));
@@ -38,16 +52,15 @@
   width: var(--agent-pane-tab-close-width);
   min-width: var(--agent-pane-tab-close-width);
 }
-.workbench--agent
-  .agent-artifact-pane
-  .tab:is(:hover, :focus-within, .tab--active)
-  .tab__close {
+.workbench--agent .agent-artifact-pane .tab:is(:hover, :focus-within) .tab__close {
   display: grid;
+  border-radius: var(--radius-pill);
 }
 .workbench--agent .agent-artifact-pane .tab--active {
   min-width: var(--agent-pane-tab-min-width);
-  background: var(--color-plane-raised);
-  border: var(--border-width) solid var(--agent-shell-tab-border);
+  color: var(--color-text-primary);
+  background: var(--color-fill-soft);
+  border: 0;
   box-shadow: none;
 }
 .agent-artifact-pane .tab[data-resource-kind="changes"] {
@@ -116,4 +129,11 @@
   border-bottom-color: var(--agent-shell-divider);
   background: var(--agent-shell-center);
   font-size: var(--font-size-sm);
+}
+.workbench--agent .agent-artifact-pane .tab__dir {
+  display: none;
+}
+.agent-artifact-pane .tab[data-resource-kind="changes"] {
+  width: auto;
+  flex-basis: auto;
 }

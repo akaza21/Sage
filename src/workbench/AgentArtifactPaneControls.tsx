@@ -1,9 +1,6 @@
 import { Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
-import { isTauriRuntime } from "../ports/nativeInvoke";
-import { useAgentChangesState } from "./agentChangesState";
-import type { ComponentProps } from "react";
 import { create } from "zustand";
 
 const useBrowserPaneError = create(() => ({
@@ -38,61 +35,44 @@ export function AgentBrowserPaneStatus() {
   return message ? <p role="status">{message}</p> : null;
 }
 
-export function AgentBrowserPaneControls(
-  props: Omit<
-    ComponentProps<typeof AgentArtifactPaneControls>,
-    "disabled" | "onNewTab" | "newTabReason"
-  >,
-) {
-  const disabled = useWorkbenchStore(
-    (state) =>
-      !state.project ||
-      state.projectTransitioning ||
-      !browserTabCapacity(state.tabs),
-  );
-  const message = useBrowserMessage();
-  return (
-    <AgentArtifactPaneControls
-      {...props}
-      disabled={disabled || !isTauriRuntime()}
-      newTabReason={message ?? undefined}
-      onNewTab={() => {
-        useAgentChangesState.getState().select(false);
-        const projectId = useWorkbenchStore.getState().project?.id;
-        useBrowserPaneError.setState({ error: null });
-        void useWorkbenchStore
-          .getState()
-          .openBrowser()
-          .then((message) => {
-            if (message && projectId)
-              useBrowserPaneError.setState({ error: { projectId, message } });
-          });
-      }}
-    />
-  );
+/** Opens a browser tab in the pane; a refusal shows in the pane status. */
+export function openPaneBrowser(url?: string) {
+  const projectId = useWorkbenchStore.getState().project?.id;
+  useBrowserPaneError.setState({ error: null });
+  void useWorkbenchStore
+    .getState()
+    .openBrowser(url)
+    .then((message) => {
+      if (message && projectId)
+        useBrowserPaneError.setState({ error: { projectId, message } });
+    });
 }
+
 export function AgentArtifactPaneControls({
   maximized,
   onMaximizedChange,
   disabled,
-  newTabReason,
+  launcherOpen = false,
   onNewTab,
   onCollapse,
 }: {
   maximized: boolean;
   onMaximizedChange: (maximized: boolean) => void;
   disabled: boolean;
-  newTabReason?: string;
+  launcherOpen?: boolean;
   onNewTab: () => void;
   onCollapse: () => void;
 }) {
   return (
     <>
       <button
-        className="agent-artifact-pane__collapse agent-artifact-pane__new-tab"
+        className={`agent-artifact-pane__collapse agent-artifact-pane__new-tab${
+          launcherOpen ? " agent-artifact-pane__new-tab--open" : ""
+        }`}
         type="button"
-        aria-label="New browser tab"
-        title={newTabReason ?? "New browser tab"}
+        aria-label="New tab"
+        aria-pressed={launcherOpen}
+        title="New tab"
         disabled={disabled}
         onClick={onNewTab}
       >

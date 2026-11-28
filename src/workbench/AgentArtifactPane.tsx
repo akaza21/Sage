@@ -1,8 +1,7 @@
 import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
-import { useStore } from "zustand";
+import type * as OverviewChunk from "./AgentResourcesPopover";
 import type { PreviewTargetRef } from "../domain/previewProjection";
 
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
   agentArtifactFollowRecordFor,
@@ -10,17 +9,9 @@ import {
   useAgentArtifactFollowStore,
   type AgentArtifactTarget,
 } from "../app/agentArtifactFollowStore";
-import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import {
-  latestSubagentForPage,
-  ownerFromFocusedPage,
-  subagentPaneForPage,
-  useSubagentPaneStore,
-  validFocusedSubagentPage,
-} from "../app/subagentPaneStore";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import { orderedTabs } from "../app/tabState";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
 import { RetainedActivity } from "../ui/RetainedActivity";
 import { useRetainedElement } from "../ui/useRetainedElement";
@@ -31,9 +22,10 @@ import {
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
-  AgentBrowserPaneControls,
+  AgentArtifactPaneControls,
   AgentBrowserPaneStatus,
 } from "./AgentArtifactPaneControls";
+import { showAgentPaneLauncher, useAgentPaneViewsFor } from "./agentPaneViews";
 import { lazyParts } from "../features/chat/lazyParts";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
@@ -51,6 +43,7 @@ import {
   useSelectOpenedBrowserTab,
 } from "./useAgentArtifactFollowLifecycle";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
+import { useFocusedArtifactPage } from "./useFocusedArtifactPage";
 import { useAgentChangesPane, useChangesOnExpand } from "./useAgentChangesPane";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
@@ -60,6 +53,10 @@ const SubagentSurface = lazy(() =>
   })),
 );
 const TabsPart = lazyParts(() => import("./AgentArtifactTabStrip"));
+// The launcher and Ask pill share the Overview card chunk.
+const OverviewPart = lazyParts<typeof OverviewChunk>(
+  () => import("./AgentResourcesPopover"),
+);
 const AgentArtifactHeader = lazy(() =>
   import("./AgentArtifactHeader").then((module) => ({
     default: module.AgentArtifactHeader,
@@ -116,48 +113,27 @@ export function AgentArtifactPane({
     triggerRef: edgeTriggerRef,
     onExpandedChange,
   });
-  const emptyTitleId = useId();
   const paneId = useId();
   const admissions = useAgentArtifactAdmissionStore(
     (state) => state.admissions,
   );
   const followRecords = useAgentArtifactFollowStore((state) => state.records);
-  const subagentOpen = useSubagentPaneStore((state) => state.open);
-  const subagentSelectedState = useSubagentPaneStore((state) => state.selected);
-  const project = useWorkbenchStore((state) => state.project);
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const nativeTransitionEpoch = useWorkbenchStore(
-    (state) => state.nativeTransitionEpoch,
-  );
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
-  const focusedChatId = usePinnedAgentChatOwner();
-  const focusedProjectionStore = acpProjectionStoreFor(focusedChatId);
-  const focusedPage = useStore(focusedProjectionStore, (state) => state.page);
-  const focusedScope = useStore(focusedProjectionStore, (state) => state.scope);
-  const focusedPageValid = validFocusedSubagentPage(
+  const {
+    subagentOpen,
+    subagentSelectedState,
+    project,
+    projectGeneration,
+    nativeTransitionEpoch,
+    projectTransitioning,
+    focusedChatId,
     focusedPage,
     focusedScope,
-    project?.id ?? null,
-    focusedChatId,
-    projectGeneration,
-    projectTransitioning,
-  );
-  const focusedOwner = useMemo<AgentArtifactOwner | null>(
-    () => ownerFromFocusedPage(focusedPage, focusedPageValid),
-    [focusedPage, focusedPageValid],
-  );
-  const selectedSubagent = subagentPaneForPage(
-    subagentOpen,
-    focusedPageValid ? focusedPage : null,
-  );
-  const subagentTarget =
-    selectedSubagent ??
-    latestSubagentForPage(focusedPageValid ? focusedPage : null);
-  const subagentAvailable = subagentTarget !== null;
+    focusedPageValid,
+    focusedOwner,
+    selectedSubagent,
+    subagentTarget,
+    subagentAvailable,
+  } = useFocusedArtifactPage();
   const changes = useAgentChangesPane(
     focusedOwner,
     projectGeneration,
@@ -167,8 +143,15 @@ export function AgentArtifactPane({
     focusedChatId,
     focusedPageValid && focusedPage?.currentSessionId === null,
   );
+  const paneViews = useAgentPaneViewsFor(
+    focusedChatId,
+    expanded,
+    onExpandedChange,
+  );
+  const viewSelected = paneViews.selected !== null || paneViews.launcher;
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;
+  const otherSelected = changes.selected || subagentSelected || viewSelected;
   useSubagentPaneExpansion({
     expanded,
     selected: subagentSelected,
@@ -218,10 +201,7 @@ export function AgentArtifactPane({
         sameAgentArtifactTarget(target, record.selected),
       ) ?? null)
     : defaultTarget;
-  const previewSelected =
-    !changes.selected &&
-    !subagentSelected &&
-    selectedTarget?.kind === "preview";
+  const previewSelected = !otherSelected && selectedTarget?.kind === "preview";
   const previewControllerOwner = agentPreviewControllerOwner({
     browseOwner,
     focusedOwner,
@@ -241,10 +221,9 @@ export function AgentArtifactPane({
       container={canvasNode}
     />
   );
-  const activeArtifact =
-    changes.selected || subagentSelected
-      ? null
-      : activeArtifactForTarget(artifacts, selectedTarget);
+  const activeArtifact = otherSelected
+    ? null
+    : activeArtifactForTarget(artifacts, selectedTarget);
   const activeArtifactAdmitted = Boolean(
     activeArtifact &&
     agentArtifactAdmitted(admissions, focusedOwner, activeArtifact.id),
@@ -278,7 +257,11 @@ export function AgentArtifactPane({
   });
 
   const hasResources =
-    changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
+    changes.open ||
+    artifacts.length > 0 ||
+    previewOpen ||
+    subagentAvailable ||
+    paneViews.views.length > 0;
   useChangesOnExpand(expanded, !hasResources, changes.owner, projectGeneration);
   useExpandOnNewArtifact({
     artifacts,
@@ -325,11 +308,11 @@ export function AgentArtifactPane({
           <header className="agent-artifact-pane__header">
             {hasResources ? (
               <TabsPart
+                views={paneViews.views}
+                selectedViewId={paneViews.selected?.id ?? null}
                 part="AgentArtifactTabStrip"
                 artifacts={artifacts}
-                selectedTarget={
-                  changes.selected || subagentSelected ? null : selectedTarget
-                }
+                selectedTarget={otherSelected ? null : selectedTarget}
                 changesTab={changes.tab}
                 focusedOwner={focusedOwner}
                 focusedPage={focusedPage}
@@ -347,10 +330,13 @@ export function AgentArtifactPane({
                 activateTab={activateTab}
                 closeTab={closeTab}
               />
-            ) : (
-              <strong>Files, changes, and preview</strong>
-            )}
-            <AgentBrowserPaneControls
+            ) : null}
+            <AgentArtifactPaneControls
+              disabled={!focusedChatId}
+              launcherOpen={paneViews.launcher}
+              onNewTab={() => {
+                if (focusedChatId) showAgentPaneLauncher(focusedChatId);
+              }}
               maximized={maximized}
               onMaximizedChange={setMaximized}
               onCollapse={() => {
@@ -391,13 +377,17 @@ export function AgentArtifactPane({
                 ? renderRegisteredCanvas("browser", activeArtifact)
                 : renderFileOrDiffCanvas(activeArtifact, PANE_CANVAS)
               : null}
-            {!changes.selected &&
-            !subagentSelected &&
-            !previewSelected &&
-            !activeArtifact ? (
-              <TabsPart part="AgentArtifactEmptyState" titleId={emptyTitleId} />
+            {paneViews.selected ? (
+              <TabsPart part="AgentPaneViewCanvas" view={paneViews.selected} />
+            ) : null}
+            {paneViews.launcher ||
+            (!otherSelected && !previewSelected && !activeArtifact) ? (
+              <OverviewPart part="AgentPaneLauncher" chatId={focusedChatId} />
             ) : null}
           </div>
+          {maximized && focusedChatId ? (
+            <OverviewPart part="AgentPaneAskPill" chatId={focusedChatId} />
+          ) : null}
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
         </aside>
       </RetainedActivity>

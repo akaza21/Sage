@@ -1,4 +1,13 @@
-import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
+import {
+  Bot,
+  Eye,
+  GitCompareArrows,
+  Globe2,
+  Pin,
+  TerminalSquare,
+  Workflow,
+  X,
+} from "../ui/leanIcons";
 
 import { useRef, type ReactNode } from "react";
 import { useResourceTabStrip } from "./useResourceTabStrip";
@@ -19,9 +28,20 @@ import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
+import {
+  closeAgentPaneView,
+  selectAgentPaneView,
+  type AgentPaneView,
+} from "./agentPaneViews";
 import "./AgentArtifactPaneTabs.css";
 
-export { AgentArtifactEmptyState } from "./AgentArtifactPaneEmptyState";
+export { AgentPaneViewCanvas } from "./AgentPaneViewCanvas";
+
+const VIEW_ICON = {
+  diagram: Workflow,
+  subagentTranscript: Bot,
+  backgroundTask: TerminalSquare,
+} as const;
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
@@ -38,6 +58,8 @@ type AgentArtifactTabStripProps = {
   activateTab: (tabId: string) => Promise<void> | void;
   closeTab: (tabId: string) => void;
   changesTab?: ReactNode;
+  views?: readonly AgentPaneView[];
+  selectedViewId?: string | null;
 };
 
 export function AgentArtifactTabStrip({
@@ -55,6 +77,8 @@ export function AgentArtifactTabStrip({
   activateTab,
   closeTab,
   changesTab,
+  views = [],
+  selectedViewId = null,
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const onTabKeyDown = useResourceTabStrip(scrollRef);
@@ -132,6 +156,7 @@ export function AgentArtifactTabStrip({
                   onClick={() => {
                     useAgentChangesState.getState().select(false);
                     useSubagentPaneStore.getState().select(false);
+                    selectAgentPaneView(null);
                     if (focusedOwner) {
                       useAgentArtifactFollowStore.getState().pin(focusedOwner, {
                         kind: "tab",
@@ -225,6 +250,7 @@ export function AgentArtifactTabStrip({
                 onClick={() => {
                   useAgentChangesState.getState().select(false);
                   useSubagentPaneStore.getState().select(false);
+                  selectAgentPaneView(null);
                   useAgentArtifactFollowStore
                     .getState()
                     .pin(focusedOwner, { kind: "preview" });
@@ -275,6 +301,40 @@ export function AgentArtifactTabStrip({
               </button>
             </div>
           ) : null}
+          {views.map((view) => {
+            const Icon = VIEW_ICON[view.kind];
+            const selected = view.id === selectedViewId;
+            return (
+              <div
+                className={`tab ${selected ? "tab--active" : ""}`}
+                key={view.id}
+                role="presentation"
+                data-resource-kind={view.kind}
+              >
+                <button
+                  className="tab__activate"
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  title={view.title}
+                  onClick={() => selectAgentPaneView(view.id)}
+                >
+                  <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <span className="tab__path">
+                    <span className="tab__basename">{view.title}</span>
+                  </span>
+                </button>
+                <button
+                  className="tab__close"
+                  type="button"
+                  aria-label={`Close ${view.title}`}
+                  onClick={() => closeAgentPaneView(view.id)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </nav>
       {focusedOwner && record && availableTargets.length > 1 ? (
@@ -298,6 +358,7 @@ export function AgentArtifactTabStrip({
           title={followTitle}
           onClick={() => {
             useAgentChangesState.getState().select(false);
+            selectAgentPaneView(null);
             useAgentArtifactFollowStore.getState().followLatest(focusedOwner);
             requestAnimationFrame(() => {
               scrollRef.current
