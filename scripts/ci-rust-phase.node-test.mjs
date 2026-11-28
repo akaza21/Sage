@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { changeScope } from "./change-scope.mjs";
 import {
   declaredCargoFeatures,
   lintFeatures,
@@ -13,17 +12,29 @@ import {
   testFeatures,
 } from "./cargo-features.mjs";
 
-const workflowPath = path.join(process.cwd(), ".github/workflows/ci.yml");
+const workflowFile = (name) =>
+  readFile(path.join(process.cwd(), ".github", name), "utf8");
+const ciWorkflow = () => workflowFile("workflows/ci.yml");
+const rustWorkflow = () => workflowFile("workflows/rust.yml");
+const afterMergeWorkflow = () => workflowFile("workflows/main.yml");
+const packagesWorkflow = () => workflowFile("workflows/desktop-packages.yml");
 
 function jobBlock(workflow, jobId) {
   const marker = `  ${jobId}:\n`;
   const start = workflow.indexOf(marker);
-  assert.notEqual(start, -1, `CI must define the ${jobId} job`);
+  assert.notEqual(start, -1, `the workflow must define the ${jobId} job`);
   const remainder = workflow.slice(start + marker.length);
   const nextJob = remainder.search(/^ {2}[a-z][a-z0-9-]*:\n/m);
   const end =
     nextJob === -1 ? workflow.length : start + marker.length + nextJob;
   return workflow.slice(start, end);
+}
+
+function jobIds(workflow) {
+  const jobs = workflow.slice(workflow.indexOf("\njobs:\n"));
+  return [...jobs.matchAll(/^ {2}([a-z][a-z0-9-]*):\n/gm)].map(
+    (match) => match[1],
+  );
 }
 
 const formatCommand = "cargo fmt --all -- --check";
@@ -49,7 +60,7 @@ const bridgeTestCommand =
   "cargo test -p sage --features browser-bridge --lib dev_bridge::";
 
 test("Rust CI runs the supported feature phases in strict job order", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
+  const workflow = await rustWorkflow();
   const cargoCommands = (job) =>
     jobBlock(workflow, job)
       .split("\n")
@@ -76,19 +87,19 @@ test("Rust CI runs the supported feature phases in strict job order", async () =
 });
 
 test("Rust CI derives requested runner features from cargo-features.mjs", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
+  const workflow = await rustWorkflow();
   for (const job of rustJobs) {
     assert.match(
       jobBlock(workflow, job),
-      /include: \$\{\{ fromJSON\(needs\.plan\.outputs\.rust-matrix\) \}\}/,
+      /include: \$\{\{ fromJSON\(needs\.features\.outputs\.matrix\) \}\}/,
     );
   }
-  const plan = jobBlock(workflow, "plan");
+  const features = jobBlock(workflow, "features");
   assert.match(
-    plan,
+    features,
     /JSON\.parse\(process\.argv\[1\]\)\.map\(runnerFeatures\)/,
   );
-  assert.match(plan, /rust-matrix=\$\(node --input-type=module/);
+  assert.match(features, /matrix=\$\(node --input-type=module/);
   for (const [os, platform] of Object.entries(runnerPlatforms)) {
     assert.deepEqual(runnerFeatures(os), {
       os,
@@ -102,6 +113,20 @@ test("Rust CI derives requested runner features from cargo-features.mjs", async 
   );
 });
 
+test("pull requests run Rust on Linux and after merge on Windows and macOS", async () => {
+  const runners = (block) => {
+    assert.match(block, /uses: \.\/\.github\/workflows\/rust\.yml/);
+    return JSON.parse(block.match(/runners: '(\[[^']*\])'/)[1]);
+  };
+  assert.deepEqual(runners(jobBlock(await ciWorkflow(), "rust")), [
+    "ubuntu-latest",
+  ]);
+  assert.deepEqual(runners(jobBlock(await afterMergeWorkflow(), "rust")), [
+    "windows-latest",
+    "macos-latest",
+  ]);
+});
+
 test("Clippy covers every declared Cargo feature on some runner", async () => {
   const declared = declaredCargoFeatures();
   for (const feature of Object.keys(platformFeatures)) {
@@ -112,7 +137,7 @@ test("Clippy covers every declared Cargo feature on some runner", async () => {
       lintFeatures(platform),
     ),
   );
-  const workflow = await readFile(workflowPath, "utf8");
+  const workflow = await rustWorkflow();
   for (const feature of isolatedDebugFeatures) {
     assert.ok(
       workflow.includes(
@@ -143,8 +168,8 @@ test("Cargo feature parsing reads only the [features] table", () => {
   assert.deepEqual(testFeatures("linux", ["cdp-lane", "x"]), ["x"]);
 });
 
-test("CI keeps hosted-runner spend bounded", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
+test("pull request CI stays on Linux with bounded jobs", async () => {
+  const workflow = await ciWorkflow();
 
   assert.match(
     workflow,
@@ -152,8 +177,7 @@ test("CI keeps hosted-runner spend bounded", async () => {
     "a new push cancels the run in flight for the same branch",
   );
   // A push to main has a group of its own run, so no later push (even of the
-  // same commit) or requested run on main cancels or replaces it before it
-  // saves caches.
+  // same commit) cancels or replaces it before it saves caches.
   const group = workflow.match(/^ {2}group: (.+)$/m)[1];
   assert.ok(
     group.includes(
@@ -166,95 +190,145 @@ test("CI keeps hosted-runner spend bounded", async () => {
     /^ {2}push:\n {4}branches:\n {6}- main$/m,
     "push runs are limited to main",
   );
+  // The one requested entry point is the after-merge workflow.
+  assert.doesNotMatch(workflow, /workflow_dispatch/);
+  assert.doesNotMatch(workflow, /windows-latest|macos-latest/);
 
-  const jobIds = [
-    ...workflow.matchAll(/^ {2}([a-z][a-z0-9-]*):\n {4}name:/gm),
-  ].map((match) => match[1]);
-  assert.ok(jobIds.length > 0, "CI must define jobs");
-  for (const jobId of jobIds) {
-    assert.match(
-      jobBlock(workflow, jobId),
-      /^ {4}timeout-minutes: \d+$/m,
-      `${jobId} must set timeout-minutes`,
-    );
-  }
-
-  // Windows and macOS run only when requested through workflow_dispatch.
-  const windowsBudget = jobBlock(workflow, "windows-budget");
-  assert.match(windowsBudget, /if: needs\.plan\.outputs\.windows == 'true'/);
-  const workflowOutsideWindowsBudget = workflow.replace(windowsBudget, "");
-  for (const line of workflowOutsideWindowsBudget.split("\n")) {
-    if (/windows-latest|macos-latest/.test(line)) {
+  // Every job on a runner has a deadline; a job that calls a workflow takes
+  // the called jobs' deadlines.
+  for (const file of [
+    "ci.yml",
+    "rust.yml",
+    "main.yml",
+    "desktop-packages.yml",
+  ]) {
+    const text = await workflowFile(`workflows/${file}`);
+    for (const jobId of jobIds(text)) {
+      const block = jobBlock(text, jobId);
+      if (/^ {4}uses: /m.test(block)) continue;
       assert.match(
-        line,
-        /rust_os\+=/,
-        `a Windows or macOS runner may only be added on request: ${line.trim()}`,
+        block,
+        /^ {4}timeout-minutes: \d+$/m,
+        `${file} ${jobId} must set timeout-minutes`,
       );
     }
   }
-  assert.match(jobBlock(workflow, "plan"), /case "\$\{PLATFORMS:-linux\}" in/);
 });
 
-test("CI plans Rust from both sides of every changed path", async () => {
-  const plan = jobBlock(await readFile(workflowPath, "utf8"), "plan");
+test("only Linux runs on main save Rust caches", async () => {
+  const setup = await workflowFile("actions/rust-setup/action.yml");
   assert.match(
-    plan,
-    /import \{ changeScope \} from "\.\/scripts\/change-scope\.mjs";/,
+    setup,
+    /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && runner\.os == 'Linux' \}\}/,
   );
-  const needsRust = (files) => changeScope(files).rust;
-
-  // Each changed-file listing emits a rename's old path as well as its new one.
-  assert.match(
-    plan,
-    /^ {10}names='\.filename, \(\.previous_filename \/\/ empty\)'$/m,
-  );
-  assert.match(
-    plan,
-    /pulls\/\$PR_NUMBER\/files" \\\n\s*--jq "\.\[\] \| \$names"/,
-  );
-  assert.match(
-    plan,
-    /compare\/\$BEFORE\.\.\.\$AFTER" \\\n\s*--jq "\.files\[\] \| \$names"/,
-  );
-
-  const renamedOutOfRust = {
-    filename: "src/app/moved.ts",
-    previous_filename: "src-tauri/src/moved.rs",
-  };
-  const listed = [
-    renamedOutOfRust.filename,
-    renamedOutOfRust.previous_filename,
-  ];
-  assert.ok(needsRust(listed));
-
-  for (const file of [
-    "src-tauri/src/lib.rs",
-    "testdata/acp/codex/config-v1.toml",
-    "tests/fixtures/harness-traces/claude-code/smoke/frames.jsonl",
-    "src/features/chat/acp/rendererRecreationPacket.ts",
-    "rust-toolchain.toml",
-    "scripts/cargo-features.mjs",
-    "scripts/change-scope.mjs",
-    ".github/workflows/ci.yml",
-    ".github/actions/rust-setup/action.yml",
-  ]) {
-    assert.ok(needsRust([file]), `${file} must run Rust`);
-  }
-  for (const file of ["README.md", "src/app/App.tsx", "package.json"]) {
-    assert.ok(!needsRust([file]), `${file} alone must not run Rust`);
-  }
+  assert.doesNotMatch(await packagesWorkflow(), /rust-cache/);
 });
 
 test("draft pull requests and schedules start only the security job", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
+  const workflow = await ciWorkflow();
   const notScheduled = "github.event_name != 'schedule'";
   const notDraft =
     "github.event_name != 'pull_request' || !github.event.pull_request.draft";
   assert.doesNotMatch(jobBlock(workflow, "security"), /^ {4}if:/m);
-  assert.ok(
-    jobBlock(workflow, "plan").includes(`if: ${notScheduled} && (${notDraft})`),
-  );
+  for (const job of ["frontend", "vitest", "rust"]) {
+    assert.ok(
+      jobBlock(workflow, job).includes(`if: ${notScheduled} && (${notDraft})`),
+      job,
+    );
+  }
   const mergeGate = jobBlock(workflow, "merge-gate");
   assert.ok(mergeGate.includes(`always() && ${notScheduled} &&`));
   assert.ok(mergeGate.includes(`(${notDraft})`));
+});
+
+test("every pull request runs every lane, and the merge gate requires them all", async () => {
+  const workflow = await ciWorkflow();
+  const gate = jobBlock(workflow, "merge-gate");
+  const needs = gate
+    .match(/^ {4}needs:\n((?: {6}- .+\n)+)/m)[1]
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.trim().slice(2));
+  assert.deepEqual(
+    needs,
+    jobIds(workflow).filter((id) => id !== "merge-gate"),
+  );
+  for (const line of [
+    'require "Security" "$SECURITY"',
+    'require "Frontend and policy" "$FRONTEND"',
+    'require "Vitest" "$VITEST"',
+    'require "Rust" "$RUST"',
+  ]) {
+    assert.ok(gate.includes(line), line);
+  }
+  // No lane is planned away: a lane runs unless the run is a draft or a
+  // schedule, and the frontend job runs every step of `npm run check` but
+  // Vitest.
+  assert.doesNotMatch(workflow, /needs.plan|outputs.(rust|vitest|bundle)/);
+  assert.doesNotMatch(jobBlock(workflow, "frontend"), /^ {6}- if:|^ {8}if:/m);
+});
+
+test("after merge runs on main and nightly, and no push cancels another", async () => {
+  const workflow = await afterMergeWorkflow();
+  assert.match(workflow, /^ {2}push:\n {4}branches:\n {6}- main$/m);
+  assert.match(workflow, /^ {2}schedule:\n {4}- cron: "[^"]+"$/m);
+  assert.match(workflow, /^ {2}workflow_dispatch:$/m);
+  assert.match(
+    workflow,
+    /^ {2}group: after-merge-\$\{\{ github\.event_name == 'workflow_dispatch' && github\.ref \|\| github\.run_id \}\}$/m,
+    "pushes and nightly runs each get their own group",
+  );
+
+  // Packages build nightly and on request only; every push runs the rest.
+  const packages = jobBlock(workflow, "packages");
+  assert.match(
+    packages,
+    /uses: \.\/\.github\/workflows\/desktop-packages\.yml/,
+  );
+  assert.match(
+    packages,
+    /^ {4}if: github\.event_name == 'schedule' \|\| github\.event_name == 'workflow_dispatch'$/m,
+  );
+  for (const job of ["rust", "windows-budget"]) {
+    assert.doesNotMatch(jobBlock(workflow, job), /^ {4}if:/m, job);
+  }
+  assert.match(
+    jobBlock(workflow, "windows-budget"),
+    /runs-on: windows-latest[\s\S]*run: npm run test:budgets:windows/,
+  );
+  // Called workflows take their trigger from After merge alone.
+  for (const called of [await packagesWorkflow(), await rustWorkflow()]) {
+    assert.match(called, /^on:\n {2}workflow_call:/m);
+    assert.doesNotMatch(called, /^concurrency:/m);
+  }
+});
+
+test("after merge reports every other job through one issue each", async () => {
+  const workflow = await afterMergeWorkflow();
+  const report = jobBlock(workflow, "report");
+  const needs = report
+    .match(/^ {4}needs:\n((?: {6}- .+\n)+)/m)[1]
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.trim().slice(2));
+  assert.deepEqual(
+    needs,
+    jobIds(workflow).filter((id) => id !== "report"),
+  );
+  assert.match(
+    report,
+    /if: \$\{\{ !cancelled\(\) && github\.event_name != 'workflow_dispatch' \}\}/,
+  );
+  assert.match(report, /^ {6}issues: write$/m);
+  assert.match(report, /^ {6}actions: read$/m);
+  assert.match(report, /REPORTER_NAME: Report failures/);
+  assert.match(report, /^ {4}name: Report failures$/m);
+  assert.match(report, /run: node scripts\/ci-failure-issues\.mjs/);
+  // Reporters never overlap or cancel each other.
+  assert.match(
+    report,
+    /^ {4}concurrency:\n {6}group: after-merge-report\n {6}cancel-in-progress: false$/m,
+  );
+  // The workflow writes issues only from this job.
+  assert.equal(workflow.match(/issues: write/g).length, 1);
 });

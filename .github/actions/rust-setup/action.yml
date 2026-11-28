@@ -29,8 +29,11 @@ runs:
       with:
         workspaces: . -> target
         # Branches restore main's cache instead of each writing their own,
-        # which would evict it under the repository's cache quota.
-        save-if: ${{ github.ref == 'refs/heads/main' }}
+        # which would evict it under the repository's cache quota. Only the
+        # Linux caches are saved: pull requests run on Linux alone, and the
+        # Windows and macOS caches of the after-merge runs would push them
+        # out of the quota.
+        save-if: ${{ github.ref == 'refs/heads/main' && runner.os == 'Linux' }}
         cache-on-failure: true
         # Keep Sage's own build outputs too. tauri::generate_context! writes
         # the window icon into the crate's OUT_DIR while rustc runs, and

@@ -1,0 +1,132 @@
+name: After merge
+
+# The heavy and cross-platform checks that pull requests skip. Every push to
+# main runs the Rust lanes on Windows and macOS and the Windows budget lane;
+# the nightly and requested runs also build the desktop packages. Each push
+# and nightly run then sets one issue per job from the latest results on
+# main: open while the job fails, closed once it passes
+# (scripts/ci-failure-issues.mjs). Run the checks on a branch before merging
+# when a change needs them:
+#
+#   gh workflow run main.yml --ref <branch>
+#
+# Pull requests run the Linux lanes in ci.yml, which also runs on main.
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Every push to main and every nightly run gets a group of its own, so no
+# later push cancels a run in flight and each commit gets its verdict. A
+# requested run supersedes the one already running on the same branch.
+concurrency:
+  group: after-merge-${{ github.event_name == 'workflow_dispatch' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust
+    uses: ./.github/workflows/rust.yml
+    with:
+      runners: '["windows-latest","macos-latest"]'
+
+  # The Node budget tests that need a native Windows host
+  # (scripts/budget-lanes.mjs --lane windows), including the Chat
+  # performance envelope in a real Chromium.
+  windows-budget:
+    name: Windows budget lane
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Provision the bundled Chromium the app smoke CLI tests drive
+        run: npx playwright install chromium
+      # The Windows Cargo Job tests give each cargo command 10 s. The image
+      # keeps rustup on C:, which Defender saturates for about 30 s when it
+      # loads new security intelligence partway through the job; a rustup
+      # proxy that pages in from C: then can stall past that deadline. Install
+      # rustup into the runner temp directory, which shares the workspace's
+      # disk (D: on hosted images), so rustup, its proxies and the toolchain
+      # are not read from C:.
+      - name: Install rustup on the runner's local disk
+        run: |
+          $cargoHome = Join-Path $env:RUNNER_TEMP "cargo"
+          $rustupHome = Join-Path $env:RUNNER_TEMP "rustup"
+          $installer = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+          Copy-Item (Get-Command rustup -CommandType Application | Select-Object -First 1).Source $installer
+          $env:CARGO_HOME = $cargoHome
+          $env:RUSTUP_HOME = $rustupHome
+          & $installer -y --no-modify-path --default-toolchain none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item $installer
+          "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          "RUSTUP_HOME=$rustupHome" >> $env:GITHUB_ENV
+          Join-Path $cargoHome "bin" >> $env:GITHUB_PATH
+      # Install the rust-toolchain.toml toolchain first so no command waits on
+      # a download.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      # Keep what each PowerShell start reads and writes off C:, for the same
+      # Defender burst as the rustup step above: TEMP and TMP (where csc and
+      # Add-Type compile) and, through PSModuleAnalysisCachePath, the module
+      # analysis cache. Windows PowerShell's startup profile data has no
+      # override and stays on C:.
+      - name: Keep PowerShell per-start files on the runner's local disk
+        run: |
+          $psCache = Join-Path $env:RUNNER_TEMP "powershell"
+          New-Item -ItemType Directory -Force $psCache | Out-Null
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "PSModuleAnalysisCachePath=$(Join-Path $psCache 'ModuleAnalysisCache')" >> $env:GITHUB_ENV
+      - name: Run the Windows budget lane
+        run: npm run test:budgets:windows
+
+  # Packages build nightly and on request, not per push (as Zed bundles).
+  packages:
+    name: Desktop packages
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/desktop-packages.yml
+
+  report:
+    name: Report failures
+    needs:
+      - rust
+      - windows-budget
+      - packages
+    # A requested branch run reports in its own checks, not in issues.
+    if: ${{ !cancelled() && github.event_name != 'workflow_dispatch' }}
+    # One reporter at a time, so two never open the same issue. Every
+    # reporter converges on the same issues, so GitHub replacing a pending
+    # reporter with a newer one loses nothing.
+    concurrency:
+      group: after-merge-report
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci-failure-issues.mjs
+          sparse-checkout-cone-mode: false
+      - name: Open, update or close one issue per job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORTER_NAME: Report failures
+        run: node scripts/ci-failure-issues.mjs

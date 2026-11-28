@@ -24,6 +24,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
+  "ci-failure-issues.node-test.mjs",
   "ci-rust-phase.node-test.mjs",
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
@@ -413,9 +414,14 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
       "Portable lane cleanup receipt and recovery proof; uses injected operations, temporary files, and disposable Git repositories without native lock-holder behavior.",
   },
   {
+    file: "ci-failure-issues.node-test.mjs",
+    reason:
+      "Portable checks of the after-merge issue plan: each job's newest decisive result across runs opens, rewrites or closes its issue, in any run order; pure input, no gh call.",
+  },
+  {
     file: "gate.node-test.mjs",
     reason:
-      "Portable gate plan contract proves the deterministic Vitest worker defaults, explicit operator overrides, and the steps the changed gate picks for a diff.",
+      "Portable gate plan contract proves the deterministic Vitest worker defaults, explicit operator overrides, and the steps each local tier runs.",
   },
 ]);
 

@@ -73,14 +73,14 @@ still outstanding.
 
 ## Install on macOS
 
-1. Open a successful [Desktop packages workflow run](https://github.com/akaza21/Sage/actions/workflows/desktop-packages.yml) on `main`.
+1. Open a successful nightly or requested [After merge workflow run](https://github.com/akaza21/Sage/actions/workflows/main.yml) on `main`.
 2. Download the `Sage-macOS-universal-<commit>` artifact under **Artifacts** and unzip it. It supports Apple Silicon and Intel Macs on macOS 11 or later.
 3. Open the DMG, drag **Sage** into **Applications**, then eject the disk image.
 4. Open Sage from **Applications**. This personal build uses an ad hoc signature. If macOS blocks it and you trust the build, open **System Settings → Privacy & Security** and use **Open Anyway** for Sage. The artifact includes its commit and SHA-256 checksum.
 
 Sage runs the Claude Code CLI installed on your Mac. Use the native installer from the [Claude Code setup guide](https://code.claude.com/docs/en/setup), then run `claude auth login` in Terminal if sign-in is needed. Reopen Sage and select **Claude Code** in the Agent composer. The SDK binding requires a supported 2.x version from 2.1.300 onward.
 
-To build a fresh installer on GitHub, select **Run workflow → main** in **Desktop packages**. The run also produces a Windows installer for the same commit.
+Every nightly run of **After merge** builds both installers from `main`. To package `main` now, or another branch, select **Run workflow** in **After merge** on that branch.
 
 ## Prerequisites
 
@@ -107,21 +107,16 @@ The bridge listens on 127.0.0.1 only, checks the Host and Origin of every connec
 Native local gates (Windows, macOS, Linux):
 
 ```powershell
-npm run gate:changed  # only what your diff from origin/main needs (see below)
-npm run gate:static   # policy, prettier, eslint, tsc, rustfmt (about a minute)
-npm run gate:fast     # static + Vitest + strict Clippy
-npm run gate:rust     # three-phase Rust tests (parallel, then git-process and preview serially)
-npm run gate:full     # fast + rust + budgets + build + bundle cap
+npm run gate:fast     # pull-request CI, less the Rust tests
+npm run gate:changed  # everything pull-request CI runs
+npm run gate:full     # gate:changed, this OS's after-merge lanes, visual suite
 npm run smoke         # headless rendered-app walkthrough with screenshots
 npm run lane new X    # one-writer worktree for ticket X; `lane done X` integrates to main
 ```
 
-`gate:changed` picks steps the way CI picks lanes (`scripts/change-scope.mjs`):
-prettier and ESLint on the changed files, `tsc`, the Vitest files that import
-them (every Vitest file when shared config such as `package.json` changes), the
-Node budget tests when a script changed, and rustfmt, Clippy and the Rust test
-phases only when the change touches a path the Rust crate depends on. Run
-`gate:full` and the real-app checks before merging.
+`gate:changed` runs what every pull request runs: policy, prettier, ESLint,
+Vitest, the Node budget tests, the web build and its byte budgets, rustfmt,
+Clippy, the Rust test phases, the bridge and the release check.
 
 The Cargo target directory is a per-machine choice and is never tracked.
 Either set `CARGO_TARGET_DIR` in the shell you build from, or create an
@@ -169,6 +164,26 @@ npm run gate:fast
 `--all-features` does not build: `cdp-lane` is unix-only and `native-lane` is
 Windows-only. The gate passes Clippy every feature that builds on your
 platform (`scripts/cargo-features.mjs`).
+
+## How changes ship
+
+- **Inner loop.** `npm run dev` runs the real UI against the real Rust
+  backend; run `npm run gate:changed` before pushing.
+- **Pull requests** run every Linux lane (`.github/workflows/ci.yml`):
+  format, lint, policy, the Node budget tests, the web build with its byte
+  budgets, Vitest in three shards, and the Rust lanes (rustfmt, Clippy,
+  tests, bridge, release check). Tests read files across the Rust and
+  TypeScript trees, so no lane is skipped by path. **Merge gate** is the
+  required check.
+- **After merge** (`.github/workflows/main.yml`, on every push to `main` and
+  nightly): the Rust lanes on Windows and macOS and the Windows budget lane
+  with the Chat performance budget; nightly and requested runs also build the
+  Windows and macOS packages. Run it on a branch with
+  `gh workflow run main.yml --ref <branch>`.
+- **A failure becomes a fix.** Each after-merge run sets one issue per job,
+  labelled `after-merge`, from the latest results on `main`: open with the
+  first and latest failing commit and run while the job fails, closed once
+  it passes. Fix it in a pull request that names the issue.
 
 ## Project boundaries
 
