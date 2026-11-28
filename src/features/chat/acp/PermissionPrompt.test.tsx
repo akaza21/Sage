@@ -91,7 +91,6 @@ describe("PermissionPrompt", () => {
       />,
     );
     const card = screen.getByRole("group", { name: "Permission request" });
-    expect(within(card).getByText("Extension tool")).toBeInTheDocument();
     expect(card.querySelector("pre")?.textContent).toBe(summary);
     expect(card.querySelector("script")).toBeNull();
     expect(

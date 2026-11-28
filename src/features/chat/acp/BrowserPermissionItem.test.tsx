@@ -92,7 +92,7 @@ describe("local browser permission card", () => {
     expect(
       screen.getByRole("group", { name: "Browser permission" }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     expect(resolve).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "request-browser",
@@ -122,7 +122,7 @@ describe("local browser permission card", () => {
     expect(
       screen.getByText("Browser fill on https://example.com"),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(resolve).toHaveBeenCalledWith({
       projectId: "project-1",
       chatId: "chat-1",
@@ -152,11 +152,13 @@ describe("local browser permission card", () => {
       screen.getByText("Browser fill on https://example.com"),
     ).toBeTruthy();
     expect(screen.queryByText(/do-not-leak/)).toBeNull();
-    expect(screen.getByRole("button", { name: /Allow once/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
+    expect(
+      screen.getAllByRole("radio").map((option) => option.textContent),
+    ).toEqual(["1Allow once", "2Allow for this tab and origin", "3Deny"]);
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Allow for this tab and origin" }),
+      screen.getByRole("radio", { name: "Allow for this tab and origin" }),
     );
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     expect(resolve).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "request-browser",
@@ -198,14 +200,14 @@ describe("local browser permission card", () => {
         /Scripts run as the signed-in user and can read data available to the page/,
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "More allow options" }),
-    ).toBeNull();
-    const allow = screen.getByRole("button", { name: "Allow developer mode" });
+      screen.getAllByRole("radio").map((option) => option.textContent),
+    ).toEqual(["1Allow developer mode", "2Deny"]);
+    const allow = screen.getByRole("radio", { name: "Allow developer mode" });
     expect(document.activeElement).not.toBe(allow);
-    expect(allow.querySelector("kbd")).toBeNull();
-    fireEvent.click(allow);
+    fireEvent.keyDown(allow, { key: "Enter" });
+    expect(resolve).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     expect(resolve).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "request-developer",

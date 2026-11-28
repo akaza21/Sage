@@ -80,7 +80,8 @@ export function PermissionPrompt({
     const card = sectionRef.current;
     logCardArrival(item, card);
     if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
-      option(0)?.focus();
+      // Developer mode is never one key away: focus rests on the card.
+      (developer ? card : option(0))?.focus();
       setFocusState([item.id, document.activeElement === option(0)]);
     } else {
       parkFocus(card);
@@ -177,6 +178,7 @@ export function PermissionPrompt({
         } else if (
           event.key === "Enter" &&
           !event.shiftKey &&
+          !developer &&
           // Skip and Submit answer Enter as their own click.
           !(
             event.target instanceof HTMLButtonElement &&

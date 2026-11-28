@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
+import type { HarnessDefinition } from "../../domain/harness";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { ComposerHarnessMenuExtras } from "./ComposerHarnessMenuExtras";
@@ -18,19 +19,29 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
+const claude: HarnessDefinition = {
+  id: "claude-code",
+  name: "Claude Code",
+  description: "",
+  source: "builtIn",
+  accountModelDiscovery: false,
+  transport: "acp",
+  installState: "available",
+  bindingId: "claude-code",
+};
+
 function withHarnesses() {
-  const [base] = initial.harnesses;
   useWorkbenchStore.setState({
     harnesses: [
-      base,
+      claude,
       {
-        ...base,
+        ...claude,
         id: "pi",
         name: "Pi",
         brand: "pi",
         installState: "notInstalled",
-        bindingId: undefined,
-      } as never,
+        bindingId: null,
+      } as HarnessDefinition,
     ],
   });
 }
@@ -55,7 +66,7 @@ it("lists harnesses this computer lacks with Install, which opens Settings' harn
 
 it("runs discovery again and applies the new inventory", async () => {
   withHarnesses();
-  const refreshed = [{ ...initial.harnesses[0], name: "Refreshed" }];
+  const refreshed = [claude];
   vi.spyOn(getWorkbenchPorts().agent, "refreshHarnesses").mockResolvedValue(
     refreshed,
   );

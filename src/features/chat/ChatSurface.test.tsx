@@ -1227,7 +1227,7 @@ describe("ChatSurface ACP resource integration", () => {
     },
   );
 
-  it("keeps one send-slot control while a cancellable Turn can queue by Enter", async () => {
+  it("keeps Send beside Stop while a cancellable Turn can queue by Enter", async () => {
     hooks.actions.cancellableTurnId = "turn-a";
     matchConfiguredSession();
     useWorkbenchStore.setState({
@@ -1254,14 +1254,16 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.change(composer, { target: { value: "Follow up" } });
     const stop = screen.getByRole("button", { name: "Cancel turn" });
     expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
-      1,
+      2,
     );
-    expect(screen.queryByRole("button", { name: "Queue message" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Send message" }),
+    ).toHaveAttribute("title", "Queue message");
 
     fireEvent.keyDown(composer, { key: "Enter" });
     await waitFor(() => expect(screen.getByText("Follow up")).toBeVisible());
     expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
-      1,
+      2,
     );
     expect(stop).toBeEnabled();
     fireEvent.click(stop);
@@ -1311,7 +1313,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     acknowledge();
     await waitFor(() => expect(composer).toHaveValue(""));
-    expect(screen.getByText("Queued")).toBeVisible();
+    expect(screen.getByText("Queued messages")).toBeVisible();
   });
 
   it("cannot send a draft again when its queue save outlives the active Turn", async () => {
@@ -1466,7 +1468,9 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Message agent" }), {
       key: "Enter",
     });
-    await waitFor(() => expect(screen.getByText("Queued")).toBeVisible());
+    await waitFor(() =>
+      expect(screen.getByText("Queued messages")).toBeVisible(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: "Delete queued message: Keep this row",
@@ -1514,7 +1518,9 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Message agent" }), {
       key: "Enter",
     });
-    await waitFor(() => expect(screen.getByText("Queued")).toBeVisible());
+    await waitFor(() =>
+      expect(screen.getByText("Queued messages")).toBeVisible(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: "Delete queued message: Old queue row",
@@ -1591,7 +1597,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Steer queued message: Change direction",
+        name: "Send now: Change direction",
       }),
     );
     expect(screen.getByText("Change direction")).toBeVisible();
@@ -1601,7 +1607,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Change direction")).toBeVisible();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Steer queued message: Change direction",
+        name: "Send now: Change direction",
       }),
     );
     await waitFor(() =>
@@ -1652,7 +1658,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Steer queued message: Check the result",
+        name: "Send now: Check the result",
       }),
     );
     await waitFor(() =>
@@ -1661,9 +1667,9 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Check the result")).toBeVisible();
     expect(
       screen.getByRole("button", {
-        name: "Steer queued message: Check the result",
+        name: "Send now: Check the result",
       }),
-    ).toHaveAttribute("title", "Retry Steer with the same message ID");
+    ).toHaveAttribute("title", "Retry with the same message ID");
     const queuedId =
       useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts![0].id;
     expect(hooks.actions.steer).toHaveBeenCalledWith(
@@ -1872,12 +1878,20 @@ describe("ChatSurface ACP resource integration", () => {
       );
       await waitFor(() => expect(composer).toHaveValue(""));
     }
-    expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
+    expect(
+      screen
+        .getByLabelText("Queued messages")
+        .querySelectorAll(".composer__queued-row"),
+    ).toHaveLength(8);
     expect(composer).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     fireEvent.change(composer, { target: { value: "Message beyond the cap" } });
     fireEvent.keyDown(composer, { key: "Enter" });
-    expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
+    expect(
+      screen
+        .getByLabelText("Queued messages")
+        .querySelectorAll(".composer__queued-row"),
+    ).toHaveLength(8);
     expect(composer).toHaveValue("Message beyond the cap");
     expect(screen.getByText("Queue is full (8 messages).")).toBeVisible();
     fireEvent.click(
@@ -2005,9 +2019,8 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Try again")).toBeVisible();
     expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
     fireEvent.click(
-      screen.getByLabelText("More options for queued message: Try again"),
+      screen.getByRole("button", { name: "Retry queued message: Try again" }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Retry when ready" }));
     await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText("Try again")).toBeNull());
   });
@@ -3174,7 +3187,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps not-installed harnesses disabled in an available harness's picker", async () => {
+  it("lists not-installed harnesses after an available harness's options, each with Install", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -3245,28 +3258,21 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(5);
+    expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
-    expect(options[1]).toHaveAccessibleName(
-      "Codex — not installed. Install it, then refresh harness discovery in Settings.",
-    );
-    expect(options[1]).toBeDisabled();
-    expect(options[2]).toHaveAccessibleName(
-      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
-    );
-    expect(options[3]).toHaveAccessibleName(
-      "Claude Code — not installed. Install it, then refresh harness discovery in Settings.",
-    );
-    expect(options[4]).toHaveAccessibleName(
-      "Oh My Pi — not installed. Install it, then refresh harness discovery in Settings.",
-    );
+    expect(options[0].querySelector("small")).toBeNull();
+    const missing = await screen.findByRole("group", { name: "Not installed" });
     expect(
-      options.slice(1).every((option) => option.hasAttribute("disabled")),
-    ).toBe(true);
-    expect(
-      options.every((option) => option.querySelector("small") === null),
-    ).toBe(true);
+      within(missing)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Install Codex",
+      "Install Pi",
+      "Install Claude Code",
+      "Install Oh My Pi",
+    ]);
   });
 
   it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", async () => {
@@ -3314,17 +3320,19 @@ describe("ChatSurface ACP resource integration", () => {
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(3);
+    expect(options).toHaveLength(2);
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
       "Codex — unavailable. Codex can't start yet.",
     );
     expect(options[1]).toBeDisabled();
-    expect(options[2]).toHaveAccessibleName(
-      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
-    );
-    expect(options[2]).toBeDisabled();
+    const missing = await screen.findByRole("group", { name: "Not installed" });
+    expect(
+      within(missing)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Install Pi"]);
   });
 
   it("keeps the available development fallback visible when the selected harness is absent", async () => {
@@ -3362,12 +3370,15 @@ describe("ChatSurface ACP resource integration", () => {
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(2);
+    expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
-    expect(options[1]).toHaveAccessibleName(
-      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
-    );
+    const missing = await screen.findByRole("group", { name: "Not installed" });
+    expect(
+      within(missing)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Install Pi"]);
     expect(options[1]).toBeDisabled();
   });
 

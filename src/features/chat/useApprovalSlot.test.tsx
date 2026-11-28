@@ -86,7 +86,7 @@ function Pane({
   );
 }
 
-const allow = () => screen.getByRole("button", { name: /Allow once/ });
+const allow = () => screen.getByRole("radio", { name: "Allow once" });
 const announced = () =>
   screen.findByText("Approval needed: Allow this command?");
 
@@ -194,6 +194,6 @@ describe("useApprovalSlot cards", () => {
     expect(
       await screen.findByRole("group", { name: "Agent question" }),
     ).toHaveTextContent("Which files should I change?");
-    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Allow once" })).toBeNull();
   });
 });

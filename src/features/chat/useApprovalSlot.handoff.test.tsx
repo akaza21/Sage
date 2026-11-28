@@ -84,10 +84,10 @@ it("carries a fallback Deny into the loaded card: Allow is never focused for tha
     chunk.open();
     await new Promise((wait) => setTimeout(wait, 0));
   });
-  const allow = await screen.findByRole("button", { name: /Allow once/ });
+  const allow = await screen.findByRole("radio", { name: "Allow once" });
   expect(allow).not.toHaveFocus();
   await waitFor(() => expect(allow).toBeDisabled());
-  fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Skip" }));
   expect(resolve).toHaveBeenCalledOnce();
   await act(async () => settle());
   expect(allow).toBeDisabled();

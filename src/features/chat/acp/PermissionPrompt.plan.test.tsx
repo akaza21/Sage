@@ -99,14 +99,8 @@ describe("PermissionPrompt plan approval", () => {
   ])("approving with %s moves a Plan chat to %s", async (label, mode) => {
     resolved();
     render(<PermissionPrompt items={[planCard()]} />);
-    if (label === "Always allow") {
-      fireEvent.click(
-        screen.getByRole("button", { name: "More allow options" }),
-      );
-      fireEvent.click(screen.getByRole("menuitem", { name: label }));
-    } else {
-      fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
-    }
+    fireEvent.click(screen.getByRole("radio", { name: label }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     await waitFor(() =>
       expect(access.set).toHaveBeenCalledWith("session-1", mode),
     );
@@ -117,13 +111,13 @@ describe("PermissionPrompt plan approval", () => {
     resolved();
     access.get.mockResolvedValue("acceptEdits");
     render(<PermissionPrompt items={[planCard()]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     await waitFor(() => expect(access.get).toHaveBeenCalled());
     cleanup();
     useChatAccessStore.setState({ modes: {}, error: null });
     access.get.mockResolvedValue("plan");
     render(<PermissionPrompt items={[planCard("plan-2")]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(access.set).not.toHaveBeenCalled();
   });

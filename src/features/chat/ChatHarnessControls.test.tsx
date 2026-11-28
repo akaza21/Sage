@@ -183,6 +183,19 @@ const shownEffort = () =>
 async function findEffort(level: string) {
   await waitFor(() => expect(shownEffort()).toBe(level));
 }
+const effortRow = () =>
+  screen.findByRole("button", { name: /Thinking effort/ });
+const noEffortRow = () =>
+  screen.queryByRole("button", { name: /Thinking effort/ });
+const rowLevel = async () =>
+  (await effortRow()).querySelector(".composer-effort__level")?.textContent;
+async function pickEffort(level: string) {
+  fireEvent.click(await effortRow());
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: new RegExp(`^${level}`) }),
+  );
+}
+
 async function openModelPopover() {
   fireEvent.click(modelButton());
   const dialog = await screen.findByRole("dialog", { name: "Select model" });
@@ -252,13 +265,13 @@ it("shows harness, unconfirmed model, effort availability and access before a fi
   expect(screen.getByRole("button", { name: "Access options" })).toBeVisible();
   expect(shownEffort()).toBeNull();
   await openModelPopover();
-  expect(screen.queryByRole("slider")).toBeNull();
+  expect(noEffortRow()).toBeNull();
   rerenderControls({
     sessionHarnessId: "access-test",
     sessionConfig: confirmedModelConfig(),
   });
   expect(shownEffort()).toBe("High");
-  expect(await screen.findByRole("slider")).toBeEnabled();
+  expect(await effortRow()).toHaveAttribute("aria-disabled", "false");
 });
 
 it("holds a thinking level chosen before the first session for the listed model", async () => {
@@ -283,10 +296,7 @@ it("holds a thinking level chosen before the first session for the listed model"
   });
   await findEffort("Default");
   await openModelPopover();
-  const slider = await screen.findByRole("slider");
-  fireEvent.pointerDown(slider, { pointerId: 1 });
-  fireEvent.change(slider, { target: { value: "2" } });
-  fireEvent.pointerUp(slider, { pointerId: 1 });
+  await pickEffort("High");
   await findEffort("High");
   expect(useChatEffortDraft.getState().draft).toEqual({
     chatId: "chat-draft",
@@ -301,7 +311,7 @@ it("holds a thinking level chosen before the first session for the listed model"
     accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
   });
   expect(shownEffort()).toBeNull();
-  expect(screen.queryByRole("slider")).toBeNull();
+  expect(noEffortRow()).toBeNull();
   useChatEffortDraft.setState({ draft: null });
 });
 
@@ -343,7 +353,7 @@ it("lists a restored chat's harness models and thinking levels when the workbenc
   await findEffort("Default");
   await openModelPopover();
   expect(screen.getByRole("option", { name: /GPT-X/ })).toBeInTheDocument();
-  expect(screen.getByRole("slider")).toBeEnabled();
+  expect(await effortRow()).toHaveAttribute("aria-disabled", "false");
   expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toEqual([
     gptX,
   ]);
@@ -490,7 +500,7 @@ it("shows a held thinking level the model no longer lists as held, not as Defaul
   // The start refuses that level, so the composer must not show Default.
   await findEffort("High");
   await openModelPopover();
-  expect(screen.getByRole("slider")).toHaveAttribute("aria-valuetext", "High");
+  expect(await rowLevel()).toBe("High");
   useChatEffortDraft.setState({ draft: null });
 });
 
@@ -634,10 +644,7 @@ describe("last confirmed model label", () => {
       );
       view.rerenderControls({ ...props, turnBusy: false });
       const dialog = await openModelPopover();
-      expect(await screen.findByRole("slider")).toHaveAttribute(
-        "aria-disabled",
-        "false",
-      );
+      expect(await effortRow()).toHaveAttribute("aria-disabled", "false");
       fireEvent.keyDown(dialog, { key: "Escape" });
       expect(modelButton()).toHaveFocus();
     },
@@ -695,11 +702,7 @@ describe("last confirmed model label", () => {
       onSetSessionConfigOption,
     });
     await openModelPopover();
-    expect(await screen.findByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "Medium",
-    );
-    expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
+    expect(await rowLevel()).toBe("Medium");
     expect(onSetSessionConfigOption).not.toHaveBeenCalled();
   });
 
@@ -729,8 +732,7 @@ describe("last confirmed model label", () => {
     );
     expect(shownEffort()).toBeNull();
     await openModelPopover();
-    expect(screen.queryByRole("slider")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
+    expect(noEffortRow()).toBeNull();
   });
   it.each(["Codex", "Claude Code", "Pi", "OpenCode", "Oh My Pi"])(
     "keeps %s confirmed idle identity, picker subtitle, effort after interrupt and advertised reset",
@@ -776,9 +778,11 @@ describe("last confirmed model label", () => {
       expect(modelButton()).toBeDisabled();
       view.rerenderControls({ sessionConfig: config, turnBusy: false });
       await openModelPopover();
-      const reset = await screen.findByRole("button", { name: "Reset effort" });
-      expect(reset).toBeVisible();
-      expect(reset).toBeEnabled();
+      // The advertised default stays reachable, marked, in the level list.
+      fireEvent.click(await effortRow());
+      expect(
+        await screen.findByRole("menuitemradio", { name: "Low Default" }),
+      ).toBeVisible();
     },
   );
 
@@ -849,10 +853,7 @@ describe("last confirmed model label", () => {
       screen.getByRole("button", { name: "Composer options" }),
     ).toHaveFocus();
     const dialog = await openModelPopover();
-    expect(await screen.findByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "High",
-    );
+    expect(await rowLevel()).toBe("High");
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(modelButton()).toHaveFocus();
     view.unmount();
@@ -945,9 +946,8 @@ describe("last confirmed model label", () => {
         onSetSessionConfigOption,
       });
       await openModelPopover();
-      const slider = await screen.findByRole("slider");
-      expect(slider).toHaveAttribute("aria-valuetext", "Medium");
-      fireEvent.keyDown(slider, { key: "End" });
+      expect(await rowLevel()).toBe("Medium");
+      await pickEffort("Max");
       expect(onSetSessionConfigOption).toHaveBeenCalledExactlyOnceWith(
         "explicit",
         { value: "max" },
@@ -962,10 +962,7 @@ describe("last confirmed model label", () => {
       else config.configOptions[1].id = "thought_level";
       renderControls({ sessionConfig: config });
       await openModelPopover();
-      expect(await screen.findByRole("slider")).toHaveAttribute(
-        "aria-valuetext",
-        "High",
-      );
+      expect(await rowLevel()).toBe("High");
       expect(config.configOptions[1].category).toBe(
         categorized ? "thought_level" : undefined,
       );
@@ -992,7 +989,7 @@ describe("last confirmed model label", () => {
     expect(trigger).toHaveAccessibleDescription("actual High");
     expect(trigger).toBeEnabled();
     await openModelPopover();
-    expect(screen.queryByRole("slider")).toBeNull();
+    expect(noEffortRow()).toBeNull();
   });
 
   it("waits for the harness model identity after a catalog request", async () => {
@@ -1195,9 +1192,7 @@ describe("last confirmed model label", () => {
     const option = within(listbox).getByRole("option");
     expect(option).toHaveAccessibleName("GPT-6 Astra");
     expect(option).toHaveAttribute("aria-selected", "true");
-    expect(
-      await screen.findByRole("slider", { name: "Thinking level" }),
-    ).toHaveAttribute("aria-disabled", "false");
+    expect(await effortRow()).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(option);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(trigger).toHaveFocus();
@@ -1276,10 +1271,7 @@ describe("last confirmed model label", () => {
     expect(trigger).toBeEnabled();
     expect(trigger).toHaveTextContent(/^Actual modelHigh$/);
     await openModelPopover();
-    expect(await screen.findByRole("slider")).toHaveAttribute(
-      "aria-disabled",
-      "false",
-    );
+    expect(await effortRow()).toHaveAttribute("aria-disabled", "false");
   });
   it.each(["before a first turn", "after choosing another catalog model"])(
     "keeps effort out of the model popover until the selected model's session advertises levels, %s",
@@ -1300,9 +1292,7 @@ describe("last confirmed model label", () => {
       });
       expect(shownEffort()).toBeNull();
       await openModelPopover();
-      expect(
-        screen.queryByRole("group", { name: "Thinking level" }),
-      ).toBeNull();
+      expect(noEffortRow()).toBeNull();
       view.rerenderControls({
         selectedModelId: "new",
         sessionHarnessId: "access-test",
@@ -1310,9 +1300,7 @@ describe("last confirmed model label", () => {
         sessionConfig: confirmedModelConfig(),
       });
       expect(shownEffort()).toBe("High");
-      expect(
-        await screen.findByRole("slider", { name: "Thinking level" }),
-      ).toHaveAttribute("aria-valuetext", "High");
+      expect(await rowLevel()).toBe("High");
     },
   );
 
@@ -1359,7 +1347,7 @@ describe("last confirmed model label", () => {
       expect(
         screen.queryByRole("listbox", { name: "Select model" }),
       ).toBeNull();
-      expect(screen.queryByRole("slider")).toBeNull();
+      expect(noEffortRow()).toBeNull();
     },
   );
 
@@ -1965,12 +1953,7 @@ describe("composer permission mode picker", () => {
     });
     expect(onSelectModel).not.toHaveBeenCalled();
     await openModelPopover();
-    fireEvent.keyDown(
-      await screen.findByRole("slider", { name: "Thinking level" }),
-      {
-        key: "End",
-      },
-    );
+    await pickEffort("High");
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("effort", {
       value: "high",
     });
@@ -2135,7 +2118,7 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /Claude Code/ })
         .querySelector('[data-harness-icon="claude"]'),
     ).not.toBeNull();
-    expect(screen.getByText("Harnesses")).toBeVisible();
+    expect(screen.getByText("Harness", { exact: true })).toBeVisible();
     expect(
       screen
         .getByRole("option", { name: /Claude Code/ })
@@ -2493,7 +2476,7 @@ describe("composer permission mode picker", () => {
     ).toBeVisible();
     expect(screen.queryByText("Old Model")).toBeNull();
     expect(screen.queryByText("High")).toBeNull();
-    expect(screen.queryByRole("slider")).toBeNull();
+    expect(noEffortRow()).toBeNull();
   });
 
   it("replaces the hard-coded chip with the live persisted mode", async () => {
