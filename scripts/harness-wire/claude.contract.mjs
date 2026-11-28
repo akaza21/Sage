@@ -13,6 +13,7 @@ import {
   members,
   variants,
 } from "./contract-ts.mjs";
+import { installed, published } from "./npm.mjs";
 
 const SDK = "@anthropic-ai/claude-agent-sdk";
 
@@ -72,20 +73,15 @@ function responses(api, graph, map) {
   }
 }
 
+// The Claude Code release the newest SDK bundles.
+export function latest() {
+  return published(SDK, "claudeCodeVersion");
+}
+
 export async function contract(version, work) {
   const cli = version.match(/\d+\.\d+\.\d+/)[0];
   const sdk = sdkFor(cli);
-  npm([
-    "install",
-    "--ignore-scripts",
-    "--omit=optional",
-    "--no-audit",
-    "--no-fund",
-    "--prefix",
-    work,
-    `${SDK}@${sdk}`,
-  ]);
-  const dir = path.join(work, "node_modules", SDK);
+  const dir = installed(`${SDK}@${sdk}`, work);
   const bundled = JSON.parse(
     fs.readFileSync(path.join(dir, "manifest.json"), "utf8"),
   ).version;
