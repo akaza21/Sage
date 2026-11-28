@@ -63,6 +63,10 @@ jobs:
         run: cargo deny check advisories bans sources
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm audit --audit-level=critical
+      # The plan skips schedules and draft PRs, so Security is the only job
+      # that checks source policy on those triggers.
+      - name: Check source policy and regression tests
+        run: node --test scripts/check-policy.node-test.mjs && node scripts/check-policy.mjs
 
   plan:
     name: Plan lanes
