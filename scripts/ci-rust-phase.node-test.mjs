@@ -152,8 +152,8 @@ test("CI keeps hosted-runner spend bounded", async () => {
     "a new push cancels the run in flight for the same branch",
   );
   // A push to main has a group of its own run, so no later push (even of the
-  // same commit) or
-  // a requested run on main cancels or replaces it before it saves caches.
+  // same commit) or requested run on main cancels or replaces it before it
+  // saves caches.
   const group = workflow.match(/^ {2}group: (.+)$/m)[1];
   assert.ok(
     group.includes(
