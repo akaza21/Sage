@@ -95,7 +95,12 @@ function readTranscriptLines(file) {
 }
 
 function scratchRepo(dir) {
-  freshScratch(dir);
+  freshScratch(
+    dir,
+    Object.values(DRIVERS)
+      .map((driver) => process.env[driver.CONFIG.env])
+      .filter(Boolean),
+  );
   const repo = path.join(dir, "repo");
   fs.mkdirSync(path.join(repo, "src"), { recursive: true });
   fs.writeFileSync(

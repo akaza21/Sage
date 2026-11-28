@@ -103,6 +103,15 @@ test("only a scratch dir the capture made is ever cleared", () => {
     fs.writeFileSync(path.join(ours, "leftover"), "");
     freshScratch(ours);
     assert.equal(fs.existsSync(path.join(ours, "leftover")), false);
+    // The owner pointed a harness at a home inside it and signed in there.
+    const live = path.join(ours, "empty-home");
+    fs.mkdirSync(live);
+    fs.writeFileSync(path.join(live, "auth.json"), "{}");
+    assert.throws(
+      () => freshScratch(ours, [live]),
+      /holds the harness config dir/,
+    );
+    assert.ok(fs.existsSync(path.join(live, "auth.json")));
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

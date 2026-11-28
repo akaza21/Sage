@@ -71,13 +71,21 @@ export function configRoots(config, env) {
 const MARKER = ".sage-capture-scratch";
 
 // Clears and recreates a scenario's scratch dir. Only a dir this tool made
-// (it holds the marker) is ever cleared; anything else there is refused.
-export function freshScratch(dir) {
+// (it holds the marker) is ever cleared, and never one holding a harness's
+// live config dir (`configDirs`, from the environment); anything else there
+// is refused.
+export function freshScratch(dir, configDirs = []) {
   if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
     if (!fs.existsSync(path.join(dir, MARKER)))
       throw new Error(
         `${dir} was not made by the capture; refusing to clear it`,
       );
+    const inside = configDirs.find((config) => {
+      const relative = path.relative(dir, path.resolve(config));
+      return !relative.startsWith("..") && !path.isAbsolute(relative);
+    });
+    if (inside)
+      throw new Error(`${dir} holds the harness config dir ${inside}`);
     fs.rmSync(dir, { recursive: true, force: true });
   }
   fs.mkdirSync(dir, { recursive: true });
