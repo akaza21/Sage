@@ -128,17 +128,33 @@ export function violations(contract, records, label) {
   return [...lines].sort();
 }
 
+// Field paths walked per kind at most; a type graph whose paths fan out
+// past it is reported, not enumerated.
+const MAX_PATH_VISITS = 200_000;
+
 // A kind's field paths, for reading a protocol change; `a.*` marks a value
 // that admits anything, so a field turning open is a change too. Recursion
 // stops at a type already on the path.
-function paths(types, ids, prefix = "", seen = new Set(), out = new Set()) {
+function paths(
+  types,
+  ids,
+  prefix = "",
+  seen = new Set(),
+  out = new Set(),
+  budget = { left: MAX_PATH_VISITS },
+) {
   for (const id of ids) {
     if (id === "*") out.add(prefix ? `${prefix}.*` : "*");
     if (id === "*" || seen.has(id)) continue;
     for (const [key, children] of Object.entries(types[id])) {
+      budget.left -= 1;
+      if (budget.left < 0)
+        throw new Error(
+          `field paths below ${prefix || id} exceed ${MAX_PATH_VISITS}`,
+        );
       const name = prefix ? `${prefix}.${key}` : key;
       out.add(name);
-      paths(types, children, name, new Set(seen).add(id), out);
+      paths(types, children, name, new Set(seen).add(id), out, budget);
     }
   }
   return out;

@@ -44,3 +44,21 @@ test("an upgrade reports added and removed kinds and fields", () => {
     "in system/init: + plugins.*",
   ]);
 });
+
+test("a type graph whose field paths fan out is reported, not enumerated", () => {
+  const types = {};
+  for (let level = 0; level < 25; level += 1)
+    types[`T${level}`] = { a: [`T${level + 1}`], b: [`T${level + 1}`] };
+  types.T25 = { leaf: [] };
+  const contract = {
+    harness: "pi",
+    version: "1.5.0",
+    in: { start: ["T0"] },
+    out: {},
+    types,
+  };
+  assert.throws(
+    () => diffContracts(contract, { ...contract, version: "1.7.0" }),
+    /field paths below .* exceed 200000/,
+  );
+});
