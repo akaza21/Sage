@@ -291,15 +291,6 @@
   --agent-row-solid: var(--color-row-selected);
 }
 
-/* "More" shows with pin and archive on hover, not only on focus. */
-.workbench--agent
-  .project-chat-row:hover
-  .project-chat__actions:not(:focus-visible, [aria-expanded="true"]) {
-  width: auto;
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .project-chat__age {
   padding-right: 6px;
   color: var(--color-text-muted);

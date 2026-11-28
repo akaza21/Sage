@@ -60,6 +60,9 @@ it("collapses projects without activating them and reopens the section from the 
   expect(switchProject).not.toHaveBeenCalled();
   fireEvent.click(project);
   expect(project).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getAllByRole("button", { name: "Search chats" })).toHaveLength(
+    1,
+  );
   const disclosure = () =>
     within(screen.getByRole("region", { name: "Projects" })).getByRole(
       "button",
@@ -75,9 +78,6 @@ it("collapses projects without activating them and reopens the section from the 
   expect(
     screen.queryByRole("button", { name: "Open settings from rail" }),
   ).toBeNull();
-  expect(screen.getAllByRole("button", { name: "Search chats" })).toHaveLength(
-    1,
-  );
 });
 
 it("opens the same chat actions by right click and marks a read chat unread", async () => {

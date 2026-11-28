@@ -243,7 +243,7 @@ describe("compact Workbench project tools", () => {
     );
     expect(body.style.gridTemplateColumns).toBe("48px minmax(0, 1fr)");
     expect(body.style.getPropertyValue("--agent-artifact-overlay-width")).toBe(
-      "634px",
+      "632px",
     );
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
@@ -271,7 +271,7 @@ describe("compact Workbench project tools", () => {
       screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     );
     expect(body.style.gridTemplateColumns).toBe(
-      "46px minmax(0, 1fr) 8px 360px",
+      "48px minmax(0, 1fr) 8px 360px",
     );
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
@@ -1211,7 +1211,7 @@ describe("compact Workbench project tools", () => {
       value: 1672,
     });
     fireEvent(window, new Event("resize"));
-    expect(rail).toHaveAttribute("aria-valuenow", "310");
+    expect(rail).toHaveAttribute("aria-valuenow", "312");
     expect(artifact).toHaveAttribute("aria-valuenow", "752");
 
     Object.defineProperty(window, "innerWidth", {
