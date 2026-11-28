@@ -675,57 +675,12 @@ fn permission_receipt_names_the_typed_tool_operation() {
 
 #[test]
 fn permission_command_summaries_redact_sensitive_forms() {
+    // The redaction table lives in standard_acp/permission_summary_tests.rs;
+    // these rows prove OMP permission requests go through the same sanitizer.
     for (index, (command, private)) in [
         ("API_KEY=hunter2", "hunter2"),
-        ("MY_SECRET=hunter2", "hunter2"),
-        ("--auth-token=abc123", "abc123"),
-        ("--password abc123", "abc123"),
-        ("-Password abc123", "abc123"),
-        ("--pass abc123", "abc123"),
-        ("--pw=abc123", "abc123"),
-        ("AUTH=Bearer abc123", "abc123"),
         ("Bearer abc123", "abc123"),
-        ("Bearer:abc123", "abc123"),
-        ("Basic abc123", "abc123"),
-        ("Basic:abc123", "abc123"),
-        ("mysql -u x -p secret", "secret"),
-        ("mysql -psecret", "secret"),
-        ("sshpass -p secret", "secret"),
-        ("-H 'Authorization: Token abc123'", "abc123"),
-        ("Authorization: abc123", "abc123"),
-        ("Proxy-Authorization: abc123", "abc123"),
-        ("Cookie: abc123", "abc123"),
-        ("X-Api-Key: abc123", "abc123"),
-        ("X-Auth-Token: abc123", "abc123"),
-        ("Authorization: 'abc123'", "abc123"),
-        ("X-Api-Key: \"abc123\"", "abc123"),
-        ("Authorization : 'abc123'", "abc123"),
-        ("mysql -p\"my secret\"", "my secret"),
-        ("mysql -pmy\\ secret", "my\\ secret"),
-        ("mysql -pmy` secret", "my` secret"),
-        ("curl -u user:pass https://example.test", "user:pass"),
-        ("curl --user user:pass https://example.test", "user:pass"),
-        (
-            "curl --proxy-user user:pass https://example.test",
-            "user:pass",
-        ),
-        ("curl -uuser:pass https://example.test", "user:pass"),
-        ("curl --user=user:pass https://example.test", "user:pass"),
-        ("$env:API_KEY = 'hunter2'", "hunter2"),
-        ("export API_KEY = hunter2", "hunter2"),
-        (
-            "--password 'mixed \"quote\" secret'",
-            "mixed \"quote\" secret",
-        ),
-        ("sk-abc123", "sk-abc123"),
-        ("ghp_abc123", "ghp_abc123"),
-        ("xoxb-abc123", "xoxb-abc123"),
-        ("https://user:pass@example.com/", "user:pass"),
-        ("git clone https://tok@host.test/repo", "tok"),
         ("git clone https://x-access-token:abc@host.test/repo", "abc"),
-        ("git clone https://oauth2:abc@host.test/repo", "abc"),
-        ("--with-token < secret.txt", "secret.txt"),
-        ("$env:API_KEY='hunter2'", "hunter2"),
     ]
     .into_iter()
     .enumerate()
