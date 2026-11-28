@@ -228,16 +228,61 @@ pub(crate) enum TreeExit {
 pub(super) struct TerminationRecord {
     requested: Option<TreeExit>,
     exited_first: Option<TreeExit>,
+    /// Set by a graceful request: the root's stdin is closed and the tree is
+    /// killed only if the root is still running at this instant.
+    kill_at: Option<Instant>,
+    /// A waiter has taken on killing the tree at `kill_at`.
+    grace_claimed: bool,
 }
 
 impl TerminationRecord {
-    /// Records only the first request. `root_exit` is consulted then, and
-    /// only then, for the root's exit if it has already happened.
-    pub(super) fn request(
+    /// Records the request like [`Self::request`] but leaves the root until
+    /// `kill_at` to exit on its own. Only a first request starts a grace, and
+    /// a later hard request ends it.
+    pub(super) fn request_graceful(
+        &mut self,
+        reason: TreeExit,
+        root_exit: impl FnOnce() -> Option<TreeExit>,
+        kill_at: Instant,
+    ) {
+        if self.requested.is_none() {
+            self.request(reason, root_exit);
+            self.kill_at = Some(kill_at);
+        }
+    }
+
+    /// Records a request that kills the tree now, ending any grace.
+    pub(super) fn request_now(
         &mut self,
         reason: TreeExit,
         root_exit: impl FnOnce() -> Option<TreeExit>,
     ) {
+        self.request(reason, root_exit);
+        self.kill_at = None;
+    }
+
+    /// The pending grace's end, for exactly one waiter that waits at least
+    /// that long; it kills the tree then if the root is still running. A
+    /// shorter wait never ends the grace early.
+    pub(super) fn claim_grace(&mut self, deadline: Instant) -> Option<Instant> {
+        let kill_at = self.kill_at.filter(|kill_at| *kill_at <= deadline)?;
+        if std::mem::replace(&mut self.grace_claimed, true) {
+            return None;
+        }
+        Some(kill_at)
+    }
+
+    /// How long a wait for the tree must allow: a pending grace's end, then
+    /// the native termination budget.
+    pub(super) fn wait_deadline(&self, terminate: std::time::Duration) -> Instant {
+        self.kill_at
+            .map_or_else(Instant::now, |kill_at| kill_at.max(Instant::now()))
+            + terminate
+    }
+
+    /// Records only the first request. `root_exit` is consulted then, and
+    /// only then, for the root's exit if it has already happened.
+    fn request(&mut self, reason: TreeExit, root_exit: impl FnOnce() -> Option<TreeExit>) {
         if self.requested.is_none() {
             self.exited_first = root_exit();
             self.requested = Some(reason);

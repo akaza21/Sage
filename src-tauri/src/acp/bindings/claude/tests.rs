@@ -1758,7 +1758,7 @@ fn a_same_length_same_mtime_runtime_replacement_is_reported_as_drift() {
 }
 
 #[test]
-fn unix_launch_environment_defaults_the_config_directory_under_home() {
+fn unix_launch_environment_leaves_an_unset_config_directory_unset() {
     let derived = |pairs: &[(&str, &str)]| {
         let owned: Vec<(String, String)> = pairs
             .iter()
@@ -1771,11 +1771,9 @@ fn unix_launch_environment_defaults_the_config_directory_under_home() {
                 .map(|(_, value)| std::ffi::OsString::from(value))
         })
     };
-    let expected_default = PathBuf::from("/home/sage").join(".claude").into_os_string();
     assert_eq!(
         derived(&[("HOME", "/home/sage"), ("PATH", "/usr/bin")]),
         Ok(vec![
-            ("CLAUDE_CONFIG_DIR".into(), expected_default),
             ("HOME".into(), "/home/sage".into()),
             ("PATH".into(), "/usr/bin".into()),
         ])
@@ -1801,10 +1799,6 @@ fn unix_launch_environment_defaults_the_config_directory_under_home() {
             ("CLAUDE_CONFIG_DIR", "")
         ]),
         Ok(vec![
-            (
-                "CLAUDE_CONFIG_DIR".into(),
-                PathBuf::from("/home/sage").join(".claude").into_os_string()
-            ),
             ("HOME".into(), "/home/sage".into()),
             ("PATH".into(), "/usr/bin".into()),
         ])
@@ -1839,13 +1833,16 @@ fn admitted_runtime_launch_contract_scopes_state_and_environment() {
     let binding = registration.refresh().unwrap();
     #[cfg(windows)]
     let expected = {
-        let profile = std::env::var_os("USERPROFILE").unwrap();
-        let config = std::env::var_os("CLAUDE_CONFIG_DIR")
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| PathBuf::from(&profile).join(".claude").into_os_string());
-        vec![
-            ("CLAUDE_CONFIG_DIR".into(), config),
-            ("USERPROFILE".into(), profile),
+        let config = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty());
+        let mut environment: Vec<(std::ffi::OsString, std::ffi::OsString)> = config
+            .map(|config| ("CLAUDE_CONFIG_DIR".into(), config))
+            .into_iter()
+            .collect();
+        environment.extend([
+            (
+                "USERPROFILE".into(),
+                std::env::var_os("USERPROFILE").unwrap(),
+            ),
             ("APPDATA".into(), std::env::var_os("APPDATA").unwrap()),
             (
                 "LOCALAPPDATA".into(),
@@ -1861,19 +1858,20 @@ fn admitted_runtime_launch_contract_scopes_state_and_environment() {
             ),
             ("TEMP".into(), std::env::var_os("TEMP").unwrap()),
             ("TMP".into(), std::env::var_os("TMP").unwrap()),
-        ]
+        ]);
+        environment
     };
     #[cfg(not(windows))]
     let expected = {
-        let home = std::env::var_os("HOME").unwrap();
-        let config = std::env::var_os("CLAUDE_CONFIG_DIR")
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| PathBuf::from(&home).join(".claude").into_os_string());
-        let mut environment = vec![
-            ("CLAUDE_CONFIG_DIR".into(), config),
-            ("HOME".into(), home),
+        let config = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty());
+        let mut environment: Vec<(std::ffi::OsString, std::ffi::OsString)> = config
+            .map(|config| ("CLAUDE_CONFIG_DIR".into(), config))
+            .into_iter()
+            .collect();
+        environment.extend([
+            ("HOME".into(), std::env::var_os("HOME").unwrap()),
             ("PATH".into(), std::env::var_os("PATH").unwrap()),
-        ];
+        ]);
         if let Some(temp) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty()) {
             environment.push(("TMPDIR".into(), temp));
         }

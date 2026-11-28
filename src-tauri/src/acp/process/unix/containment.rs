@@ -68,7 +68,7 @@ impl TreeControl {
             .termination
             .lock()
             .map_err(|_| LaunchError::ContainmentFailure)?
-            .request(reason, || match &status {
+            .request_now(reason, || match &status {
                 Some(Ok(Some(status))) => Some(TreeExit::Exited {
                     code: status.code(),
                 }),
