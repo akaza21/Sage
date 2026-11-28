@@ -23,10 +23,10 @@ export function EditorStatusItems() {
   return (
     <>
       {caretLabel ? <span title="Caret position">{caretLabel}</span> : null}
+      <span title="Indentation">Spaces: {tabSize}</span>
       {languageLabel ? (
         <span title="Editor language">{languageLabel}</span>
       ) : null}
-      <span title="Indentation">Spaces: {tabSize}</span>
     </>
   );
 }

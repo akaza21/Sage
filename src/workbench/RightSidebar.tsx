@@ -1,4 +1,10 @@
-import { FileSearch, Files, GitBranch, ListTree } from "../ui/leanIcons";
+import {
+  FileSearch,
+  Files,
+  GitBranch,
+  ListTree,
+  Settings,
+} from "../ui/leanIcons";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { SidebarView } from "../app/store";
@@ -36,6 +42,7 @@ export function RightSidebar({
   const sidebarView = useWorkbenchStore((state) => state.sidebarView);
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
+  const openSettings = useWorkbenchStore((state) => state.openSettings);
   const panelRef = useRef<HTMLElement>(null);
   const railButtonRefs = useRef(new Map<SidebarView, HTMLButtonElement>());
   const restoreRailFocus = useRef<SidebarView | null>(null);
@@ -62,8 +69,10 @@ export function RightSidebar({
   }, [sidebarOpen]);
 
   function selectView(id: SidebarView) {
-    if (compact && sidebarOpen && sidebarView === id) {
-      panelRef.current?.focus();
+    if (sidebarOpen && sidebarView === id) {
+      // As in VS Code, the shown view's item hides the docked side bar.
+      if (compact) panelRef.current?.focus();
+      else toggleSidebar();
       return;
     }
     setSidebarView(id);
@@ -109,9 +118,18 @@ export function RightSidebar({
           title={label}
           onClick={() => selectView(id)}
         >
-          <Icon size={19} strokeWidth={1.7} aria-hidden="true" />
+          <Icon size={24} strokeWidth={1.5} aria-hidden="true" />
         </button>
       ))}
+      <button
+        className="activity-rail__button activity-rail__button--end"
+        type="button"
+        aria-label="Editor settings"
+        title="Editor settings"
+        onClick={() => void openSettings()}
+      >
+        <Settings size={24} strokeWidth={1.5} aria-hidden="true" />
+      </button>
     </nav>
   );
 

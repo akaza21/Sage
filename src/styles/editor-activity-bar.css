@@ -4,7 +4,7 @@
  * Each fallback is the shared look.
  */
 .activity-rail {
-  --activity-rail-inset: var(--space-1);
+  --activity-rail-inset: var(--activity-rail-mode-inset, var(--space-1));
 
   display: flex;
   align-items: center;
@@ -12,6 +12,7 @@
   gap: var(--activity-rail-gap, var(--space-1));
   width: var(--activity-rail-width, auto);
   padding: var(--activity-rail-inset);
+  border-right: var(--activity-rail-border, 0);
   background: var(--activity-rail-fill, transparent);
 }
 
@@ -19,7 +20,8 @@
   position: relative;
   display: grid;
   width: var(--activity-button-width, var(--control-height-emphasis));
-  height: var(--control-height-emphasis);
+  height: var(--activity-button-height, var(--control-height-emphasis));
+  flex: none;
   padding: 0;
   place-items: center;
   border: 0;
@@ -31,7 +33,12 @@
 
 .activity-rail__button:hover {
   color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+  background: var(--activity-button-hover-fill, var(--color-surface-hover));
+}
+
+/* Settings sits at the foot of the rail. */
+.activity-rail__button--end {
+  margin-top: auto;
 }
 
 .activity-rail__button--active {
@@ -50,7 +57,7 @@
   position: absolute;
   right: calc(-1 * var(--activity-rail-inset));
   width: var(--activity-indicator-width, 2px);
-  height: 24px;
+  height: var(--activity-indicator-height, 24px);
   border-radius: var(--radius-activity-indicator);
   background: var(--activity-indicator-fill, var(--color-accent));
   content: "";
@@ -62,10 +69,6 @@
 }
 
 .workbench--editor .right-region--leading {
-  --activity-indicator-width: var(--border-width);
-  --radius-activity-indicator: var(--radius-none);
-  --activity-indicator-fill: var(--highlight-active-edge);
-
   width: 100%;
   grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
   border-right: 0;
@@ -76,25 +79,29 @@
   grid-template-columns: var(--editor-activity-width);
 }
 
+/* VS Code's side bar: flat beside the activity bar, a 35 px view title. */
 .workbench--editor .sidebar {
-  margin: var(--space-1) 0 var(--space-1) var(--space-1);
+  margin: 0;
   overflow: auto;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-radius: var(--radius-none);
   background: var(--color-panel);
 }
 
 .workbench--editor .sidebar__heading {
-  height: 36px;
-  padding: 0 var(--space-3);
-  font-size: var(--font-size-xs);
-  letter-spacing: 0;
-  text-transform: none;
+  height: 35px;
+  padding: 0 var(--space-2) 0 20px;
+  border-bottom: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 @media (forced-colors: active) {
   .workbench--editor .sidebar {
-    border-color: CanvasText;
+    border-right: 1px solid CanvasText;
   }
 
   .activity-rail__button--active::after {

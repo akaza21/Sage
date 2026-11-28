@@ -50,6 +50,36 @@ describe("RightSidebar beta tool rail", () => {
     expect(screen.queryByRole("button", { name: "Problems" })).toBeNull();
     expect(screen.getByRole("button", { name: "Outline" })).toBeInTheDocument();
   });
+
+  it("hides and reshows the docked side bar from the shown view's item", () => {
+    useWorkbenchStore.setState({ sidebarOpen: true, sidebarView: "search" });
+    render(<RightSidebar compact={false} railFirst />);
+    const search = screen.getByRole("button", { name: "Search" });
+
+    fireEvent.click(search);
+    expect(screen.queryByLabelText("Search project tools")).toBeNull();
+    expect(search).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(search);
+    expect(screen.getByLabelText("Search project tools")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    expect(screen.getByLabelText("Outline project tools")).toBeInTheDocument();
+  });
+
+  it("opens the Editor Settings tab from the activity bar's foot", async () => {
+    render(<RightSidebar compact={false} railFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Editor settings" }));
+
+    await vi.waitFor(() => {
+      const state = useWorkbenchStore.getState();
+      expect(state.activeTabId).toBe("settings:appearance");
+      expect(
+        state.tabs.filter((tab) => tab.kind === "settings").map((t) => t.id),
+      ).toEqual(["settings:appearance"]);
+    });
+  });
 });
 
 describe("RightSidebar Search", () => {
