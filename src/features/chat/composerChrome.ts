@@ -62,7 +62,7 @@ export function useComposerDictation(
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
   }, [cancel, suspended]);
-  const nativeSupported = isTauriRuntime() && /win/i.test(navigator.platform);
+  const nativeSupported = isTauriRuntime() && /win|mac/i.test(navigator.platform);
   const supported = nativeSupported || Boolean(browserRecognition());
   const disabled = !supported || suspended;
   const start = async () => {
