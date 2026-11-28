@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    process::{TreeControl, TreeExit},
+    process::{TreeControl, TreeExit, graceful_exit},
     runtime::{BoundedThread, ProjectIntentAuthority, terminal_detail},
 };
 use sage_acp_protocol::lifecycle::TurnTerminalOutcome;
@@ -62,8 +62,20 @@ where
                 );
             }
         }
-        exit.state.close_stdin_after_durable_completed();
-        match control.request_termination(exit.reason) {
+        // A shutdown Sage asked for leaves a harness whose stdin it closed the
+        // grace to exit on its own; a failed runtime is ended now.
+        let graceful = if exit.shutdown.is_some() {
+            exit.state.close_stdin_for_shutdown()
+        } else {
+            exit.state.close_stdin_after_durable_completed();
+            false
+        };
+        let requested = if graceful {
+            control.request_graceful_termination(exit.reason, graceful_exit::EXIT_GRACE)
+        } else {
+            control.request_termination(exit.reason)
+        };
+        match requested {
             Ok(()) => termination_succeeded = true,
             Err(error) => {
                 observability = ShutdownObservability::Failure;
@@ -201,7 +213,7 @@ fn lost_runtime_outcome(
 }
 
 pub(super) fn cleanup_budget() -> Duration {
-    Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
+    graceful_exit::close_budget()
 }
 
 #[cfg(test)]

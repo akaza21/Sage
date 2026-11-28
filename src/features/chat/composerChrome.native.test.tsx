@@ -49,6 +49,34 @@ describe("native composer dictation", () => {
     expect(result.current.supported).toBe(false);
   });
 
+  it("dictates through the native seam on macOS, where WKWebView has no speech API", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    let text = "";
+    const ref = createRef<HTMLTextAreaElement>();
+    const { result } = renderHook(() =>
+      useComposerDictation(text, (next) => (text = next), "chat-a", false, ref),
+    );
+    expect(result.current.supported).toBe(true);
+    await act(async () => result.current.start());
+    const id = (native.invoke.mock.calls[0]?.[1] as { id: string }).id;
+    expect(native.invoke).toHaveBeenCalledWith("start_voice_input", { id });
+    act(() => native.emit?.({ id, kind: "partial", text: "hello" }));
+    expect(text).toBe("hello");
+  });
+
+  it("shows the native engine's own reason when dictation cannot start", async () => {
+    const denied =
+      "Microphone access is off for Sage. Turn it on in System Settings > Privacy & Security > Microphone.";
+    native.invoke.mockRejectedValueOnce(denied);
+    const ref = createRef<HTMLTextAreaElement>();
+    const { result } = renderHook(() =>
+      useComposerDictation("", vi.fn(), "chat-a", false, ref),
+    );
+    await act(async () => result.current.start());
+    expect(result.current.error).toBe(denied);
+    expect(result.current.listening).toBe(false);
+  });
+
   it("inserts partial then final speech at the caret without duplicating interim words", async () => {
     const input = document.createElement("textarea");
     input.value = "before after";

@@ -19,7 +19,6 @@ use super::worker_command::{WorkerCommand, WorkerReply, WorkerResponder};
 use super::{
     CancelIntent, DispatchSource, DriverClock, DriverError, DriverProgress, FirstDeliveryUnknown,
     PendingExit, ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, WorkerEnvelope,
-    types::tree_exit,
 };
 
 use super::TeardownDetail;
@@ -320,23 +319,6 @@ where
         let mut progress = DriverProgress::default();
         self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
             .await
-    }
-
-    pub(crate) fn request_host_termination(&mut self) -> Result<(), DriverError> {
-        match self.state {
-            DriverState::Running => {
-                self.transport.close();
-                self.control
-                    .request_termination(tree_exit(TeardownCause::HostTermination))
-                    .map_err(|_| DriverError::Tree)?;
-                self.state = DriverState::TeardownRequired(TeardownCause::HostTermination);
-                Ok(())
-            }
-            DriverState::TeardownRequired(TeardownCause::HostTermination) => Ok(()),
-            DriverState::TeardownRequired(ref cause) => {
-                Err(DriverError::TeardownRequired(cause.clone()))
-            }
-        }
     }
 
     async fn cancel(

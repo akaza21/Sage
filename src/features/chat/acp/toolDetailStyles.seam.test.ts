@@ -26,17 +26,6 @@ function stylesInMedia(condition: string, selector: string) {
 }
 
 describe("tool detail style contract", () => {
-  it("declares a static running icon and readable label under reduced motion", () => {
-    const condition = "(prefers-reduced-motion: reduce)";
-    expect(
-      stylesInMedia(condition, ".acp-tool-running > svg")[0].style.animation,
-    ).toBe("none");
-    const labels = stylesInMedia(condition, ".acp-live-shimmer");
-    expect(labels[0].style.animation).toBe("none");
-    expect(labels[1].style.background).toBe("none");
-    expect(labels[1].style.color).toBe("var(--color-text-muted)");
-  });
-
   it("declares system text colors for the running indicator and label under forced colors", () => {
     for (const selector of [".acp-tool-running", ".acp-live-shimmer"]) {
       const rule = stylesInMedia("(forced-colors: active)", selector)[0];

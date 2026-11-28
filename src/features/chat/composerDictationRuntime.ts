@@ -171,7 +171,7 @@ export function createDictation(options: {
   return {
     cancel: () => close(true),
     stop: (onError: (message: string) => void) => close(false, onError),
-    start: async (Constructor: (new () => BrowserRecognition) | null) => {
+    start: async (Constructor?: (new () => BrowserRecognition) | null) => {
       if (Constructor) {
         browser = new Constructor();
         startBrowserDictation(browser, {

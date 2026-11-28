@@ -3,7 +3,10 @@
 //! `scripts/harness-wire/capture.mjs` when Codex changes.
 
 use super::*;
-use crate::acp::bindings::wire_replay::{self, FixtureMapper, Replay};
+use crate::acp::bindings::{
+    wire_contract,
+    wire_replay::{self, FixtureMapper, Replay},
+};
 
 #[test]
 fn every_recorded_codex_transcript_projects_as_committed() {
@@ -42,6 +45,7 @@ fn every_recorded_codex_transcript_projects_as_committed() {
             &records,
             &FixtureMapper,
         );
+        wire_contract::assert_conforms("codex", scenario, &replay.transcript);
         wire_replay::assert_summary("codex", scenario, &replay.summary(&runtime));
     }
 }

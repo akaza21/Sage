@@ -19,6 +19,8 @@ use crate::acp::process::supervisor::{TerminationRecord, TreeExit, ZeroProcessTo
 use crate::acp::process::{ProcessIdentityReceipt, SpawnTimingReceipt};
 use sage_process::{error::LaunchError, handle::NativeHandle, job::JobBoundary};
 
+mod grace;
+
 pub(crate) struct RunningTree {
     stdin: super::io::StdinEndpoint,
     stdout: super::io::StdoutEndpoint,
@@ -147,7 +149,7 @@ impl TreeControl {
     /// blocked reader. Completion is observed separately through `wait`.
     pub(crate) fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
         {
-            locked(&self.0.termination)?.request(reason, || self.native_exit_if_exited());
+            locked(&self.0.termination)?.request_now(reason, || self.native_exit_if_exited());
         }
         self.0.job.terminate()
     }
@@ -176,7 +178,7 @@ impl TreeControl {
     }
 
     pub(crate) fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
-        self.wait_root_exit_until(Instant::now() + self.0.terminate_deadline)
+        self.wait_root_exit_until(self.native_wait_deadline()?)
     }
 
     pub(crate) fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
@@ -185,6 +187,7 @@ impl TreeControl {
     }
 
     fn wait_root_exit_until(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
+        self.finish_grace(deadline)?;
         wait_until(self.0.process.raw(), deadline)?;
         self.observed_exit()
     }
@@ -197,7 +200,7 @@ impl TreeControl {
 
     #[cfg(test)]
     pub(crate) fn wait(&self) -> Result<TreeExit, LaunchError> {
-        self.wait_until(Instant::now() + self.0.terminate_deadline)
+        self.wait_until(self.native_wait_deadline()?)
     }
 
     #[cfg(feature = "acp-fixture")]
@@ -205,15 +208,8 @@ impl TreeControl {
         self.wait_until(deadline)
     }
 
-    #[cfg(test)]
-    pub(crate) fn terminate(&self, reason: TreeExit) -> Result<TreeExit, LaunchError> {
-        let deadline = Instant::now() + self.0.terminate_deadline;
-        self.request_termination(reason)?;
-        self.wait_until(deadline)
-    }
-
     pub(crate) fn wait_zero(&self) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
-        let exit = self.wait_until(Instant::now() + self.0.terminate_deadline)?;
+        let exit = self.wait_until(self.native_wait_deadline()?)?;
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
 
@@ -221,7 +217,7 @@ impl TreeControl {
         &self,
         deadline: Instant,
     ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
-        let native_deadline = Instant::now() + self.0.terminate_deadline;
+        let native_deadline = self.native_wait_deadline()?;
         let exit = self.wait_until(deadline.min(native_deadline))?;
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
@@ -446,7 +442,7 @@ impl TreeAuthority {
             return Ok(());
         }
         {
-            locked(&self.termination)?.request(TreeExit::ParentShutdown, || None);
+            locked(&self.termination)?.request_now(TreeExit::ParentShutdown, || None);
         }
         self.job.terminate()?;
         self.converge_until(deadline)

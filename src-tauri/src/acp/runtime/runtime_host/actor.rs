@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use crate::acp::store::AdapterTurnCursor;
 use sage_acp_protocol::scheduler::RuntimeOwner;
@@ -148,10 +145,9 @@ impl<E: RuntimeEngine> Actor<E> {
         self.settle_pending_steer(HostError::Closed);
         // Engine ownership must never be leaked: dropping the process driver
         // retains the platform supervisor's bounded emergency teardown path.
-        let _ = self.engine.shutdown(
-            Instant::now()
-                + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close),
-        );
+        let _ = self
+            .engine
+            .shutdown(Instant::now() + crate::acp::process::graceful_exit::close_budget());
     }
 
     fn dispatch(

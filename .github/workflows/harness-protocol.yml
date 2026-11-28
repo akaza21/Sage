@@ -1,0 +1,35 @@
+name: Harness protocol
+
+# Compares each harness's newest published release with its newest checked
+# protocol contract (src-tauri/tests/fixtures/harness-contracts) and prints
+# every protocol change into the job summary. A red run means a harness
+# changed its protocol: admit it with `node scripts/harness-wire/contract.mjs
+# generate <harness> <version>`, recapture the corpus at that version and
+# review both diffs in one PR (steps in scripts/harness-wire/upgrade.mjs).
+# It runs published harness packages, so the job holds no secrets and keeps
+# no Git credentials.
+
+on:
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      # An explicit bash runs with pipefail, so the script's exit code, not
+      # tee's, decides the step.
+      - shell: bash
+        run: node scripts/harness-wire/upgrade.mjs 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"

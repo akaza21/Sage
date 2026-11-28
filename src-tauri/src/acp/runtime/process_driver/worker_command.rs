@@ -108,7 +108,7 @@ impl WorkerCommand {
             | Self::FinalizeClose { .. }
             | Self::BeginPark
             | Self::ParkAfterZero { .. }
-            | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
+            | Self::Shutdown => crate::acp::process::graceful_exit::close_budget_ms(),
             Self::PreparePrompt(_)
             | Self::DispatchPrompt { .. }
             | Self::Steer { .. }

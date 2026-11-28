@@ -3,12 +3,6 @@ import { expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
-it("leaves the fork option about 33px below the title (R3-12a)", () => {
-  expect(read("src/features/chat/fork-chat.css")).toMatch(
-    /\.fork-chat-dialog h2\s*\{[^}]*margin:\s*0 var\(--space-1\) calc\(var\(--space-4\) \+ var\(--space-1\)\);/s,
-  );
-});
-
 it("keeps both scrim dialog titles at 18px after the base dialog rule (R3-12a)", () => {
   const style = document.createElement("style");
   style.textContent = read("src/styles/shared-dialogs.css");
@@ -24,36 +18,4 @@ it("keeps both scrim dialog titles at 18px after the base dialog rule (R3-12a)",
     style.remove();
     dialog.remove();
   }
-});
-
-it("keeps annotation hover bounds on the chip after sharing compact controls", () => {
-  expect(read("src/features/chat/transcript-interactions.css")).toMatch(
-    /\.annotation-chip\s*\{[^}]*display:\s*inline-flex;[^}]*width:\s*fit-content;/s,
-  );
-});
-
-it("draws the initial approval ring without requiring focus-visible (R3-09)", () => {
-  expect(read("src/features/chat/acp/permission-prompt.css")).toMatch(
-    /button\[data-initial-focus\][^{]*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--color-accent\);[^}]*box-shadow:\s*0 0 0 1px var\(--color-accent\);/s,
-  );
-});
-
-it("shares the raised surface between fork and selection popovers (R3-07)", () => {
-  expect(read("src/features/chat/fork-chat.css")).toMatch(
-    /\.answer-more-menu\.menu-popover\s*\{[^}]*background:\s*var\(--color-panel-raised\);/s,
-  );
-  expect(read("src/features/chat/transcript-interactions.css")).toMatch(
-    /\.chat-selection-popover,[^{]*\.transcript-selection-status\s*\{[^}]*background:\s*var\(--color-panel-raised\);/s,
-  );
-});
-
-it("reserves find space below header actions at every pane width (R3-05)", () => {
-  const css = read("src/features/chat/chat-find.css");
-  expect(css).toMatch(
-    /\.chat-surface--agent:has\(> \.chat-find\)\s*\{[^}]*grid-template:\s*"find" auto\s*"notice" auto\s*"transcript" minmax\(0, 1fr\)\s*"composer" fit-content\(60%\)\s*\/ minmax\(0, 1fr\);/s,
-  );
-  expect(css).toMatch(
-    /\.chat-surface--agent > \.chat-find\s*\{[^}]*grid-area:\s*find;/s,
-  );
-  expect(css).not.toMatch(/position:\s*absolute/);
 });

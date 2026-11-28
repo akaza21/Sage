@@ -31,8 +31,7 @@ impl Lane<'_> {
         owner: RuntimeOwner,
     ) -> Result<(), CodexSessionError> {
         let host = self.arm_native_end(&owner)?;
-        let deadline = Instant::now()
-            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let deadline = Instant::now() + crate::acp::process::graceful_exit::close_budget();
         match host.shutdown_recovery_before(deadline) {
             Ok(Some(token)) => match self.shutdown_runtime_after_token(owner.clone(), token) {
                 Ok(()) => self.finish_native_end(&owner, &host),

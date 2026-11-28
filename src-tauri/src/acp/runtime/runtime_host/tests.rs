@@ -1846,7 +1846,7 @@ fn command_deadlines_use_the_frozen_operation_classes() {
     );
     assert_eq!(
         HostCommand::Shutdown.deadline_millis(),
-        LIMITS.deadlines_ms.explicit_close
+        crate::acp::process::graceful_exit::close_budget_ms()
     );
     // A list read is answered at once; a reconnect waits on the server.
     let control = |control| {

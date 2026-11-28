@@ -52,7 +52,15 @@ pub(crate) fn frame_kind(frame: &Value, sent: &HashMap<String, String>) -> Strin
             .join(":");
     }
     if let Some(answered) = frame.get("id").filter(|_| text(&frame["type"]).is_none()) {
-        let outcome = if frame.get("error").is_some_and(|error| !error.is_null()) {
+        // JavaScript truthiness, as `frame.error ? ...` reads it.
+        let truthy = |value: &Value| match value {
+            Value::Null => false,
+            Value::Bool(flag) => *flag,
+            Value::Number(number) => number.as_f64() != Some(0.0),
+            Value::String(text) => !text.is_empty(),
+            _ => true,
+        };
+        let outcome = if frame.get("error").is_some_and(truthy) {
             "error"
         } else {
             "result"
@@ -98,9 +106,16 @@ pub(crate) fn kinded(transcript: &[(bool, Value)]) -> Vec<(bool, String)> {
                 .get("request_id")
                 .filter(|id| !id.is_null())
                 .or_else(|| frame.get("id"));
-            let name = text(&frame["method"])
-                .or_else(|| text(&frame["request"]["subtype"]))
-                .or_else(|| text(&frame["type"]));
+            // `method ?? request.subtype ?? type`: only an absent or null
+            // member falls through, and an empty name records nothing.
+            let name = [
+                &frame["method"],
+                &frame["request"]["subtype"],
+                &frame["type"],
+            ]
+            .into_iter()
+            .find(|value| !value.is_null())
+            .and_then(text);
             if let (Some(id), Some(name)) = (id, name) {
                 let id = id.as_str().map_or_else(|| id.to_string(), str::to_owned);
                 sent[usize::from(*out)].insert(id, name.to_owned());
