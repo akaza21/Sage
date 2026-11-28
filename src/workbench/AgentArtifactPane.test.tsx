@@ -2865,7 +2865,9 @@ describe("Agent pane launcher, diagram views and Ask pill", () => {
     });
     fireEvent.change(address, { target: { value: "example.com/docs" } });
     fireEvent.submit(address);
-    expect(openBrowser).toHaveBeenCalledWith("https://example.com/docs");
+    await waitFor(() =>
+      expect(openBrowser).toHaveBeenCalledWith("https://example.com/docs"),
+    );
     expect(screen.queryByRole("region", { name: "New tab" })).toBeNull();
   });
 

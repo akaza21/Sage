@@ -76,10 +76,9 @@ export function useAgentPaneViewsFor(
       activeTabId !== tab &&
       tabs.some(({ id, kind }) => id === activeTabId && kind !== "chat"),
   );
-  const other =
-    useAgentChangesState((state) => state.selected) ||
-    useSubagentPaneStore((state) => state.selected) ||
-    otherTab;
+  const changesSelected = useAgentChangesState((state) => state.selected);
+  const subagentSelected = useSubagentPaneStore((state) => state.selected);
+  const other = changesSelected || subagentSelected || otherTab;
   const views = all.filter((view) => view.chatId === chatId);
   const launcher =
     !other && chatId !== null && selectedId === launcherId(chatId);

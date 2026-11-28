@@ -386,16 +386,9 @@ describe("ChatMarkdown code blocks", () => {
   it("shows a Chat diagram as a card that opens it in the side pane", async () => {
     const source = "sequenceDiagram\nA->>B: hi";
     render(
-      <ChatMarkdown
-        text={"```mermaid\n" + source + "\n```"}
-        fileReferenceOwner={
-          {
-            projectId: "project-a",
-            chatId: "chat-a",
-            sessionId: "session-a",
-          } as AgentArtifactOwner
-        }
-      />,
+      <div data-chat-id="chat-a">
+        <ChatMarkdown text={"```mermaid\n" + source + "\n```"} />
+      </div>,
     );
     fireEvent.click(
       await screen.findByRole("button", {
@@ -411,9 +404,12 @@ describe("ChatMarkdown code blocks", () => {
     useAgentPaneViews.setState({ views: [], selected: null, opened: 0 });
   });
 
-  it("does not duplicate the answer copy action below a rendered diagram", async () => {
+  it("keeps the diagram and its copy action out of the message", async () => {
     render(<ChatMarkdown text={"```mermaid\ngraph TD\nA --> B\n```"} />);
-    await screen.findByRole("img", { name: "Mermaid diagram" });
+    await screen.findByRole("button", {
+      name: "Open Flowchart in the side pane",
+    });
+    expect(screen.queryByRole("img", { name: /Mermaid/ })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Copy diagram source" }),
     ).toBeNull();

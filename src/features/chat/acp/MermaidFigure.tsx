@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronRight, Copy, Workflow } from "../../../ui/leanIcons";
+import { pinnedAgentChatOwner } from "../../../app/agentChatOwner";
 import { openAgentPaneView } from "../../../workbench/agentPaneViewOpen";
 import {
   parseMermaidSource,
@@ -365,25 +366,24 @@ function sourceKey(source: string) {
 }
 
 /** A diagram in a message is a compact card; it opens in the right pane. */
-export function ChatDiagramCard({
-  source,
-  chatId,
-}: {
-  source: string;
-  chatId: string;
-}) {
+function ChatDiagramCard({ source }: { source: string }) {
   const title = diagramTitle(source);
   return (
     <button
       className="acp-diagram-card"
       type="button"
       aria-label={`Open ${title} in the side pane`}
-      onClick={() =>
-        openAgentPaneView(
-          { chatId, kind: "diagram", title, source },
-          sourceKey(source),
-        )
-      }
+      onClick={(event) => {
+        // The message's own Chat, else the Chat the Agent body focuses.
+        const chatId =
+          event.currentTarget.closest<HTMLElement>("[data-chat-id]")?.dataset
+            .chatId ?? pinnedAgentChatOwner();
+        if (chatId)
+          openAgentPaneView(
+            { chatId, kind: "diagram", title, source },
+            sourceKey(source),
+          );
+      }}
     >
       <Workflow size={16} aria-hidden="true" />
       <span>{title}</span>
@@ -394,15 +394,15 @@ export function ChatDiagramCard({
 
 /** In a Chat message a diagram is a card that opens it in the side pane. */
 export default function MermaidEntry({
-  chatId,
+  card,
   ...props
 }: {
   source: string;
   copySource?: boolean;
-  chatId?: string;
+  card?: boolean;
 }) {
-  return chatId ? (
-    <ChatDiagramCard source={props.source} chatId={chatId} />
+  return card ? (
+    <ChatDiagramCard source={props.source} />
   ) : (
     <MermaidFigure {...props} />
   );

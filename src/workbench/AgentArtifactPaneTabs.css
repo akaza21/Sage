@@ -70,8 +70,8 @@
   box-shadow: none;
 }
 .agent-artifact-pane .tab[data-resource-kind="changes"] {
-  width: var(--agent-pane-tab-max-width);
-  flex-basis: var(--agent-pane-tab-max-width);
+  width: auto;
+  flex-basis: auto;
 }
 
 .agent-artifact-pane .changes-surface__toolbar {
@@ -139,7 +139,4 @@
 .workbench--agent .agent-artifact-pane .tab__dir {
   display: none;
 }
-.agent-artifact-pane .tab[data-resource-kind="changes"] {
-  width: auto;
-  flex-basis: auto;
-}
+

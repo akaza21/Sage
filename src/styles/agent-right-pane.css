@@ -511,7 +511,7 @@ button.agent-overview__row:disabled {
 
 .agent-pane-ask {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-floating);
   bottom: 16px;
   left: 50%;
   display: flex;
