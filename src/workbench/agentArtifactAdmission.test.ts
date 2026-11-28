@@ -107,6 +107,15 @@ describe("agent artifact admission", () => {
     ).toBe(true);
     expect(
       agentArtifactVisible({
+        tabId: "diff:summary",
+        kind: "diff",
+        admissions: [],
+        focusedOwner: ownerA,
+        hasFocusedChatStats: true,
+      }),
+    ).toBe(true);
+    expect(
+      agentArtifactVisible({
         tabId: "chat:a",
         kind: "chat",
         admissions: [{ owner: ownerA, tabId: "chat:a" }],

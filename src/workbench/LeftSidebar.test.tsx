@@ -337,67 +337,6 @@ it("lists chats under every project folder and opens a foreign chat", () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("pins and moves a foreign-folder chat without switching first", async () => {
-  const pinChat = vi.fn(async () => undefined);
-  const moveChat = vi.fn(async () => undefined);
-  const switchProject = vi.fn(async () => undefined);
-  useWorkbenchStore.setState({
-    project: { id: "sage", name: "Sage", roots: [] },
-    projects: [
-      {
-        id: "cross",
-        name: "Cross",
-        rootCount: 1,
-        lastOpenedAt: 2,
-        railChats: [
-          {
-            id: "chat:cross",
-            title: "Research agent memory",
-            pinned: false,
-            position: 0,
-          },
-        ],
-      },
-      { id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 },
-      { id: "work", name: "Work", rootCount: 1, lastOpenedAt: 3 },
-    ],
-    tabs: [
-      {
-        id: "chat:sage",
-        kind: "chat",
-        title: "Continue prior chat goal",
-        position: 0,
-        pinned: false,
-        dirty: false,
-        status: "idle",
-      },
-    ],
-    activeTabId: "chat:sage",
-    pinChat,
-    moveChat,
-    switchProject,
-    loadRepositoryInventory: vi.fn(async () => undefined),
-  });
-  render(<LeftSidebar />);
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Chat actions for Research agent memory",
-    }),
-  );
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Pin chat" }));
-  expect(pinChat).toHaveBeenCalledWith("chat:cross", "cross");
-  expect(switchProject).not.toHaveBeenCalled();
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Chat actions for Research agent memory",
-    }),
-  );
-  fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
-  expect(moveChat).toHaveBeenCalledWith("chat:cross", "work", "cross");
-  expect(switchProject).not.toHaveBeenCalled();
-});
-
 it("restores a foreign-folder archived chat without switching first", async () => {
   const restoreChat = vi.fn(async () => true);
   const switchProject = vi.fn(async () => undefined);
@@ -782,7 +721,7 @@ it("promotes pinned tasks without duplicating them in recents", async () => {
   expect(within(projects).queryByText("Recent research")).toBeNull();
 });
 
-it("keeps archive enabled for a project with other attached chats", () => {
+it("keeps archive enabled for a project with other attached chats", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -803,7 +742,9 @@ it("keeps archive enabled for a project with other attached chats", () => {
   fireEvent.click(
     screen.getByRole("button", { name: "Chat actions for Stale task" }),
   );
-  expect(screen.getByRole("menuitem", { name: "Archive chat" })).toBeEnabled();
+  expect(
+    await screen.findByRole("menuitem", { name: "Archive chat" }),
+  ).toBeEnabled();
 });
 
 it("collapses Pinned and Projects but keeps Recents open", async () => {

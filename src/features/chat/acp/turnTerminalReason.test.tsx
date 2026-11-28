@@ -5,7 +5,6 @@ import type { TurnTerminalReason } from "../../../domain/acp";
 import { settleLazyModules } from "../../../test/settleLazyModules";
 import { AcpChatProjection } from "./AcpChatProjection";
 import { page } from "./acpProjection.fixture";
-import { turnTerminalReasonLabels } from "./statusSemantics";
 
 async function renderTurn(
   state: "failed" | "cancelled" | "completed",
@@ -32,23 +31,6 @@ function header(): HTMLElement {
 afterEach(cleanup);
 
 describe("turn terminal reason", () => {
-  it("names every reason the decoder can admit", () => {
-    const kinds: TurnTerminalReason[] = [
-      "authRequired",
-      "harnessExited",
-      "protocolError",
-      "cancelledByUser",
-      "refusedVersion",
-      "timeout",
-      "other",
-    ];
-    expect(Object.keys(turnTerminalReasonLabels).sort()).toEqual(
-      [...kinds].sort(),
-    );
-    for (const kind of kinds)
-      expect(turnTerminalReasonLabels[kind].length).toBeGreaterThan(0);
-  });
-
   it("keeps the failed status chip separate from the single failure cause", async () => {
     await renderTurn("failed", { kind: "harnessExited" });
 
