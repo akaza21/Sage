@@ -71,12 +71,11 @@ impl ReaderThread {
                         }
                     };
                     if reader_discard.load(Ordering::Acquire) {
-                        match event {
-                            ReaderEvent::Frame(_) => continue,
-                            ReaderEvent::Eof | ReaderEvent::FramingFailed(_) => {
-                                break ReaderCompletion::Clean;
-                            }
-                        }
+                        // The run has its answer: drain raw bytes to end of stream,
+                        // so no malformed or oversized line closes the pipe early.
+                        let mut sink = [0_u8; 8192];
+                        while matches!(stdout.read(&mut sink), Ok(read) if read > 0) {}
+                        break ReaderCompletion::Clean;
                     }
                     if let Some(completion) =
                         enqueue_reader_event(&send_event, event, &reader_overflowed, deadline)
