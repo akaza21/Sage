@@ -386,3 +386,13 @@
   margin-bottom: var(--space-2);
   background: var(--workbench-card-fill);
 }
+
+/* Narrow windows keep the toolbar on one row: Terminal shrinks to its glyph. */
+@media (max-width: 640px) {
+  .title-bar--agent .status-bar__terminal {
+    width: var(--agent-toolbar-button);
+    padding: 0 7px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+}
