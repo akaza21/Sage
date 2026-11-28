@@ -468,6 +468,8 @@
     0 20px 44px -12px rgb(0 0 0 / 37.5%), 0 3px 10px -2px rgb(0 0 0 / 27.5%);
   --elevation-popover: var(--elevation-menu);
   --elevation-floating: var(--elevation-menu);
+  --elevation-card-soft:
+    0 4px 6px -1px rgb(0 0 0 / 5%), 0 2px 4px -2px rgb(0 0 0 / 5%);
   /* For AG-3's menus; no surface uses it yet. */
   --backdrop-menu: blur(20px) saturate(1.6);
   --highlight-focus-edge: color-mix(
@@ -921,6 +923,7 @@ textarea:disabled,
     --elevation-menu: none;
     --elevation-popover: none;
     --elevation-floating: none;
+    --elevation-card-soft: none;
     --doc-canvas: Canvas;
     --doc-panel: Canvas;
     --doc-surface: Canvas;

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useWorkbenchStore } from "../../app/store";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { refreshHarnessDiscovery } from "../harness/refreshHarnessDiscovery";
 import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
@@ -52,14 +52,10 @@ export function AgentHarnessSettings({
   // result and the end of refreshing are recorded for wake. Only a newer
   // inventory, from discovery or another refresh, supersedes it.
   async function refresh() {
-    const initialInventory = useWorkbenchStore.getState().harnesses;
     setRefreshing(true);
     setError(null);
     try {
-      const inventory = await getWorkbenchPorts().agent.refreshHarnesses();
-      const current = useWorkbenchStore.getState();
-      if (current.harnesses === initialInventory)
-        await current.applyHarnessDiscovery(inventory);
+      await refreshHarnessDiscovery();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {

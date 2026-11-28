@@ -25,6 +25,11 @@ export function harnessPickerCandidates(
   selectedSubtitle?: string,
 ): SearchablePickerOption[] {
   return harnesses
+    // Not-installed harnesses list after the options, each with Install.
+    .filter(
+      (harness) =>
+        harness.installState !== "notInstalled" || harness.id === selectedId,
+    )
     .map<SearchablePickerOption>((harness) => {
       const availability = harnessAvailability(harness);
       const disabledReason =

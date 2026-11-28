@@ -1,17 +1,18 @@
-import { useState, type CSSProperties } from "react";
+import { useId, useRef, useState } from "react";
 import type {
   AcpConfigOption,
   AcpConfigValue,
 } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
-import { Brain, RotateCcw } from "../../ui/leanIcons";
+import { Brain, Check, ChevronRight } from "../../ui/leanIcons";
+import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-effort-menu.css";
 
 /**
- * The thinking-level section of the composer's model popover: the level the
- * harness reports, a slider over the levels it lists, and a reset to its
- * default when it names one.
+ * The model popover's "Thinking effort" row: the level the harness reports,
+ * opening a submenu of the levels it lists. The harness's default level is
+ * marked, so returning to it needs no separate reset.
  */
 export default function ComposerEffortMenu({
   option,
@@ -24,113 +25,85 @@ export default function ComposerEffortMenu({
   pending: boolean;
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
-  const [draft, setDraft] = useState<{
-    option: typeof option;
-    index: number;
-  } | null>(null);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
   const levels = flattenChoices(option);
-  const index = levels.findIndex(
-    (level) => level.value === option.currentValue,
-  );
-  const position =
-    draft?.option === option && !disabled && !pending ? draft.index : index;
-  const finishDrag = () => {
-    if (draft?.option === option) select(draft.index);
-    setDraft(null);
+  const current = levels.find((level) => level.value === option.currentValue);
+  if (!current) return null;
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
   };
-  const defaultLevel = levels.find(
-    (level) => level.value === option.defaultValue,
-  );
-  const select = (position: number) => {
-    const level = levels[position];
-    if (!disabled && !pending && level && level.value !== option.currentValue)
-      void onSetOption(option.id, { value: level.value });
+  const select = (value: string) => {
+    if (!disabled && !pending && value !== option.currentValue)
+      void onSetOption(option.id, { value });
+    close();
   };
-  if (index < 0) return null;
-  const label = capitalizeLabel(levels[position].name);
   return (
-    <div className="composer-effort" role="group" aria-label="Thinking level">
-      <div className="composer-effort__heading">
-        <Brain size={13} aria-hidden="true" />
-        <span className="composer-effort__level">{label}</span>
-        {defaultLevel ? (
-          <button
-            type="button"
-            aria-label="Reset effort"
-            title="Reset effort"
-            disabled={
-              disabled || pending || defaultLevel.value === option.currentValue
-            }
-            onClick={(event) => {
-              event.currentTarget
-                .closest(".composer-effort")
-                ?.querySelector("input")
-                ?.focus();
-              select(levels.indexOf(defaultLevel));
-            }}
-          >
-            <RotateCcw size={13} aria-hidden="true" />
-          </button>
-        ) : (
-          <span />
-        )}
-      </div>
-      <div
-        className="composer-effort__track"
-        style={
-          {
-            "--effort-position": `${levels.length > 1 ? (position / (levels.length - 1)) * 100 : 0}%`,
-          } as CSSProperties
-        }
+    <div className="composer-effort">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="composer-effort__trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-disabled={disabled || pending}
+        onClick={() => !disabled && !pending && setOpen(!open)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" || disabled || pending) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(true);
+        }}
       >
-        <input
-          type="range"
-          aria-label="Thinking level"
-          aria-valuetext={label}
-          aria-disabled={disabled || pending}
-          min={0}
-          max={levels.length - 1}
-          step={1}
-          value={position}
-          onPointerDown={(event) => {
-            if (disabled || pending) return;
-            event.currentTarget.setPointerCapture?.(event.pointerId);
-            setDraft({ option, index });
-          }}
-          onPointerUp={finishDrag}
-          onPointerCancel={() => setDraft(null)}
-          onBlur={finishDrag}
-          onChange={(event) => {
-            if (disabled || pending) return;
-            const next = Number(event.currentTarget.value);
-            if (draft) {
-              if (draft.option === option) setDraft({ option, index: next });
-            } else select(next);
-          }}
+        <Brain size={14} aria-hidden="true" />
+        <span>Thinking effort</span>
+        <span className="composer-effort__level">
+          {capitalizeLabel(current.name)}
+        </span>
+        <ChevronRight size={14} aria-hidden="true" />
+      </button>
+      <MenuPopover
+        id={menuId}
+        open={open}
+        ariaLabel="Thinking effort"
+        className="composer-effort__menu"
+        initialFocus="selected"
+        portalTarget="closest-popover"
+        triggerRef={triggerRef}
+        onDismiss={(reason) => (reason === "escape" ? close() : setOpen(false))}
+      >
+        <div
           onKeyDown={(event) => {
-            const position = {
-              ArrowLeft: index - 1,
-              ArrowDown: index - 1,
-              ArrowRight: index + 1,
-              ArrowUp: index + 1,
-              Home: 0,
-              End: levels.length - 1,
-            }[event.key];
-            if (position === undefined) return;
+            if (event.key !== "ArrowLeft") return;
             event.preventDefault();
             event.stopPropagation();
-            select(Math.max(0, Math.min(levels.length - 1, position)));
+            close();
           }}
-        />
-        <div className="composer-effort__stops" aria-hidden="true">
-          {levels.map((level) => (
-            <span
-              key={level.value}
-              data-selected={level.value === levels[position].value}
-            />
-          ))}
+        >
+          {levels.map((level) => {
+            const checked = level.value === option.currentValue;
+            return (
+              <button
+                key={level.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={checked}
+                className="menu-item composer-effort__item"
+                onClick={() => select(level.value)}
+              >
+                <span>{capitalizeLabel(level.name)}</span>
+                {level.value === option.defaultValue ? (
+                  <span className="menu-description">Default</span>
+                ) : null}
+                {checked ? <Check size={14} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </MenuPopover>
     </div>
   );
 }

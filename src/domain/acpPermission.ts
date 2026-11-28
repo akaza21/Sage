@@ -26,6 +26,10 @@ export interface ResolvePermissionDecisionRequest {
   runtimeEpoch: string;
   requestId: string;
   decision: PermissionDecision;
+  /** Sent only with `deny`, and only where the request accepts a reason. */
+  reason?: string;
+  /** Sent only with `allowAlways`, naming one of the request's own scopes. */
+  scope?: string;
 }
 
 /** Bounds of the harness-neutral question contract (native caps). */

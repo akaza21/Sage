@@ -61,6 +61,8 @@ type SearchablePickerProps = {
   footer?: string;
   /** Local guidance outside the listbox; mounted only while the picker is open. */
   children?: ReactNode;
+  /** Local controls after the listbox; mounted only while the picker is open. */
+  trailing?: ReactNode;
   /** Mixed selection and recovery controls use ordinary dialog Tab navigation. */
   popoverRole?: "dialog" | "none";
   onOptionRender?: (id: string) => void;

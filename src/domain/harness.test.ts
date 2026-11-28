@@ -1,5 +1,9 @@
 import { expect, expectTypeOf, it } from "vitest";
-import { harnessUnavailableReason, preferredAvailableHarness } from "./harness";
+import {
+  harnessIconKind,
+  harnessUnavailableReason,
+  preferredAvailableHarness,
+} from "./harness";
 import type { HarnessDefinition, ModelOption } from "./harness";
 
 it("keeps native executable paths out of the WebView harness DTO", () => {
@@ -104,4 +108,12 @@ it("holds a remembered harness discovery still checks, and falls back once it fa
     preferredAvailableHarness([fast, harness("slow", "unavailable")], "slow")
       ?.id,
   ).toBe("fast");
+});
+
+it("names the Pi mark for Pi itself and the generic mark for its forks", () => {
+  expect(
+    ["Claude Code", "Codex", "OpenCode", "Pi", " pi ", "Oh My Pi", "Gemini"].map(
+      harnessIconKind,
+    ),
+  ).toEqual(["claude", "codex", "opencode", "pi", "pi", undefined, undefined]);
 });

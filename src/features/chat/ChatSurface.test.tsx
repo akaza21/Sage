@@ -392,7 +392,7 @@ describe("ChatSurface approval slot", () => {
     };
   }
 
-  it("replaces the composer with the pending approval and returns the draft after it settles", async () => {
+  it("shows the pending approval above a composer that keeps its draft and stays usable", async () => {
     matchConfiguredSession();
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
@@ -421,17 +421,21 @@ describe("ChatSurface approval slot", () => {
     const prompt = await screen.findByRole("group", {
       name: "Permission request",
     });
-    expect(within(prompt).getByRole("button", { name: /Deny/ })).toBeVisible();
+    expect(within(prompt).getByRole("button", { name: "Skip" })).toBeVisible();
     expect(
-      within(prompt).getByRole("button", { name: /Allow once/ }),
+      within(prompt).getByRole("radio", { name: "Allow once" }),
     ).not.toHaveFocus();
     expect(within(prompt).getByRole("status")).toHaveTextContent(
       "Approval needed: Allow this command?",
     );
+    // The card sits in the cards above the composer, which stays mounted.
+    expect(prompt.parentElement).toHaveClass("chat-dock-cards");
     expect(
-      screen.queryByRole("combobox", { name: "Message agent" }),
-    ).toBeNull();
-    expect(document.querySelector("form.composer")).toHaveAttribute("hidden");
+      screen.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("keep this draft");
+    expect(document.querySelector("form.composer")).not.toHaveAttribute(
+      "hidden",
+    );
     expect(
       document.querySelector(
         ".message-list [data-acp-item-id='item-permission']",
@@ -440,7 +444,7 @@ describe("ChatSurface approval slot", () => {
 
     withPermission("declinePending");
     rerender(<ChatSurface chatId="chat-a" />);
-    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Allow once" })).toBeNull();
     const composer = screen.getByRole("combobox", { name: "Message agent" });
     expect(composer).toHaveValue("keep this draft");
     expect(composer).toHaveFocus();

@@ -14,6 +14,9 @@ import type {
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import "./build-notice.css";
 
+// The harness menu's tail loads with the harness notice it sits beside.
+export { ComposerHarnessMenuExtras } from "./ComposerHarnessMenuExtras";
+
 /** Facts are shared; Settings retains its existing presentation until its phase. */
 export function HarnessDiscoveryNotice({
   harness: provided,

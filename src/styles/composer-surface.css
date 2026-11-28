@@ -1,26 +1,57 @@
+/* The composer column: cards (queued messages, an approval) stacked above a
+   two-layer composer, an outer frame around the inner card. The composer
+   keeps its intrinsic minimum; cards and edits scroll. */
 .chat-dock-frame {
-  display: grid;
+  display: flex;
   min-width: 0;
   min-height: 0;
   max-height: 100%;
-  /* The composer keeps its intrinsic minimum; notices and edits can scroll. */
-  grid-template-areas: "location" "dock" "dock" "dock";
-  grid-template-rows: auto minmax(auto, 1fr) auto auto;
+  flex-direction: column;
   width: var(--chat-column-width);
   margin-inline-start: var(--chat-column-start);
 }
 
-.chat-dock-frame > .composer-location {
-  grid-area: location;
+.chat-dock-cards {
+  container-type: inline-size;
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chat-dock-cards:empty {
+  display: none;
+}
+
+.chat-dock-shell {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  padding: var(--space-1);
+  border-radius: var(--radius-3xl);
+  background: var(--composer-frame);
+  box-shadow: inset 0 0 0 var(--border-width) var(--color-hairline);
+}
+
+.chat-dock-shell > .composer-location {
+  height: 34px;
+  gap: 2px;
+  margin-inline: 0;
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-none);
+  background: transparent;
 }
 
 .chat-dock {
   position: relative;
-  display: grid;
+  display: flex;
   min-height: 0;
-  grid-area: dock;
-  grid-template-areas: "edits" "approval" "composer";
-  grid-template-rows: subgrid;
+  flex-direction: column;
 }
 
 .chat-dock[data-working]::after {
@@ -50,24 +81,20 @@
 }
 
 .chat-dock > .chat-edit-summary-zone {
-  grid-area: edits;
+  flex: 0 1 auto;
 }
 
 .chat-dock > .chat-edit-summary-zone:not(:empty) {
   min-height: 40px;
 }
 
-.chat-dock > .acp-permission-prompt,
-.chat-dock > .notice {
-  min-height: 0;
-  grid-area: approval;
-  align-self: stretch;
-  overflow-y: auto;
+.chat-dock > .composer {
+  flex: 0 0 auto;
 }
 
 .composer {
   --composer-slots-min-block-size: 0px;
-  --composer-toolbar-min-block-size: 40px;
+  --composer-toolbar-min-block-size: 36px;
   position: relative;
   container-name: composer;
   container-type: inline-size;
@@ -77,7 +104,6 @@
       var(--composer-input-min-block-size) +
       var(--composer-toolbar-min-block-size)
   );
-  grid-area: composer;
   grid-template-areas: "slots" "body" "toolbar";
   grid-template-rows:
     minmax(var(--composer-slots-min-block-size), auto)
@@ -87,10 +113,6 @@
 
 .composer:has(> .composer__slots:not(:empty)) {
   --composer-slots-min-block-size: var(--control-height-default);
-}
-
-.composer:has(> .composer__slots > .composer__queued) {
-  --composer-slots-min-block-size: var(--chrome-row-height);
 }
 
 .composer__slots {
@@ -105,7 +127,6 @@
   flex-shrink: 0;
 }
 
-/* An approval holds the slot; the form stays mounted so the draft survives. */
 .composer[hidden] {
   display: none;
 }
@@ -143,7 +164,7 @@
   width: 100%;
   min-height: var(--composer-input-min-block-size);
   max-height: min(180px, 28vh);
-  padding: var(--space-3) var(--space-3) var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-1);
   resize: none;
   border: 0;
   outline: 0;
@@ -155,7 +176,7 @@
 }
 
 .composer textarea::placeholder {
-  color: var(--composer-muted-text);
+  color: var(--color-text-placeholder);
 }
 .composer textarea:disabled {
   color: var(--color-text-disabled);
@@ -169,7 +190,6 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin: 0;
-  grid-area: meter;
   padding: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -261,25 +281,28 @@
   outline-offset: 1px;
 }
 
+/* Footer: +, harness and model pills, then access, dictation, send and, while
+   a turn runs, stop at the right. Every control is a 28 px pill. */
 .composer__toolbar {
-  grid-area: toolbar;
-  display: grid;
+  display: flex;
   min-height: var(--composer-toolbar-min-block-size);
   flex: none;
-  grid-template-areas: "controls meter send";
-  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px 8px 12px;
+  gap: var(--space-1);
+  padding: 2px 6px 6px;
 }
 
 .composer__controls {
   display: flex;
   min-width: 0;
-  grid-area: controls;
+  flex: 1 1 0;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: var(--space-1);
+}
+
+.composer__controls > .composer__access-label {
+  margin-inline-start: auto;
 }
 
 .composer__picker-trigger > svg:first-child {
@@ -302,20 +325,6 @@
 
 .composer__options:hover {
   scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-
-.composer__shortcut {
-  display: none;
-  grid-area: shortcut;
-  align-self: center;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-}
-
-.composer__shortcut span {
-  padding: 0 4px;
-  color: var(--color-border-strong);
 }
 
 .composer__disabled-reason {
@@ -352,8 +361,7 @@
     padding-top: var(--space-2);
   }
 
-  .composer__context,
-  .composer__shortcut {
+  .composer__context {
     display: none;
   }
 }

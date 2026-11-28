@@ -103,14 +103,21 @@
   display: inline-flex;
   height: var(--picker-trigger-height, 100%);
   min-height: 0;
-  padding: var(--picker-trigger-padding, 0 var(--space-1));
+  gap: 5px;
+  padding: var(--picker-trigger-padding, 0 6px 0 var(--space-2));
   border: 0;
   border-radius: var(--radius-pill);
   color: var(--composer-control-text);
   background: transparent;
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer__harness .searchable-picker__trigger:hover:not(:disabled),
+.composer__harness .searchable-picker__trigger[aria-expanded="true"] {
+  color: var(--color-text-primary);
+  background: var(--composer-control-hover);
 }
 
 .composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
@@ -125,8 +132,8 @@
 
 .composer__harness .searchable-picker__chevron {
   display: var(--picker-chevron-display, block);
-  width: var(--picker-chevron-size, var(--space-3));
-  height: var(--picker-chevron-size, var(--space-3));
+  width: var(--picker-chevron-size, var(--icon-size-sm));
+  height: var(--picker-chevron-size, var(--icon-size-sm));
 }
 
 .composer__harness-menu.menu-popover {
@@ -135,8 +142,16 @@
   width: min(var(--picker-harness-menu-width), calc(100vw - var(--space-8)));
 }
 
-.composer__harness-menu .searchable-picker__current,
-.composer__harness-menu .searchable-picker__section-label {
+.composer__harness-menu .searchable-picker__section-label,
+.composer__harness-group-label {
+  margin: 0;
+  padding: 4px var(--space-2) 2px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+}
+
+.composer__harness-menu .searchable-picker__current {
   position: absolute;
   width: var(--border-width);
   height: var(--border-width);
@@ -260,3 +275,4 @@
   height: var(--picker-option-icon-size);
   flex: none;
 }
+

@@ -270,23 +270,6 @@ export function ChatHarnessControls({
         >
           <Plus size={16} aria-hidden="true" />
         </IconButton>
-        {availableBinding && accessHarness?.bindingId ? (
-          <ComposerAccessControl
-            bindingId={accessHarness.bindingId}
-            harnessName={accessHarness.name}
-            chatId={draftChatId}
-            endedPage={endedPage}
-            value={draftPickers?.access}
-            onChange={draftPickers?.onAccessChange}
-            confirmation={confirmation}
-            capabilities={accessHarness.accessModes}
-            sessionConfig={sessionConfig}
-            disabled={turnBusy || projectTransitioning}
-            open={active === "access"}
-            onToggle={() => toggle("access")}
-            onDismiss={dismiss}
-          />
-        ) : null}
         <div className="composer__selector">
           <ComposerHarnessPicker
             canContinueInNewChat={!(draftPickers || availableBinding)}
@@ -367,6 +350,24 @@ export function ChatHarnessControls({
           >
             {modeError}
           </span>
+        ) : null}
+        {availableBinding && accessHarness?.bindingId ? (
+          <ComposerAccessControl
+            bindingId={accessHarness.bindingId}
+            harnessName={accessHarness.name}
+            chatId={draftChatId}
+            endedPage={endedPage}
+            value={draftPickers?.access}
+            onChange={draftPickers?.onAccessChange}
+            confirmation={confirmation}
+            capabilities={accessHarness.accessModes}
+            sessionConfig={sessionConfig}
+            disabled={turnBusy || projectTransitioning}
+            busy={turnBusy}
+            open={active === "access"}
+            onToggle={() => toggle("access")}
+            onDismiss={dismiss}
+          />
         ) : null}
       </div>
       <ComposerContext

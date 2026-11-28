@@ -199,6 +199,10 @@ export type AcpItem =
         > | null;
         category?: ToolPresentation["kind"] | "extension";
         reason?: string | null;
+        /** The harness takes a reason with a refusal (rendered as a write-in). */
+        acceptsDenyReason?: boolean | null;
+        /** "Always allow" scopes the harness offers, each its own option. */
+        alwaysAllowScopes?: readonly { id: string; label: string }[] | null;
         /** Questions for the user, rather than a request for approval. */
         userInput?: UserInputRequest | null;
       }

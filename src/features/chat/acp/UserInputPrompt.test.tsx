@@ -419,7 +419,7 @@ describe("UserInputPrompt", () => {
     });
     expect(deny).toHaveBeenCalledTimes(1);
     expect(deny).toHaveBeenCalledWith({ ...identity, decision: "deny" });
-    fireEvent.click(screen.getByRole("button", { name: /Decline/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(deny).toHaveBeenCalledTimes(1);
     expect(answer).not.toHaveBeenCalled();
   });

@@ -200,57 +200,54 @@
   background: var(--color-surface-hover);
 }
 
+/* Send is muted until there is something to send, then an accent circle.
+   Stop, beside it while a turn runs, is a soft pill with a red square. */
 .send-button {
-  position: relative;
-  isolation: isolate;
   display: grid;
   width: 28px;
   height: 28px;
-  grid-area: send;
+  flex: none;
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-circle);
-  color: var(--composer-send-text);
-  background: var(--color-status-foreground);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  background: var(--color-fill-soft);
   cursor: pointer;
-}
-
-.send-button::before {
-  position: absolute;
-  z-index: var(--z-behind);
-  inset: 0;
-  border-radius: var(--radius-circle);
-  background: var(--color-plane-raised);
-  content: "";
-  opacity: 0;
-  transition: opacity var(--motion-duration-fade) ease-out;
+  transition: background-color var(--motion-duration-fade) ease-out;
 }
 
 .send-button > svg {
-  width: var(--icon-size-lg);
-  height: var(--icon-size-lg);
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+}
+
+.send-button[data-ready] {
+  color: var(--color-status-foreground);
+  background: var(--color-accent);
+  box-shadow: inset 0 1px 0 var(--color-hairline-highlight);
+}
+
+.send-button[data-ready]:hover {
+  background: var(--color-accent-hover);
+}
+
+.send-button--cancel {
+  color: var(--color-danger);
 }
 
 .send-button--cancel > svg {
-  width: var(--icon-size-sm);
-  height: var(--icon-size-sm);
+  width: 10px;
+  height: 10px;
   fill: currentColor;
 }
 
-.send-button:hover:not(:disabled) {
-  background: var(--composer-send-hover);
+.send-button--cancel:hover:not(:disabled) {
+  background: var(--color-fill-active);
 }
 
 .send-button:disabled {
-  color: var(--composer-send-disabled-text);
   cursor: not-allowed;
-  opacity: 1;
-}
-
-.send-button:disabled::before {
-  background: var(--color-plane-raised);
-  opacity: 1;
 }
 
 .composer__error,

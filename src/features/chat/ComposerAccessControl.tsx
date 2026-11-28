@@ -38,13 +38,15 @@ export interface ComposerAccessControlProps {
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   sessionConfig?: AcpSessionConfig | null;
   disabled: boolean;
+  /** A turn is running: access holds until it ends, and the pill says so. */
+  busy?: boolean;
   open: boolean;
   onToggle: () => void;
   onDismiss: () => void;
 }
 
 export function ComposerAccessControl(props: ComposerAccessControlProps) {
-  const { bindingId, capabilities, disabled, open, onToggle } = props;
+  const { bindingId, capabilities, disabled, busy, open, onToggle } = props;
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const base = useSessionAccessSelection(bindingId, capabilities);
@@ -65,7 +67,11 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
             type="button"
             className={`composer__control-trigger composer__access-label${tone ?? ""}`}
             aria-label="Access options"
-            title={selected?.label}
+            title={
+              busy
+                ? "Access can't change while the agent is running"
+                : selected?.label
+            }
             aria-describedby={`${id}-scope`}
             aria-haspopup="menu"
             aria-controls={id}
@@ -74,7 +80,7 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
             disabled={disabled || !ready}
             onClick={onToggle}
           >
-            {Icon && <Icon size={13} aria-hidden="true" />}
+            {Icon && <Icon size={14} aria-hidden="true" />}
             <span className="composer__access-text">
               {selected?.label ?? "Choose access"}
             </span>

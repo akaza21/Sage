@@ -156,6 +156,25 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const [slashArmed, setSlashArmed] = useState(false);
   return (
     <div className="chat-dock-frame">
+      {/* Queued messages and an approval are cards above the composer, never
+          in its place: the composer stays usable while they wait. */}
+      <div className="chat-dock-cards">
+        <QueuedRows
+          composerRef={composerRef}
+          prompts={queuedPrompts}
+          steerAvailable={steerAvailable}
+          awaitingApproval={!!approvalSlot}
+          disabled={actionDisabled}
+          onDelete={onDeleteQueuedPrompt}
+          onRetry={onRetryQueuedPrompt}
+          onSteer={onSteerQueuedPrompt}
+          onEdit={(queued: string) =>
+            onTextChange(text.trim() ? `${text}\n${queued}` : queued)
+          }
+        />
+        {approvalSlot}
+      </div>
+      <div className="chat-dock-shell">
       {newChat && !hidden ? (
         <LocationPart
           part="ComposerLocationStrip"
@@ -169,7 +188,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
         data-working={(activeTurn && !hidden) || undefined}
       >
         <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
-        {approvalSlot}
         <form
           className="composer"
           role="form"
@@ -216,15 +234,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 chatId={dictationScope}
               />
             ) : null}
-            <QueuedRows
-              composerRef={composerRef}
-              prompts={queuedPrompts}
-              steerAvailable={steerAvailable}
-              disabled={actionDisabled}
-              onDelete={onDeleteQueuedPrompt}
-              onRetry={onRetryQueuedPrompt}
-              onSteer={onSteerQueuedPrompt}
-            />
           </div>
           <div className="composer__body">
             {goal?.kind === "goal" ||
@@ -378,12 +387,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 optionsTriggerId={optionsTriggerId}
               />
             ) : null}
-            {!composerDisabled ? (
-              <span className="composer__shortcut" aria-hidden="true">
-                {shortcutLabel} to focus <span>/</span>{" "}
-                {queueing ? "Enter to queue" : "Enter to send"}
-              </span>
-            ) : null}
             <ComposerTurnControl
               activeTurn={activeTurn}
               hasContent={hasContent}
@@ -397,6 +400,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           </div>
         </form>
+      </div>
       </div>
     </div>
   );

@@ -95,12 +95,10 @@ describe("PermissionPrompt", () => {
     expect(card.querySelector("pre")?.textContent).toBe(summary);
     expect(card.querySelector("script")).toBeNull();
     expect(
-      within(card).getByRole("button", { name: /Allow once/ }),
-    ).toBeEnabled();
-    expect(within(card).getByRole("button", { name: /Deny/ })).toBeEnabled();
-    expect(
-      within(card).queryByRole("button", { name: /Always allow/ }),
-    ).toBeNull();
+      within(card)
+        .getAllByRole("radio")
+        .map((option) => option.textContent),
+    ).toEqual(["1Allow once", "2Deny"]);
   });
   it("shares the fallback's exact approval identity for every decision (R3-09)", async () => {
     const resolve = accepted("allowAlways");
@@ -119,10 +117,10 @@ describe("PermissionPrompt", () => {
 
   it("marks the safe initial Allow focus and clears it when focus leaves (R3-09)", () => {
     render(<PermissionPrompt items={[permission()]} />);
-    const allow = screen.getByRole("button", { name: /Allow once/ });
+    const allow = screen.getByRole("radio", { name: "Allow once" });
     expect(allow).toHaveFocus();
     expect(allow).toHaveAttribute("data-initial-focus", "true");
-    fireEvent.focus(screen.getByRole("button", { name: /Deny/ }));
+    fireEvent.focus(screen.getByRole("button", { name: "Skip" }));
     fireEvent.blur(allow);
     expect(allow).not.toHaveAttribute("data-initial-focus");
   });
@@ -132,14 +130,13 @@ describe("PermissionPrompt", () => {
     (props) => {
       render(<PermissionPrompt items={[permission()]} {...props} />);
       expect(
-        screen.getByRole("button", { name: /Allow once/ }),
+        screen.getByRole("radio", { name: "Allow once" }),
       ).not.toHaveAttribute("data-initial-focus");
     },
   );
   it("keeps Sage's question as the headline and the agent's reason secondary", () => {
     render(<PermissionPrompt items={[permission()]} />);
     const prompt = screen.getByRole("group", { name: "Permission request" });
-    expect(within(prompt).getByText("Terminal")).toBeVisible();
     expect(
       prompt.querySelector(".acp-permission-prompt__question"),
     ).toHaveTextContent("Allow this command?");
@@ -175,42 +172,44 @@ describe("PermissionPrompt", () => {
     expect(screen.getByText("Allow this action?")).toBeVisible();
   });
 
-  it("keeps a quiet Stop in the header, orders Deny then Allow once, focuses the primary, and offers the menu", () => {
-    render(<PermissionPrompt items={[permission()]} onCancelTurn={vi.fn()} />);
-    const buttons = screen.getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual([
-      "Stop",
-      "Deny Esc",
-      "Allow once ⏎",
-      "",
-    ]);
-    const stop = screen.getByRole("button", { name: "Stop turn" });
-    expect(stop.closest("header")).not.toBeNull();
-    expect(stop.closest(".acp-permission-prompt__actions")).toBeNull();
-    expect(screen.getByRole("button", { name: /Allow once/ })).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
-    const menu = screen.getByRole("menu", { name: "Allow options" });
+  it("numbers the harness's own options, preselects the first, and ends with Skip and Submit", () => {
+    const resolve = accepted("allowAlways");
+    render(<PermissionPrompt items={[permission()]} />);
     expect(
-      within(menu)
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent),
-    ).toEqual(["Allow once", "Allow similar commands"]);
+      screen.getAllByRole("radio").map((option) => option.textContent),
+    ).toEqual(["1Allow once", "2Allow similar commands", "3Deny"]);
+    const first = screen.getByRole("radio", { name: "Allow once" });
+    expect(first).toBeChecked();
+    expect(first).toHaveFocus();
+    expect(
+      screen
+        .getAllByRole("button")
+        .filter((button) => !button.getAttribute("role"))
+        .map((button) => button.textContent),
+    ).toEqual(["Skip", "Submit ↵"]);
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Allow similar commands" }),
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "allowAlways" }),
+    );
   });
 
   it("never fabricates an option the harness did not offer", () => {
+    const labels = () =>
+      screen.getAllByRole("radio").map((option) => option.textContent);
     render(
       <PermissionPrompt items={[permission(["allow_once", "reject_once"])]} />,
     );
-    expect(
-      screen.queryByRole("button", { name: "More allow options" }),
-    ).toBeNull();
+    expect(labels()).toEqual(["1Allow once", "2Deny"]);
     cleanup();
     render(<PermissionPrompt items={[permission(["reject_once"])]} />);
-    expect(screen.queryByRole("button", { name: /Allow/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /Deny/ })).toBeEnabled();
+    expect(labels()).toEqual(["1Deny"]);
     cleanup();
     render(<PermissionPrompt items={[permission(null)]} />);
-    expect(screen.queryByRole("button", { name: /Allow/ })).toBeNull();
+    expect(labels()).toEqual(["1Deny"]);
     cleanup();
     render(
       <PermissionPrompt
@@ -219,19 +218,14 @@ describe("PermissionPrompt", () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Always allow", "Allow once"]);
-    expect(screen.getByText("Edit")).toBeVisible();
+    expect(labels()).toEqual(["1Always allow", "2Allow once"]);
   });
 
-  it("keeps Stop available so a card with no offered choice never strands the pane", () => {
-    const cancel = vi.fn();
-    render(<PermissionPrompt items={[permission([])]} onCancelTurn={cancel} />);
-    expect(screen.queryByRole("button", { name: /Allow/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
-    expect(cancel).toHaveBeenCalledOnce();
+  it("offers nothing to submit when the request offers no decision", () => {
+    render(<PermissionPrompt items={[permission([])]} />);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Submit/ })).toBeDisabled();
   });
 
   it("uses Sage's browser choices for a browser permission", () => {
@@ -249,25 +243,32 @@ describe("PermissionPrompt", () => {
     expect(
       screen.getByRole("group", { name: "Browser permission" }),
     ).toBeVisible();
-    expect(screen.getByText("Browser")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
     expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Allow once", "Allow for this tab and origin"]);
+      screen.getAllByRole("radio").map((option) => option.textContent),
+    ).toEqual(["1Allow once", "2Allow for this tab and origin", "3Deny"]);
   });
 
-  it("never reroutes Enter to Allow once: Deny, the chevron and the card text keep their own meaning", () => {
-    const resolve = accepted("deny");
+  it("picks with 1 to 4 and the arrows, submits the pick on Enter, and leaves Skip's Enter to Skip", () => {
+    const resolve = accepted("allowAlways");
     render(<PermissionPrompt items={[permission()]} />);
-    for (const target of [
-      screen.getByRole("button", { name: /Deny/ }),
-      screen.getByRole("button", { name: "More allow options" }),
-      screen.getByText("Allow this command?"),
-      screen.getByRole("group", { name: "Permission request" }),
-    ])
-      fireEvent.keyDown(target, { key: "Enter" });
+    const card = screen.getByRole("group", { name: "Permission request" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Skip" }), {
+      key: "Enter",
+    });
     expect(resolve).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
+    fireEvent.keyDown(card, { key: "3" });
+    expect(screen.getByRole("radio", { name: "Deny" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Deny" })).toHaveFocus();
+    fireEvent.keyDown(card, { key: "ArrowDown" });
+    expect(screen.getByRole("radio", { name: "Allow once" })).toBeChecked();
+    fireEvent.keyDown(card, { key: "ArrowUp" });
+    fireEvent.keyDown(card, { key: "ArrowUp" });
+    expect(
+      screen.getByRole("radio", { name: "Allow similar commands" }),
+    ).toBeChecked();
+    fireEvent.keyDown(screen.getByText("Allow this command?"), {
+      key: "Enter",
+    });
     expect(resolve).toHaveBeenLastCalledWith({
       projectId: "project-1",
       chatId: "chat-1",
@@ -275,14 +276,60 @@ describe("PermissionPrompt", () => {
       turnId: "turn-1",
       runtimeEpoch: "1",
       requestId: "request-permission-item",
-      decision: "deny",
+      decision: "allowAlways",
     });
+  });
+
+  it("refuses with Skip", () => {
+    const resolve = accepted("deny");
+    render(<PermissionPrompt items={[permission()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "deny" }),
+    );
+  });
+
+  it("shows a write-in and scoped always-allow options only where the request reports them", () => {
+    const resolve = accepted("deny");
+    render(
+      <PermissionPrompt
+        items={[
+          permission(["allow_once", "allow_always", "reject_once"], {
+            acceptsDenyReason: true,
+            alwaysAllowScopes: [
+              { id: "chat", label: "Always allow npm test in this chat" },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getAllByRole("radio").map((option) => option.textContent),
+    ).toEqual(["1Allow once", "2Always allow npm test in this chat", "3No"]);
+    const reason = screen.getByRole("textbox", {
+      name: "What the agent should do instead",
+    });
+    fireEvent.focus(reason);
+    expect(screen.getByRole("radio", { name: "No" })).toBeChecked();
+    fireEvent.change(reason, { target: { value: "Run the unit tests only" } });
+    fireEvent.keyDown(reason, { key: "1" });
+    expect(screen.getByRole("radio", { name: "No" })).toBeChecked();
+    fireEvent.keyDown(reason, { key: "Enter" });
+    expect(resolve).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        decision: "deny",
+        reason: "Run the unit tests only",
+      }),
+    );
+    cleanup();
+    render(<PermissionPrompt items={[permission()]} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("denies on Escape from inside the card, but never on a key that started outside it", () => {
     const resolve = accepted("deny");
     render(<PermissionPrompt items={[permission()]} />);
-    const allow = screen.getByRole("button", { name: /Allow once/ });
+    const allow = screen.getByRole("radio", { name: "Allow once" });
     expect(fireEvent.keyDown(allow, { key: "Escape", repeat: true })).toBe(
       false,
     );
@@ -328,7 +375,7 @@ describe("PermissionPrompt", () => {
   it("never takes focus in a background pane", async () => {
     render(<PermissionPrompt items={[permission()]} focused={false} />);
     expect(
-      screen.getByRole("button", { name: /Allow once/ }),
+      screen.getByRole("radio", { name: "Allow once" }),
     ).not.toHaveFocus();
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Approval needed",
@@ -343,14 +390,14 @@ describe("PermissionPrompt", () => {
     const second = permission(undefined, { summary: "next" }, "second");
     const third = permission(undefined, { summary: "third" }, "third");
     const { rerender } = render(<PermissionPrompt items={[first, second]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     vi.setSystemTime(10_200);
     rerender(<PermissionPrompt items={[second, third]} />);
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent("Approval needed"),
     );
     expect(
-      screen.getByRole("button", { name: /Allow once/ }),
+      screen.getByRole("radio", { name: "Allow once" }),
     ).not.toHaveFocus();
     expect(
       screen.getByRole("group", { name: "Permission request" }),
@@ -358,47 +405,29 @@ describe("PermissionPrompt", () => {
     vi.setSystemTime(10_600);
     rerender(<PermissionPrompt items={[third]} />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Allow once/ })).toHaveFocus(),
-    );
-  });
-
-  it("does not deny when Escape closes the open menu", () => {
-    const resolve = accepted("allowAlways");
-    render(<PermissionPrompt items={[permission()]} />);
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Allow once" }), {
-      key: "Escape",
-    });
-    expect(resolve).not.toHaveBeenCalled();
-    expect(screen.queryByRole("menu")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Allow similar commands" }),
-    );
-    expect(resolve).toHaveBeenCalledWith(
-      expect.objectContaining({ decision: "allowAlways" }),
+      expect(screen.getByRole("radio", { name: "Allow once" })).toHaveFocus(),
     );
   });
 
   it("disables the actions while the decision is in flight and shows a refusal", async () => {
     const resolve = accepted("allowOnce");
     const { unmount } = render(<PermissionPrompt items={[permission()]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Allow once/ })).toBeDisabled(),
+      expect(screen.getByRole("radio", { name: "Allow once" })).toBeDisabled(),
     );
-    fireEvent.keyDown(screen.getByRole("button", { name: /Deny/ }), {
+    fireEvent.keyDown(screen.getByRole("button", { name: "Skip" }), {
       key: "Escape",
     });
     expect(resolve).toHaveBeenCalledTimes(1);
     unmount();
     resolve.mockRejectedValue(new Error("unsupported approval"));
     render(<PermissionPrompt items={[permission(undefined, {}, "refused")]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This decision could not be sent",
     );
-    expect(screen.getByRole("button", { name: /Deny/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeEnabled();
   });
 
   it("shows the oldest of several pending requests with its position", () => {
@@ -420,11 +449,13 @@ describe("PermissionPrompt", () => {
 
 describe("PermissionPrompt key repeats", () => {
   it("answers a held key at most once, even when it was pressed inside the card", () => {
+    const resolve = accepted("allowOnce");
     render(<PermissionPrompt items={[permission()]} />);
-    const allow = screen.getByRole("button", { name: /Allow once/ });
-    expect(fireEvent.keyDown(allow, { key: "Enter" })).toBe(true);
+    const allow = screen.getByRole("radio", { name: "Allow once" });
+    expect(fireEvent.keyDown(allow, { key: "Enter" })).toBe(false);
     expect(fireEvent.keyDown(allow, { key: "Enter", repeat: true })).toBe(
       false,
     );
+    expect(resolve).toHaveBeenCalledOnce();
   });
 });

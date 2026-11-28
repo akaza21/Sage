@@ -27,9 +27,8 @@
   white-space: nowrap;
 }
 
-/* Access and harness show as their icons; their names stay accessible. */
-.composer .composer__access-label,
-.composer .composer__harness,
+/* Harness and access keep their names at every width (the narrowest pane
+   wraps the row instead); the model name yields to its icon first. */
 .composer [data-fit~="model"] .composer__model-trigger {
   width: var(--composer-icon-target);
   min-width: var(--composer-icon-target);
@@ -38,10 +37,6 @@
   padding: 0;
 }
 
-.composer .composer__access-text,
-.composer
-  .composer__harness
-  :is(.searchable-picker__trigger-label, .searchable-picker__chevron),
 .composer [data-fit~="effort"] .composer__model-effort,
 .composer
   [data-fit~="model"]
@@ -54,21 +49,12 @@
   display: block;
 }
 
-.composer .composer__harness .searchable-picker__trigger {
-  min-width: var(--composer-icon-target);
-  justify-content: center;
-  padding: 0;
-}
-
-/* Harness, model and thinking level read as one chip. */
+/* Harness and model are two pills side by side. */
 .composer__selector {
   display: flex;
+  min-width: 0;
   align-items: center;
-  border-radius: var(--radius-md);
-}
-
-.composer__selector:hover {
-  background: var(--color-surface-hover);
+  gap: 2px;
 }
 
 .composer__selector .composer__model-group {
@@ -137,20 +123,6 @@
     scrollbar-gutter: stable both-edges;
   }
 
-  .composer .composer__queued-row {
-    flex-wrap: wrap;
-  }
-
-  .composer .composer__queued-text {
-    flex: 1 1 120px;
-  }
-
-  .composer .composer__queued-state {
-    min-width: 0;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
 }
 
 @container composer (max-width: 280px) {
@@ -165,22 +137,22 @@
     flex-basis: 100%;
     order: 1;
   }
-
-  .composer .composer__queued-text {
-    flex-basis: calc(100% - 40px);
-  }
 }
 
 .composer [data-fit~="wrap"] {
   flex-wrap: wrap;
 }
 
+/* The narrowest step gives the controls their own row; the actions follow
+   at the right of the next one. */
 .composer__toolbar:has([data-fit~="wrap"]) {
-  grid-template-areas: "controls controls" "meter send";
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.composer__toolbar:has([data-fit~="wrap"]) > .composer__controls {
+  flex-basis: 100%;
 }
 
 .composer__toolbar:has([data-fit~="wrap"]) .composer__mic {
-  justify-self: end;
+  margin-inline-start: auto;
 }

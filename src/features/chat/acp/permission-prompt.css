@@ -1,103 +1,197 @@
+/* Approval and question cards: raised cards above the composer. The request,
+   then numbered options (keycap badges, 30 px rows), then Skip and Submit. */
 .acp-permission-prompt {
   min-height: 0;
   max-height: 100%;
   overflow: auto;
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: var(--space-1);
+  padding: 6px;
+  border-radius: var(--radius-xl);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  background: var(--color-raised);
+  box-shadow:
+    0 0 0 var(--border-width) var(--color-hairline-highlight),
+    var(--elevation-menu);
+  font-size: var(--font-size-md);
   overflow-wrap: anywhere;
+}
+
+.acp-permission-prompt:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .acp-permission-prompt__kind {
   display: flex;
+  min-height: 28px;
   align-items: center;
-  gap: var(--space-2);
-  color: var(--approval-kind-text);
-}
-
-.acp-permission-prompt__kind > span {
-  margin-inline-start: auto;
+  gap: 6px;
+  padding-inline: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
 
+.acp-permission-prompt__kind > svg {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  flex: none;
+}
+
+.acp-permission-prompt__kind > span {
+  margin-inline-start: auto;
+}
+
 .acp-permission-prompt__question {
+  min-width: 0;
   margin: 0;
+  color: var(--color-text-primary);
   font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
+}
+
+.acp-permission-prompt__reason {
+  display: -webkit-box;
+  margin: 0;
+  padding-inline: var(--space-2);
+  overflow: hidden;
+  color: var(--color-text-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .acp-permission-prompt__detail {
-  max-height: 120px;
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
+  max-height: 128px;
+  margin: 2px var(--space-1) var(--space-1);
+  padding: 6px 10px;
   overflow: auto;
-  border-radius: var(--radius-md);
-  background: var(--approval-detail-fill);
-  color: var(--approval-detail-text);
+  border-radius: 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-fill-hover);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
+  line-height: 16px;
   white-space: pre-wrap;
+}
+
+/* A plan to approve reads as prose and may run long. */
+.acp-permission-prompt__detail--plan {
+  max-height: min(40vh, 320px);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: inherit;
+}
+
+.acp-permission-prompt__options {
+  display: grid;
+  gap: 2px;
+}
+
+.acp-permission-prompt__option {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2) 4px 6px;
+  border: var(--border-width) solid transparent;
+  border-radius: 13px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--font-size-md);
+  transition: box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: start;
+  cursor: pointer;
+}
+
+.acp-permission-prompt__option:first-child {
+  color: var(--color-text-primary);
+}
+
+.acp-permission-prompt__option:hover:not(:disabled) {
+  background: var(--color-fill-soft);
+}
+
+.acp-permission-prompt__option[aria-checked="true"] {
+  border-color: var(--color-hairline);
+  background: var(--color-fill-soft);
+}
+
+.acp-permission-prompt kbd {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-hairline);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+}
+
+.acp-permission-prompt__write-in {
+  margin: 2px var(--space-1);
+  padding: 6px 10px;
+  resize: vertical;
+  border: var(--border-width) solid var(--color-hairline-strong);
+  border-radius: 10px;
+  color: var(--color-text-primary);
+  background: var(--color-fill-hover);
+  font: inherit;
+}
+
+.acp-permission-prompt__write-in::placeholder {
+  color: var(--color-text-placeholder);
 }
 
 .acp-permission-prompt__actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  padding: 6px 2px 0;
 }
 
 .acp-permission-prompt__actions button {
-  flex: none;
-  white-space: nowrap;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--approval-control-edge);
-  border-radius: var(--radius-pill);
-
-  color: var(--approval-primary-fill);
-  background: transparent;
-  font-size: var(--font-size-sm);
-}
-
-.acp-permission-prompt__actions kbd {
-  display: inline-grid;
-  height: 20px;
-  min-width: 20px;
-  place-items: center;
-  padding: 0 4px;
-  border-radius: var(--radius-sm);
-  background: var(--approval-key-fill);
-  font: inherit;
-  font-size: var(--font-size-2xs);
-}
-
-.acp-permission-prompt__split {
   display: inline-flex;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.acp-permission-prompt__split > button {
-  border-color: var(--approval-primary-fill);
-  color: var(--approval-primary-text);
-  background: var(--approval-primary-fill);
+.acp-permission-prompt__submit > span {
+  font-size: var(--font-size-xs);
+  opacity: 0.5;
 }
 
-.acp-permission-prompt__split > button:first-child:not(:only-child) {
-  border-start-end-radius: var(--radius-none);
-  border-end-end-radius: var(--radius-none);
+.acp-permission-prompt__actions button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-fill-soft);
 }
 
-.acp-permission-prompt__split > button + button {
-  padding: 0 var(--space-2);
-  border-inline-start-color: var(--approval-split-fill);
-  border-start-start-radius: var(--radius-none);
-  border-end-start-radius: var(--radius-none);
-  background: var(--approval-split-fill);
+.acp-permission-prompt__actions
+  :is(.acp-permission-prompt__submit, button[type="submit"]) {
+  color: var(--color-status-foreground);
+  background: var(--color-accent);
 }
 
-.acp-permission-prompt__split kbd {
-  background: var(--approval-split-fill);
+.acp-permission-prompt__actions
+  :is(.acp-permission-prompt__submit, button[type="submit"]):hover:not(
+    :disabled
+  ) {
+  background: var(--color-accent-hover);
 }
 
 .acp-permission-prompt button:focus-visible {
@@ -105,53 +199,14 @@
   outline-offset: 1px;
 }
 
-.acp-permission-prompt__split > button[data-initial-focus],
-.acp-permission-prompt__split > button:first-child:focus-visible {
+.acp-permission-prompt__option[data-initial-focus] {
   outline: var(--focus-ring-width) solid var(--color-accent);
-  outline-offset: 0;
-  box-shadow: 0 0 0 1px var(--color-accent);
+  outline-offset: -1px;
 }
 
-.acp-permission-prompt__actions button:disabled {
+.acp-permission-prompt button:disabled {
   opacity: 0.6;
-}
-
-.acp-permission-prompt__menu {
-  width: 168px;
-  border-radius: var(--radius-lg);
-}
-
-.acp-permission-prompt__menu button {
-  border: 0;
-  background: transparent;
-  font-size: var(--font-size-sm);
-  text-align: start;
-}
-
-.acp-permission-prompt__menu button:hover:not(:disabled),
-.acp-permission-prompt__menu button:focus-visible {
-  background: var(--approval-menu-hover);
-}
-
-.acp-permission-prompt__reason {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  color: var(--color-text-muted);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.acp-permission-prompt__stop {
-  margin-inline-start: auto;
-  padding: 0 var(--space-2);
-  border: 0;
-  background: none;
-  font-size: var(--font-size-xs);
-}
-
-.acp-permission-prompt__stop:hover {
-  color: var(--color-text-primary);
+  cursor: not-allowed;
 }
 
 .acp-permission-prompt__elevated {
@@ -165,12 +220,21 @@
 
 .acp-permission-prompt__risk {
   margin: 0;
+  padding-inline: var(--space-2);
   color: var(--color-danger);
 }
 
-/* A plan to approve reads as prose and may run long. */
-.acp-permission-prompt__detail--plan {
-  max-height: min(40vh, 320px);
-  font-family: inherit;
-  font-size: var(--font-size-sm);
+.acp-permission-prompt__stop {
+  margin-inline-start: auto;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  font-size: var(--font-size-xs);
+}
+
+@media (forced-colors: active) {
+  .acp-permission-prompt,
+  .acp-permission-prompt__option[aria-checked="true"] {
+    border: 1px solid CanvasText;
+  }
 }

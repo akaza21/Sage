@@ -78,7 +78,6 @@ export function UserInputPrompt({
   items,
   focused = true,
   canTakeFocus = () => true,
-  onCancelTurn,
 }: {
   item: PermissionProjectionItem;
   userInput: UserInputRequest;
@@ -184,27 +183,34 @@ export function UserInputPrompt({
       data-acp-item-id={item.id}
       {...keyGuard}
       onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          decline();
+          return;
+        }
+        // With one question, 1 to 4 pick its options, as on the approval card.
+        const digit = Number(event.key);
+        const target = event.target as HTMLElement;
+        if (
+          questions.length !== 1 ||
+          !(digit >= 1 && digit <= 4) ||
+          target.matches("textarea, input:not([type=radio], [type=checkbox])")
+        )
+          return;
+        const option = sectionRef.current?.querySelectorAll<HTMLInputElement>(
+          ".acp-user-input__option input",
+        )[digit - 1];
+        if (!option || option.disabled) return;
         event.preventDefault();
-        decline();
+        option.focus();
+        option.click();
       }}
     >
       <header className="acp-permission-prompt__kind">
         <ToolKindIcon kind="other" />
-        {link ? "Sign-in" : "Question"}
+        <p className="acp-permission-prompt__question">{title}</p>
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
-        {onCancelTurn ? (
-          <button
-            type="button"
-            className="acp-permission-prompt__stop"
-            aria-label="Stop turn"
-            onClick={onCancelTurn}
-          >
-            Stop
-          </button>
-        ) : null}
       </header>
-      <p className="acp-permission-prompt__question">{title}</p>
       {item.payload.reason ? (
         <p className="acp-user-input__message">{item.payload.reason}</p>
       ) : null}
@@ -263,19 +269,16 @@ export function UserInputPrompt({
           disabled={pending}
           onClick={decline}
         >
-          Decline <kbd>Esc</kbd>
+          Skip
         </button>
-        <span className="acp-permission-prompt__split">
-          <button
-            className="button--compact"
-            type="submit"
-            form={formId}
-            disabled={pending || !complete}
-          >
-            {link ? "Open link" : confirm ? "Allow once" : "Submit"}{" "}
-            <kbd aria-label="Enter">⏎</kbd>
-          </button>
-        </span>
+        <button
+          className="button--compact acp-permission-prompt__submit"
+          type="submit"
+          form={formId}
+          disabled={pending || !complete}
+        >
+          {link ? "Open link" : confirm ? "Allow once" : "Submit"}
+        </button>
       </div>
     </section>
   );

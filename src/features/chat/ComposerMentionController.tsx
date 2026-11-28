@@ -81,7 +81,8 @@ export function ComposerMentionController({
   useEffect(() => {
     const field = fieldRef.current;
     if (!field) return;
-    anchorRef.current = field.parentElement;
+    // The list opens above the whole composer, at its full width.
+    anchorRef.current = field.closest<HTMLElement>(".chat-dock-shell") ?? field.parentElement;
     const track = () => setCaret(field.selectionStart);
     const focus = () => setFocused(true);
     const blur = () => {

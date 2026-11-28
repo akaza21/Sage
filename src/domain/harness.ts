@@ -156,9 +156,11 @@ export interface ModelOption {
 /** Presentation-only mark selection; never selects protocol behavior. */
 export function harnessIconKind(
   name: string | null | undefined,
-): "claude" | "codex" | "opencode" | undefined {
+): HarnessBrand | undefined {
   if (/claude/i.test(name ?? "")) return "claude";
   if (/codex/i.test(name ?? "")) return "codex";
   if (/opencode/i.test(name ?? "")) return "opencode";
+  // Pi alone: forks such as Oh My Pi keep the generic mark.
+  if (/^pi$/i.test(name?.trim() ?? "")) return "pi";
   return undefined;
 }

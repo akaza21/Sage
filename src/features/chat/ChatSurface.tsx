@@ -284,7 +284,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       <ChatComposerRegion
         approvalSlot={approval.slot}
         onEditSummaryMount={setEditSummaryContainer}
-        hidden={approval.awaiting}
         composerRef={composerRef}
         fieldId={composerFieldId}
         dictationScope={chatId ?? activeTabId ?? ""}

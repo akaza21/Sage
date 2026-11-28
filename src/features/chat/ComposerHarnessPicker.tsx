@@ -4,7 +4,7 @@ import "../../styles/harness-picker.css";
 import { PickerLogo } from "../../ui/PickerLogo";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
-import { LazyHarnessNotice } from "./lazyParts";
+import { HarnessMenuPart, LazyHarnessNotice } from "./lazyParts";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { HarnessNoticeDismissal } from "./harnessNoticePresentation";
 
@@ -75,10 +75,15 @@ export function ComposerHarnessPicker({
         popoverGap={8}
         popoverPlacement="above-start"
         triggerClassName="composer__control-trigger composer__picker-trigger"
-        sectionLabel="Harnesses"
+        sectionLabel="Harness"
         searchable={false}
         popoverRole="dialog"
         disabled={disabled}
+        trailing={
+          open ? (
+            <HarnessMenuPart part="ComposerHarnessMenuExtras" />
+          ) : undefined
+        }
         onSelect={onSelect}
         selectedId={selectedId}
       >

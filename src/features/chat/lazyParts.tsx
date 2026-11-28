@@ -3,6 +3,7 @@ import {
   LazyModuleBoundary,
 } from "../../ui/LazyModuleBoundary";
 import type { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
+import type * as HarnessNoticeChunk from "./HarnessDiscoveryNotice";
 import { ArrowRightLeft } from "../../ui/leanIcons";
 
 import {
@@ -183,6 +184,10 @@ export function LazyHarnessNotice(
     />
   );
 }
+
+export const HarnessMenuPart = lazyParts<
+  Pick<typeof HarnessNoticeChunk, "ComposerHarnessMenuExtras">
+>(() => import("./HarnessDiscoveryNotice"));
 
 export const ComposerOptionsPart = lazyParts<
   Pick<

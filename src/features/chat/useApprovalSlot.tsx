@@ -76,6 +76,7 @@ export function clearApprovalDecisions() {
 export function resolveApproval(
   item: PermissionItem,
   decision: PermissionDecision = "deny",
+  extra?: { reason?: string; scope?: string },
 ) {
   return acpDesktop.resolvePermissionDecision({
     projectId: item.projectId,
@@ -85,6 +86,7 @@ export function resolveApproval(
     runtimeEpoch: item.runtimeEpoch,
     requestId: item.payload.requestId,
     decision,
+    ...extra,
   });
 }
 
@@ -150,8 +152,8 @@ class ApprovalBoundary extends Component<
   }
 }
 
-// The composer stays mounted (hidden) to keep its draft; a card failure
-// restores it, and with it Stop.
+// The card sits above the composer, which stays mounted and usable (Stop,
+// typing that queues); a card failure leaves a notice in its place.
 export function useApprovalSlot(
   turn: TurnProjection | null | undefined,
   chatId: string | null,

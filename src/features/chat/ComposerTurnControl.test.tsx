@@ -121,20 +121,25 @@ it("keeps dictation on one control until stopped and disables it during the turn
   fireEvent.click(control);
   expect(input).toHaveValue("Review the composer");
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-  control = screen.getByRole("button", { name: "Cancel turn" });
+  // Stop joins Send and the muted microphone instead of replacing them.
+  expect(
+    screen.getAllByRole("button").map((button) => button.ariaLabel),
+  ).toEqual(["Start dictation", "Send message", "Cancel turn"]);
   expect(dictation.disabled).toBe(true);
-  expect(screen.getAllByRole("button")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "Start dictation" })).toBeNull();
-  expect(control).not.toHaveAttribute("aria-pressed");
+  expect(control).toBeDisabled();
+  expect(control).toHaveAttribute("aria-pressed", "false");
+  control = screen.getByRole("button", { name: "Cancel turn" });
   await act(async () => {
     await dictation.start();
   });
   act(() => Speech.latest.emit("late speech"));
   expect(input).toHaveValue("Review the composer");
   fireEvent.click(control);
+  expect(screen.queryByRole("button", { name: "Cancel turn" })).toBeNull();
   expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   fireEvent.change(input, { target: { value: "" } });
   expect(screen.getByRole("button", { name: "Start dictation" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
 });
 
 it("keeps a native partial speech draft when stopped and sends it only on Send", async () => {

@@ -27,6 +27,7 @@ import {
 export function SearchablePickerPopover({
   ariaLabel,
   children,
+  trailing,
   popoverRole = "none",
   candidates,
   close,
@@ -57,6 +58,7 @@ export function SearchablePickerPopover({
 }: {
   ariaLabel: string;
   children?: ReactNode;
+  trailing?: ReactNode;
   popoverRole?: "dialog" | "none";
   candidates: readonly SearchablePickerOption[];
   close: (reason?: MenuDismissReason) => void;
@@ -285,6 +287,7 @@ export function SearchablePickerPopover({
           </p>
         ) : null}
       </div>
+      {trailing}
       {footer ? <p className="searchable-picker__footer">{footer}</p> : null}
     </MenuPopover>
   );

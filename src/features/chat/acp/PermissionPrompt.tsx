@@ -1,8 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown } from "../../../ui/leanIcons";
+import { useEffect, useRef, useState } from "react";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
-import { MenuPopover } from "../../../ui/MenuPopover";
 import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
   arrivalFocusAllowed,
@@ -15,18 +13,25 @@ import { leavePlanAccess } from "./leavePlanAccess";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-const nouns: Record<string, string> = {
-  execute: "Terminal",
-  edit: "Edit",
-  mcp: "MCP",
-  extension: "Extension tool",
-};
+interface Choice {
+  decision: PermissionDecision;
+  label: string;
+  scope?: string;
+}
 
+/** Options 1 to 4 answer to their digit keys. */
+const DIGIT_KEYS = 4;
+
+/**
+ * The approval card above the composer: the request, then the harness's own
+ * decisions as numbered options (the first preselected), Skip and Submit.
+ * A reason with a refusal and "always allow" scopes appear only where the
+ * request reports them.
+ */
 export function PermissionPrompt({
   items,
   focused = true,
   canTakeFocus = () => true,
-  onCancelTurn,
 }: {
   items: readonly PermissionProjectionItem[];
   focused?: boolean;
@@ -34,13 +39,14 @@ export function PermissionPrompt({
   onCancelTurn?: () => void;
 }) {
   const item = items[0];
-  const primaryRef = useRef<HTMLButtonElement>(null);
-  const firstRef = useRef<HTMLButtonElement>(null);
-  const chevronRef = useRef<HTMLButtonElement>(null);
-  const menuId = useId();
-  const keyGuard = useCardKeyGuard();
+  const optionsRef = useRef<HTMLDivElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  // Held keys repeat only into the refusal's write-in, for editing.
+  const keyGuard = useCardKeyGuard({
+    ownRepeats: !!item?.payload.acceptsDenyReason,
+  });
   const sectionRef = useRef<HTMLElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [picked, setPicked] = useState(0);
   const [focusState, setFocusState] = useState<[string, boolean] | null>(null);
   /** The request in flight, or the one whose decision failed (negated). */
   const [sent, setSent] = useState<[string, boolean] | null>(null);
@@ -62,6 +68,10 @@ export function PermissionPrompt({
         ? asked
         : "Allow this action?";
   const detail = plan ? rest.join("\n\n") : item?.payload.summary;
+  const option = (index: number) =>
+    optionsRef.current?.querySelectorAll<HTMLButtonElement>("[role=radio]")[
+      index
+    ];
   useEffect(() => {
     if (!item) return;
     // A Deny pressed on the loading fallback carries into the card.
@@ -70,8 +80,8 @@ export function PermissionPrompt({
     const card = sectionRef.current;
     logCardArrival(item, card);
     if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
-      (primaryRef.current ?? firstRef.current)?.focus();
-      setFocusState([item.id, document.activeElement === primaryRef.current]);
+      option(0)?.focus();
+      setFocusState([item.id, document.activeElement === option(0)]);
     } else {
       parkFocus(card);
       setFocusState([item.id, false]);
@@ -82,43 +92,71 @@ export function PermissionPrompt({
   const initialFocus = focusState?.[0] === item.id ? focusState[1] : null;
   const { payload } = item;
   const browser = payload.source === "browser" || developer;
-  const choices: [PermissionDecision, string][] = [];
+  const choices: Choice[] = [];
   for (const kind of developer
     ? ["developer"]
     : browser
       ? ["allow_once", "origin"]
       : new Set(payload.offeredOptionKinds))
     if (kind === "developer")
-      choices.push(["allowDeveloperMode", "Allow developer mode"]);
-    else if (kind === "allow_once") choices.push(["allowOnce", "Allow once"]);
+      choices.push({
+        decision: "allowDeveloperMode",
+        label: "Allow developer mode",
+      });
+    else if (kind === "allow_once")
+      choices.push({ decision: "allowOnce", label: "Allow once" });
     else if (kind === "origin")
-      choices.push(["allowForOriginSession", "Allow for this tab and origin"]);
-    else if (kind === "allow_always")
-      choices.push([
-        "allowAlways",
-        execute ? "Allow similar commands" : "Always allow",
-      ]);
-  const primary =
-    choices.find(([decision]) => decision === "allowOnce") ?? choices[0];
+      choices.push({
+        decision: "allowForOriginSession",
+        label: "Allow for this tab and origin",
+      });
+    else if (kind === "allow_always" && !payload.alwaysAllowScopes?.length)
+      choices.push({
+        decision: "allowAlways",
+        label: execute ? "Allow similar commands" : "Always allow",
+      });
+  for (const scope of browser ? [] : (payload.alwaysAllowScopes ?? []))
+    choices.push({
+      decision: "allowAlways",
+      label: scope.label,
+      scope: scope.id,
+    });
   const offered = payload.offeredOptionKinds;
   const canDeny =
     browser ||
     !offered ||
     offered.includes("reject_once") ||
     offered.includes("reject_always");
+  const writeIn = canDeny && !browser && !!payload.acceptsDenyReason;
+  if (canDeny)
+    choices.push({
+      decision: "deny",
+      label: writeIn ? "No" : "Deny",
+    });
+  const current = Math.min(picked, choices.length - 1);
   const pending =
     sent?.[0] === item.id ? sent[1] : approvalHold.denies.has(item.id);
-  const resolve = (decision: PermissionDecision) => {
-    setMenuOpen(false);
-    if (pending) return;
+  const resolve = (choice: Choice | undefined) => {
+    if (pending || !choice) return;
     approvalHold.at = Date.now();
     setSent([item.id, true]);
-    void resolveApproval(item, decision).then(
+    const reason =
+      choice.decision === "deny" && writeIn
+        ? reasonRef.current?.value.trim()
+        : undefined;
+    void resolveApproval(item, choice.decision, {
+      ...(reason ? { reason } : {}),
+      ...(choice.scope ? { scope: choice.scope } : {}),
+    }).then(
       () => {
-        if (switchMode) void leavePlanAccess(item.sessionId, decision);
+        if (switchMode) void leavePlanAccess(item.sessionId, choice.decision);
       },
       () => setSent([item.id, false]),
     );
+  };
+  const pick = (index: number) => {
+    setPicked(index);
+    option(index)?.focus();
   };
   const Detail = execute || item.payload.category === "extension" ? "pre" : "p";
   return (
@@ -131,35 +169,50 @@ export function PermissionPrompt({
       data-acp-item-id={item.id}
       {...keyGuard}
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || menuOpen || !canDeny) return;
-        event.preventDefault();
-        resolve("deny");
+        const typing = event.target instanceof HTMLTextAreaElement;
+        const digit = Number(event.key);
+        if (event.key === "Escape" && canDeny) {
+          event.preventDefault();
+          resolve({ decision: "deny", label: "Deny" });
+        } else if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          // Skip and Submit answer Enter as their own click.
+          !(
+            event.target instanceof HTMLButtonElement &&
+            event.target.getAttribute("role") !== "radio"
+          )
+        ) {
+          event.preventDefault();
+          resolve(choices[current]);
+        } else if (
+          !typing &&
+          Number.isInteger(digit) &&
+          digit >= 1 &&
+          digit <= Math.min(DIGIT_KEYS, choices.length)
+        ) {
+          event.preventDefault();
+          pick(digit - 1);
+        } else if (
+          !typing &&
+          (event.key === "ArrowDown" || event.key === "ArrowUp")
+        ) {
+          event.preventDefault();
+          const step = event.key === "ArrowDown" ? 1 : choices.length - 1;
+          pick((current + step) % choices.length);
+        }
       }}
     >
       <header className="acp-permission-prompt__kind">
         <ToolKindIcon
           kind={browser ? "fetch" : (payload.category ?? "other")}
         />
-        {browser ? "Browser" : (nouns[payload.category ?? ""] ?? "Permission")}
+        <p className="acp-permission-prompt__question">{question}</p>
         {developer ? (
           <b className="acp-permission-prompt__elevated">Elevated</b>
         ) : null}
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
-        {onCancelTurn ? (
-          // Always offered so the pane is never stranded, although the
-          // reference card has no Stop.
-          <button
-            ref={firstRef}
-            type="button"
-            className="acp-permission-prompt__stop"
-            aria-label="Stop turn"
-            onClick={onCancelTurn}
-          >
-            Stop
-          </button>
-        ) : null}
       </header>
-      <p className="acp-permission-prompt__question">{question}</p>
       {payload.reason ? (
         <p className="acp-permission-prompt__reason" title={payload.reason}>
           <span>Agent&apos;s reason:</span> {payload.reason}
@@ -180,6 +233,45 @@ export function PermissionPrompt({
           this for sites you trust.
         </p>
       ) : null}
+      <div
+        ref={optionsRef}
+        className="acp-permission-prompt__options"
+        role="radiogroup"
+        aria-label="Decision"
+      >
+        {choices.map((choice, index) => (
+          <button
+            key={`${choice.decision}:${choice.scope ?? ""}`}
+            type="button"
+            role="radio"
+            className="acp-permission-prompt__option"
+            aria-checked={index === current}
+            tabIndex={index === current ? 0 : -1}
+            data-initial-focus={
+              (index === 0 && initialFocus && index === current) || undefined
+            }
+            disabled={pending}
+            onBlur={() => index === 0 && setFocusState(null)}
+            onClick={() => setPicked(index)}
+          >
+            <kbd aria-hidden="true">{index + 1}</kbd>
+            {choice.label}
+          </button>
+        ))}
+      </div>
+      {writeIn ? (
+        // The refusal's reason: typing in it picks No.
+        <textarea
+          ref={reasonRef}
+          className="acp-permission-prompt__write-in"
+          aria-label="What the agent should do instead"
+          placeholder="(tell the agent what to do instead)"
+          rows={1}
+          maxLength={2000}
+          disabled={pending}
+          onFocus={() => setPicked(choices.length - 1)}
+        />
+      ) : null}
       {sent?.[0] === item.id && !sent[1] ? (
         <p className="acp-permission__error" role="alert">
           This decision could not be sent. Try again, or cancel the turn.
@@ -191,76 +283,23 @@ export function PermissionPrompt({
       <div className="acp-permission-prompt__actions">
         {canDeny ? (
           <button
-            ref={onCancelTurn ? undefined : firstRef}
             className="button--compact"
             type="button"
             disabled={pending}
-            onClick={() => resolve("deny")}
+            onClick={() => resolve({ decision: "deny", label: "Deny" })}
           >
-            Deny <kbd>Esc</kbd>
+            Skip
           </button>
         ) : null}
-        {primary ? (
-          <span className="acp-permission-prompt__split">
-            <button
-              ref={developer ? undefined : primaryRef}
-              className="button--compact"
-              type="button"
-              data-initial-focus={initialFocus || undefined}
-              onBlur={() => setFocusState(null)}
-              disabled={pending}
-              onClick={() => resolve(primary[0])}
-            >
-              {primary[1]}
-              {developer ? null : (
-                <>
-                  {" "}
-                  <kbd aria-label="Enter">⏎</kbd>
-                </>
-              )}
-            </button>
-            {choices[1] ? (
-              <button
-                ref={chevronRef}
-                className="button--compact"
-                type="button"
-                aria-label="More allow options"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                disabled={pending}
-                onClick={() => setMenuOpen(!menuOpen)}
-              >
-                <ChevronDown size={14} aria-hidden="true" />
-              </button>
-            ) : null}
-          </span>
-        ) : null}
-      </div>
-      {menuOpen ? (
-        <MenuPopover
-          id={menuId}
-          className="acp-permission-prompt__menu"
-          ariaLabel="Allow options"
-          open
-          triggerRef={chevronRef}
-          onDismiss={() => {
-            setMenuOpen(false);
-            chevronRef.current?.focus();
-          }}
+        <button
+          className="button--compact acp-permission-prompt__submit"
+          type="button"
+          disabled={pending || choices.length === 0}
+          onClick={() => resolve(choices[current])}
         >
-          {choices.map(([decision, label]) => (
-            <button
-              key={decision}
-              type="button"
-              role="menuitem"
-              className="button button--compact"
-              onClick={() => resolve(decision)}
-            >
-              {label}
-            </button>
-          ))}
-        </MenuPopover>
-      ) : null}
+          Submit <span aria-hidden="true">↵</span>
+        </button>
+      </div>
     </section>
   );
 }

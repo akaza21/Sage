@@ -273,11 +273,11 @@ button.composer__control-trigger[aria-expanded="true"] {
 .composer__mic {
   width: 28px;
   height: 28px;
-  grid-area: send;
+  flex: none;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   color: var(--composer-control-text);
   background: transparent;
   cursor: pointer;
@@ -309,11 +309,11 @@ button.composer__control-trigger[aria-expanded="true"] {
   background: transparent;
   cursor: pointer;
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
+  transition: background-color var(--motion-duration-fade) ease-out;
 }
 
 .composer__plus {
-  width: 24px;
+  width: 28px;
   flex: 0 0 auto;
 }
 
@@ -321,15 +321,21 @@ button.composer__control-trigger[aria-expanded="true"] {
   display: inline-flex;
   min-width: 0;
   flex: 0 1 auto;
-  max-width: 142px;
+  max-width: 160px;
   align-items: center;
-  gap: 4px;
-  padding: 0 var(--space-2);
+  gap: 5px;
+  padding: 0 6px 0 var(--space-2);
   overflow: hidden;
   color: var(--composer-access-text);
   font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A running turn holds access: the pill dims, and its tooltip says why. */
+button.composer__access-label:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 button.composer__control-trigger.composer__access-label--full {

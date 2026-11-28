@@ -1,36 +1,90 @@
+/* Queued messages: a raised card above the composer that folds to its
+   header. Rows scroll inside it once they pass the cap. */
 .composer__queued {
-  position: static;
-  /* Size to the queued rows (up to the cap) and give way down to one row
-     when the dock runs out of height. */
-  min-height: var(--chrome-row-height);
+  display: flex;
+  min-height: 0;
+  max-height: 300px;
   flex: 0 1 auto;
-  display: grid;
-  grid-auto-rows: max-content;
-  max-height: min(320px, 40vh);
-  gap: var(--space-1);
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px 10px 12px;
   overflow-y: auto;
-  /* Keep focused controls clear of the scroll viewport's clipping edge. */
-  padding-block: var(--space-1);
-  scrollbar-width: thin;
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-xl);
+  background: var(--color-raised);
+  box-shadow: var(--elevation-card-soft);
+}
+
+.composer__queued-header {
+  display: flex;
+  min-width: 0;
+  min-height: 20px;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+}
+
+.composer__queued-header > b {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.composer__queued-fold {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer__queued-fold[aria-expanded="false"] > svg {
+  transform: rotate(180deg);
+}
+
+.composer__queued-count {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: var(--color-fill-soft);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  line-height: 10px;
+}
+
+.composer__queued-when {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer__queued-row {
   display: flex;
   min-width: 0;
-  min-height: 40px;
+  min-height: 28px;
+  flex: none;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-
+  gap: 2px;
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
+  line-height: 20px;
 }
 
 .composer__queued-thumbnail {
   overflow: hidden;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   place-items: center;
   border-radius: var(--radius-sm);
@@ -44,6 +98,7 @@
   flex: none;
   align-items: center;
   gap: var(--space-1);
+  margin-inline-end: var(--space-1);
 }
 
 .composer__queued-attachment .composer__queued-thumbnail {
@@ -53,7 +108,7 @@
 .composer__queued-cue {
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -68,27 +123,43 @@
 }
 
 .composer__queued-state {
+  padding-inline: var(--space-1);
   color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
 .composer__queued-row button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
-.composer__queued-row .composer__queued-steer {
-  width: auto;
-  padding: 0 var(--space-2);
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-  font-weight: var(--font-weight-medium);
+.composer__queued-row button:hover:not(:disabled),
+.composer__queued-fold:hover {
+  color: var(--color-text-primary);
+  background: var(--color-fill-soft);
+}
+
+.composer__queued-row button:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.composer__queued button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@container (max-width: 360px) {
+  .composer__queued-when {
+    display: none;
+  }
 }

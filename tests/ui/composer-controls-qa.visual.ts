@@ -159,3 +159,28 @@ test("Composer options never takes the thinking level as the row compacts", asyn
   await page.keyboard.press("Escape");
   await expect(model).toBeFocused();
 });
+
+test("harness and access keep their whole names in the narrowest chat pane", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-composer-context-known", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  // The narrowest chat pane (360 px) leaves 328 px for the column and 320 px
+  // inside the composer's outer frame.
+  await composer.evaluate((element) => (element.style.width = "320px"));
+  await settledComposerFit(composer);
+  const whole = (selector: string) =>
+    composer.locator(selector).evaluate((label) => ({
+      shown: getComputedStyle(label).display !== "none",
+      clipped: label.scrollWidth > label.clientWidth + 1,
+      text: label.textContent,
+    }));
+  const harness = await whole(".composer__harness .searchable-picker__trigger-label");
+  expect(harness).toMatchObject({ shown: true, clipped: false });
+  expect(harness.text).not.toBe("");
+  const access = await whole(".composer__access-label");
+  expect(access).toMatchObject({ shown: true, clipped: false });
+  expect(access.text).not.toBe("");
+});

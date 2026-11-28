@@ -1,7 +1,62 @@
+/* The model popover's "Thinking effort" row and its submenu of levels. */
 .composer-effort {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px var(--space-2) var(--space-2);
+  padding: var(--space-1) 0 0;
   border-top: 1px solid var(--color-border-subtle);
+}
+
+.composer-effort__trigger {
+  display: flex;
+  width: 100%;
+  min-height: 27px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-menu-item);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.composer-effort__trigger > span:first-of-type {
+  flex: 1;
+}
+
+.composer-effort__trigger:hover,
+.composer-effort__trigger[aria-expanded="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-hairline);
+}
+
+.composer-effort__trigger[aria-disabled="true"] {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.composer-effort__trigger:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.composer-effort__level {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.composer-effort__menu.menu-popover {
+  min-width: 160px;
+}
+
+.composer-effort__item.menu-item {
+  gap: var(--space-2);
+}
+
+.composer-effort__item > span:first-child {
+  flex: 1;
+}
+
+.composer-effort__item[aria-checked="true"] {
+  color: var(--color-text-primary);
 }
