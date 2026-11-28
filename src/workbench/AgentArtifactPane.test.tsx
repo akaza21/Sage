@@ -829,7 +829,7 @@ describe("Agent artifact file chips", () => {
       await screen.findByRole("region", { name: "New tab" }),
     ).toBeVisible();
     expect(
-      screen.getByText(/Open a file or change from the conversation/),
+      screen.getByRole("textbox", { name: "Search or enter a URL" }),
     ).toBeVisible();
     fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {
       key: "Escape",
@@ -2303,6 +2303,9 @@ describe("Agent artifact file chips", () => {
       ),
     ).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Browser New tab" }));
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().activeTabId).toBe("browser:a"),
+    );
     fireEvent.click(await launcherBrowser());
     expect(openBrowser).toHaveBeenCalledTimes(1);
     expect(

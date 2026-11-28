@@ -846,6 +846,8 @@ it.each([false, true])(
     expect(
       within(panel).getByRole("button", { name: "Changes" }),
     ).toHaveFocus();
+    // Tab leaves from the card's last entry, Shift+Tab from its first.
+    if (!shiftKey) within(panel).getAllByRole("button").at(-1)?.focus();
     fireEvent.keyDown(panel, { key: "Tab", shiftKey });
     expect(screen.queryByRole("dialog", { name: "Overview" })).toBeNull();
     expect(trigger).toHaveFocus();
