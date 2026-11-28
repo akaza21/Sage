@@ -528,3 +528,32 @@ test("a re-scrub that cannot keep every reference leaves the corpus as it was", 
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
+
+test("a model's id or name is redacted in keys and free text, a command named after the product is not", () => {
+  const [usage, offer] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        type: "result",
+        modelUsage: {
+          "claude-haiku-5-5": { canonicalModel: "claude-haiku-5-5" },
+        },
+        commands: ["claude-api", "claude-approvals"],
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        result: { message: "Switch to GPT-6.2 Sol. Fast mode uses Opus 5.5." },
+      },
+    },
+  ]);
+  const [key] = Object.keys(usage.frame.modelUsage);
+  assert.match(key, /^model-\d+$/);
+  assert.equal(usage.frame.modelUsage[key].canonicalModel, key);
+  assert.deepEqual(usage.frame.commands, ["claude-api", "claude-approvals"]);
+  assert.match(
+    offer.frame.result.message,
+    /^Switch to Model \d+\. Fast mode uses Model \d+\.$/,
+  );
+});

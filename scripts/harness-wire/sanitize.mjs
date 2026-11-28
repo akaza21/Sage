@@ -47,6 +47,13 @@ const REQUEST_IDS = [
   [/\bcf-ray: [0-9a-f]+(?:-[A-Z]{3})?/g, "cf-ray: 0000000000000000-XXX"],
   [/\breq_[0-9A-Za-z]{16,}/g, "req_00000000000000000000000000000000"],
 ];
+// A model's id or display name wherever it appears, keys and free text
+// included: a family and a version, so a command such as `claude-api` is not
+// one.
+const MODEL_ID =
+  /\b(?:claude-(?:opus|sonnet|haiku|fable)|gpt)-\d+(?:[.-][0-9a-z]+)*/g;
+const MODEL_NAME =
+  /\b(?:GPT-\d[\d.]*(?: [A-Z][a-z]+)?|(?:Claude )?(?:Opus|Sonnet|Haiku|Fable) \d[\d.]*)/g;
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
@@ -143,6 +150,18 @@ export function makeSanitizer({ roots }) {
       .replace(EMAIL, "user@example.invalid");
     for (const [pattern, target] of REQUEST_IDS)
       out = out.replace(pattern, target);
+    out = out
+      .replace(MODEL_NAME, (match) => {
+        // A version that ends a sentence keeps its full stop.
+        const stop = match.endsWith(".") ? "." : "";
+        return (
+          modelPlaceholder(
+            match.slice(0, match.length - stop.length),
+            "Model ",
+          ) + stop
+        );
+      })
+      .replace(MODEL_ID, (match) => modelPlaceholder(match, "model-"));
     out = out.replace(PROVIDER_ID, (match, prefix) => {
       if (!providerIds.has(match))
         providerIds.set(
@@ -202,6 +221,15 @@ export function makeSanitizer({ roots }) {
   // (`text`) is never touched.
   const models = new Map();
   let modelCount = 0;
+  // The placeholder for a model id or name, new on first sight.
+  function modelPlaceholder(found, kind) {
+    const key = kind === "model-" ? found.toLowerCase() : found;
+    if (!models.has(key)) {
+      modelCount += 1;
+      models.set(key, `${kind}${modelCount}`);
+    }
+    return models.get(key);
+  }
   // Claude Code's `{ value, resolvedModel, description }` too; its "default"
   // alias is protocol, not a model.
   const modelId = (value) =>
