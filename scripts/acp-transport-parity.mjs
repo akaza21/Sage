@@ -58,14 +58,6 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "turnId",
     "updatedAt",
   ],
-  BetaEvidenceResult: [
-    "candidate",
-    "contractSha256",
-    "evidence",
-    "schemaVersion",
-    "verdict",
-    "workItem",
-  ],
 });
 
 const RUST_TYPE_ALIASES = Object.freeze({
@@ -73,7 +65,6 @@ const RUST_TYPE_ALIASES = Object.freeze({
   AcpRewindEffects: "RewindEffects",
   AcpCapabilitySet: "CapabilitySnapshotV1",
   AcpItemIdentity: "ItemProjection",
-  BetaEvidenceResult: "BetaEvidenceResult",
 });
 
 const RUST_IGNORED_FIELDS = Object.freeze({
@@ -91,7 +82,6 @@ export async function acpTransportParityErrors(root) {
       path.join(root, "src-tauri/src/acp/projection.rs"),
       "utf8",
     ).catch(() => ""),
-    await readSources(root, "crates/sage-domain/src", [".rs"]),
   ].join("\n");
   const tsSource = [
     await readFile(path.join(root, "src/domain/acp.ts"), "utf8").catch(

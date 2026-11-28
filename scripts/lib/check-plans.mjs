@@ -30,7 +30,6 @@ export const COMMAND_DEADLINES_MS = Object.freeze({
   rustTests: 45 * 60_000,
   focusedTest: 10 * 60_000,
   frontendCheck: 45 * 60_000,
-  packageCampaign: 90 * 60_000,
 });
 
 export function boundedCommand(command, timeoutMs) {

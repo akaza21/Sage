@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
-import path from "node:path";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { nativeCases } from "./acp-native-cases.mjs";
-import { freshRoots } from "./capture-native-chat-process.mjs";
 
 test("Claude approval witnesses match 0.76.0 Bash permission presentation", () => {
   for (const state of [
@@ -161,51 +158,6 @@ test("Codex model and effort menu witnesses negotiate a terminal model page befo
       { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
       { op: "awaitClient", kind: "codexTurnStart" },
     ]);
-  }
-});
-test("native file witnesses resolve to the existing file provisioned for Preview and Open diff", () => {
-  const workspace = mkdtempSync(path.join(tmpdir(), "sage-native-witness-"));
-  try {
-    const { project } = freshRoots(workspace);
-    const imageCase = nativeCases().find(({ id }) => id === "pi-answer-image");
-    const imageStart = imageCase.steps.find(
-      ({ frame }) => frame?.type === "tool_execution_start",
-    );
-    const imageEnd = imageCase.steps.find(
-      ({ frame }) => frame?.type === "tool_execution_end",
-    );
-    const imageFile = path.join(
-      project,
-      ...imageStart.frame.args.path.slice("$ROOT/".length).split("/"),
-    );
-    assert.deepEqual(
-      readFileSync(imageFile),
-      Buffer.from(
-        imageEnd.frame.result.content.find(({ type }) => type === "image").data,
-        "base64",
-      ),
-    );
-    for (const harness of ["claude", "codex"]) {
-      const { steps } = nativeCases().find(
-        ({ id }) => id === `${harness}-file-edit-live`,
-      );
-      const edit = steps.find(
-        (step) =>
-          step.update?.kind === "edit" ||
-          step.params?.item?.type === "fileChange",
-      );
-      const wirePath =
-        harness === "claude"
-          ? edit.update.content[0].path
-          : edit.params.item.changes[0].path;
-      const target = path.join(
-        project,
-        ...wirePath.slice("$ROOT/".length).split("/"),
-      );
-      assert.equal(readFileSync(target, "utf8"), "export const example = 1;\n");
-    }
-  } finally {
-    rmSync(workspace, { recursive: true });
   }
 });
 test("every native generated wire sequence equals its source catalogue", () => {

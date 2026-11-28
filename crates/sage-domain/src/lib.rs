@@ -7,7 +7,6 @@
 //! Sage crate but `sage-acp-protocol`. Code that fills these types belongs in
 //! the crates above.
 
-mod beta_evidence;
 pub mod chat;
 pub mod editor;
 pub mod file_operations;

@@ -4,7 +4,7 @@
 
 // Paths the Rust crate compiles in or reads in its tests.
 export const rustPathPattern =
-  /^(Cargo\.(?:toml|lock)$|deny\.toml$|crates\/|src-tauri\/|testdata\/|tests\/fixtures\/|docs\/work-items\/|scripts\/ade|scripts\/(?:cargo-features|change-scope)\.mjs$|src\/features\/chat\/acp\/|rust-toolchain\.toml$|\.github\/(?:workflows|actions)\/)/;
+  /^(Cargo\.(?:toml|lock)$|deny\.toml$|crates\/|src-tauri\/|testdata\/|tests\/fixtures\/|scripts\/(?:cargo-features|change-scope)\.mjs$|src\/features\/chat\/acp\/|rust-toolchain\.toml$|\.github\/(?:workflows|actions)\/)/;
 
 // Inputs every Vitest file depends on: a change here can affect any test, so
 // the whole suite runs instead of the tests that import the changed files.

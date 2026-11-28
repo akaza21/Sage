@@ -3026,7 +3026,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
   });
 
-  it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
+  it("shows the Harness control in a focused Agent chat pane", async () => {
     hooks.page = {
       ...projection(),
       currentSessionId: null,

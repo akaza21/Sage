@@ -107,8 +107,7 @@ name = "acp_adversarial_fixture"
 path = "tests/acp_adversarial_fixture.rs"
 required-features = ["acp-fixture"]
 
-# Boots the real Sage browser on WebView2 (Windows debug builds only); see
-# docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
+# Boots the real Sage browser on WebView2 (Windows debug builds only).
 [[test]]
 name = "native_lane"
 path = "tests/native_lane/main.rs"

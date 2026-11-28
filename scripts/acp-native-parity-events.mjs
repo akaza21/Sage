@@ -1,4 +1,4 @@
-// Replay events for the waves 6-8 parity states (capture-native-chat-parity.mjs).
+// Replay events for the waves 6-8 parity states (acp-native-parity-states.mjs).
 // Most states drive UI over an existing replay, so they reuse that state's
 // wire events; tool, subagent and fork states add only shapes the pinned
 // Codex schema or claude-agent-acp 0.76.0 emit. Nothing is executed.

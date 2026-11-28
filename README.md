@@ -18,7 +18,7 @@ The product is intentionally narrower than a VS Code fork:
 
 ## Current implementation frontier
 
-ADE-0005 durable project lifecycle and multi-root resource identity:
+Durable project lifecycle and multi-root resource identity:
 
 ```text
 SQLite project/root registry
@@ -42,17 +42,8 @@ Late work from an old project or selection is rejected, and a post-commit
 projection failure blocks for bounded authoritative recovery rather than
 reviving stale UI.
 
-The final custom-protocol executable is 5,118,976 bytes and the unsigned NSIS
-installer is 1,848,425 bytes. Five clean packaged launches put Chat at 231.766
-MiB median / 233.211 MiB P95 and Explorer at 232.207 MiB median / 234.762 MiB
-P95 private bytes on WebView2 150.0.4078.65. CSP, sandboxing, process
-isolation, GPU acceleration, accessibility, and the minimal `core:default`
-capability remain enabled.
-
-ADE-0005 implementation self-check is complete, but fresh-context independent
-review and independent verification have not been recorded. ADE-0006A and the
-staged ADE-0006B/C/D/E harness work items are specified, but none is
-release-admitted.
+CSP, sandboxing, process isolation, GPU acceleration, accessibility, and the
+minimal `core:default` capability remain enabled.
 
 Syntax highlighting, LSP, project search, Git mutation/history, file watching,
 PTYs, and managed-release wiring for Claude Code, Codex CLI, and Pi remain
@@ -108,7 +99,6 @@ npm install
 npm run dev
 npm run dev:browser # Real UI in your browser for annotation (debug only)
 npm run check
-node scripts/validate-performance-budgets.mjs
 ```
 
 `dev:browser` starts Vite and a debug Sage with the `browser-bridge` feature, then opens the real UI in your default browser through a single-use pairing link. The link is printed only with explicit `SAGE_BRIDGE_PRINT_LINK=1` opt-in; if the browser cannot open, the terminal prints the port and opt-in instructions. Until used, the link grants backend control, so do not paste it into logs or issues. The bridge listens on 127.0.0.1 only and cannot be compiled into release builds. Reloading reconnects with a tab-scoped session token; closing the tab requires restarting Sage to re-pair. WebSocket pings release an unresponsive session after a roughly 30-second pong timeout. The in-app Preview browser (a native child webview) and native dialogs do not render in the browser tab.

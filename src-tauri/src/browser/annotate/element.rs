@@ -1,6 +1,5 @@
-//! The element target of the `browserElement` context item
-//! (`docs/work-items/BROWSER-FIRST-CLASS/contracts/browser-element-context-v1.md`):
-//! what the isolated-world read of a clicked element gives, how each field is
+//! The element target of the `browserElement` context item: what the
+//! isolated-world read of a clicked element gives, how each field is
 //! bounded and redacted, and the checks the item passes as it leaves the
 //! browser layer.
 
