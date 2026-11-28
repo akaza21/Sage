@@ -337,6 +337,19 @@ export function makeSanitizer({ roots }) {
   const signatures = new Map();
   const hexSegments = new Map();
   const processes = new Map();
+  const processSeen = new Set();
+  const findProcesses = (value) => {
+    if (Array.isArray(value)) value.forEach(findProcesses);
+    else if (value && typeof value === "object")
+      for (const [key, entry] of Object.entries(value))
+        if (
+          PROCESS_KEYS.has(key) &&
+          (typeof entry === "string" || typeof entry === "number") &&
+          entry !== ""
+        )
+          processSeen.add(String(entry));
+        else findProcesses(entry);
+  };
   const mcpServer = (server) =>
     PLACEHOLDER.test(server)
       ? server
@@ -787,7 +800,10 @@ export function makeSanitizer({ roots }) {
       (typeof value === "string" || typeof value === "number") &&
       value !== ""
     ) {
-      if (PROCESS_HANDLE.test(String(value))) return value;
+      // Already synthetic only when every handle learned is: a fresh
+      // capture's `1001` is a real handle like any other.
+      if ([...processSeen].every((seen) => PROCESS_HANDLE.test(seen)))
+        return value;
       if (!processes.has(String(value)))
         processes.set(String(value), 1000 + processes.size + 1);
       const handle = processes.get(String(value));
@@ -936,6 +952,7 @@ export function makeSanitizer({ roots }) {
       findTimes(record.frame);
       findRunIds(record.frame);
       findCatalogs(record.frame);
+      findProcesses(record.frame);
     });
 
   return {

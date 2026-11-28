@@ -338,9 +338,55 @@ test("an unreviewed string, key, number or account path fails with its path", as
     // The default moved to another model: same values by key, new flags.
     assert.match(
       problems,
-      /account flag "t\.jsonl:1\.frame\.models\[0\]\.isDefault=false" is not reviewed/,
+      /flag "t\.jsonl:1\.frame\.models\[0\]\.isDefault=false" is not reviewed/,
     );
     assert.match(problems, /"28220" is not a synthetic process handle/);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("moving which Codex model is the default fails the reviewed-value check", async () => {
+  const { unreviewed, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-codex-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    const write = (first, second) =>
+      fs.writeFileSync(
+        path.join(corpus, "x", "t.jsonl"),
+        `${JSON.stringify({
+          direction: "in",
+          frame: {
+            id: 3,
+            result: {
+              data: [
+                {
+                  id: "model-1",
+                  model: "model-1",
+                  displayName: "Model 1",
+                  isDefault: first,
+                },
+                {
+                  id: "model-2",
+                  model: "model-2",
+                  displayName: "Model 2",
+                  isDefault: second,
+                },
+              ],
+            },
+          },
+        })}\n`,
+      );
+    write(true, false);
+    writeReviewed("x", corpus, root);
+    write(false, true);
+    assert.match(
+      unreviewed("x", corpus, root).join("\n"),
+      /flag "t\.jsonl:1\.frame\.result\.data\[0\]\.isDefault=false" is not reviewed/,
+    );
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

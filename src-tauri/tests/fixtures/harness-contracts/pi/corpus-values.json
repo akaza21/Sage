@@ -162,25 +162,33 @@
       0
     ]
   },
-  "booleans": {
-    "autoCompactionEnabled": [
-      true
-    ],
-    "isCompacting": [
-      false
-    ],
-    "isStreaming": [
-      false
-    ],
-    "reasoning": [
-      false
-    ],
-    "success": [
-      false,
-      true
-    ]
-  },
-  "contextFlags": [],
+  "flags": [
+    "auth-fail.jsonl:10.frame.success=false",
+    "auth-fail.jsonl:2.frame.data.autoCompactionEnabled=true",
+    "auth-fail.jsonl:2.frame.data.isCompacting=false",
+    "auth-fail.jsonl:2.frame.data.isStreaming=false",
+    "auth-fail.jsonl:2.frame.data.model.reasoning=false",
+    "auth-fail.jsonl:2.frame.success=true",
+    "auth-fail.jsonl:4.frame.success=true",
+    "auth-fail.jsonl:6.frame.data.autoCompactionEnabled=true",
+    "auth-fail.jsonl:6.frame.data.isCompacting=false",
+    "auth-fail.jsonl:6.frame.data.isStreaming=false",
+    "auth-fail.jsonl:6.frame.data.model.reasoning=false",
+    "auth-fail.jsonl:6.frame.success=true",
+    "auth-fail.jsonl:8.frame.success=true",
+    "commands.jsonl:2.frame.data.autoCompactionEnabled=true",
+    "commands.jsonl:2.frame.data.isCompacting=false",
+    "commands.jsonl:2.frame.data.isStreaming=false",
+    "commands.jsonl:2.frame.data.model.reasoning=false",
+    "commands.jsonl:2.frame.success=true",
+    "commands.jsonl:4.frame.success=true",
+    "commands.jsonl:6.frame.data.autoCompactionEnabled=true",
+    "commands.jsonl:6.frame.data.isCompacting=false",
+    "commands.jsonl:6.frame.data.isStreaming=false",
+    "commands.jsonl:6.frame.data.model.reasoning=false",
+    "commands.jsonl:6.frame.success=true",
+    "commands.jsonl:8.frame.success=true"
+  ],
   "contextPaths": [
     "commands:[].description",
     "commands:[].name",

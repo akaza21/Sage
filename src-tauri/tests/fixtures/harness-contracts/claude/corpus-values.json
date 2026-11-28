@@ -1689,157 +1689,10 @@
       0
     ]
   },
-  "booleans": {
-    "analytics_disabled": [
-      false
-    ],
-    "builtin": [
-      true
-    ],
-    "canContinueAgent": [
-      true
-    ],
-    "canReadOutputFile": [
-      true
-    ],
-    "field-4": [
-      false
-    ],
-    "forwardSubagentText": [
-      true
-    ],
-    "hook_on_failure_supported": [
-      true
-    ],
-    "ide_rc_auto_enable_gate": [
-      false
-    ],
-    "interrupted": [
-      false
-    ],
-    "is_api_error_message": [
-      false
-    ],
-    "is_backgrounded": [
-      true
-    ],
-    "is_error": [
-      false,
-      true
-    ],
-    "isAgent": [
-      false
-    ],
-    "isAsync": [
-      true
-    ],
-    "isImage": [
-      false
-    ],
-    "isUsingOverage": [
-      false
-    ],
-    "launchEnvLeftOwnFilesInPlace": [
-      false
-    ],
-    "noOutputExpected": [
-      false
-    ],
-    "other_hook_ask_outranks_host": [
-      false
-    ],
-    "outsideBlocksCountLaunchFoldersOnly": [
-      false
-    ],
-    "outsideFileToolReadsBlocked": [
-      false
-    ],
-    "outsideFileToolWritesBlocked": [
-      false
-    ],
-    "overageEnabled": [
-      false
-    ],
-    "per_turn_effort_active": [
-      false
-    ],
-    "perTaskStopAffordance": [
-      true
-    ],
-    "product_feedback_disabled": [
-      false
-    ],
-    "remote_control_auto_connect_default": [
-      false
-    ],
-    "remote_control_auto_enable": [
-      false
-    ],
-    "remote_control_auto_on_by_default": [
-      false
-    ],
-    "remote_control_available": [
-      false
-    ],
-    "replace_all": [
-      false
-    ],
-    "replaceAll": [
-      false
-    ],
-    "requires_user_interaction": [
-      true
-    ],
-    "run_in_background": [
-      true
-    ],
-    "sandbox_enabled": [
-      false
-    ],
-    "served_by_anthropic": [
-      false
-    ],
-    "summary_is_report": [
-      false
-    ],
-    "supportsAdaptiveThinking": [
-      false
-    ],
-    "supportsAutoMode": [
-      false
-    ],
-    "supportsEffort": [
-      true
-    ],
-    "supportsFastMode": [
-      false
-    ],
-    "supportsThinkingOff": [
-      false
-    ],
-    "ultracode": [
-      false
-    ],
-    "ultracodeAvailable": [
-      true
-    ],
-    "ultracodeRequested": [
-      false
-    ],
-    "ultrathink_available": [
-      false
-    ],
-    "ultrathink_typed_raises": [
-      false
-    ],
-    "ultrathinkAvailable": [
-      false
-    ],
-    "userModified": [
-      false
-    ]
-  },
-  "contextFlags": [
+  "flags": [
+    "auth-fail.jsonl:1.frame.request.forwardSubagentText=true",
+    "auth-fail.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "auth-fail.jsonl:2.frame.response.response.analytics_disabled=false",
     "auth-fail.jsonl:2.frame.response.response.commands[0].builtin=true",
     "auth-fail.jsonl:2.frame.response.response.commands[1].builtin=true",
     "auth-fail.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -1888,6 +1741,8 @@
     "auth-fail.jsonl:2.frame.response.response.commands[7].builtin=true",
     "auth-fail.jsonl:2.frame.response.response.commands[8].builtin=true",
     "auth-fail.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "auth-fail.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "auth-fail.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "auth-fail.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "auth-fail.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "auth-fail.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -1911,6 +1766,32 @@
     "auth-fail.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "auth-fail.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "auth-fail.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "auth-fail.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "auth-fail.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "auth-fail.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "auth-fail.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "auth-fail.jsonl:2.frame.response.response.remote_control_available=false",
+    "auth-fail.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.ultracode=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "auth-fail.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "auth-fail.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "auth-fail.jsonl:6.frame.analytics_disabled=false",
+    "auth-fail.jsonl:6.frame.per_turn_effort_active=false",
+    "auth-fail.jsonl:6.frame.product_feedback_disabled=false",
+    "auth-fail.jsonl:6.frame.sandbox_enabled=false",
+    "auth-fail.jsonl:6.frame.served_by_anthropic=false",
+    "auth-fail.jsonl:6.frame.ultrathink_available=false",
+    "auth-fail.jsonl:6.frame.ultrathink_typed_raises=false",
+    "auth-fail.jsonl:8.frame.is_api_error_message=false",
+    "auth-fail.jsonl:9.frame.is_error=true",
+    "commands.jsonl:1.frame.request.forwardSubagentText=true",
+    "commands.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "commands.jsonl:2.frame.response.response.analytics_disabled=false",
     "commands.jsonl:2.frame.response.response.commands[0].builtin=true",
     "commands.jsonl:2.frame.response.response.commands[1].builtin=true",
     "commands.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -1966,6 +1847,8 @@
     "commands.jsonl:2.frame.response.response.commands[7].builtin=true",
     "commands.jsonl:2.frame.response.response.commands[8].builtin=true",
     "commands.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "commands.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "commands.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "commands.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "commands.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "commands.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -1989,6 +1872,22 @@
     "commands.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "commands.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "commands.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "commands.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "commands.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "commands.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "commands.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "commands.jsonl:2.frame.response.response.remote_control_available=false",
+    "commands.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "commands.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "commands.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "commands.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "commands.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "commands.jsonl:4.frame.response.response.applied.ultracode=false",
+    "commands.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "commands.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "commands.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "edit.jsonl:1.frame.request.forwardSubagentText=true",
+    "edit.jsonl:1.frame.request.perTaskStopAffordance=true",
     "edit.jsonl:16.frame.rate_limit_info.isUsingOverage=false",
     "edit.jsonl:16.frame.rate_limit_info.overageEnabled=false",
     "edit.jsonl:19.frame.commands[0].builtin=true",
@@ -2048,6 +1947,7 @@
     "edit.jsonl:19.frame.commands[7].builtin=true",
     "edit.jsonl:19.frame.commands[8].builtin=true",
     "edit.jsonl:19.frame.commands[9].builtin=true",
+    "edit.jsonl:2.frame.response.response.analytics_disabled=false",
     "edit.jsonl:2.frame.response.response.commands[0].builtin=true",
     "edit.jsonl:2.frame.response.response.commands[1].builtin=true",
     "edit.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2105,6 +2005,8 @@
     "edit.jsonl:2.frame.response.response.commands[7].builtin=true",
     "edit.jsonl:2.frame.response.response.commands[8].builtin=true",
     "edit.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "edit.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "edit.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "edit.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "edit.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "edit.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2128,6 +2030,33 @@
     "edit.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "edit.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "edit.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "edit.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "edit.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "edit.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "edit.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "edit.jsonl:2.frame.response.response.remote_control_available=false",
+    "edit.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "edit.jsonl:23.frame.message.content[0].input.replace_all=false",
+    "edit.jsonl:27.frame.request.input.replace_all=false",
+    "edit.jsonl:28.frame.response.response.updatedInput.replace_all=false",
+    "edit.jsonl:29.frame.tool_use_result.replaceAll=false",
+    "edit.jsonl:29.frame.tool_use_result.userModified=false",
+    "edit.jsonl:38.frame.is_error=false",
+    "edit.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "edit.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "edit.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "edit.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "edit.jsonl:4.frame.response.response.applied.ultracode=false",
+    "edit.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "edit.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "edit.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "edit.jsonl:6.frame.analytics_disabled=false",
+    "edit.jsonl:6.frame.per_turn_effort_active=false",
+    "edit.jsonl:6.frame.product_feedback_disabled=false",
+    "edit.jsonl:6.frame.sandbox_enabled=false",
+    "edit.jsonl:6.frame.served_by_anthropic=false",
+    "edit.jsonl:6.frame.ultrathink_available=false",
+    "edit.jsonl:6.frame.ultrathink_typed_raises=false",
     "edit.jsonl:8.frame.commands[0].builtin=true",
     "edit.jsonl:8.frame.commands[1].builtin=true",
     "edit.jsonl:8.frame.commands[10].builtin=true",
@@ -2185,6 +2114,9 @@
     "edit.jsonl:8.frame.commands[7].builtin=true",
     "edit.jsonl:8.frame.commands[8].builtin=true",
     "edit.jsonl:8.frame.commands[9].builtin=true",
+    "image.jsonl:1.frame.request.forwardSubagentText=true",
+    "image.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "image.jsonl:2.frame.response.response.analytics_disabled=false",
     "image.jsonl:2.frame.response.response.commands[0].builtin=true",
     "image.jsonl:2.frame.response.response.commands[1].builtin=true",
     "image.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2240,6 +2172,8 @@
     "image.jsonl:2.frame.response.response.commands[7].builtin=true",
     "image.jsonl:2.frame.response.response.commands[8].builtin=true",
     "image.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "image.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "image.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "image.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "image.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "image.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2263,8 +2197,33 @@
     "image.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "image.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "image.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "image.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "image.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "image.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "image.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "image.jsonl:2.frame.response.response.remote_control_available=false",
+    "image.jsonl:2.frame.response.response.sandbox_enabled=false",
     "image.jsonl:24.frame.rate_limit_info.isUsingOverage=false",
     "image.jsonl:24.frame.rate_limit_info.overageEnabled=false",
+    "image.jsonl:25.frame.is_error=false",
+    "image.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "image.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "image.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "image.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "image.jsonl:4.frame.response.response.applied.ultracode=false",
+    "image.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "image.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "image.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "image.jsonl:6.frame.analytics_disabled=false",
+    "image.jsonl:6.frame.per_turn_effort_active=false",
+    "image.jsonl:6.frame.product_feedback_disabled=false",
+    "image.jsonl:6.frame.sandbox_enabled=false",
+    "image.jsonl:6.frame.served_by_anthropic=false",
+    "image.jsonl:6.frame.ultrathink_available=false",
+    "image.jsonl:6.frame.ultrathink_typed_raises=false",
+    "plan-approve.jsonl:1.frame.request.forwardSubagentText=true",
+    "plan-approve.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "plan-approve.jsonl:2.frame.response.response.analytics_disabled=false",
     "plan-approve.jsonl:2.frame.response.response.commands[0].builtin=true",
     "plan-approve.jsonl:2.frame.response.response.commands[1].builtin=true",
     "plan-approve.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2320,6 +2279,8 @@
     "plan-approve.jsonl:2.frame.response.response.commands[7].builtin=true",
     "plan-approve.jsonl:2.frame.response.response.commands[8].builtin=true",
     "plan-approve.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "plan-approve.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "plan-approve.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "plan-approve.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "plan-approve.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "plan-approve.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2343,8 +2304,41 @@
     "plan-approve.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "plan-approve.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "plan-approve.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "plan-approve.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "plan-approve.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "plan-approve.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "plan-approve.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "plan-approve.jsonl:2.frame.response.response.remote_control_available=false",
+    "plan-approve.jsonl:2.frame.response.response.sandbox_enabled=false",
     "plan-approve.jsonl:25.frame.rate_limit_info.isUsingOverage=false",
     "plan-approve.jsonl:25.frame.rate_limit_info.overageEnabled=false",
+    "plan-approve.jsonl:26.frame.tool_use_result.userModified=false",
+    "plan-approve.jsonl:33.frame.request.requires_user_interaction=true",
+    "plan-approve.jsonl:39.frame.tool_use_result.isAgent=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.ultracode=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "plan-approve.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "plan-approve.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "plan-approve.jsonl:58.frame.tool_use_result.userModified=false",
+    "plan-approve.jsonl:65.frame.message.content[0].is_error=false",
+    "plan-approve.jsonl:65.frame.tool_use_result.interrupted=false",
+    "plan-approve.jsonl:65.frame.tool_use_result.isImage=false",
+    "plan-approve.jsonl:65.frame.tool_use_result.noOutputExpected=false",
+    "plan-approve.jsonl:9.frame.analytics_disabled=false",
+    "plan-approve.jsonl:9.frame.per_turn_effort_active=false",
+    "plan-approve.jsonl:9.frame.product_feedback_disabled=false",
+    "plan-approve.jsonl:9.frame.sandbox_enabled=false",
+    "plan-approve.jsonl:9.frame.served_by_anthropic=false",
+    "plan-approve.jsonl:9.frame.ultrathink_available=false",
+    "plan-approve.jsonl:9.frame.ultrathink_typed_raises=false",
+    "plan-approve.jsonl:92.frame.is_error=false",
+    "plan-decline.jsonl:1.frame.request.forwardSubagentText=true",
+    "plan-decline.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "plan-decline.jsonl:2.frame.response.response.analytics_disabled=false",
     "plan-decline.jsonl:2.frame.response.response.commands[0].builtin=true",
     "plan-decline.jsonl:2.frame.response.response.commands[1].builtin=true",
     "plan-decline.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2400,6 +2394,8 @@
     "plan-decline.jsonl:2.frame.response.response.commands[7].builtin=true",
     "plan-decline.jsonl:2.frame.response.response.commands[8].builtin=true",
     "plan-decline.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "plan-decline.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "plan-decline.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "plan-decline.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "plan-decline.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "plan-decline.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2423,8 +2419,37 @@
     "plan-decline.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "plan-decline.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "plan-decline.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "plan-decline.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "plan-decline.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "plan-decline.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "plan-decline.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "plan-decline.jsonl:2.frame.response.response.remote_control_available=false",
+    "plan-decline.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "plan-decline.jsonl:29.frame.tool_use_result.userModified=false",
     "plan-decline.jsonl:36.frame.rate_limit_info.isUsingOverage=false",
     "plan-decline.jsonl:36.frame.rate_limit_info.overageEnabled=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.ultracode=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "plan-decline.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "plan-decline.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "plan-decline.jsonl:42.frame.request.requires_user_interaction=true",
+    "plan-decline.jsonl:47.frame.message.content[0].is_error=true",
+    "plan-decline.jsonl:86.frame.is_error=false",
+    "plan-decline.jsonl:9.frame.analytics_disabled=false",
+    "plan-decline.jsonl:9.frame.per_turn_effort_active=false",
+    "plan-decline.jsonl:9.frame.product_feedback_disabled=false",
+    "plan-decline.jsonl:9.frame.sandbox_enabled=false",
+    "plan-decline.jsonl:9.frame.served_by_anthropic=false",
+    "plan-decline.jsonl:9.frame.ultrathink_available=false",
+    "plan-decline.jsonl:9.frame.ultrathink_typed_raises=false",
+    "shell.jsonl:1.frame.request.forwardSubagentText=true",
+    "shell.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "shell.jsonl:100.frame.is_error=false",
+    "shell.jsonl:2.frame.response.response.analytics_disabled=false",
     "shell.jsonl:2.frame.response.response.commands[0].builtin=true",
     "shell.jsonl:2.frame.response.response.commands[1].builtin=true",
     "shell.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2480,6 +2505,8 @@
     "shell.jsonl:2.frame.response.response.commands[7].builtin=true",
     "shell.jsonl:2.frame.response.response.commands[8].builtin=true",
     "shell.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "shell.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "shell.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "shell.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "shell.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "shell.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2503,8 +2530,51 @@
     "shell.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "shell.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "shell.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "shell.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "shell.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "shell.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "shell.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "shell.jsonl:2.frame.response.response.remote_control_available=false",
+    "shell.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "shell.jsonl:30.frame.message.content[0].input.run_in_background=true",
+    "shell.jsonl:30.frame.wire_tool_inputs.toolu_000000000000000000000024.field-4=false",
     "shell.jsonl:34.frame.rate_limit_info.isUsingOverage=false",
     "shell.jsonl:34.frame.rate_limit_info.overageEnabled=false",
+    "shell.jsonl:36.frame.is_backgrounded=true",
+    "shell.jsonl:37.frame.message.content[0].is_error=false",
+    "shell.jsonl:37.frame.tool_use_result.interrupted=false",
+    "shell.jsonl:37.frame.tool_use_result.isImage=false",
+    "shell.jsonl:37.frame.tool_use_result.noOutputExpected=false",
+    "shell.jsonl:38.frame.message.content[0].is_error=false",
+    "shell.jsonl:38.frame.tool_use_result.interrupted=false",
+    "shell.jsonl:38.frame.tool_use_result.isImage=false",
+    "shell.jsonl:38.frame.tool_use_result.noOutputExpected=false",
+    "shell.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "shell.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "shell.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "shell.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "shell.jsonl:4.frame.response.response.applied.ultracode=false",
+    "shell.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "shell.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "shell.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "shell.jsonl:6.frame.analytics_disabled=false",
+    "shell.jsonl:6.frame.per_turn_effort_active=false",
+    "shell.jsonl:6.frame.product_feedback_disabled=false",
+    "shell.jsonl:6.frame.sandbox_enabled=false",
+    "shell.jsonl:6.frame.served_by_anthropic=false",
+    "shell.jsonl:6.frame.ultrathink_available=false",
+    "shell.jsonl:6.frame.ultrathink_typed_raises=false",
+    "shell.jsonl:90.frame.is_error=false",
+    "shell.jsonl:91.frame.analytics_disabled=false",
+    "shell.jsonl:91.frame.per_turn_effort_active=false",
+    "shell.jsonl:91.frame.product_feedback_disabled=false",
+    "shell.jsonl:91.frame.sandbox_enabled=false",
+    "shell.jsonl:91.frame.served_by_anthropic=false",
+    "shell.jsonl:91.frame.ultrathink_available=false",
+    "shell.jsonl:91.frame.ultrathink_typed_raises=false",
+    "subagent.jsonl:1.frame.request.forwardSubagentText=true",
+    "subagent.jsonl:1.frame.request.perTaskStopAffordance=true",
+    "subagent.jsonl:2.frame.response.response.analytics_disabled=false",
     "subagent.jsonl:2.frame.response.response.commands[0].builtin=true",
     "subagent.jsonl:2.frame.response.response.commands[1].builtin=true",
     "subagent.jsonl:2.frame.response.response.commands[10].builtin=true",
@@ -2560,6 +2630,8 @@
     "subagent.jsonl:2.frame.response.response.commands[7].builtin=true",
     "subagent.jsonl:2.frame.response.response.commands[8].builtin=true",
     "subagent.jsonl:2.frame.response.response.commands[9].builtin=true",
+    "subagent.jsonl:2.frame.response.response.hook_on_failure_supported=true",
+    "subagent.jsonl:2.frame.response.response.ide_rc_auto_enable_gate=false",
     "subagent.jsonl:2.frame.response.response.models[0].supportsAdaptiveThinking=false",
     "subagent.jsonl:2.frame.response.response.models[0].supportsAutoMode=false",
     "subagent.jsonl:2.frame.response.response.models[0].supportsEffort=true",
@@ -2583,8 +2655,43 @@
     "subagent.jsonl:2.frame.response.response.models[4].supportsAutoMode=false",
     "subagent.jsonl:2.frame.response.response.models[4].supportsEffort=true",
     "subagent.jsonl:2.frame.response.response.models[4].supportsThinkingOff=false",
+    "subagent.jsonl:2.frame.response.response.other_hook_ask_outranks_host=false",
+    "subagent.jsonl:2.frame.response.response.remote_control_auto_connect_default=false",
+    "subagent.jsonl:2.frame.response.response.remote_control_auto_enable=false",
+    "subagent.jsonl:2.frame.response.response.remote_control_auto_on_by_default=false",
+    "subagent.jsonl:2.frame.response.response.remote_control_available=false",
+    "subagent.jsonl:2.frame.response.response.sandbox_enabled=false",
+    "subagent.jsonl:22.frame.is_backgrounded=true",
+    "subagent.jsonl:23.frame.tool_use_result.canContinueAgent=true",
+    "subagent.jsonl:23.frame.tool_use_result.canReadOutputFile=true",
+    "subagent.jsonl:23.frame.tool_use_result.isAsync=true",
     "subagent.jsonl:26.frame.rate_limit_info.isUsingOverage=false",
-    "subagent.jsonl:26.frame.rate_limit_info.overageEnabled=false"
+    "subagent.jsonl:26.frame.rate_limit_info.overageEnabled=false",
+    "subagent.jsonl:4.frame.response.response.applied.launchEnvLeftOwnFilesInPlace=false",
+    "subagent.jsonl:4.frame.response.response.applied.outsideBlocksCountLaunchFoldersOnly=false",
+    "subagent.jsonl:4.frame.response.response.applied.outsideFileToolReadsBlocked=false",
+    "subagent.jsonl:4.frame.response.response.applied.outsideFileToolWritesBlocked=false",
+    "subagent.jsonl:4.frame.response.response.applied.ultracode=false",
+    "subagent.jsonl:4.frame.response.response.applied.ultracodeAvailable=true",
+    "subagent.jsonl:4.frame.response.response.applied.ultracodeRequested=false",
+    "subagent.jsonl:4.frame.response.response.applied.ultrathinkAvailable=false",
+    "subagent.jsonl:40.frame.is_error=false",
+    "subagent.jsonl:43.frame.summary_is_report=false",
+    "subagent.jsonl:45.frame.analytics_disabled=false",
+    "subagent.jsonl:45.frame.per_turn_effort_active=false",
+    "subagent.jsonl:45.frame.product_feedback_disabled=false",
+    "subagent.jsonl:45.frame.sandbox_enabled=false",
+    "subagent.jsonl:45.frame.served_by_anthropic=false",
+    "subagent.jsonl:45.frame.ultrathink_available=false",
+    "subagent.jsonl:45.frame.ultrathink_typed_raises=false",
+    "subagent.jsonl:54.frame.is_error=false",
+    "subagent.jsonl:6.frame.analytics_disabled=false",
+    "subagent.jsonl:6.frame.per_turn_effort_active=false",
+    "subagent.jsonl:6.frame.product_feedback_disabled=false",
+    "subagent.jsonl:6.frame.sandbox_enabled=false",
+    "subagent.jsonl:6.frame.served_by_anthropic=false",
+    "subagent.jsonl:6.frame.ultrathink_available=false",
+    "subagent.jsonl:6.frame.ultrathink_typed_raises=false"
   ],
   "contextPaths": [
     "account:apiProvider",

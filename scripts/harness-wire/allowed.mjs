@@ -7,8 +7,7 @@
 //                 kinds, placeholders, fixture paths)
 //   keys          every object key
 //   numbers       every number, by the key it sits under
-//   booleans      every boolean, by the key it sits under
-//   contextFlags  every boolean under such an object (below), where it is
+//   flags         every boolean, where it is (file:line and indexed path)
 //   contextPaths  every key path under an account, plan, usage, model,
 //                 catalog or org object, as `<root>:<path>`
 // A number under a scrubbed key (tokens, cost, usage, pid) must also equal
@@ -57,8 +56,7 @@ export function corpusValues(dir) {
     strings: new Map(),
     keys: new Map(),
     numbers: new Map(),
-    booleans: new Map(),
-    contextFlags: new Map(),
+    flags: new Map(),
     contextPaths: new Map(),
     fixed: [],
   };
@@ -80,12 +78,12 @@ export function corpusValues(dir) {
         `${at}: ${JSON.stringify(value)} is not a synthetic process handle`,
       );
     if (typeof value === "string") note(found.strings, value, at);
-    else if (typeof value === "boolean") {
-      byKey(found.booleans, key, value, at);
-      // Which entry of an account's catalog is the default, hidden or
-      // enabled is the account's own: each flag is reviewed where it is.
-      if (context) note(found.contextFlags, `${at}=${value}`, at);
-    } else if (typeof value === "number") {
+    // Which model is the default, or which entry is hidden or enabled, can
+    // be the account's own wherever it is written: every boolean is
+    // reviewed where it is (file:line and indexed path), so moving one fails.
+    else if (typeof value === "boolean")
+      note(found.flags, `${at}=${value}`, at);
+    else if (typeof value === "number") {
       const rule = FIXED.find(([applies]) => applies(key));
       // 0 is the neutral value an account allow-list writes.
       if (rule && value !== 0 && value !== rule[1](key))
@@ -154,13 +152,7 @@ function serialize(found) {
         sorted(found.numbers.get(key).keys()),
       ]),
     ),
-    booleans: Object.fromEntries(
-      sorted(found.booleans.keys()).map((key) => [
-        key,
-        sorted(found.booleans.get(key).keys()),
-      ]),
-    ),
-    contextFlags: sorted(found.contextFlags.keys()),
+    flags: sorted(found.flags.keys()),
     contextPaths: sorted(found.contextPaths.keys()),
   };
 }
@@ -182,19 +174,9 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   missing("string", found.strings, new Set(allowed.strings));
   missing("key", found.keys, new Set(allowed.keys));
   missing("account path", found.contextPaths, new Set(allowed.contextPaths));
-  missing(
-    "account flag",
-    found.contextFlags,
-    new Set(allowed.contextFlags ?? []),
-  );
+  missing("flag", found.flags, new Set(allowed.flags ?? []));
   for (const [key, values] of found.numbers)
     missing(`number under ${key}`, values, new Set(allowed.numbers[key] ?? []));
-  for (const [key, values] of found.booleans)
-    missing(
-      `boolean under ${key}`,
-      values,
-      new Set(allowed.booleans?.[key] ?? []),
-    );
   return out;
 }
 

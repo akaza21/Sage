@@ -1219,3 +1219,18 @@ test("a process handle gets a stable synthetic one, shared by every frame that n
   assert.equal(request.frame.params.processId, "1001");
   assert.equal(request.frame.other.processId, 1002);
 });
+
+test("a fresh capture's handle that looks synthetic still gets its own handle", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const records = [
+    { direction: "in", frame: { processId: "1001" } },
+    { direction: "in", frame: { processId: "8192" } },
+  ];
+  const once = sanitizer.records(records);
+  assert.deepEqual(
+    once.map((record) => record.frame.processId),
+    ["1001", "1002"],
+  );
+  const again = makeSanitizer({ roots: [] }).records(structuredClone(once));
+  assert.deepEqual(again, once);
+});
