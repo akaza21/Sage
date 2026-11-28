@@ -4,6 +4,8 @@
 // still correlates frames.
 import os from "node:os";
 
+import { OPAQUE } from "./shape.mjs";
+
 export const WORKSPACE = "C:\\fixture-workspace";
 const MAX_STRING = 6000;
 const SYNCED = "(claude.ai sync)";
@@ -48,9 +50,18 @@ const REQUEST_IDS = [
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
-const MODEL_FIELDS = new Set(["id", "model", "name", "upgrade"]);
+const MODEL_FIELDS = new Set([
+  "id",
+  "value",
+  "model",
+  "resolvedModel",
+  "name",
+  "description",
+  "upgrade",
+]);
 const MODEL_KEYS = new Set([
   "model",
+  "resolvedModel",
   "modelId",
   "model_id",
   "defaultModel",
@@ -191,19 +202,35 @@ export function makeSanitizer({ roots }) {
   // (`text`) is never touched.
   const models = new Map();
   let modelCount = 0;
+  // Claude Code's `{ value, resolvedModel, description }` too; its "default"
+  // alias is protocol, not a model.
+  const modelId = (value) =>
+    typeof value?.id === "string"
+      ? value.id
+      : typeof value?.value === "string" && value.value !== "default"
+        ? value.value
+        : undefined;
   const isModel = (value) =>
-    typeof value?.id === "string" &&
-    ((typeof value.api === "string" && typeof value.provider === "string") ||
-      (typeof value.model === "string" && "displayName" in value));
+    (typeof value?.id === "string" &&
+      ((typeof value.api === "string" && typeof value.provider === "string") ||
+        (typeof value.model === "string" && "displayName" in value))) ||
+    (typeof value?.value === "string" &&
+      typeof value.resolvedModel === "string");
   const findModels = (value) => {
     if (Array.isArray(value)) value.forEach(findModels);
     else if (value && typeof value === "object") {
-      if (isModel(value) && !models.has(value.id)) {
+      const id = modelId(value);
+      if (isModel(value) && id !== undefined && !models.has(id)) {
         modelCount += 1;
-        models.set(value.id, `model-${modelCount}`);
+        models.set(id, `model-${modelCount}`);
+      }
+      if (isModel(value)) {
+        const n = models.get(id)?.slice(6) ?? String((modelCount += 1));
         for (const [field, label] of [
-          ["model", `model-${modelCount}`],
-          ["name", `Model ${modelCount}`],
+          ["model", `model-${n}`],
+          ["resolvedModel", `model-${n}`],
+          ["name", `Model ${n}`],
+          ["description", `Model ${n}`],
         ])
           if (typeof value[field] === "string" && !models.has(value[field]))
             models.set(value[field], label);
@@ -233,7 +260,7 @@ export function makeSanitizer({ roots }) {
     return out;
   };
 
-  const walk = (value, key, inModel = false) => {
+  const walk = (value, key, inModel = false, opaque = false) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
@@ -242,8 +269,8 @@ export function makeSanitizer({ roots }) {
       // A model a descriptor names that no catalog listed (an upgrade
       // target) gets its own placeholder; placeholders stay as they are.
       if (
-        inModel &&
-        MODEL_FIELDS.has(key) &&
+        ((inModel && MODEL_FIELDS.has(key)) || key === "resolvedModel") &&
+        value !== "default" &&
         !models.has(value) &&
         !/^(?:model-|Model )\d+$/.test(value)
       ) {
@@ -264,14 +291,14 @@ export function makeSanitizer({ roots }) {
             !isSynced(entry) &&
             !(typeof entry === "string" && synced.has(entry)),
         )
-        .map((entry) => walk(entry, key));
+        .map((entry) => walk(entry, key, false, opaque));
     }
     if (value && typeof value === "object") {
       const model = isModel(value);
       return Object.fromEntries(
-        Object.entries(usage(value)).map(([name, entry]) => [
+        Object.entries(opaque ? value : usage(value)).map(([name, entry]) => [
           text(name),
-          walk(entry, name, model),
+          walk(entry, name, model, opaque || OPAQUE.has(name)),
         ]),
       );
     }

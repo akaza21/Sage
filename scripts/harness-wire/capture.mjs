@@ -205,14 +205,11 @@ function resanitize(out, harnesses, work) {
   for (const [dir, staged] of every)
     for (const [file, body] of staged)
       fs.writeFileSync(path.join(dir, `${file}.tmp`), body);
-  for (const [dir, staged] of every) {
+  // Scrubbing values leaves a shape as it was; when it does change one (a
+  // synced skill dropped), the shape test says so: run `shape.mjs --write`.
+  for (const [dir, staged] of every)
     for (const file of staged.keys())
       fs.renameSync(path.join(dir, `${file}.tmp`), path.join(dir, file));
-    fs.writeFileSync(
-      path.join(dir, "shape.json"),
-      `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,
-    );
-  }
 }
 
 async function main() {

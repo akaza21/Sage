@@ -349,71 +349,106 @@ test("the account's usage and the provider's request ids are normalized", () => 
 });
 
 test("provider ids keep their links, a sign-in's expiry is fixed, other payloads are left alone", () => {
-  const [use, result, auth, tool, catalog] = makeSanitizer({
-    roots: [],
-  }).records([
-    {
-      direction: "in",
-      frame: {
-        type: "assistant",
-        message: {
-          id: "msg_01AbCdEfGhIjKlMnOp",
-          content: [{ type: "tool_use", id: "toolu_01QrStUvWxYz012345" }],
+  const [use, result, auth, tool, catalog, subagent, claudeCatalog] =
+    makeSanitizer({
+      roots: [],
+    }).records([
+      {
+        direction: "in",
+        frame: {
+          type: "assistant",
+          message: {
+            id: "msg_01AbCdEfGhIjKlMnOp",
+            content: [{ type: "tool_use", id: "toolu_01QrStUvWxYz012345" }],
+          },
         },
       },
-    },
-    {
-      direction: "in",
-      frame: {
-        type: "user",
-        message: {
-          content: [
-            { type: "tool_result", tool_use_id: "toolu_01QrStUvWxYz012345" },
-          ],
+      {
+        direction: "in",
+        frame: {
+          type: "user",
+          message: {
+            content: [
+              { type: "tool_result", tool_use_id: "toolu_01QrStUvWxYz012345" },
+            ],
+          },
         },
       },
-    },
-    {
-      direction: "in",
-      frame: {
-        type: "system",
-        subtype: "init",
-        credential_expires_at: "2026-12-25T11:47:22.873Z",
+      {
+        direction: "in",
+        frame: {
+          type: "system",
+          subtype: "init",
+          credential_expires_at: "2026-12-25T11:47:22.873Z",
+        },
       },
-    },
-    // A tool's own input that happens to use usage-like keys.
-    {
-      direction: "in",
-      frame: {
-        type: "assistant",
-        message: {
-          content: [
-            {
-              type: "tool_use",
-              input: { balance: "125", resetsAt: 123 },
-              extra: { balance: "125", resetsAt: 123 },
+      // A tool's own input that happens to use usage-like keys.
+      {
+        direction: "in",
+        frame: {
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                input: { utilization: 0.9, resetsAt: 123 },
+                extra: { balance: "125", resetsAt: 123 },
+              },
+            ],
+          },
+        },
+      },
+      {
+        direction: "in",
+        frame: {
+          id: 3,
+          result: {
+            data: [
+              {
+                id: "private-a",
+                model: "private-a",
+                displayName: "A",
+                upgrade: "private-b",
+              },
+            ],
+          },
+        },
+      },
+      // A subagent's result names the model it resolved to, outside any catalog.
+      {
+        direction: "in",
+        frame: {
+          type: "user",
+          tool_use_result: {
+            status: "async_launched",
+            resolvedModel: "private-d",
+          },
+        },
+      },
+      // Claude Code's catalog, in its initialize reply.
+      {
+        direction: "in",
+        frame: {
+          type: "control_response",
+          response: {
+            response: {
+              models: [
+                {
+                  value: "default",
+                  resolvedModel: "private-c",
+                  description: "Private C · best",
+                },
+                {
+                  value: "private-alias",
+                  resolvedModel: "private-c",
+                  description: "Private C · best",
+                },
+              ],
             },
-          ],
+          },
         },
       },
-    },
-    {
-      direction: "in",
-      frame: {
-        id: 3,
-        result: {
-          data: [
-            {
-              id: "private-a",
-              model: "private-a",
-              displayName: "A",
-              upgrade: "private-b",
-            },
-          ],
-        },
-      },
-    },
-  ]);
+    ]);
   const toolUse = use.frame.message.content[0].id;
   assert.match(use.frame.message.id, /^msg_0+1$/);
   assert.match(toolUse, /^toolu_0+\d$/);
@@ -423,7 +458,23 @@ test("provider ids keep their links, a sign-in's expiry is fixed, other payloads
     balance: "125",
     resetsAt: 123,
   });
+  assert.deepEqual(tool.frame.message.content[0].input, {
+    utilization: 0.9,
+    resetsAt: 123,
+  });
   assert.doesNotMatch(JSON.stringify(catalog), /private/);
+  const [, alias] = claudeCatalog.frame.response.response.models;
+  assert.equal(
+    claudeCatalog.frame.response.response.models[0].value,
+    "default",
+  );
+  assert.match(alias.value, /^model-\d+$/);
+  assert.equal(
+    alias.resolvedModel,
+    claudeCatalog.frame.response.response.models[0].resolvedModel,
+  );
+  assert.doesNotMatch(JSON.stringify(claudeCatalog), /private|Private/);
+  assert.match(subagent.frame.tool_use_result.resolvedModel, /^model-\d+$/);
 });
 
 test("a re-scrub that cannot keep every reference leaves the corpus as it was", () => {
