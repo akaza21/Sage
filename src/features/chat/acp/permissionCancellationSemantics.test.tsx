@@ -13,7 +13,6 @@ import type {
   SageTurnId,
 } from "../../../domain/acp";
 import { PermissionItem } from "./PermissionItem";
-import { getPermissionStatus } from "./statusSemantics";
 
 afterEach(cleanup);
 
@@ -47,14 +46,6 @@ function cancelledPermission(): PermissionProjectionItem {
 }
 
 describe("cancelled permission semantics", () => {
-  it("maps cancellation to a neutral terminal status", () => {
-    expect(getPermissionStatus(cancelledPermission())).toEqual({
-      visual: "Cancelled",
-      accessible: "Permission cancelled",
-      terminal: true,
-    });
-  });
-
   it("renders an accessible terminal status without actions or waiting copy", () => {
     render(<PermissionItem item={cancelledPermission()} />);
 

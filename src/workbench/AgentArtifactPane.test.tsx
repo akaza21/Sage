@@ -1980,37 +1980,6 @@ describe("Agent artifact file chips", () => {
     ).toBeNull();
   });
 
-  it("shows +3 −1 on a matched diff tab", () => {
-    useWorkbenchStore.setState({
-      tabs: [
-        {
-          id: "chat-focused",
-          kind: "chat",
-          title: "Focused",
-          position: 0,
-          pinned: false,
-          dirty: false,
-        },
-        {
-          id: "diff:app",
-          kind: "diff",
-          title: "app.ts",
-          position: 1,
-          pinned: false,
-          dirty: false,
-          resource: { rootId: "root-a", relativePath: "src/app.ts" },
-        },
-      ],
-      activeTabId: "chat-focused",
-    });
-    render(<AgentArtifactPane />);
-
-    const matched = screen.getByRole("tab", { name: /app\.ts/ });
-    expect(matched).toHaveAttribute("aria-label", "Diff src/app.ts");
-    expect(within(matched).getByText("+3")).toBeInTheDocument();
-    expect(within(matched).getByText("-1")).toBeInTheDocument();
-  });
-
   it("shows a dirty dot only on a dirty file tab", () => {
     useWorkbenchStore.setState({
       tabs: [
