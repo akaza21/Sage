@@ -149,7 +149,7 @@ const CATALOG_KEEP = new Map(
 );
 // Values the sanitizer itself writes.
 const PLACEHOLDER =
-  /^(?:redacted|(?:model|command|skill|agent|plugin|server|key|run|task)-\d+|Model \d+)$/;
+  /^(?:redacted|(?:model|command|skill|agent|plugin|server|key|run|task|signature)-\d+|Model \d+)$/;
 const CATALOG_REFS = new Set([
   "command",
   "commandName",
@@ -185,6 +185,18 @@ const MODEL_KEYS = new Set([
 ]);
 // Token counts and costs of the captured turns, as fixed synthetic values.
 const TOKENS = /tokens(?:_delta)?$|^(?:cacheRead|cacheWrite)$/i;
+// Distinct per kind, so a replay still tells input, output and cache apart.
+const tokenCount = (key) =>
+  /output/i.test(key)
+    ? 50
+    : /reasoning/i.test(key)
+      ? 40
+      : /cache_?read|cached/i.test(key)
+        ? 30
+        : /cache_?(?:creation|write)/i.test(key)
+          ? 20
+          : 100;
+const SIGNATURE_KEYS = new Set(["signature", "encrypted_content"]);
 const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
 // Absolute times move to a fixed epoch, one offset per unit for the whole
 // capture, so every interval between them holds.
@@ -203,6 +215,8 @@ const FILE_TIME =
 // An ISO time inside text. Groups: the time to the second, the fraction.
 const TEXT_TIME =
   /(?<!\d)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z(?![\w:])/g;
+const textTimeMs = (match) =>
+  Date.parse(`${match[1]}.${`${match[2] ?? ""}000`.slice(0, 3)}Z`);
 const fileTimeMs = (match) =>
   Date.parse(
     `${match[4]}T${match[5]}:${match[6]}:${match[7]}.${match[8] ?? "000"}Z`,
@@ -286,6 +300,7 @@ export function makeSanitizer({ roots }) {
   const runIds = new Map();
   const catalogNames = new Map();
   const keyNames = new Map();
+  const signatures = new Map();
   const pseudonym = (map, original, kind) => {
     if (!map.has(original))
       map.set(
@@ -335,23 +350,29 @@ export function makeSanitizer({ roots }) {
     // A model id or name a catalog taught, wherever else it is written. Only
     // a model-like string (a digit, space or hyphen in it) is matched in free
     // text, so a catalog id that is also a protocol word stays a word.
-    if (earliest.file !== Infinity)
-      out = out.replace(FILE_TIME, (...match) =>
-        fileTime(match, TIME_BASE_MS + (fileTimeMs(match) - earliest.file)),
-      );
+    // Text nobody learned first (a capture's own notes) sets the base itself
+    // when no time set one, so no time is ever left as it was.
+    if (earliest.file === Infinity)
+      for (const match of out.matchAll(FILE_TIME))
+        earliest.file = Math.min(earliest.file, fileTimeMs(match));
+    if (earliest.ms === Infinity)
+      for (const match of out.matchAll(TEXT_TIME))
+        earliest.ms = Math.min(earliest.ms, textTimeMs(match));
+    out = out.replace(FILE_TIME, (...match) =>
+      fileTime(match, TIME_BASE_MS + (fileTimeMs(match) - earliest.file)),
+    );
     // An absolute time written into text, such as a log line in a stderr
     // tail, moves with the capture's other times; digits finer than a
     // millisecond are kept.
-    if (earliest.ms !== Infinity)
-      out = out.replace(TEXT_TIME, (match, whole, fraction = "") => {
-        const ms = `${fraction}000`.slice(0, 3);
-        const iso = new Date(
-          TIME_BASE_MS + (Date.parse(`${whole}.${ms}Z`) - earliest.ms),
-        ).toISOString();
-        return fraction
-          ? `${iso.slice(0, 23)}${fraction.slice(3)}Z`
-          : `${iso.slice(0, 19)}Z`;
-      });
+    out = out.replace(TEXT_TIME, (...match) => {
+      const fraction = match[2] ?? "";
+      const iso = new Date(
+        TIME_BASE_MS + (textTimeMs(match) - earliest.ms),
+      ).toISOString();
+      return fraction
+        ? `${iso.slice(0, 23)}${fraction.slice(3)}Z`
+        : `${iso.slice(0, 19)}Z`;
+    });
     const learned = learnedModels();
     if (learned) out = out.replace(learned, (match) => models.get(match));
     const runs = runIdPattern();
@@ -574,15 +595,30 @@ export function makeSanitizer({ roots }) {
         ? "iso"
         : undefined;
   const isTime = (key) => TIME_KEY.test(key) && !NOT_TIME.test(key);
-  const findTimes = (value, key = "") => {
-    if (Array.isArray(value)) value.forEach((entry) => findTimes(entry, key));
+  const findTextTimes = (value) => {
+    for (const match of value.matchAll(FILE_TIME))
+      earliest.file = Math.min(earliest.file, fileTimeMs(match));
+    for (const match of value.matchAll(TEXT_TIME))
+      earliest.ms = Math.min(earliest.ms, textTimeMs(match));
+  };
+  // Times written into text are learned everywhere, opaque payloads too,
+  // since text() rewrites them there as well.
+  const findTimes = (value, key = "", opaque = false) => {
+    if (Array.isArray(value))
+      value.forEach((entry) => findTimes(entry, key, opaque));
     else if (value && typeof value === "object") {
       for (const [name, entry] of Object.entries(value))
-        if (!OPAQUE.has(name)) findTimes(entry, name);
-    } else if (typeof value === "string" && !isTime(key)) {
-      for (const match of value.matchAll(FILE_TIME))
-        earliest.file = Math.min(earliest.file, fileTimeMs(match));
-    } else if (isTime(key)) {
+        findTimes(entry, name, opaque || OPAQUE.has(name));
+    } else if (
+      typeof value === "string" &&
+      (opaque || !isTime(key)) &&
+      !CREDENTIAL_EXPIRY_KEYS.has(key) &&
+      !NOT_TIME.test(key)
+    ) {
+      // An expiry or reset time is replaced by a fixed value, not shifted,
+      // so it never sets the base.
+      findTextTimes(value);
+    } else if (!opaque && isTime(key)) {
       const unit = timeUnit(value);
       if (unit === "s") earliest.s = Math.min(earliest.s, value);
       if (unit === "ms") earliest.ms = Math.min(earliest.ms, value);
@@ -636,9 +672,15 @@ export function makeSanitizer({ roots }) {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (!opaque && typeof value === "number") {
-      if (TOKENS.test(key)) return 100;
+      if (TOKENS.test(key)) return tokenCount(key);
       if (COST_KEYS.has(key)) return 0.01;
     }
+    // A provider's signature over a response fingerprints the conversation;
+    // each gets a stable pseudonym, so a delta and its full block still match.
+    if (SIGNATURE_KEYS.has(key) && typeof value === "string" && value !== "")
+      return PLACEHOLDER.test(value)
+        ? value
+        : pseudonym(signatures, value, "signature");
     if (!opaque && isTime(key)) {
       const unit = timeUnit(value);
       if (unit) return shifted(value);
@@ -726,14 +768,23 @@ export function makeSanitizer({ roots }) {
       return Object.fromEntries(
         Object.entries(opaque ? value : usage(value)).map(([name, entry]) => {
           const scrubbed = text(name);
+          // Inside an account object or catalog entry, every key below an
+          // opaque field is the account's own and gets a pseudonym; above
+          // one, a plain identifier is a protocol field name.
           const renamed =
             !opaque && CATALOG_KEYED.has(key)
               ? PLACEHOLDER.test(scrubbed)
                 ? scrubbed
                 : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
-              : base && !opaque
-                ? accountKey(scrubbed, base)
-                : scrubbed;
+              : (base || catalog) && opaque
+                ? PLACEHOLDER.test(scrubbed)
+                  ? scrubbed
+                  : pseudonym(keyNames, scrubbed, "key")
+                : base
+                  ? accountKey(scrubbed, base)
+                  : catalog
+                    ? accountKey(scrubbed, { root: "", path: [] })
+                    : scrubbed;
           return [
             renamed,
             walk(

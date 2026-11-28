@@ -167,6 +167,12 @@ function resanitize(out, harnesses, work) {
     const lines = (file) => readTranscriptLines(path.join(dir, file));
     for (const file of files)
       sanitizer.learn(lines(file).map((line) => JSON.parse(line)));
+    const metaFile = path.join(dir, "meta.json");
+    const meta = fs.existsSync(metaFile)
+      ? JSON.parse(fs.readFileSync(metaFile, "utf8"))
+      : null;
+    // The capture's notes are learned too, so their times share the base.
+    if (meta) sanitizer.learn([{ frame: meta }]);
     // The new hash of each commands.jsonl line, by its old hash.
     // Fields the harness sends beyond its published definitions keep their
     // key but not their value (neutral.mjs).
@@ -205,9 +211,7 @@ function resanitize(out, harnesses, work) {
     }
     // The capture's own notes (args, gaps, stderr tails) carry the same
     // kinds of values, so they get the same text scrub.
-    const metaFile = path.join(dir, "meta.json");
-    if (fs.existsSync(metaFile)) {
-      const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+    if (meta) {
       const scrubText = (value) =>
         typeof value === "string"
           ? sanitizer.text(value)

@@ -25,7 +25,7 @@
     "IgnoredLate x2",
     "ChildThreadItem {\"id\":\"#3\",\"lifecycle\":\"completed\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"started\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}},\"child_thread_id\":\"#4\"}",
     "IgnoredLate x2",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":100,\"outputTokens\":100,\"contextWindow\":475000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":100,\"outputTokens\":50,\"contextWindow\":475000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:redacted:300\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":300,\"resetsAt\":1800018000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:redacted:10080\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":10080,\"resetsAt\":1800604800}}}",
     "IgnoredLate",
@@ -42,7 +42,7 @@
     "ChildTurnStatus {\"child_thread_id\":\"#4\",\"child_turn_id\":\"#6\",\"status\":\"completed\"}",
     "ChildThreadItem {\"id\":\"#8\",\"lifecycle\":\"completed\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":null,\"receiverLabels\":[],\"operation\":\"completed\",\"agentKey\":\"00000000-0000-4000-8000-000000000005\",\"agentKeys\":[],\"agentStates\":[]}},\"child_thread_id\":\"#4\"}",
     "Item {\"id\":\"#5\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"wait\",\"message\":null,\"receiverLabels\":[],\"operation\":\"wait\",\"agentKey\":null,\"agentKeys\":[],\"agentStates\":[]}}}",
-    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":100,\"outputTokens\":100,\"contextWindow\":475000}}}",
+    "Usage {\"turn_id\":\"#2\",\"payload\":{\"kind\":\"usage\",\"payload\":{\"inputTokens\":100,\"outputTokens\":50,\"contextWindow\":475000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:redacted:300\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":300,\"resetsAt\":1800018000}}}",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:redacted:10080\",\"level\":\"info\",\"diagnostic\":false,\"text\":\"<43 chars>\",\"source\":\"codex\",\"usageLimit\":{\"provider\":\"Codex\",\"usedPercent\":10,\"windowMinutes\":10080,\"resetsAt\":1800604800}}}"
   ]

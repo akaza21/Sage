@@ -685,7 +685,7 @@ test("an account object keeps no id, name or date of its own, distinct request i
   assert.notEqual(first, second);
   assert.equal(first, again);
   assert.doesNotMatch(turn.frame.result, /private|aaaa|bbbb/);
-  assert.deepEqual(turn.frame.usage, { input_tokens: 100, output_tokens: 100 });
+  assert.deepEqual(turn.frame.usage, { input_tokens: 100, output_tokens: 50 });
   assert.equal(turn.frame.total_cost_usd, 0.01);
 });
 
@@ -913,8 +913,8 @@ test("a catalog entry keeps only known enums at any depth, and references map ev
       name: "skill-1",
       scope: "user",
       source: "redacted",
-      settings: { prompt: "redacted" },
-      input: { hint: "redacted" },
+      settings: { "key-1": "redacted" },
+      input: { "key-2": "redacted" },
     },
   ]);
   assert.equal(files.frame.note, "Wrote agent-agent-1.txt");
@@ -975,4 +975,76 @@ test("an absolute time inside text moves with the capture's other times", () => 
     sanitizer.text("log 2026-11-26T17:00:05Z done"),
     "log 2027-01-15T08:00:05Z done",
   );
+});
+
+test("signatures, keys below opaque fields and text-only times carry nothing of the capture", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const [delta, block, account] = sanitizer.records([
+    {
+      direction: "in",
+      frame: {
+        delta: { type: "signature_delta", signature: "CAQShwYKEAgUprivate" },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        content: [
+          { type: "thinking", thinking: "", signature: "CAQShwYKEAgUprivate" },
+        ],
+        message: "log 2026-11-26T12:34:56Z failed",
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        account: {
+          type: "chatgpt",
+          settings: { privateCustomer123: "x", "private-customer-124": "y" },
+        },
+        skills: [{ name: "acme", settings: { acmeCustomer: "z" } }],
+        usage: {
+          input_tokens: 7,
+          output_tokens: 9,
+          cache_read_input_tokens: 3,
+        },
+      },
+    },
+  ]);
+  assert.equal(delta.frame.delta.signature, "signature-1");
+  assert.equal(block.frame.content[0].signature, "signature-1");
+  assert.equal(block.frame.message, "log 2027-01-15T08:00:00Z failed");
+  assert.deepEqual(Object.keys(account.frame.account.settings), [
+    "key-1",
+    "key-2",
+  ]);
+  assert.deepEqual(Object.keys(account.frame.skills[0].settings), ["key-3"]);
+  assert.deepEqual(account.frame.usage, {
+    input_tokens: 100,
+    output_tokens: 50,
+    cache_read_input_tokens: 30,
+  });
+  assert.doesNotMatch(
+    JSON.stringify([delta, block, account]),
+    /CAQS|Customer|customer|acme|2026/,
+  );
+  assert.equal(
+    sanitizer.text("unlearned 2026-11-26T09:00:00.5Z"),
+    "unlearned 2027-01-15T04:25:04.500Z",
+  );
+});
+
+test("a fixed sign-in expiry never moves the time base, so a second scrub changes nothing", () => {
+  const scrub = (records) => makeSanitizer({ roots: [] }).records(records);
+  const once = scrub([
+    {
+      direction: "in",
+      frame: {
+        credential_expires_at: "2026-12-30T00:00:00.000Z",
+        timestamp: "2026-11-26T17:00:00.000Z",
+      },
+    },
+  ]);
+  assert.deepEqual(scrub(structuredClone(once)), once);
+  assert.equal(once[0].frame.timestamp, "2027-01-15T08:00:00.000Z");
 });
