@@ -86,6 +86,8 @@ pub(super) struct WireState {
     prompt_echo: Option<String>,
     claude_sdk: claude_sdk::SdkWireState,
     codex_skills: background::Skills,
+    /// The permission mode of a plain (non-config) Claude ACP session.
+    acp_mode: &'static str,
 }
 
 impl WireState {
@@ -109,6 +111,7 @@ impl WireState {
             prompt_echo: None,
             claude_sdk: claude_sdk::SdkWireState::default(),
             codex_skills: background::Skills::default(),
+            acp_mode: acp::PLAIN_MODES[0],
         }
     }
 
