@@ -677,7 +677,7 @@ function Start-OwnedVite(
   $command = @(Get-Command cmd.exe -CommandType Application -ErrorAction Stop) | Select-Object -First 1
   $npmPath = Require-AbsoluteFile $npm.Source "npm launcher"
   $commandPath = Require-AbsoluteFile $command.Source "command interpreter"
-  $commandLine = '/d /s /c ""{0}" run dev -- --host 127.0.0.1 --port {1}"' -f $npmPath, $Contract.port
+  $commandLine = '/d /s /c ""{0}" run dev:ui-fixture -- --host 127.0.0.1 --port {1}"' -f $npmPath, $Contract.port
   # A hidden window style still allocates a new console, which a default
   # terminal such as Windows Terminal takes over and shows.
   $start = [Diagnostics.ProcessStartInfo]::new($commandPath, $commandLine)

@@ -105,13 +105,14 @@ application. The current development machine has these prerequisites installed.
 
 ```powershell
 npm install
-npm run dev
-npm run dev:browser # Real UI in your browser for annotation (debug only)
+npm run dev         # real UI in a browser tab against the real debug backend
 npm run check
 node scripts/validate-performance-budgets.mjs
 ```
 
-`dev:browser` starts Vite and a debug Sage with the `browser-bridge` feature, then opens the real UI in your default browser through a single-use pairing link. The link is printed only with explicit `SAGE_BRIDGE_PRINT_LINK=1` opt-in; if the browser cannot open, the terminal prints the port and opt-in instructions. Until used, the link grants backend control, so do not paste it into logs or issues. The bridge listens on 127.0.0.1 only and cannot be compiled into release builds. Reloading reconnects with a tab-scoped session token; closing the tab requires restarting Sage to re-pair. WebSocket pings release an unresponsive session after a roughly 30-second pong timeout. The in-app Preview browser (a native child webview) and native dialogs do not render in the browser tab.
+`npm run dev` (`scripts/dev-live.mjs`) starts Vite on a free loopback port (`--port <n>` or `SAGE_UI_PORT` pick one; `--jobs <n>` sets `CARGO_BUILD_JOBS`) and `tauri dev --features browser-bridge` against it, both at below-normal priority, and prints one URL. The debug Sage uses a throwaway profile in `.sage-dev/profile` (git-ignored), never your real one. Each backend run publishes its bridge port and single-use pairing code into that profile, and the dev server serves it to same-origin page scripts at `/__sage/bridge-run`, so the tab pairs by itself. TypeScript edits hot-reload; a Rust edit rebuilds the backend, and the tab shows "Sage backend restarting…", waits for the new run and reloads itself. Ctrl+C stops both.
+
+The bridge listens on 127.0.0.1 only, checks the Host and Origin of every connection, and cannot be compiled into release builds; the run route exists only on the dev server. The pairing code is single-use: reloading reconnects with a tab-scoped session token, and a second tab is refused until the backend restarts. WebSocket pings release an unresponsive session after a roughly 30-second pong timeout. The in-app Preview browser (a native child webview) and native dialogs do not render in the browser tab. `npm run dev:ui-fixture` serves the UI alone on port 1420 for the Playwright fixture. A bare `tauri dev --features browser-bridge` (on your real profile) still opens the browser with a single-use link (printed instead with `SAGE_BRIDGE_PRINT_LINK=1`); until used, that link grants backend control, so do not paste it into logs or issues.
 
 Native local gates (Windows, macOS, Linux):
 

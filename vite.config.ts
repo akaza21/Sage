@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import type { OutputOptions } from "rolldown";
+import { devBridgeRunPlugin } from "./scripts/devBridgeRun";
 import { htmlCompletionSchemaPlugin } from "./scripts/htmlCompletionSchema";
 import { desktopReactRuntimeProjectionPlugin } from "./scripts/reactRuntimeProjection";
 
@@ -21,6 +22,7 @@ const devWatchIgnoredRoots = new Set([
   "work",
   "output",
   "local-evidence",
+  ".sage-dev",
 ]);
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
@@ -170,6 +172,7 @@ export default defineConfig(({ command, mode }) => ({
     desktopReactRuntimeProjectionPlugin(command, mode),
     desktopNativeWorkbenchRuntimePlugin(command, mode),
     htmlCompletionSchemaPlugin(),
+    devBridgeRunPlugin(),
   ],
   clearScreen: false,
   server: {

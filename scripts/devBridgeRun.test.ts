@@ -1,0 +1,107 @@
+// @vitest-environment node
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, request, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, afterEach, expect, it } from "vitest";
+import { BRIDGE_RUN_PATH, bridgeRunHandler } from "./devBridgeRun";
+
+const servers: Server[] = [];
+const directory = mkdtempSync(path.join(tmpdir(), "sage-bridge-run-"));
+const runFile = path.join(directory, "dev-bridge-run.json");
+const run = {
+  run: "1".repeat(32),
+  bridgePort: 40001,
+  code: "c".repeat(64),
+};
+
+afterAll(() => rmSync(directory, { recursive: true, force: true }));
+afterEach(() => {
+  for (const server of servers.splice(0)) server.close();
+  rmSync(runFile, { force: true });
+});
+
+async function serve(file: string | undefined) {
+  const handle = bridgeRunHandler(file);
+  const server = createServer((incoming, response) => {
+    void handle(incoming, response, () => {
+      response.statusCode = 418;
+      response.end();
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+  return (server.address() as AddressInfo).port;
+}
+
+function get(
+  port: number,
+  headers: Record<string, string>,
+  route = BRIDGE_RUN_PATH,
+) {
+  return new Promise<{
+    status: number;
+    headers: Record<string, unknown>;
+    body: string;
+  }>((resolve, reject) => {
+    const outgoing = request(
+      { host: "127.0.0.1", port, path: route, headers },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk: string) => (body += chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            headers: response.headers,
+            body,
+          }),
+        );
+      },
+    );
+    outgoing.on("error", reject);
+    outgoing.end();
+  });
+}
+
+it("hands the run only to same-origin page scripts, never with CORS headers", async () => {
+  writeFileSync(runFile, JSON.stringify(run));
+  const port = await serve(runFile);
+
+  for (const site of ["cross-site", "same-site", "none"]) {
+    const refused = await get(port, {
+      "Sec-Fetch-Site": site,
+      Origin: "http://evil.test",
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.body).not.toContain(run.code);
+  }
+  const unlabelled = await get(port, {});
+  expect(unlabelled.status).toBe(403);
+
+  const granted = await get(port, { "Sec-Fetch-Site": "same-origin" });
+  expect(granted.status).toBe(200);
+  expect(JSON.parse(granted.body)).toEqual(run);
+  expect(granted.headers["cache-control"]).toBe("no-store");
+  expect(
+    Object.keys(granted.headers).filter((name) =>
+      name.startsWith("access-control-"),
+    ),
+  ).toEqual([]);
+  expect((await get(port, {}, "/src/main.tsx")).status).toBe(418);
+});
+
+it("reports a missing backend apart from one still starting", async () => {
+  const sameOrigin = { "Sec-Fetch-Site": "same-origin" };
+  expect((await get(await serve(undefined), sameOrigin)).status).toBe(404);
+  const port = await serve(runFile);
+  expect((await get(port, sameOrigin)).status).toBe(503);
+  writeFileSync(runFile, '{"run":"not hex","bridgePort":1}');
+  expect((await get(port, sameOrigin)).status).toBe(503);
+  writeFileSync(runFile, JSON.stringify({ run: run.run, bridgePort: 40001 }));
+  expect(JSON.parse((await get(port, sameOrigin)).body)).toEqual({
+    run: run.run,
+    bridgePort: 40001,
+  });
+});

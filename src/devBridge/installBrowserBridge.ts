@@ -1,3 +1,4 @@
+import { showBridgeNotice, waitForBridgeRun } from "./bridgeRun";
 import { MAX_MESSAGE_BYTES } from "./limits";
 
 const MAX_PENDING = 64;
@@ -23,35 +24,86 @@ type Frame = {
   payload?: unknown;
 };
 
-function savedSession(port: string): string | undefined {
+type Target = {
+  port: string;
+  /** Set when the tab paired from a published run (`npm run dev`). */
+  run?: string;
+  credential: { pairingCode: string } | { session: string };
+};
+
+function savedSession(port: string, run?: string): string | undefined {
   const saved = sessionStorage.getItem(STORAGE_KEY);
   if (!saved) return undefined;
   try {
-    const credential = JSON.parse(saved) as { port?: string; session?: string };
-    return credential.port === port ? credential.session : undefined;
+    const credential = JSON.parse(saved) as {
+      port?: string;
+      run?: string;
+      session?: string;
+    };
+    return credential.port === port && credential.run === run
+      ? credential.session
+      : undefined;
   } catch {
     sessionStorage.removeItem(STORAGE_KEY);
     return undefined;
   }
 }
 
-function showDisconnected() {
-  const notice = document.createElement("div");
-  notice.setAttribute("role", "alert");
-  notice.textContent =
-    "Sage browser bridge disconnected. Reload this tab to reconnect.";
-  notice.style.cssText =
-    "position: fixed; inset: auto 0 0; z-index: 2147483647; padding: 8px 16px; background: #5a1d1d; color: #fff; font: 13px system-ui";
-  document.body.append(notice);
+const showDisconnected = () =>
+  showBridgeNotice(
+    "Sage browser bridge disconnected. Reload this tab to reconnect.",
+    true,
+  );
+
+/** A pairing link names its port; without one the tab uses the published run. */
+function linkTarget(pairingCode: string): Target | undefined {
+  const linkPort = new URLSearchParams(location.search).get("bridge");
+  if (linkPort === null) return undefined;
+  if (
+    !/^\d{1,5}$/.test(linkPort) ||
+    Number(linkPort) < 1 ||
+    Number(linkPort) > 65535
+  )
+    throw new Error(`${BRIDGE_NAME}: invalid port`);
+  const session = savedSession(linkPort);
+  if (pairingCode) return { port: linkPort, credential: { pairingCode } };
+  if (session) return { port: linkPort, credential: { session } };
+  throw new Error("Open the pairing link from Sage");
 }
 
-export async function installBrowserBridge(pairingCode: string): Promise<void> {
-  const port = new URLSearchParams(location.search).get("bridge") ?? "";
-  if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
-    throw new Error(`${BRIDGE_NAME}: invalid port`);
-  const session = savedSession(port);
-  if (!pairingCode && !session)
-    throw new Error("Open the pairing link from Sage");
+async function runTarget(): Promise<Target> {
+  const clear = showBridgeNotice("Waiting for the Sage backend to start…");
+  try {
+    // A reload of a paired tab resumes its session; a fresh run is paired by code.
+    return await waitForBridgeRun<Target>(({ run, bridgePort, code }) => {
+      const port = String(bridgePort);
+      const session = savedSession(port, run);
+      if (session) return { port, run, credential: { session } };
+      if (code) return { port, run, credential: { pairingCode: code } };
+      return undefined;
+    });
+  } finally {
+    clear();
+  }
+}
+
+/** After a backend restart, waits for its next run and reloads the tab. */
+function awaitNextRun(run: string, reload: () => void) {
+  const clear = showBridgeNotice("Sage backend restarting…");
+  waitForBridgeRun((next) =>
+    next.run !== run && next.code !== undefined ? next : undefined,
+  ).then(reload, () => {
+    clear();
+    showDisconnected();
+  });
+}
+
+export async function installBrowserBridge(
+  pairingCode: string,
+  { reload = () => location.reload() }: { reload?: () => void } = {},
+): Promise<void> {
+  const { port, run, credential } =
+    linkTarget(pairingCode) ?? (await runTarget());
   const pending = new Map<number, Pending>();
   const callbacks = new Map<number, Callback>();
   let socket: WebSocket | undefined;
@@ -108,7 +160,8 @@ export async function installBrowserBridge(pairingCode: string): Promise<void> {
         for (const request of pending.values()) request.reject(error);
         pending.clear();
         callbacks.clear();
-        showDisconnected();
+        if (run) awaitNextRun(run, reload);
+        else showDisconnected();
       };
       current.addEventListener("close", disconnected);
       current.addEventListener("error", () => {
@@ -119,9 +172,7 @@ export async function installBrowserBridge(pairingCode: string): Promise<void> {
         "open",
         () => {
           // Credentials go only in the first frame, never in a URL or an invoke.
-          current.send(
-            JSON.stringify(pairingCode ? { pairingCode } : { session }),
-          );
+          current.send(JSON.stringify(credential));
         },
         { once: true },
       );
@@ -163,7 +214,7 @@ export async function installBrowserBridge(pairingCode: string): Promise<void> {
         try {
           sessionStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify({ port, session: frame.session }),
+            JSON.stringify({ port, run, session: frame.session }),
           );
         } catch {
           reject(new Error("Sage browser bridge requires tab session storage"));
@@ -183,7 +234,12 @@ export async function installBrowserBridge(pairingCode: string): Promise<void> {
       await pair();
       break;
     } catch (error) {
-      if (pairingCode || attempt === RECONNECT_ATTEMPTS) throw error;
+      if ("pairingCode" in credential) throw error;
+      if (attempt === RECONNECT_ATTEMPTS) {
+        // The published run's backend is gone (stopped or rebuilding).
+        if (run) awaitNextRun(run, reload);
+        throw error;
+      }
       await new Promise((wait) => setTimeout(wait, RECONNECT_DELAY_MS));
     }
   }
