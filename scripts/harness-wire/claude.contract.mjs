@@ -9,6 +9,7 @@ import path from "node:path";
 import {
   Graph,
   declarations,
+  installed,
   literals,
   members,
   variants,
@@ -75,17 +76,7 @@ function responses(api, graph, map) {
 export async function contract(version, work) {
   const cli = version.match(/\d+\.\d+\.\d+/)[0];
   const sdk = sdkFor(cli);
-  npm([
-    "install",
-    "--ignore-scripts",
-    "--omit=optional",
-    "--no-audit",
-    "--no-fund",
-    "--prefix",
-    work,
-    `${SDK}@${sdk}`,
-  ]);
-  const dir = path.join(work, "node_modules", SDK);
+  const dir = installed(`${SDK}@${sdk}`, work);
   const bundled = JSON.parse(
     fs.readFileSync(path.join(dir, "manifest.json"), "utf8"),
   ).version;
