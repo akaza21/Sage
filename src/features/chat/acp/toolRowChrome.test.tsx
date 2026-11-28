@@ -64,21 +64,24 @@ it.each([
   ["mcp", mcp],
   ["webSearch", { kind: "webSearch", label: "Web search" } as const],
   ["execute", undefined],
-] as const)("draws a %s row with no leading kind icon, only its chevron", (kind, presentation) => {
-  const { container } = render(
-    <ToolActivityRollup
-      rollup={{
-        kind,
-        commandActivity: "ordinary",
-        items: [tool(presentation ?? shell)],
-      }}
-      interactive
-    />,
-  );
-  const icons = container.querySelectorAll("summary svg");
-  expect(icons).toHaveLength(1);
-  expect(icons[0]).toHaveClass("acp-tool-rollup__chevron");
-});
+] as const)(
+  "draws a %s row with no leading kind icon, only its chevron",
+  (kind, presentation) => {
+    const { container } = render(
+      <ToolActivityRollup
+        rollup={{
+          kind,
+          commandActivity: "ordinary",
+          items: [tool(presentation ?? shell)],
+        }}
+        interactive
+      />,
+    );
+    const icons = container.querySelectorAll("summary svg");
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toHaveClass("acp-tool-rollup__chevron");
+  },
+);
 
 it("opens a Searched the web row through its Web run row to the plaintext result (s5/f0405)", () => {
   const web = tool({ kind: "webSearch", label: "Web search" });

@@ -161,7 +161,9 @@ function mixedClauses(items: readonly ToolProjectionItem[]): string {
     const integration =
       presentation.kind === "mcp" ? presentation.serverLabel : null;
     if (integration) integrations.add(integration);
-    const key = integration ? null : (clauses[presentation.kind] ?? TOOL_CLAUSE);
+    const key = integration
+      ? null
+      : (clauses[presentation.kind] ?? TOOL_CLAUSE);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const names = [...integrations];

@@ -11,9 +11,7 @@ function layout(content: number, frame: number) {
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(
     content,
   );
-  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(
-    frame,
-  );
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(frame);
 }
 
 it("clamps a prompt taller than six lines and expands it on request", () => {

@@ -488,9 +488,11 @@ describe("ToolActivityRollup", () => {
     row.open = true;
     fireEvent(row, new Event("toggle"));
     expect(
-      [...row.querySelectorAll(".acp-tool-rollup__items .acp-tool-rollup__label")].map(
-        (label) => label.textContent,
-      ),
+      [
+        ...row.querySelectorAll(
+          ".acp-tool-rollup__items .acp-tool-rollup__label",
+        ),
+      ].map((label) => label.textContent),
     ).toEqual(["Read main.ts", "Search activity"]);
   });
 
@@ -1327,7 +1329,9 @@ describe("ToolActivityRollup", () => {
     );
 
     expect(screen.getByText("Edited files")).toBeVisible();
-    expect(document.querySelector("summary svg:not(.acp-tool-rollup__chevron)")).toBeNull();
+    expect(
+      document.querySelector("summary svg:not(.acp-tool-rollup__chevron)"),
+    ).toBeNull();
 
     rerender(
       <ToolActivityRollup
@@ -1341,7 +1345,9 @@ describe("ToolActivityRollup", () => {
     );
 
     expect(screen.getByText("Ran a command")).toBeVisible();
-    expect(document.querySelector("summary svg:not(.acp-tool-rollup__chevron)")).toBeNull();
+    expect(
+      document.querySelector("summary svg:not(.acp-tool-rollup__chevron)"),
+    ).toBeNull();
   });
 
   it("keeps a generic write projection out of the edited-file rollup", () => {

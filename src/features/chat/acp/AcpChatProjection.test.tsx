@@ -625,9 +625,10 @@ describe("AcpChatProjection", () => {
         (label) => label.textContent,
       );
     expect(labels()).toEqual(["Ran npm run check", "Explored files"]);
-    const [command, read] = workedGroups(work)!.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup",
-    );
+    const [command, read] =
+      workedGroups(work)!.querySelectorAll<HTMLDetailsElement>(
+        ".acp-tool-rollup",
+      );
     read!.open = true;
     fireEvent(read!, new Event("toggle"));
     expect(labels()).toEqual([
