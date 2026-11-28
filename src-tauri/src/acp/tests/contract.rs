@@ -157,7 +157,7 @@ fn lifecycle_tables_reject_reopen_and_implement_first_terminal_wins() {
 #[test]
 fn protocol_contract_turn_transitions_match_the_rust_lifecycle() {
     let contract: Value = serde_json::from_str(include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/protocol-contract-v1.json"
+        "../../../testdata/acp/contracts/protocol-contract-v1.json"
     ))
     .unwrap();
     let declared = contract["turnTransitions"].as_object().unwrap();
@@ -196,7 +196,7 @@ fn protocol_contract_turn_transitions_match_the_rust_lifecycle() {
 fn protocol_contract_item_kinds_match_the_rust_wire_set() {
     use sage_acp_protocol::lifecycle::ItemKind;
     let contract: Value = serde_json::from_str(include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/protocol-contract-v1.json"
+        "../../../testdata/acp/contracts/protocol-contract-v1.json"
     ))
     .unwrap();
     let kinds = [

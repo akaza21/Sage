@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "rendererRecreationObservation": {
+    "platform": "windows",
+    "trigger": "Tauri main WebviewWindow reload",
+    "authoritativePageLoad": "get_acp_chat_page for the exact project and Chat at an equal or newer projection revision",
+    "sqliteTables": [
+      "chats",
+      "chat_tabs",
+      "agent_sessions",
+      "chat_session_heads",
+      "session_runtime_epochs",
+      "turns",
+      "session_activities",
+      "items",
+      "chat_lineage",
+      "server_requests",
+      "session_facts",
+      "acp_project_usage",
+      "acp_session_usage",
+      "acp_store_usage"
+    ],
+    "maximumRowsPerTable": 200000,
+    "sqliteInvariant": "before and after reload retain the exact per-table row counts and content digests without retaining row payloads",
+    "runtimeInvariant": "the authoritative ACP runtime-slot active count and live process-tree reservation count are unchanged",
+    "listenerInvariant": "one projection subscription and one pagehide focus listener exist after authoritative load; the destroyed renderer retains zero listeners",
+    "focusOutcomes": [
+      "exact-sage-id",
+      "activity-summary-fallback",
+      "no-restoration-when-no-valid-envelope"
+    ],
+    "liveRegionEvidence": {
+      "regions": 2,
+      "politeness": ["polite", "assertive"],
+      "maximumRetainedAnnouncementsPerRegion": 64,
+      "rule": "initial authoritative load and retained terminal history are silent; only a new same-scope terminal after reload is announced once"
+    },
+    "normalSageDataAllowed": false
+  }
+}

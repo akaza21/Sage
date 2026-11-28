@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { cargoFeaturePolicyErrors } from "./cargo-feature-policy.mjs";
 import { validateMainCapabilityPermissions } from "./check-policy-permissions.mjs";
 import {
   curatedPackageResources,
@@ -128,6 +129,30 @@ for (const [description, source] of [
     assert.equal(sourceSecurityErrors("src/example.tsx", source).length, 1);
   });
 }
+
+test("production Cargo defaults cannot admit the characterization fixture", () => {
+  const valid =
+    '[features]\ndefault = []\nacp-fixture = []\ncustom-protocol = ["tauri/custom-protocol"]\ndiagnostics = []\n';
+  assert.deepEqual(cargoFeaturePolicyErrors(valid), []);
+  assert.deepEqual(
+    cargoFeaturePolicyErrors(
+      valid.replace(
+        "acp-fixture = []",
+        'acp-fixture = ["sage-acp-protocol/fixture"]',
+      ),
+    ),
+    [],
+  );
+  for (const broken of [
+    valid.replace("default = []", 'default = ["acp-fixture"]'),
+    valid.replace("acp-fixture = []", 'acp-fixture = ["serde/std"]'),
+    valid.replace(
+      'custom-protocol = ["tauri/custom-protocol"]',
+      "custom-protocol = []",
+    ),
+  ])
+    assert.equal(cargoFeaturePolicyErrors(broken).length, 1, broken);
+});
 
 test("source security accepts safe rendering and test fixtures", () => {
   assert.deepEqual(

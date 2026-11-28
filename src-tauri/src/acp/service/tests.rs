@@ -1213,7 +1213,7 @@ fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
         .renderer_recreation_native_snapshot(&project_id, &chat_id)
         .unwrap();
     let evidence_policy: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/evidence-policy-v1.json"
+        "../../../testdata/acp/contracts/renderer-recreation-v1.json"
     ))
     .unwrap();
     let observation = &evidence_policy["rendererRecreationObservation"];

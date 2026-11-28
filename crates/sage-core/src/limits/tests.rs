@@ -8,25 +8,14 @@ use serde_json::Value;
 use super::LIMITS;
 
 fn contract(name: &str) -> String {
-    let checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .expect("crates/sage-core has a checkout two levels up")
-        .to_path_buf();
-    let relative =
-        PathBuf::from("docs/work-items/ADE-0006A-acp-session-foundation/contracts").join(name);
-    // The checkout's own contract is authoritative; a sibling `Sage` tree is
-    // only a fallback for packaged sources that omit docs.
-    let path = std::iter::once(checkout.join(&relative))
-        .chain(
-            checkout
-                .ancestors()
-                .take(4)
-                .map(|ancestor| ancestor.join("Sage").join(&relative)),
-        )
-        .find(|candidate| candidate.is_file())
-        .unwrap_or_else(|| panic!("authoritative contract artifact {name} was not found"));
-    fs::read_to_string(path).expect("contract artifact must be readable")
+        .join("src-tauri/testdata/acp/contracts")
+        .join(name);
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("contract artifact {}: {error}", path.display()))
 }
 
 #[test]

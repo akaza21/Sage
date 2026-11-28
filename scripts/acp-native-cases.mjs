@@ -9,7 +9,7 @@ import {
   parityAbsent,
   parityGaps,
   parityTurns,
-} from "./capture-native-chat-parity.mjs";
+} from "./acp-native-parity-states.mjs";
 import {
   PARITY_BASE,
   PARITY_LIVE,
