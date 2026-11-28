@@ -20,7 +20,26 @@ it("keeps shared syntax tokens readable against the code-card background token",
           .replace(/^#/u, "")
           .replace(/^([a-f0-9])([a-f0-9])([a-f0-9])$/u, "$1$1$2$2$3$3");
   };
-  const background = resolve(rule.match(/background:\s*([^;]+);/u)![1]);
+  // A translucent fill is composited over the chat card it is drawn on.
+  const over = (fill: string, card: string) => {
+    const tint = /^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)$/u.exec(fill);
+    if (!tint) return fill;
+    const alpha = Number(tint[4]) / 100;
+    return [1, 2, 3]
+      .map((i) =>
+        Math.round(
+          Number(tint[i]) * alpha +
+            parseInt(card.slice((i - 1) * 2, i * 2), 16) * (1 - alpha),
+        )
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("");
+  };
+  const background = over(
+    resolve(rule.match(/background:\s*([^;]+);/u)![1]),
+    resolve("var(--agent-shell-center)"),
+  );
   const luminance = (hex: string) => {
     const channels = hex
       .match(/../gu)!

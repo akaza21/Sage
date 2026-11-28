@@ -13,6 +13,12 @@ const luminance = (rgb: readonly number[]) =>
         [0.2126, 0.7152, 0.0722][index]
     );
   }, 0);
+/** A token's six-digit hex, following plain var() aliases. */
+const rootHex = (css: string, token: string): string => {
+  const value = css.match(new RegExp(`--${token}:\\s*([^;]+);`))![1].trim();
+  const alias = value.match(/^var\(--([\w-]+)\)$/);
+  return alias ? rootHex(css, alias[1]) : value.match(/^#([\da-f]{6})$/)![1];
+};
 
 it("keeps sent annotation chip outlines in forced colours", () => {
   const css = read("src/features/chat/transcript-interactions.css");
@@ -35,9 +41,7 @@ it("keeps fork keyboard focus visible and maps forced-colour hover to Highlight"
   expect(global).toMatch(
     /\):focus-visible\s*\{\s*outline: var\(--focus-ring\);/,
   );
-  const background = channels(
-    global.match(/--color-plane-raised:\s*#([\da-f]{6});/)![1],
-  );
+  const background = channels(rootHex(global, "color-plane-raised"));
   const accentStep = global.match(/--color-accent:\s*var\((--[\w-]+)\);/)![1];
   const accent = channels(
     global.match(new RegExp(`${accentStep}:\\s*#([\\da-f]{6});`))![1],
@@ -62,7 +66,8 @@ it("keeps the close-side-chat checkbox visible in both colour modes at 3:1", () 
     /--chat-dialog-checkbox-edge:\s*#([\da-f]{6});/,
   )![1];
   expect(
-    (luminance(channels(edge)) + 0.05) / (luminance(channels("2d2d2d")) + 0.05),
+    (luminance(channels(edge)) + 0.05) /
+      (luminance(channels(rootHex(global, "color-panel-raised"))) + 0.05),
   ).toBeGreaterThanOrEqual(3);
   const forced = global.split("@media (forced-colors: active)")[1];
   expect(forced).toMatch(/--chat-dialog-checkbox-edge:\s*CanvasText;/);

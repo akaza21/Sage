@@ -1,8 +1,41 @@
 @import "./surface.css";
 
+/* Google Sans Flex, variable in wght (SIL OFL 1.1; licence text beside the
+   files). Bundled with the app, never fetched: swap paints the fallback at
+   once and the local file replaces it within the first frames. */
+@font-face {
+  font-family: "Google Sans Flex";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../assets/fonts/google-sans-flex/google-sans-flex-latin-ext.woff2")
+    format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Google Sans Flex";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../assets/fonts/google-sans-flex/google-sans-flex-latin.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
-  --color-panel-raised: #2d2d2d;
-  --color-panel-raised-hover: #3e3e3e;
+  --color-panel-raised: var(--color-plane-raised);
+  --color-panel-raised-hover: color-mix(
+    in srgb,
+    #fff 7.5%,
+    var(--color-plane-raised)
+  );
   --chat-selection-bg: #626262;
   --chat-selection-border: #393939;
   --chat-annotation-highlight: var(--color-blue-900);
@@ -42,21 +75,39 @@
   --color-blue-900: #154674;
   --color-blue-ink: #07111c;
 
-  --color-canvas: #141414;
-  --color-panel: #141414;
-  --color-surface: #232323;
-  --color-plane-raised: #2a2a2a;
-  --color-surface-hover: #2a2a2a;
+  /* Neutrals: one window and sidebar colour, a darker main card, one raised
+     surface for menus, cards, the user bubble and tooltips. */
+  --color-window: #111114;
+  --color-card: #070708;
+  --color-raised: #131317;
+  --color-row-selected: #1f1f24;
+  /* Hairlines and soft fills are white over whatever sits below. */
+  --color-hairline: rgb(255 255 255 / 6%);
+  --color-hairline-strong: rgb(255 255 255 / 8%);
+  --color-hairline-highlight: rgb(255 255 255 / 8.6%);
+  --color-fill-hover: rgb(255 255 255 / 4.2%);
+  --color-fill-soft: rgb(255 255 255 / 7.5%);
+  --color-fill-active: rgb(255 255 255 / 9%);
+
+  --color-canvas: var(--color-window);
+  --color-panel: var(--color-window);
+  --color-surface: var(--color-raised);
+  --color-plane-raised: var(--color-raised);
+  --color-surface-hover: var(--color-fill-hover);
   --color-surface-active: var(--color-blue-800);
   --color-surface-selected: var(--color-surface-active);
-  --color-border-subtle: #242424;
-  --color-border-strong: #2a2a2a;
-  --color-text-primary: #c5c5c5;
-  --color-text-secondary: #adadad;
+  --color-border-subtle: var(--color-hairline);
+  --color-border-strong: var(--color-hairline-strong);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #bcbdc6;
 
   --color-text-emphasis: #fff;
-  --color-text-muted: #858585;
-  --color-text-disabled: #656565;
+  --color-text-muted: #87888f;
+  /* Placeholder and hint text: 4.5:1 on the composer (Antigravity's
+     #636470 is about 3:1). Disabled text is exempt from contrast. */
+  --color-text-placeholder: #80818a;
+  --color-text-disabled: #636470;
+  --color-code-text: #a9bdf0;
   --color-text-inverse: var(--color-blue-ink);
   --color-status-foreground: #fff;
   --color-file-script: #4c9df3;
@@ -70,22 +121,23 @@
   --color-accent-text: var(--color-blue-200);
   --color-accent-foreground: var(--color-text-inverse);
   --color-focus-ring: var(--color-accent-hover);
-  --color-success: #68d983;
+  --color-success: #7aae66;
   --color-success-muted: color-mix(
     in srgb,
     var(--color-success) 12%,
     var(--color-panel)
   );
-  --color-warning: #e2b66b;
+  --color-warning: #f3c949;
   --color-warning-muted: color-mix(
     in srgb,
     var(--color-warning) 12%,
     var(--color-panel)
   );
-  --color-danger: #ef9a9a;
+  --color-danger: #de5555;
+  /* 8 % keeps danger text on its own tint at 4.5:1. */
   --color-danger-muted: color-mix(
     in srgb,
-    var(--color-danger) 12%,
+    var(--color-danger) 8%,
     var(--color-panel)
   );
 
@@ -105,7 +157,8 @@
   --rail-approval-text: #40c977;
   --rail-approval-fill: #314c3c;
   --color-overlay: rgb(0 0 0 / 0.52);
-  --color-diff-add: var(--color-success);
+  /* Diff marks keep their own green; status success moved to #7aae66. */
+  --color-diff-add: var(--diff-add);
   --color-diff-add-muted: color-mix(
     in srgb,
     var(--color-diff-add) 12%,
@@ -124,13 +177,13 @@
   --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
   --glass-blur: blur(12px);
   --glass-text: #bec3c7;
-  --title-bar-fill: #111111;
-  --title-bar-control-fill: #171717;
-  --title-bar-control-hover: #202020;
-  --title-bar-switch-fill: #0b0b0b;
+  --title-bar-fill: var(--color-window);
+  --title-bar-control-fill: var(--color-fill-hover);
+  --title-bar-control-hover: var(--color-fill-soft);
+  --title-bar-switch-fill: var(--color-card);
   --title-bar-search-width: 182px;
   --title-bar-search-height: 32px;
-  --agent-shell-rail: #202020;
+  --agent-shell-rail: var(--color-window);
   --agent-icon-rail-width: 46px; /* AGENT_ICON_RAIL_WIDTH; owner Codex capture */
   /* Owner Codex capture, measured from a rail row's right edge. */
   --agent-rail-title-end: 33px;
@@ -138,20 +191,16 @@
   --agent-rail-title-fade: 20px;
   --agent-rail-trailing-control: 24px; /* dot, Pin and Archive share this slot */
   --agent-rail-hover-card-gap: 1px;
-  --agent-shell-sidebar: #1b1b1b;
-  --agent-shell-divider: #2b2b2b;
-  --agent-shell-rail-divider: #252525;
-  --agent-shell-selected: #2d2d2d;
-  --agent-shell-hover: #303030;
-  --agent-shell-center: #181818;
-  --agent-shell-title-divider: #262626;
-  --agent-shell-tab-border: #4c4c4c;
-  --agent-shell-user-bubble: color-mix(
-    in srgb,
-    var(--color-accent) 22%,
-    var(--agent-shell-center)
-  );
-  --agent-shell-resource-border: #363636;
+  --agent-shell-sidebar: var(--color-window);
+  --agent-shell-divider: var(--color-hairline);
+  --agent-shell-rail-divider: var(--color-hairline);
+  --agent-shell-selected: var(--color-row-selected);
+  --agent-shell-hover: var(--color-fill-hover);
+  --agent-shell-center: var(--color-card);
+  --agent-shell-title-divider: var(--color-hairline);
+  --agent-shell-tab-border: var(--color-hairline-highlight);
+  --agent-shell-user-bubble: var(--color-raised);
+  --agent-shell-resource-border: var(--color-hairline-strong);
   --agent-shell-resource-shadow: 0 12px 24px rgb(0 0 0 / 0.24);
   --agent-shell-spinner-track: #666;
   --agent-shell-spinner-head: #b9b9b9;
@@ -200,19 +249,19 @@
 
   /* File/Diff document authority (AV-03). Single source for the shared
      document palette; consumers alias their generic roles to these tokens. */
-  --doc-canvas: #141414;
-  --doc-panel: #141414;
-  --doc-surface: #232323;
-  --doc-plane-raised: #2a2a2a;
-  --doc-surface-hover: #2a2a2a;
+  --doc-canvas: var(--color-window);
+  --doc-panel: var(--color-window);
+  --doc-surface: var(--color-raised);
+  --doc-plane-raised: var(--color-raised);
+  --doc-surface-hover: var(--color-fill-hover);
   --doc-surface-active: var(--color-blue-800);
   --doc-surface-selected: var(--color-blue-800);
-  --doc-border-subtle: #242424;
-  --doc-border-strong: #2a2a2a;
-  --doc-text-primary: #c5c5c5;
-  --doc-text-secondary: #adadad;
-  --doc-text-muted: #858585;
-  --doc-text-disabled: #656565;
+  --doc-border-subtle: var(--color-hairline);
+  --doc-border-strong: var(--color-hairline-strong);
+  --doc-text-primary: #ffffff;
+  --doc-text-secondary: #bcbdc6;
+  --doc-text-muted: #87888f;
+  --doc-text-disabled: #636470;
   --doc-text-inverse: var(--color-blue-ink);
   --doc-file-script: #4c9df3;
   --doc-file-python: #e2b66b;
@@ -225,8 +274,8 @@
   --doc-accent-foreground: var(--color-blue-ink);
   --doc-focus-ring: var(--color-blue-400);
   --doc-selection: var(--color-blue-700);
-  --doc-elevation-popover: 0 8px 24px rgb(0 0 0 / 0.36);
-  --doc-elevation-floating: 0 12px 32px rgb(0 0 0 / 0.42);
+  --doc-elevation-popover: var(--elevation-menu);
+  --doc-elevation-floating: var(--elevation-menu);
   --doc-code-foreground: #cbd1ca;
   --doc-gutter-foreground: #667067;
   --doc-gutter-divider: rgb(255 255 255 / 0.045);
@@ -271,11 +320,11 @@
   );
 
   --font-family-ui:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  --font-family-agent:
-    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+    "Google Sans Flex", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  --font-family-agent:
+    "Google Sans Flex", Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable Text", "Segoe UI", sans-serif;
   /* Windows: Cascadia, then Consolas (Chromium skips ui-monospace there).
      macOS: ui-monospace (SF Mono), then Menlo, because WebKit maps a bare
      monospace to Courier. Linux: Liberation Mono. */
@@ -287,13 +336,24 @@
   --font-size-sm: 13px;
   --font-size-md: 14px;
   --font-size-lg: 16px;
+  --font-size-heading: 18px;
   --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-code-inline: 12.6px;
+  --font-size-code-block: 13px;
   --line-height-tight: 1.3;
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.65;
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
+  /* Fixed line boxes: 11 and 12 px text, 14 px text, chat prose, 18 and
+     20 px headings, 24 px display. */
+  --line-height-caption: 16px;
+  --line-height-body: 20px;
+  --line-height-prose: 22.75px;
+  --line-height-title: 28px;
+  --line-height-display: 32px;
+  --font-weight-regular: 350;
+  --font-weight-medium: 450;
+  --font-weight-semibold: 550;
   --font-weight-bold: 700;
 
   --space-1: 4px;
@@ -360,11 +420,17 @@
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 
-  --radius-sm: 6px;
+  /* 4 inline code, 7 menu item, 8 rows and small buttons, 12 cards and
+     menus, 16 large cards and tooltips, 20 composer, 24 dialogs. */
+  --radius-xs: 4px;
+  --radius-menu-item: 7px;
+  --radius-sm: 8px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-menu-row: var(--radius-sm);
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-menu-row: var(--radius-menu-item);
   --radius-picker-field: var(--radius-sm);
   --border-width: 1px;
   --card-border: var(--border-width) solid var(--color-border-subtle);
@@ -378,23 +444,32 @@
   --radius-activity-button: var(--radius-md);
   --radius-activity-indicator: var(--radius-pill);
   --radius-circle: 50%;
-  --composer-fill: #363636;
-  --composer-border: #383838;
+  /* Composer: inner card, and the outer frame that AG-4 wraps around it. */
+  --composer-fill: #15151a;
+  --composer-frame: #0d0d11;
+  --composer-border: var(--color-fill-soft);
   --composer-shadow: 0 2px 12px rgb(0 0 0 / 12%);
-  --composer-control-text: #e3e3e3;
-  --composer-control-hover: #444;
-  --composer-muted-text: #a8a8a8;
-  --composer-access-text: #c7c7c7;
+  --composer-control-text: var(--color-text-secondary);
+  --composer-control-hover: var(--color-fill-soft);
+  /* Secondary, not muted: it sits on stacked control fills (3.7:1 muted). */
+  --composer-muted-text: var(--color-text-secondary);
+  --composer-access-text: var(--color-text-secondary);
   --composer-access-full: var(--color-warning);
   --composer-send-text: #171717;
   --composer-send-hover: #e8e8e8;
   --composer-send-disabled-text: #606060;
-  --composer-location-fill: #282828;
+  --composer-location-fill: var(--composer-frame);
   --composer-location-inset: var(--space-3);
   --composer-location-height: var(--control-height-emphasis);
   --composer-location-icon-gap: 6px;
-  --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.32);
-  --elevation-floating: 0 16px 48px rgb(0 0 0 / 0.24);
+  /* Menus: a top highlight, then a long soft drop and a short contact one. */
+  --elevation-menu:
+    inset 0 1px 0 var(--color-hairline-highlight),
+    0 20px 44px -12px rgb(0 0 0 / 37.5%), 0 3px 10px -2px rgb(0 0 0 / 27.5%);
+  --elevation-popover: var(--elevation-menu);
+  --elevation-floating: var(--elevation-menu);
+  /* For AG-3's menus; no surface uses it yet. */
+  --backdrop-menu: blur(20px) saturate(1.6);
   --highlight-focus-edge: color-mix(
     in srgb,
     var(--color-accent) 68%,
@@ -435,8 +510,18 @@
   --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
     var(--highlight-focus-edge);
   --opacity-disabled: 0.45;
-  --motion-duration-fast: 100ms;
-  --motion-duration-normal: 160ms;
+  /* Hover and colour use the standard ease; menus, panels, the sidebar and
+     the overview card use the ease-out curve. */
+  --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-duration-fast: 150ms;
+  --motion-duration-normal: 150ms;
+  --motion-duration-menu: 150ms;
+  --motion-duration-panel: 500ms;
+  --motion-duration-overview: 400ms;
+  --motion-duration-resizer-in: 120ms;
+  --motion-delay-resizer: 60ms;
+  --motion-duration-resizer-out: 80ms;
   --motion-duration-pulse: 1.4s;
   --motion-duration-spin: 900ms;
 
@@ -481,6 +566,7 @@
   /* Keep real weights; allow emphasis in families without an italic face,
      such as Segoe UI Variable. */
   font-synthesis: style;
+  font-weight: var(--font-weight-regular);
   text-rendering: optimizeLegibility;
   color: var(--color-text-primary);
   background: var(--color-canvas);
@@ -745,6 +831,12 @@ textarea:disabled,
   :root {
     --motion-duration-fast: 0ms;
     --motion-duration-normal: 0ms;
+    --motion-duration-menu: 0ms;
+    --motion-duration-panel: 0ms;
+    --motion-duration-overview: 0ms;
+    --motion-duration-resizer-in: 0ms;
+    --motion-delay-resizer: 0ms;
+    --motion-duration-resizer-out: 0ms;
     --motion-duration-pulse: 0ms;
     --motion-duration-spin: 0ms;
     --motion-duration-shimmer: 0ms;
@@ -788,6 +880,8 @@ textarea:disabled,
     --color-text-emphasis: CanvasText;
     --color-text-muted: GrayText;
     --color-text-disabled: GrayText;
+    --color-text-placeholder: GrayText;
+    --color-code-text: CanvasText;
     --color-text-inverse: HighlightText;
     --color-accent: LinkText;
     --color-accent-hover: LinkText;
@@ -824,6 +918,7 @@ textarea:disabled,
     --color-diff-delete: CanvasText;
     --color-diff-delete-muted: Canvas;
     --color-selection: Highlight;
+    --elevation-menu: none;
     --elevation-popover: none;
     --elevation-floating: none;
     --doc-canvas: Canvas;

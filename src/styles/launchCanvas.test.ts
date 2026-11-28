@@ -8,7 +8,12 @@ describe("Launch canvas color", () => {
       readFile("index.html", "utf8"),
       readFile("src-tauri/tauri.conf.json", "utf8"),
     ]);
-    const canvas = css.match(/--color-canvas:\s*(#[0-9a-f]{6});/i)?.[1];
+    const token = (name: string): string | undefined => {
+      const value = css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1];
+      const alias = value?.match(/^var\(--([\w-]+)\)$/)?.[1];
+      return alias ? token(alias) : value?.match(/^#[0-9a-f]{6}$/i)?.[0];
+    };
+    const canvas = token("color-canvas");
     expect(canvas).toBeDefined();
 
     const shellStyle = html.match(
