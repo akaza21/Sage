@@ -686,3 +686,58 @@ test("an account object keeps no id, name or date of its own, distinct request i
   assert.deepEqual(turn.frame.usage, { input_tokens: 100, output_tokens: 100 });
   assert.equal(turn.frame.total_cost_usd, 0.01);
 });
+
+test("token estimates, agent descriptions, unlisted account paths, display names and absolute times leave no trace", () => {
+  const [init, list, turn] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        timestamp: "2026-11-28T09:00:00.000Z",
+        agents: [
+          { name: "claude", description: "Private Fleet's default agent" },
+        ],
+        account: { value: "customer-secret", type: "chatgpt" },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        emittedAtMs: 1795860000000,
+        result: {
+          data: [
+            {
+              id: "p-y",
+              model: "p-y",
+              displayName: "Private Y",
+              isDefault: true,
+            },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        emittedAtMs: 1795860002500,
+        message: "Selected Private Y",
+        thinking_tokens: 186,
+        estimated_tokens_delta: 12,
+        durationMs: 400,
+      },
+    },
+  ]);
+  assert.deepEqual(init.frame.agents, [
+    { name: "claude", description: "redacted" },
+  ]);
+  assert.deepEqual(init.frame.account, { value: "redacted", type: "chatgpt" });
+  assert.equal(init.frame.timestamp, "2027-01-15T08:00:00.000Z");
+  assert.equal(list.frame.result.data[0].isDefault, true);
+  assert.equal(turn.frame.emittedAtMs - list.frame.emittedAtMs, 2500);
+  assert.equal(turn.frame.durationMs, 400);
+  assert.equal(turn.frame.thinking_tokens, 100);
+  assert.equal(turn.frame.estimated_tokens_delta, 100);
+  assert.doesNotMatch(
+    JSON.stringify([init, list, turn]),
+    /Private|private|customer|2026-11/,
+  );
+});

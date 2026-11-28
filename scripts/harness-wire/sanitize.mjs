@@ -368,7 +368,11 @@ export function makeSanitizer({ roots }) {
           ["displayName", `Model ${n}`],
           ["description", `Model ${n}`],
         ])
-          if (typeof value[field] === "string" && !models.has(value[field]))
+          if (
+            typeof value[field] === "string" &&
+            !models.has(value[field]) &&
+            !/^(?:redacted|model-\d+|Model \d+)$/.test(value[field])
+          )
             models.set(value[field], label);
       }
       Object.values(value).forEach(findModels);
