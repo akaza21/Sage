@@ -8,8 +8,8 @@
   "commands": [
     "session",
     "compact",
-    "mcp",
-    "llama"
+    "command-1",
+    "command-2"
   ],
   "rows": [
     "Initialized {}",

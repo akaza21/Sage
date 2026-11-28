@@ -59,7 +59,6 @@ const MODEL_NAME =
 // descriptor anywhere is `@model`.
 const WINDOW = ["usedPercent", "windowDurationMins", "resetsAt"];
 const LIMITS = [
-  "limitId",
   "rateLimitReachedType",
   "spendControlReached",
   "ordinaryUsageAllowed",
@@ -109,6 +108,48 @@ const ACCOUNT_RULES = new Map(
     ),
   ]),
 );
+// Run, task and agent ids a harness made for the capture: each gets a
+// stable pseudonym, replaced wherever it is written (text and paths too).
+const RUN_IDS = new Map(
+  Object.entries({
+    run_id: "run",
+    runId: "run",
+    task_id: "task",
+    taskId: "task",
+    agent_id: "agent",
+    agentId: "agent",
+  }),
+);
+// Command, skill and agent catalogs an account can configure: names become
+// stable pseudonyms and descriptions "redacted"; a field that names one of
+// them uses the same pseudonym.
+const CATALOGS = new Map(
+  Object.entries({
+    commands: "command",
+    slash_commands: "command",
+    availableCommands: "command",
+    skills: "skill",
+    agents: "agent",
+  }),
+);
+const CATALOG_TEXT = new Set([
+  "description",
+  "argumentHint",
+  "argument_hint",
+  "hint",
+  "whenToUse",
+  "when_to_use",
+]);
+const CATALOG_REFS = new Set([
+  "command",
+  "commandName",
+  "skill",
+  "subagent_type",
+  "agentType",
+  "agent_type",
+]);
+// Maps keyed by an account's own ids.
+const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
@@ -204,6 +245,17 @@ export function makeSanitizer({ roots }) {
   // A provider's message, tool-use and call ids map to stable placeholders,
   // so references between frames hold but provider records cannot be found.
   const providerIds = new Map();
+  const runIds = new Map();
+  const catalogNames = new Map();
+  const keyNames = new Map();
+  const pseudonym = (map, original, kind) => {
+    if (!map.has(original))
+      map.set(
+        original,
+        `${kind}-${[...map.values()].filter((seen) => seen.startsWith(`${kind}-`)).length + 1}`,
+      );
+    return map.get(original);
+  };
   const requestIds = new Map();
 
   const text = (value) => {
@@ -247,6 +299,8 @@ export function makeSanitizer({ roots }) {
     // text, so a catalog id that is also a protocol word stays a word.
     const learned = learnedModels();
     if (learned) out = out.replace(learned, (match) => models.get(match));
+    const runs = runIdPattern();
+    if (runs) out = out.replace(runs, (match) => runIds.get(match));
     out = out.replace(PROVIDER_ID, (match, prefix) => {
       if (!providerIds.has(match))
         providerIds.set(
@@ -306,6 +360,34 @@ export function makeSanitizer({ roots }) {
   // (`text`) is never touched.
   const models = new Map();
   let modelCount = 0;
+  let runSize = -1;
+  let runPattern = null;
+  function runIdPattern() {
+    if (runSize === runIds.size) return runPattern;
+    runSize = runIds.size;
+    const ids = [...runIds.keys()]
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    runPattern = ids.length
+      ? new RegExp(`(?<![\\w-])(?:${ids.join("|")})(?![\\w])`, "g")
+      : null;
+    return runPattern;
+  }
+  const findRunIds = (value) => {
+    if (Array.isArray(value)) value.forEach(findRunIds);
+    else if (value && typeof value === "object")
+      for (const [key, entry] of Object.entries(value)) {
+        if (
+          RUN_IDS.has(key) &&
+          typeof entry === "string" &&
+          entry.length >= 6 &&
+          !/^(?:run|task|agent)-\d+$/.test(entry)
+        )
+          pseudonym(runIds, entry, RUN_IDS.get(key));
+        else findRunIds(entry);
+      }
+  };
+
   // One pattern for every model-like id or name learned so far, rebuilt
   // when the catalog grows.
   let learnedSize = -1;
@@ -394,6 +476,8 @@ export function makeSanitizer({ roots }) {
     const out = { ...object };
     if (typeof out.usedPercent === "number") out.usedPercent = 10;
     if (typeof out.utilization === "number") out.utilization = 0.1;
+    if (typeof out.status === "string" && "utilization" in out)
+      out.status = "allowed";
     if (typeof out.resetsAt === "number")
       out.resetsAt = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
     return out;
@@ -451,10 +535,25 @@ export function makeSanitizer({ roots }) {
     return value;
   };
 
-  const walk = (value, key, inModel = false, opaque = false, account = null) =>
-    kept(scrub(value, key, inModel, opaque, account), account);
+  const walk = (
+    value,
+    key,
+    inModel = false,
+    opaque = false,
+    account = null,
+    catalog = null,
+  ) => kept(scrub(value, key, inModel, opaque, account, catalog), account);
 
-  const scrub = (value, key, inModel, opaque, account) => {
+  // A key inside an account object that is not a plain identifier, or any key
+  // of a map keyed by the account's own ids, gets a stable pseudonym.
+  const accountKey = (name, base) =>
+    /^(?:model-|Model |key-)\d+$/.test(name) ||
+    (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
+      !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
+      ? name
+      : pseudonym(keyNames, name, "key");
+
+  const scrub = (value, key, inModel, opaque, account, catalog) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (!opaque && typeof value === "number") {
@@ -467,6 +566,20 @@ export function makeSanitizer({ roots }) {
     }
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
       return CREDENTIAL_EXPIRY;
+    if (!opaque && typeof value === "string" && catalog) {
+      if (catalog.field === "name" || catalog.field === "")
+        return /^(?:command|skill|agent)-\d+$/.test(value)
+          ? value
+          : pseudonym(catalogNames, value, catalog.kind);
+      if (CATALOG_TEXT.has(catalog.field)) return "redacted";
+    }
+    if (
+      !opaque &&
+      typeof value === "string" &&
+      CATALOG_REFS.has(key) &&
+      catalogNames.has(value.replace(/^\//, ""))
+    )
+      return catalogNames.get(value.replace(/^\//, ""));
     if (typeof value === "string") {
       // A model a descriptor names that no catalog listed (an upgrade
       // target) gets its own placeholder; placeholders stay as they are.
@@ -505,7 +618,18 @@ export function makeSanitizer({ roots }) {
             !isSynced(entry) &&
             !(typeof entry === "string" && synced.has(entry)),
         )
-        .map((entry) => walk(entry, key, false, opaque, element));
+        .map((entry) =>
+          walk(
+            entry,
+            key,
+            false,
+            opaque,
+            element,
+            !opaque && CATALOGS.has(key)
+              ? { kind: CATALOGS.get(key), field: "" }
+              : null,
+          ),
+        );
     }
     if (value && typeof value === "object") {
       const model = isModel(value);
@@ -517,16 +641,24 @@ export function makeSanitizer({ roots }) {
             ? { root: key, path: [] }
             : null);
       return Object.fromEntries(
-        Object.entries(opaque ? value : usage(value)).map(([name, entry]) => [
-          text(name),
-          walk(
-            entry,
-            name,
-            model,
-            opaque || OPAQUE.has(name),
-            base && { root: base.root, path: [...base.path, name] },
-          ),
-        ]),
+        Object.entries(opaque ? value : usage(value)).map(([name, entry]) => {
+          const scrubbed = text(name);
+          const renamed =
+            base && !opaque ? accountKey(scrubbed, base) : scrubbed;
+          return [
+            renamed,
+            walk(
+              entry,
+              name,
+              model,
+              opaque || OPAQUE.has(name),
+              base && { root: base.root, path: [...base.path, renamed] },
+              catalog && catalog.field === ""
+                ? { kind: catalog.kind, field: name }
+                : null,
+            ),
+          ];
+        }),
       );
     }
     return value;
@@ -537,6 +669,7 @@ export function makeSanitizer({ roots }) {
       findSynced(record.frame);
       findModels(record.frame);
       findTimes(record.frame);
+      findRunIds(record.frame);
     });
 
   return {

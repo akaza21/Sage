@@ -353,7 +353,7 @@ test("the account's usage and the provider's request ids are normalized", () => 
     },
   ]);
   assert.deepEqual(claude.frame.rate_limit_info, {
-    status: "allowed_warning",
+    status: "allowed",
     rateLimitType: "seven_day",
     utilization: 0.1,
     resetsAt: 1800000000,
@@ -571,7 +571,9 @@ test("a model's id or name is redacted in keys and free text, a command named af
   const [key] = Object.keys(usage.frame.modelUsage);
   assert.match(key, /^model-\d+$/);
   assert.equal(usage.frame.modelUsage[key].canonicalModel, key);
-  assert.deepEqual(usage.frame.commands, ["claude-api", "claude-approvals"]);
+  // Product-named commands are not model ids; as catalog entries they get
+  // catalog pseudonyms.
+  assert.deepEqual(usage.frame.commands, ["command-1", "command-2"]);
   assert.match(
     offer.frame.result.message,
     /^Switch to Model \d+\. Fast mode uses Model \d+\.$/,
@@ -619,9 +621,9 @@ test("inside an account, rate-limit or catalog object only the keys a binding re
     supportsFastMode: false,
     price: 0,
   });
-  // Outside those objects, protocol values stay.
+  // A command an account can configure: a pseudonym and no description.
   assert.deepEqual(reply.commands, [
-    { name: "review", description: "Review the branch" },
+    { name: "command-1", description: "redacted" },
   ]);
 });
 
@@ -727,7 +729,7 @@ test("token estimates, agent descriptions, unlisted account paths, display names
     },
   ]);
   assert.deepEqual(init.frame.agents, [
-    { name: "claude", description: "redacted" },
+    { name: "agent-1", description: "redacted" },
   ]);
   assert.deepEqual(init.frame.account, { value: "redacted", type: "chatgpt" });
   assert.equal(init.frame.timestamp, "2027-01-15T08:00:00.000Z");
@@ -739,5 +741,52 @@ test("token estimates, agent descriptions, unlisted account paths, display names
   assert.doesNotMatch(
     JSON.stringify([init, list, turn]),
     /Private|private|customer|2026-11/,
+  );
+});
+
+test("configured catalogs, unapproved account keys, run ids and a usage status carry nothing of the account", () => {
+  const [init, turn] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        commands: [
+          {
+            name: "acme-review",
+            description: "Review for Acme",
+            argumentHint: "[pr]",
+          },
+        ],
+        slash_commands: ["acme-review"],
+        agents: [{ name: "acme-expert", description: "Acme" }],
+        account: { "acme-client-id": true, type: "chatgpt" },
+        rateLimitsByLimitId: {
+          "acme-limit": { limitId: "acme-limit", primary: { usedPercent: 5 } },
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        task_id: "b8nnzn53z",
+        description: "Output at /tmp/b8nnzn53z.output",
+        subagent_type: "acme-expert",
+        rate_limit_info: { status: "allowed_warning", utilization: 0.9 },
+      },
+    },
+  ]);
+  assert.deepEqual(init.frame.commands, [
+    { name: "command-1", description: "redacted", argumentHint: "redacted" },
+  ]);
+  assert.deepEqual(init.frame.slash_commands, ["command-1"]);
+  assert.equal(turn.frame.subagent_type, init.frame.agents[0].name);
+  assert.equal(turn.frame.task_id, "task-1");
+  assert.equal(turn.frame.description, "Output at /tmp/task-1.output");
+  assert.deepEqual(turn.frame.rate_limit_info, {
+    status: "allowed",
+    utilization: 0.1,
+  });
+  assert.doesNotMatch(
+    JSON.stringify([init, turn]),
+    /acme|Acme|b8nnzn53z|allowed_warning/,
   );
 });

@@ -8,11 +8,11 @@
     "review",
     "status",
     "mcp",
-    "imagegen",
-    "openai-docs",
-    "review-agent",
-    "skill-creator",
-    "skill-installer"
+    "skill-1",
+    "skill-2",
+    "skill-3",
+    "skill-4",
+    "skill-5"
   ],
   "rows": [
     "Initialized {}",

@@ -1,11 +1,11 @@
 {
   "version": "codex-cli 0.167.1",
   "commands": [
-    "skills:imagegen",
-    "skills:openai-docs",
-    "skills:review-agent",
-    "skills:skill-creator",
-    "skills:skill-installer"
+    "skills:skill-1",
+    "skills:skill-2",
+    "skills:skill-3",
+    "skills:skill-4",
+    "skills:skill-5"
   ],
   "kinds": {
     "notify:account/rateLimits/updated": [
