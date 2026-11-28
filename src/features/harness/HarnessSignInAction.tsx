@@ -34,10 +34,12 @@ export function HarnessLoginAction({
     (state) =>
       menuItem && state.pendingHarnessSignIn?.bindingId === harness.bindingId,
   );
-  const checking = useSyncExternalStore(
-    subscribeHarnessSignInChecking,
-    () => menuItem && harnessSignInChecking(harness.id),
-  );
+  // A background read keeps the row focusable, so focus stays in the menu.
+  const checking =
+    useSyncExternalStore(
+      subscribeHarnessSignInChecking,
+      () => menuItem && harnessSignInChecking(harness.id),
+    ) && !canCancel;
   return (
     <>
       <button
@@ -51,10 +53,10 @@ export function HarnessLoginAction({
               ? "Check sign-in"
               : `Sign in to ${harness.name}`
         }
-        disabled={
-          !!checkRequirement || (canCancel ? cancelling : busy || checking)
-        }
+        aria-disabled={checking || undefined}
+        disabled={!!checkRequirement || (canCancel ? cancelling : busy)}
         onClick={() => {
+          if (checking) return;
           setError(null);
           if (canCancel) {
             setCancelling(true);

@@ -185,7 +185,9 @@ it("offers one sign-in row per harness and shows its focus recheck inline", asyn
     name: "Sign in to Claude Code",
   });
   expect(claude).toHaveTextContent("Checking…");
-  expect(claude).toBeDisabled();
+  // The row stays focusable, so keyboard focus stays in the open menu.
+  expect(claude).toHaveAttribute("aria-disabled", "true");
+  expect(claude).toHaveFocus();
   await act(async () => {
     complete({ loggedIn: true, accountReadStartedAt: ++nativeTime });
   });

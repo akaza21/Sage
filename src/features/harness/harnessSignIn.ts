@@ -82,6 +82,7 @@ function prune() {
       statuses.delete(id);
       identities.delete(id);
       refreshes.delete(id);
+      checkingChanged();
       changed = true;
     }
   }
