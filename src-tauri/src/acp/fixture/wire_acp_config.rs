@@ -13,7 +13,7 @@ pub(crate) struct AcpConfig {
     mode: &'static str,
 }
 
-pub(crate) const MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
+pub(super) const MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 const EFFORTS: [&str; 3] = ["low", "medium", "high"];
 // claude-agent-acp 0.76.0 always lists Auto (session-mode.js buildAvailableModes).
 const MODES: [&str; 4] = ["default", "acceptEdits", "plan", "auto"];

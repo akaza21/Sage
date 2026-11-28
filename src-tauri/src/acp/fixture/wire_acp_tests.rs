@@ -50,13 +50,68 @@ fn acp_replay_preserves_prompt_id_across_config_and_cancel() {
     assert_eq!(frames[1]["id"], 42);
     assert_eq!(
         frames[2],
-        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":super::acp::config_options("default")}}})
+        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":super::acp::SESSION,"update":{"sessionUpdate":"config_option_update","configOptions":plain_options("default")}}})
     );
     assert_eq!(frames[3]["id"], 44);
     assert_eq!(
         frames[4],
         json!({"jsonrpc":"2.0","id":43,"result":{"stopReason":"cancelled"}})
     );
+}
+
+/// The plain Claude session's config options as claude-agent-acp 0.76.0
+/// reports them: the permission mode first, then the model.
+fn plain_options(mode: &str) -> Value {
+    json!([
+        {"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":mode,
+         "options":[{"value":"default","name":"Default"},{"value":"plan","name":"Plan"},{"value":"auto","name":"Auto"}]},
+        {"id":"model","name":"Model","category":"model","type":"select","currentValue":"fixture-model",
+         "options":[{"value":"fixture-model","name":"Synthetic replay"}]}
+    ])
+}
+
+#[test]
+fn a_plain_claude_session_switches_listed_modes_and_refuses_others() {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let requests = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}
+{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{}}
+{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/set_mode\",\"params\":{\"modeId\":\"auto\"}}
+{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/set_mode\",\"params\":{\"modeId\":\"bypassPermissions\"}}
+{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/set_config_option\",\"params\":{\"configId\":\"mode\",\"value\":\"plan\"}}
+{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"session/prompt\",\"params\":{}}
+";
+    let mut input = Cursor::new(requests.as_slice());
+    for step in [
+        json!({"op":"awaitClient","kind":"acpInitialize"}),
+        json!({"op":"emitKnownFrame","shape":"acpInitialize"}),
+        json!({"op":"awaitClient","kind":"acpNew"}),
+        json!({"op":"emitKnownFrame","shape":"acpSession"}),
+        json!({"op":"awaitClient","kind":"acpPrompt"}),
+    ] {
+        execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new()).unwrap();
+    }
+    let frames: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        frames[1]["result"]["configOptions"],
+        plain_options("default")
+    );
+    assert_eq!(
+        frames[2]["params"]["update"],
+        json!({"sessionUpdate":"config_option_update","configOptions":plain_options("auto")})
+    );
+    assert_eq!(frames[3], json!({"jsonrpc":"2.0","id":3,"result":{}}));
+    assert_eq!(frames[4]["id"], 4);
+    assert_eq!(frames[4]["error"]["code"], -32602);
+    assert_eq!(
+        frames[5],
+        json!({"jsonrpc":"2.0","id":5,"result":{"configOptions":plain_options("plan")}})
+    );
+    assert_eq!(frames.len(), 6);
 }
 
 #[test]

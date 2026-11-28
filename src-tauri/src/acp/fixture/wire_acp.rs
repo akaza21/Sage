@@ -8,7 +8,8 @@ mod resources;
 pub(super) use resources::EmbeddedContext;
 #[path = "wire_acp_config.rs"]
 mod config;
-pub(super) use config::{AcpConfig, MODELS, PLAIN_MODES, config_options};
+use config::MODELS;
+pub(super) use config::{AcpConfig, PLAIN_MODES, config_options};
 
 pub(super) const SESSION: &str = "fixture-persisted-session-1";
 const ELICITATION_ID: &str = "fixture-elicitation-1";
