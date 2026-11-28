@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
+import { makeSanitizer } from "./sanitize.mjs";
 import {
   diffShapes,
   diffTiming,
@@ -196,4 +197,139 @@ test("a start that more than doubles by over two seconds is drift", () => {
   assert.deepEqual(diffTiming(meta(1500), meta(9000)), [
     "slower start shell: first frame 1500ms -> 9000ms",
   ]);
+});
+
+test("an account's model catalog is redacted where a model is named, and only there", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const [pi, codex, turn] = sanitizer.records([
+    {
+      direction: "in",
+      frame: {
+        type: "response",
+        command: "get_available_models",
+        data: {
+          models: [
+            {
+              id: "private-x",
+              name: "Private X",
+              api: "messages",
+              provider: "acme",
+            },
+            // A custom model whose id is also a content-block type.
+            { id: "text", name: "Text", api: "messages", provider: "acme" },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        id: 2,
+        result: {
+          data: [
+            { id: "private-y", model: "private-y", displayName: "Private Y" },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        type: "message_end",
+        message: {
+          model: "private-x",
+          content: [{ type: "text", text: "text" }],
+        },
+      },
+    },
+  ]);
+  assert.deepEqual(
+    pi.frame.data.models.map(({ id, name }) => [id, name]),
+    [
+      ["model-1", "Model 1"],
+      ["model-2", "Model 2"],
+    ],
+  );
+  assert.deepEqual(codex.frame.result.data[0], {
+    id: "model-3",
+    model: "model-3",
+    displayName: "redacted",
+  });
+  assert.deepEqual(turn.frame.message, {
+    model: "model-1",
+    content: [{ type: "text", text: "text" }],
+  });
+  assert.doesNotMatch(JSON.stringify([pi, codex, turn]), /private|Private/);
+});
+
+test("the account's usage and the provider's request ids are normalized", () => {
+  const [limits, failure] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: {
+              usedPercent: 43,
+              windowDurationMins: 300,
+              resetsAt: 1795869952,
+            },
+            secondary: {
+              usedPercent: 9,
+              windowDurationMins: 10080,
+              resetsAt: 1796244039,
+            },
+            credits: { hasCredits: false, balance: "12.5" },
+          },
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        method: "error",
+        params: {
+          error: {
+            additionalDetails:
+              "401 Unauthorized, cf-ray: a618907869f55a00-DEL, request id: req_4bafe0d5b7364c218be5f0e5cd24c99d",
+          },
+        },
+      },
+    },
+  ]);
+  const { primary, secondary, credits } = limits.frame.params.rateLimits;
+  assert.deepEqual(primary, {
+    usedPercent: 10,
+    windowDurationMins: 300,
+    resetsAt: 1800018000,
+  });
+  assert.deepEqual(secondary, {
+    usedPercent: 10,
+    windowDurationMins: 10080,
+    resetsAt: 1800604800,
+  });
+  assert.equal(credits.balance, "0");
+  const [claude] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "allowed_warning",
+          utilization: 0.9,
+          resetsAt: 1795849200,
+        },
+      },
+    },
+  ]);
+  assert.deepEqual(claude.frame.rate_limit_info, {
+    status: "allowed_warning",
+    utilization: 0.1,
+    resetsAt: 1800000000,
+  });
+  assert.equal(
+    failure.frame.params.error.additionalDetails,
+    "401 Unauthorized, cf-ray: 0000000000000000-XXX, request id: req_00000000000000000000000000000000",
+  );
 });

@@ -40,6 +40,23 @@ const IDENTITY_KEYS = new Set([
 const SECRET =
   /\b(?:sk-ant-[\w-]{8,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[\w-]{10,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,})/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// A provider's request and edge ids tie a capture to its logs and location.
+const REQUEST_IDS = [
+  [/\bcf-ray: [0-9a-f]+(?:-[A-Z]{3})?/g, "cf-ray: 0000000000000000-XXX"],
+  [/\breq_[0-9A-Za-z]{16,}/g, "req_00000000000000000000000000000000"],
+];
+// Fields of a model descriptor, and fields elsewhere that name a model.
+const MODEL_FIELDS = new Set(["id", "model", "name"]);
+const MODEL_KEYS = new Set([
+  "model",
+  "modelId",
+  "model_id",
+  "defaultModel",
+  "modelSlug",
+  "normalModelSlug",
+]);
+// The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
+const USAGE_EPOCH = 1800000000;
 // Bounded by any non-hex character, so an id after `_` (a Pi session file
 // name) is caught too.
 const UUID =
@@ -102,6 +119,8 @@ export function makeSanitizer({ roots }) {
     out = out
       .replace(SECRET, "[redacted-secret]")
       .replace(EMAIL, "user@example.invalid");
+    for (const [pattern, target] of REQUEST_IDS)
+      out = out.replace(pattern, target);
     out = out.replace(UUID, (match) => {
       const key = match.toLowerCase();
       if (!uuids.has(key)) {
@@ -145,10 +164,57 @@ export function makeSanitizer({ roots }) {
     }
   };
 
-  const walk = (value, key) => {
+  // The models an account can use say what it is entitled to, so each model
+  // descriptor in a catalog (Pi's `{ id, api, provider }`, Codex's
+  // `{ id, model, displayName }`) maps its id, model and name to a
+  // placeholder. Only those descriptor fields and fields that name a model
+  // are replaced, so a protocol string that happens to equal a model id
+  // (`text`) is never touched.
+  const models = new Map();
+  let modelCount = 0;
+  const isModel = (value) =>
+    typeof value?.id === "string" &&
+    ((typeof value.api === "string" && typeof value.provider === "string") ||
+      (typeof value.model === "string" && "displayName" in value));
+  const findModels = (value) => {
+    if (Array.isArray(value)) value.forEach(findModels);
+    else if (value && typeof value === "object") {
+      if (isModel(value) && !models.has(value.id)) {
+        modelCount += 1;
+        models.set(value.id, `model-${modelCount}`);
+        for (const [field, label] of [
+          ["model", `model-${modelCount}`],
+          ["name", `Model ${modelCount}`],
+        ])
+          if (typeof value[field] === "string" && !models.has(value[field]))
+            models.set(value[field], label);
+      }
+      Object.values(value).forEach(findModels);
+    }
+  };
+
+  // The account's usage, as a limit notice reports it, normalized to fixed
+  // values that keep their types and order: each window resets one window
+  // after a fixed instant.
+  const usage = (object) => {
+    const out = { ...object };
+    if (typeof out.usedPercent === "number") out.usedPercent = 10;
+    if (typeof out.utilization === "number") out.utilization = 0.1;
+    if (typeof out.resetsAt === "number")
+      out.resetsAt = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
+    if (typeof out.balance === "string") out.balance = "0";
+    return out;
+  };
+
+  const walk = (value, key, inModel = false) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (typeof value === "string") {
+      if (
+        models.has(value) &&
+        ((inModel && MODEL_FIELDS.has(key)) || MODEL_KEYS.has(key))
+      )
+        return models.get(value);
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
     if (Array.isArray(value)) {
@@ -161,20 +227,28 @@ export function makeSanitizer({ roots }) {
         .map((entry) => walk(entry, key));
     }
     if (value && typeof value === "object") {
+      const model = isModel(value);
       return Object.fromEntries(
-        Object.entries(value).map(([name, entry]) => [
+        Object.entries(usage(value)).map(([name, entry]) => [
           text(name),
-          walk(entry, name),
+          walk(entry, name, model),
         ]),
       );
     }
     return value;
   };
 
+  const learn = (list) =>
+    list.forEach((record) => {
+      findSynced(record.frame);
+      findModels(record.frame);
+    });
+
   return {
+    learn,
     record: (record) => walk(record, ""),
     records: (list) => {
-      list.forEach((record) => findSynced(record.frame));
+      learn(list);
       return joinSplitRuns(list, text).map((r) => walk(r, ""));
     },
     text,

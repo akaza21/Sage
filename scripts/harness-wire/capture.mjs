@@ -129,30 +129,69 @@ function scratchRepo(dir) {
   return { repo, emptyHome };
 }
 
-// Scrubs an already written capture again, on the host and with the --work
-// dir that recorded it, after the sanitizer learns a new spelling.
+// Scrubs an already written capture again, after the sanitizer learns a new
+// spelling: on the host and with the --work dir that recorded it, or with any
+// --work for a committed corpus. One sanitizer per harness learns every
+// transcript first, so a model a catalog in one transcript names is replaced
+// the same way in all; a frame stored once in commands.jsonl and referenced
+// by hash from another transcript keeps its reference.
 function resanitize(out, harnesses, work) {
+  const digest = (line) => createHash("sha256").update(line).digest("hex");
   for (const harness of harnesses) {
     const dir = path.join(out, harness);
-    for (const file of fs
+    const files = fs
       .readdirSync(dir)
-      .filter((name) => name.endsWith(".jsonl"))) {
-      const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
-      const sanitizer = makeSanitizer({
-        roots: [
-          [path.join(scratch, "repo"), "repo"],
-          [path.join(scratch, "empty-home"), "empty-home"],
-          ...configRoots(DRIVERS[harness].CONFIG, process.env),
-          [work, "work"],
-        ],
-      });
-      const records = readTranscriptLines(path.join(dir, file)).map((line) =>
-        JSON.parse(line),
+      .filter((name) => name.endsWith(".jsonl"))
+      .sort((a, b) =>
+        a === "commands.jsonl"
+          ? -1
+          : b === "commands.jsonl"
+            ? 1
+            : a.localeCompare(b),
       );
-      const body = sanitizer
-        .records(records)
-        .map((record) => JSON.stringify(record));
-      fs.writeFileSync(path.join(dir, file), `${body.join("\n")}\n`);
+    const sanitizer = makeSanitizer({
+      roots: [
+        ...files.flatMap((file) => {
+          const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
+          return [
+            [path.join(scratch, "repo"), "repo"],
+            [path.join(scratch, "empty-home"), "empty-home"],
+          ];
+        }),
+        ...configRoots(DRIVERS[harness].CONFIG, process.env),
+        [work, "work"],
+      ],
+    });
+    const lines = (file) => readTranscriptLines(path.join(dir, file));
+    for (const file of files)
+      sanitizer.learn(lines(file).map((line) => JSON.parse(line)));
+    // The new hash of each commands.jsonl line, by its old hash.
+    const moved = new Map();
+    for (const file of files) {
+      const before = lines(file);
+      const after = sanitizer
+        .records(before.map((line) => JSON.parse(line)))
+        .map((record) => {
+          if (!record.ref) return JSON.stringify(record);
+          const old = [...moved.keys()].find((hash) =>
+            hash.startsWith(record.sha256),
+          );
+          if (!old)
+            throw new Error(
+              `${file}: no ${record.ref} line has digest ${record.sha256}`,
+            );
+          return JSON.stringify({
+            ...record,
+            sha256: moved.get(old).slice(0, record.sha256.length),
+          });
+        });
+      if (file === "commands.jsonl" && after.length !== before.length)
+        throw new Error("commands.jsonl changed length; recapture instead");
+      if (file === "commands.jsonl")
+        before.forEach((line, at) =>
+          moved.set(digest(line), digest(after[at])),
+        );
+      fs.writeFileSync(path.join(dir, file), `${after.join("\n")}\n`);
     }
     fs.writeFileSync(
       path.join(dir, "shape.json"),

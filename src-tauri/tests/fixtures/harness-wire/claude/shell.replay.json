@@ -69,7 +69,7 @@
     "Absorbed x13",
     "Item {\"id\":\"#4\",\"lifecycle\":\"started\",\"tool_state\":\"pending\",\"payload\":{\"kind\":\"toolCall\",\"payload\":{\"category\":\"execute\",\"label\":\"sleep 3 && echo background-done\",\"inputSummary\":\"<31 chars>\",\"outputSummary\":null,\"locations\":[],\"commandActivity\":\"ordinary\",\"execution\":{\"cwd\":null,\"exitCode\":null,\"outputTail\":null,\"outputTruncated\":false}}}}",
     "Absorbed x3",
-    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:seven_day\",\"level\":\"warning\",\"diagnostic\":false,\"text\":\"<52 chars>\",\"source\":\"claude code\",\"usageLimit\":{\"provider\":\"Claude\",\"usedPercent\":90,\"windowMinutes\":10080,\"resetsAt\":1795849200}}}",
+    "Session {\"id\":\"#1\",\"event\":{\"kind\":\"notice\",\"identity\":\"usage-limit:seven_day\",\"level\":\"warning\",\"diagnostic\":false,\"text\":\"<52 chars>\",\"source\":\"claude code\",\"usageLimit\":{\"provider\":\"Claude\",\"usedPercent\":10,\"windowMinutes\":10080,\"resetsAt\":1800000000}}}",
     "Absorbed",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"backgroundTask\",\"id\":\"#5\",\"label\":\"Sleep 3 seconds then echo marker\",\"state\":\"running\",\"progress\":null,\"stoppable\":true}}",
     "Item {\"id\":\"#4\",\"lifecycle\":\"completed\",\"tool_state\":\"completed\",\"payload\":{\"kind\":\"toolCall\",\"payload\":{\"category\":\"execute\",\"label\":\"sleep 3 && echo background-done\",\"inputSummary\":\"<31 chars>\",\"outputSummary\":\"<181 chars>\",\"locations\":[],\"commandActivity\":\"ordinary\",\"execution\":{\"cwd\":null,\"exitCode\":null,\"outputTail\":null,\"outputTruncated\":false}}}}",
