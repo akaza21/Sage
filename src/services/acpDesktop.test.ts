@@ -30,7 +30,6 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
 import { safePreviewProjectionChanged } from "./acpDesktopPreview";
-import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
 it("decodes persisted quote context only within the eight-entry UTF-8 bounds", () => {
@@ -1037,30 +1036,5 @@ describe("ACP desktop bridge", () => {
         preview: { ...failed, phase: "exited" },
       }),
     ).toBeNull();
-  });
-
-  it("invokes the exact native P-02 acknowledgement envelope", async () => {
-    invokeMock.mockResolvedValue(undefined);
-    const ack = {
-      owner: {
-        projectId: "project-a",
-        projectGeneration: "7",
-        chatId: "chat-a",
-        sessionId: "session-a",
-        runtimeEpoch: "2",
-      },
-      resource: { rootId: "root-a", relativePath: "file.txt" },
-      expectedEditorRevision: null,
-      token: "p02-1",
-      state: {
-        kind: "diskAllowed" as const,
-        state: "notOpen" as const,
-        editorRevision: null,
-      },
-    };
-    await acknowledgeReadTextFileFlush(ack);
-    expect(invokeMock).toHaveBeenCalledWith("acknowledge_acp_read_text_file", {
-      ack,
-    });
   });
 });

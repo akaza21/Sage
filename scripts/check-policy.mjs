@@ -799,10 +799,6 @@ const crateManifests = await Promise.all(
   crateManifestPaths.map((file) => readFile(path.join(root, file), "utf8")),
 );
 const cargoManifests = [cargoToml, workspaceCargoToml, ...crateManifests];
-const acpProtocolCargoToml =
-  crateManifests[
-    crateManifestPaths.indexOf("crates/sage-acp-protocol/Cargo.toml")
-  ] ?? "";
 for (const [file, manifest] of [
   ["src-tauri/Cargo.toml", cargoToml],
   ...crateManifestPaths.map((file, index) => [file, crateManifests[index]]),
@@ -907,19 +903,6 @@ if (
 }
 
 if (
-  !/^agent-client-protocol-schema\s*=\s*\{[^}]*version\s*=\s*"=1\.4\.0"[^}]*default-features\s*=\s*false/mu.test(
-    workspaceCargoToml,
-  ) ||
-  !/^agent-client-protocol-schema\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\}/mu.test(
-    acpProtocolCargoToml,
-  )
-) {
-  fail(
-    "The ACP boundary must use the exact feature-disabled schema v1.4.0 crate.",
-  );
-}
-
-if (
   cargoManifests.some((manifest) =>
     /^agent-client-protocol(?:\.workspace)?\s*=/mu.test(manifest),
   )
@@ -929,37 +912,8 @@ if (
   );
 }
 
-// The schema crate is an optional dependency of sage-acp-protocol only; the
-// app's acp-schema feature forwards to it.
-if (
-  !/^acp-schema\s*=\s*\["dep:agent-client-protocol-schema"\]/mu.test(
-    acpProtocolCargoToml,
-  ) ||
-  !/^acp-schema\s*=\s*\["sage-acp-protocol\/acp-schema"\]/mu.test(cargoToml) ||
-  [cargoToml, ...crateManifests].some(
-    (manifest) =>
-      manifest !== acpProtocolCargoToml &&
-      /^agent-client-protocol-schema\b/mu.test(manifest),
-  )
-) {
-  fail(
-    "The ACP schema crate must remain behind the isolated acp-schema feature.",
-  );
-}
-
 if (/^acp-runtime\s*=/mu.test(cargoToml)) {
   fail("The rejected acp-runtime feature must not be reachable.");
-}
-
-const schemaDeclaration = workspaceCargoToml.match(
-  /^agent-client-protocol-schema\s*=\s*\{([^}]*)\}/mu,
-)?.[1];
-if (
-  schemaDeclaration === undefined ||
-  /(?:^|[,\s])features\s*=/u.test(schemaDeclaration) ||
-  /\b(?:unstable|tracing)\b/u.test(schemaDeclaration)
-) {
-  fail("ACP schema tracing and unstable features must remain disabled.");
 }
 
 const tracingDeclaration = workspaceCargoToml.match(

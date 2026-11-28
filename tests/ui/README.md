@@ -57,11 +57,11 @@ barrel's exact export-key allowlist so future leakage fails.
 ```powershell
 npx playwright install chromium
 npm run test:ui
-npm run test:ui:update
+npm run test:ui -- --update-snapshots
 ```
 
 `test:ui` compares against the tracked Windows Chromium baselines.
-`test:ui:update` rewrites those baselines and should be used only after visually
+`--update-snapshots` rewrites those baselines and should be used only after visually
 reviewing the intended change. Failure screenshots and Playwright error context
 are written below `output/playwright/`, which is ignored by Git.
 

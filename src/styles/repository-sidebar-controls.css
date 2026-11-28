@@ -337,52 +337,6 @@
   white-space: nowrap;
 }
 
-.source-remotes {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0 var(--space-2) var(--space-2);
-  padding: 0;
-  list-style: none;
-}
-
-.source-remote {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
-  background: transparent;
-  font-size: var(--font-size-sm);
-}
-
-.source-remote__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-remote__actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.source-remote__action {
-  border: 0;
-  background: transparent;
-  color: var(--color-accent);
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-}
-
-.source-remote__action:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
 .repository-commit {
   display: grid;
   gap: var(--space-1);
