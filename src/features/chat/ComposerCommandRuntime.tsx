@@ -156,7 +156,8 @@ export function ComposerSlashController({
     const field = fieldRef.current;
     if (!field) return;
     // The list opens above the whole composer, at its full width.
-    anchorRef.current = field.closest<HTMLElement>(".chat-dock-shell") ?? field.parentElement;
+    anchorRef.current =
+      field.closest<HTMLElement>(".chat-dock-shell") ?? field.parentElement;
     const track = () => setCaret(field.selectionStart);
     const focus = () => setFocused(true);
     const blur = () => {

@@ -85,12 +85,14 @@ describe("Composer model and thinking effort", () => {
     const { rerender, Host } = controls(effort("effort", ["low", "high"]));
     const model = screen.getByRole("button", { name: "Model" });
     expect(model).toHaveTextContent("Actual modelLow");
-    expect(screen.queryByRole("button", { name: /Thinking effort/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Thinking effort/ }),
+    ).toBeNull();
     const dialog = await openPopover();
     expect(dialog).toContainElement(screen.getByRole("listbox"));
-    expect(await screen.findByRole("button", { name: /Thinking effort/ })).toHaveTextContent(
-      "Thinking effortLow",
-    );
+    expect(
+      await screen.findByRole("button", { name: /Thinking effort/ }),
+    ).toHaveTextContent("Thinking effortLow");
     rerender(<Host effortOption={effort("effort", ["low", "high"], "high")} />);
     expect(model).toHaveTextContent("Actual modelHigh");
     expect(trigger()).toHaveTextContent("Thinking effortHigh");
@@ -120,7 +122,9 @@ describe("Composer model and thinking effort", () => {
         defaultValue: values[0],
       });
       await openPopover();
-      fireEvent.click(await screen.findByRole("button", { name: /Thinking effort/ }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Thinking effort/ }),
+      );
       const menu = await screen.findByRole("menu", { name: "Thinking effort" });
       const levels = screen.getAllByRole("menuitemradio");
       expect(levels.map((level) => level.textContent)).toEqual(
@@ -140,7 +144,9 @@ describe("Composer model and thinking effort", () => {
       expect(onSetOption).toHaveBeenCalledExactlyOnceWith(id, {
         value: picked,
       });
-      expect(screen.queryByRole("menu", { name: "Thinking effort" })).toBeNull();
+      expect(
+        screen.queryByRole("menu", { name: "Thinking effort" }),
+      ).toBeNull();
     },
   );
 
@@ -177,7 +183,9 @@ describe("Composer model and thinking effort", () => {
     await openPopover();
     rerender(<Host disabled />);
     await act(async () => {});
-    expect(screen.queryByRole("button", { name: /Thinking effort/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Thinking effort/ }),
+    ).toBeNull();
     rerender(<Host />);
     expect(screen.getByRole("button", { name: "Model" })).toHaveAttribute(
       "aria-expanded",
@@ -192,7 +200,9 @@ describe("Composer model and thinking effort", () => {
     );
     await openPopover();
     expect(screen.getAllByRole("option")).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /Thinking effort/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Thinking effort/ }),
+    ).toBeNull();
   });
 
   it("describes the chip with the level it shows, not a stale caller label", () => {

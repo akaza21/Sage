@@ -430,9 +430,9 @@ describe("ChatSurface approval slot", () => {
     );
     // The card sits in the cards above the composer, which stays mounted.
     expect(prompt.parentElement).toHaveClass("chat-dock-cards");
-    expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toHaveValue("keep this draft");
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "keep this draft",
+    );
     expect(document.querySelector("form.composer")).not.toHaveAttribute(
       "hidden",
     );

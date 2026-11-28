@@ -24,36 +24,38 @@ export function harnessPickerCandidates(
   selectedId?: string | null,
   selectedSubtitle?: string,
 ): SearchablePickerOption[] {
-  return harnesses
-    // Not-installed harnesses list after the options, each with Install.
-    .filter(
-      (harness) =>
-        harness.installState !== "notInstalled" || harness.id === selectedId,
-    )
-    .map<SearchablePickerOption>((harness) => {
-      const availability = harnessAvailability(harness);
-      const disabledReason =
-        harness.id === selectedId && availability.disabledReason
-          ? "Unavailable"
-          : availability.disabledReason;
-      const status = harness.versionChecking
-        ? "version checking…"
-        : harness.source === "development"
-          ? "test only"
-          : availability.label;
-      return {
-        id: harness.id,
-        icon: harness.brand ?? "generic",
-        label: harness.name,
-        subtitle: harness.id === selectedId ? selectedSubtitle : undefined,
-        accessibleLabel: `${harness.name} — ${status}${disabledReason ? `. ${disabledReason}` : ""}`,
-        disabledReason,
-      };
-    })
-    .sort(
-      (left, right) =>
-        Number(!!left.disabledReason) - Number(!!right.disabledReason),
-    );
+  return (
+    harnesses
+      // Not-installed harnesses list after the options, each with Install.
+      .filter(
+        (harness) =>
+          harness.installState !== "notInstalled" || harness.id === selectedId,
+      )
+      .map<SearchablePickerOption>((harness) => {
+        const availability = harnessAvailability(harness);
+        const disabledReason =
+          harness.id === selectedId && availability.disabledReason
+            ? "Unavailable"
+            : availability.disabledReason;
+        const status = harness.versionChecking
+          ? "version checking…"
+          : harness.source === "development"
+            ? "test only"
+            : availability.label;
+        return {
+          id: harness.id,
+          icon: harness.brand ?? "generic",
+          label: harness.name,
+          subtitle: harness.id === selectedId ? selectedSubtitle : undefined,
+          accessibleLabel: `${harness.name} — ${status}${disabledReason ? `. ${disabledReason}` : ""}`,
+          disabledReason,
+        };
+      })
+      .sort(
+        (left, right) =>
+          Number(!!left.disabledReason) - Number(!!right.disabledReason),
+      )
+  );
 }
 
 /**

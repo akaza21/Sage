@@ -122,7 +122,6 @@
   .composer .composer__body {
     scrollbar-gutter: stable both-edges;
   }
-
 }
 
 @container composer (max-width: 280px) {

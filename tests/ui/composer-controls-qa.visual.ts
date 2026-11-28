@@ -177,7 +177,9 @@ test("harness and access keep their whole names in the narrowest chat pane", asy
       clipped: label.scrollWidth > label.clientWidth + 1,
       text: label.textContent,
     }));
-  const harness = await whole(".composer__harness .searchable-picker__trigger-label");
+  const harness = await whole(
+    ".composer__harness .searchable-picker__trigger-label",
+  );
   expect(harness).toMatchObject({ shown: true, clipped: false });
   expect(harness.text).not.toBe("");
   const access = await whole(".composer__access-label");

@@ -374,9 +374,7 @@ describe("PermissionPrompt", () => {
 
   it("never takes focus in a background pane", async () => {
     render(<PermissionPrompt items={[permission()]} focused={false} />);
-    expect(
-      screen.getByRole("radio", { name: "Allow once" }),
-    ).not.toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Allow once" })).not.toHaveFocus();
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Approval needed",
     );
@@ -396,9 +394,7 @@ describe("PermissionPrompt", () => {
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent("Approval needed"),
     );
-    expect(
-      screen.getByRole("radio", { name: "Allow once" }),
-    ).not.toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Allow once" })).not.toHaveFocus();
     expect(
       screen.getByRole("group", { name: "Permission request" }),
     ).toHaveFocus();
