@@ -3,25 +3,9 @@ import { PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
 import { useWorkbenchStore } from "../app/store";
 import { EditorStatusItems } from "./EditorStatusItems";
+import { WorkbenchNotices } from "./WorkbenchNotices";
 
 const SourceBranchStatus = lazy(() => import("./StatusBarDetails"));
-
-/** Recovery and browser-data notices; the status bar shows them in Editor,
- *  the toolbar row in Agent. */
-export function WorkbenchNotices() {
-  const recoveryNotice = useWorkbenchStore((state) => state.recoveryNotice);
-  const browserClearNotice = useWorkbenchStore(
-    (state) => state.browserClearNotice,
-  );
-  return (
-    <>
-      {recoveryNotice ? <span role="status">{recoveryNotice}</span> : null}
-      {browserClearNotice ? (
-        <span role="status">{browserClearNotice}</span>
-      ) : null}
-    </>
-  );
-}
 
 /** The Editor status bar. Agent mode has none. */
 export function StatusBar({

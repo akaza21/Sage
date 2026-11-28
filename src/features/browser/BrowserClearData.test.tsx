@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
-import { WorkbenchNotices } from "../../workbench/StatusBar";
+import { WorkbenchNotices } from "../../workbench/WorkbenchNotices";
 import { BrowserClearData } from "./BrowserClearData";
 import { resetBrowserClearDataForTests } from "./browserClearProgress";
 
