@@ -23,9 +23,9 @@ import { fileURLToPath } from "node:url";
 const workspace = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sourcePath = join(
   workspace,
-  "docs",
-  "work-items",
-  "ADE-0006A-acp-session-foundation",
+  "src-tauri",
+  "testdata",
+  "acp",
   "contracts",
   "fixture-vectors-v1.json",
 );

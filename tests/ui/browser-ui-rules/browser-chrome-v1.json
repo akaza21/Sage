@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-address.html",
+  "viewport": {
+    "width": 1920,
+    "height": 900
+  },
+  "rules": [
+    {
+      "id": "toolbar-height",
+      "source": "CP-16 measured toolbar y86-129",
+      "selector": ".browser-surface__toolbar",
+      "measure": "height",
+      "expected": 44,
+      "tolerancePx": 1
+    },
+    {
+      "id": "address-height",
+      "source": "CP-16 measured address pill about 32 px high",
+      "selector": ".browser-surface__address input",
+      "measure": "height",
+      "expected": 32,
+      "tolerancePx": 1
+    },
+    {
+      "id": "address-fill",
+      "source": "CP-16 measured address pill fill #2d2d2d",
+      "selector": ".browser-surface__address input",
+      "measure": "background-color",
+      "expected": "rgb(45, 45, 45)"
+    },
+    {
+      "id": "address-host-centred",
+      "source": "CP-16 centred host label rather than full URL",
+      "selector": ".browser-surface__address input",
+      "measure": "text-align",
+      "expected": "center"
+    },
+    {
+      "id": "navigation-before-address",
+      "source": "CP-16 back/forward/reload group left of the address pill",
+      "selector": ".browser-surface__nav-group",
+      "measure": "left-of",
+      "other": ".browser-surface__address"
+    },
+    {
+      "id": "menu-at-right-edge",
+      "source": "CP-16 round overflow menu at the toolbar's right end",
+      "selector": "button[aria-label='More options']",
+      "measure": "right-inset",
+      "within": ".browser-surface__toolbar",
+      "expected": 8,
+      "tolerancePx": 4
+    },
+    {
+      "id": "annotate-after-navigation",
+      "source": "M1a measured nav pill x≈893-925, Annotate pill x≈929-1017 at y107",
+      "selector": ".browser-surface__nav-group",
+      "measure": "left-of",
+      "other": ".browser-surface__annotate"
+    },
+    {
+      "id": "annotate-before-address",
+      "source": "M1a measured Annotate pill ends x≈1017, address pill starts x≈1025 at y107",
+      "selector": ".browser-surface__annotate",
+      "measure": "left-of",
+      "other": ".browser-surface__address"
+    },
+    {
+      "id": "annotate-height",
+      "source": "M1a measured Annotate pill y≈94.5-119.5 at x1010 (26 px); Sage keeps its 28 px control on the 4 px scale",
+      "selector": ".browser-surface__annotate",
+      "measure": "height",
+      "expected": 26,
+      "tolerancePx": 2
+    }
+  ]
+}

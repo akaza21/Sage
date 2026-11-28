@@ -9,7 +9,7 @@ import type {
   AcpProjectionChangedEvent,
 } from "../../../src/domain/acp";
 import type { BootstrapSnapshot } from "../../../src/domain/workbench";
-import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
+import { getWorkbenchPorts } from "../simulator/workbenchRuntime";
 import { acpDesktop } from "../../../src/services/acpDesktop";
 import { buildVisualScenario } from "./visualScenarioShell";
 

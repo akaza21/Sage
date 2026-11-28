@@ -13,54 +13,13 @@ const testSuffix = ".node-test.mjs";
 
 export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "acp-transport-parity.node-test.mjs",
-  "acp05-native-reload-capture.node-test.mjs",
-  "ade0006a-c0b-paint-receipt.node-test.mjs",
-  "ade0006a-package-binary.node-test.mjs",
-  "ade0006a-package-build-home.node-test.mjs",
-  "ade0006a-package-build-identity.node-test.mjs",
-  "ade0006a-package-build.node-test.mjs",
-  "ade0006a-package-environment.node-test.mjs",
-  "ade0006a-package-file-set.node-test.mjs",
-  "ade0006a-package-handoff.node-test.mjs",
-  "ade0006a-package-members.node-test.mjs",
-  "ade0006a-package-participant-validation.node-test.mjs",
-  "ade0006a-package-provenance.node-test.mjs",
-  "ade0006a-package-receipt-provenance.node-test.mjs",
-  "ade0006a-package-retention.node-test.mjs",
-  "ade0006a-package-snapshot.node-test.mjs",
-  "ade0006a-package-source-stage.node-test.mjs",
-  "ade0006a-package-tree-set.node-test.mjs",
-  "ade0006a-package-tree.node-test.mjs",
   "acp-native-cases.node-test.mjs",
   "acp-native-cases-witness.node-test.mjs",
   "acp-native-pi.node-test.mjs",
   "app-smoke-server.node-test.mjs",
-  "beta0001-acceptance-contract.node-test.mjs",
-  "beta0001-acp05-pairing-receipt.node-test.mjs",
-  "beta0001-candidate-campaign.node-test.mjs",
-  "beta0001-candidate-package.node-test.mjs",
-  "beta0001-candidate-verifier.node-test.mjs",
-  "beta0001-installed-smoke-output-teardown.node-test.mjs",
-  "beta0001-macos-shared-contract-ci.node-test.mjs",
-  "beta0001-source-functional-profile.node-test.mjs",
   "browser-test-policy.node-test.mjs",
   "bounded-cdp-evaluate.node-test.mjs",
   "budget-lanes.node-test.mjs",
-  "capture-native-chat.node-test.mjs",
-  "capture-native-chat-catalog.node-test.mjs",
-  "capture-native-chat-pane.node-test.mjs",
-  "capture-native-chat-rich-content.node-test.mjs",
-  "capture-native-chat-source.node-test.mjs",
-  "capture-native-chat-sizing.node-test.mjs",
-  "capture-native-chat-batch.node-test.mjs",
-  "capture-native-chat-parity.node-test.mjs",
-  "capture-native-chat-turn.node-test.mjs",
-  "capture-native-editor-catalog.node-test.mjs",
-  "diagnostic-redaction.node-test.mjs",
-  "capture-native-editor-dom.node-test.mjs",
-  "capture-native-editor-drive.node-test.mjs",
-  "capture-native-editor-capture.node-test.mjs",
-  "capture-native-editor-batch.node-test.mjs",
   "cargo-test-support-policy.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
@@ -71,113 +30,47 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "css-scale-policy.node-test.mjs",
   "css-token-policy.node-test.mjs",
   "css-inline-control-policy.node-test.mjs",
-  "generate-source-manifest.node-test.mjs",
   "gate.node-test.mjs",
-  "hr6-access-mode.node-test.mjs",
-  "hr6-cancel-evidence.node-test.mjs",
-  "hr6-chat-scope.node-test.mjs",
-  "hr6-diff-evidence.node-test.mjs",
-  "hr6-harness-selection.node-test.mjs",
-  "hr6-permission-evidence.node-test.mjs",
-  "hr6-tool-evidence.node-test.mjs",
   "htmlCompletionSchema.node-test.mjs",
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
-  "validate-ade0006a-c0b.node-test.mjs",
   "synthetic-tree.node-test.mjs",
   "ui-test-port.node-test.mjs",
-  "validate-performance-budgets.node-test.mjs",
   "verify-web-bundle.node-test.mjs",
   "web-bundle-paths.node-test.mjs",
   "workbench-transport-parity.node-test.mjs",
 ]);
 
 export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
-  "acp05-owned-launcher.node-test.mjs",
   "chat-performance-budget.node-test.mjs",
-  "ade0006a-c0b-campaign-launch.node-test.mjs",
-  "ade0006a-c0b-collector-provenance.node-test.mjs",
   "app-smoke-cli.node-test.mjs",
-  "beta0001-installed-smoke-settlement.node-test.mjs",
-  "beta0001-installed-smoke.node-test.mjs",
-  "beta0001-windows-locked-loader.node-test.mjs",
-  "capture-native-chat-ui.node-test.mjs",
   "check-lanes.native-windows.node-test.mjs",
-  "hr6-live-run.node-test.mjs",
-  "installed-smoke-identity.node-test.mjs",
-  "process-identity-cleanup.node-test.mjs",
-  "source-functional-acp04-live-probe.node-test.mjs",
-  "source-functional-av01-preview.node-test.mjs",
-  "source-functional-av01-preview-process.node-test.mjs",
-  "source-functional-native-ide-cdp.node-test.mjs",
-  "source-functional-native-ide-journey.node-test.mjs",
-  "windows-job.node-test.mjs",
 ]);
 
 export const NATIVE_POSIX_BUDGET_TESTS = Object.freeze([
   "check-lanes.native-posix.node-test.mjs",
 ]);
 
-// Frozen checkpoint membership at 2ea1bf7: 45 scripts/*.node-test.mjs
-// members (32 portable whole-file owners, 12 native-Windows whole-file
-// owners, 1 mixed check-lanes migration source). This list is the audit
+// Frozen checkpoint membership at 2ea1bf7, less the members deleted since:
+// 5 scripts/*.node-test.mjs members (4 portable whole-file owners, 1 mixed
+// check-lanes migration source). This list is the audit
 // fixed point; current owner arrays must not self-label an added file as
 // preexisting. New split/runner files are admitted only via
 // LANE_JUSTIFICATIONS below.
 export const ORIGINAL_BUDGET_TESTS = Object.freeze([
   "acp-transport-parity.node-test.mjs",
-  "acp05-native-reload-capture.node-test.mjs",
-  "acp05-owned-launcher.node-test.mjs",
-  "ade0006a-c0b-campaign-launch.node-test.mjs",
-  "ade0006a-c0b-collector-provenance.node-test.mjs",
-  "ade0006a-c0b-paint-receipt.node-test.mjs",
-  "ade0006a-package-binary.node-test.mjs",
-  "ade0006a-package-build-home.node-test.mjs",
-  "ade0006a-package-build-identity.node-test.mjs",
-  "ade0006a-package-build.node-test.mjs",
-  "ade0006a-package-environment.node-test.mjs",
-  "ade0006a-package-file-set.node-test.mjs",
-  "ade0006a-package-handoff.node-test.mjs",
-  "ade0006a-package-members.node-test.mjs",
-  "ade0006a-package-participant-validation.node-test.mjs",
-  "ade0006a-package-provenance.node-test.mjs",
-  "ade0006a-package-receipt-provenance.node-test.mjs",
-  "ade0006a-package-retention.node-test.mjs",
-  "ade0006a-package-snapshot.node-test.mjs",
-  "ade0006a-package-source-stage.node-test.mjs",
-  "ade0006a-package-tree-set.node-test.mjs",
-  "ade0006a-package-tree.node-test.mjs",
-  "beta0001-acceptance-contract.node-test.mjs",
-  "beta0001-acp05-pairing-receipt.node-test.mjs",
-  "beta0001-candidate-campaign.node-test.mjs",
-  "beta0001-candidate-package.node-test.mjs",
-  "beta0001-candidate-verifier.node-test.mjs",
-  "beta0001-installed-smoke-settlement.node-test.mjs",
-  "beta0001-installed-smoke.node-test.mjs",
-  "beta0001-macos-shared-contract-ci.node-test.mjs",
-  "beta0001-source-functional-profile.node-test.mjs",
-  "beta0001-windows-locked-loader.node-test.mjs",
   "check-lanes.node-test.mjs",
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
-  "generate-source-manifest.node-test.mjs",
-  "installed-smoke-identity.node-test.mjs",
-  "process-identity-cleanup.node-test.mjs",
-  "source-functional-acp04-live-probe.node-test.mjs",
-  "source-functional-native-ide-cdp.node-test.mjs",
-  "source-functional-native-ide-journey.node-test.mjs",
-  "validate-ade0006a-c0b.node-test.mjs",
-  "validate-performance-budgets.node-test.mjs",
-  "windows-job.node-test.mjs",
   "workbench-transport-parity.node-test.mjs",
 ]);
 
-// Frozen expected original check-lanes lines: 32 cases. The migration table
+// Frozen expected original check-lanes lines: 31 cases. The migration table
 // must cover exactly these lines; an omitted origin fails closed.
 export const CHECK_LANES_EXPECTED_ORIGIN_LINES = Object.freeze([
-  34, 75, 115, 173, 213, 288, 314, 336, 386, 443, 488, 564, 597, 620, 644, 662,
-  687, 714, 815, 885, 924, 988, 1048, 1112, 1160, 1207, 1258, 1312, 1411, 1460,
-  1504, 1556,
+  34, 75, 115, 173, 213, 288, 314, 336, 443, 488, 564, 597, 620, 644, 662, 687,
+  714, 815, 885, 924, 988, 1048, 1112, 1160, 1207, 1258, 1312, 1411, 1460, 1504,
+  1556,
 ]);
 
 // POSIX sub-gate titles: Linux executes the Unix process-group escalation
@@ -238,12 +131,6 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
     line: 336,
     title:
       "release lane fails closed and preserves conservative validation order",
-    successors: [{ file: "check-lanes.portable.node-test.mjs" }],
-  },
-  {
-    line: 386,
-    title:
-      "release package mode hands exact validated arguments to the existing campaign",
     successors: [{ file: "check-lanes.portable.node-test.mjs" }],
   },
   {
@@ -396,11 +283,6 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
 // grow only through entries recorded here.
 export const LANE_JUSTIFICATIONS = Object.freeze([
   {
-    file: "beta0001-installed-smoke-output-teardown.node-test.mjs",
-    reason:
-      "Portable checks of installed-smoke output guardian teardown against a fake child and mocked timers; no PowerShell or subprocess launch.",
-  },
-  {
     file: "web-bundle-paths.node-test.mjs",
     reason:
       "Portable BX-3 static-import path closures and independent gzip budget proofs; uses temporary assets without native processes.",
@@ -456,76 +338,6 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
       "Portable Pi replay catalogue, wire-shape, capture and privacy contract checks; no subprocess launch.",
   },
   {
-    file: "capture-native-chat.node-test.mjs",
-    reason:
-      "Portable checks of native capture argument, probe-schema and output-path rules; the capture itself runs only by hand.",
-  },
-  {
-    file: "capture-native-chat-source.node-test.mjs",
-    reason:
-      "Portable mocked source-provenance, owned-Vite launch-contract and local staging/promotion privacy checks; never launches Vite or a native app.",
-  },
-  {
-    file: "capture-native-chat-catalog.node-test.mjs",
-    reason:
-      "Portable native-catalog capability, protocol-witness and current-product DOM checks using existing jsdom; no native app, server, capture or subprocess launch.",
-  },
-  {
-    file: "capture-native-chat-pane.node-test.mjs",
-    reason:
-      "Portable single/two-pane DOM capture ownership checks using the existing jsdom dev dependency; no native capability or subprocess.",
-  },
-  {
-    file: "capture-native-chat-rich-content.node-test.mjs",
-    reason:
-      "Portable owned-turn rich-content readiness checks using existing jsdom; no native app, browser automation or subprocess.",
-  },
-  {
-    file: "capture-native-chat-sizing.node-test.mjs",
-    reason:
-      "Portable DPR-1 requested-client geometry and PNG dimension contracts; no native app or window is launched.",
-  },
-  {
-    file: "capture-native-chat-batch.node-test.mjs",
-    reason:
-      "Portable NC-4 batch planning, resumable ledger and live-frame pairing checks with injected capture and preflight; no native app, Vite or subprocess launch.",
-  },
-  {
-    file: "capture-native-chat-parity.node-test.mjs",
-    reason:
-      "Portable NC-4 parity catalogue, matrix agreement, jsdom observation, pointer/key drive and motion-burst checks with fake CDP; no native app, server or subprocess launch.",
-  },
-  {
-    file: "capture-native-chat-turn.node-test.mjs",
-    reason:
-      "Portable simulated DOM readiness, bounded probe timestamp and acceptance-matrix admission checks; blocked-run coverage exits before launching an app.",
-  },
-  {
-    file: "capture-native-editor-catalog.node-test.mjs",
-    reason:
-      "Portable ED-0c Editor catalogue, truthful-absence and probe-identity checks; no native app or subprocess launch.",
-  },
-  {
-    file: "capture-native-editor-dom.node-test.mjs",
-    reason:
-      "Portable Editor state-predicate observation checks using existing jsdom; no native app, server or subprocess.",
-  },
-  {
-    file: "capture-native-editor-drive.node-test.mjs",
-    reason:
-      "Portable Editor drive sequencing with fake CDP over jsdom; no native app, server or subprocess.",
-  },
-  {
-    file: "capture-native-editor-capture.node-test.mjs",
-    reason:
-      "Portable Editor seed, frame verification and drift checks with fake CDP and temporary roots; never launches Sage.",
-  },
-  {
-    file: "capture-native-editor-batch.node-test.mjs",
-    reason:
-      "Portable Editor batch plan, run-line admission and resumable ledger checks with injected capture and preflight; no native app or subprocess launch.",
-  },
-  {
     file: "check-harness-trace-privacy.node-test.mjs",
     reason:
       "Portable harness-trace privacy guard regression tests inspect JSON values without native capabilities.",
@@ -561,19 +373,9 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
       "Browser-dependent smoke CLI regression lane; drives the real app-smoke entrypoint with bundled Playwright Chromium and asserts exit status, dev-server PID death, and port release.",
   },
   {
-    file: "capture-native-chat-ui.node-test.mjs",
-    reason:
-      "Browser-dependent NC-4 capture conformance lane; drives the visual fixture Chats in an owned Vite server and bundled Playwright Chromium with the native capture CDP client, actions and named-state probe.",
-  },
-  {
-    file: "diagnostic-redaction.node-test.mjs",
-    reason:
-      "Portable input/output regressions for the path redaction that lane failure diagnostics pass through; string transforms only, with no process, browser or native capability.",
-  },
-  {
     file: "check-lanes.portable.node-test.mjs",
     reason:
-      "Portable successor lane for the 21 plan/parser/stream/dependency-injected check-lanes cases.",
+      "Portable successor lane for the 20 plan/parser/stream/dependency-injected check-lanes cases.",
   },
   {
     file: "check-lanes.native-windows.node-test.mjs",
@@ -589,16 +391,6 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "ci-rust-phase.node-test.mjs",
     reason:
       "Portable Rust-matrix workflow source contract; reads the committed YAML only and requires no native capability.",
-  },
-  {
-    file: "source-functional-av01-preview.node-test.mjs",
-    reason:
-      "Native-Windows source-functional AV01 Preview fixture, CDP collector, and final-receipt contract tests require the Windows journey envelope.",
-  },
-  {
-    file: "source-functional-av01-preview-process.node-test.mjs",
-    reason:
-      "Native-Windows owned-child process identity capture, live rejection, and disappearance proof for the AV01 Preview helper.",
   },
   {
     file: "htmlCompletionSchema.node-test.mjs",
@@ -624,46 +416,6 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "gate.node-test.mjs",
     reason:
       "Portable gate plan contract proves the deterministic Vitest worker defaults, explicit operator overrides, and the steps the changed gate picks for a diff.",
-  },
-  {
-    file: "hr6-chat-scope.node-test.mjs",
-    reason:
-      "Portable HR-6 focused-Chat selector regression uses an in-memory DOM and source contract without native process control.",
-  },
-  {
-    file: "hr6-live-run.node-test.mjs",
-    reason:
-      "Native-Windows HR-6 live-run proof launches PowerShell receipt, stream, and cleanup fixtures.",
-  },
-  {
-    file: "hr6-tool-evidence.node-test.mjs",
-    reason:
-      "Portable HR-6 tool-evidence regression uses in-memory projections and source contracts without native process control.",
-  },
-  {
-    file: "hr6-cancel-evidence.node-test.mjs",
-    reason:
-      "Portable HR-6 running-tool cancellation regression uses an in-memory DOM, bounded projections, and source contracts without native process control.",
-  },
-  {
-    file: "hr6-access-mode.node-test.mjs",
-    reason:
-      "Portable HR-6 session access-mode picker regression uses an in-memory DOM and source contracts without native process control.",
-  },
-  {
-    file: "hr6-diff-evidence.node-test.mjs",
-    reason:
-      "Portable HR-6 diff and file-chip evidence regression uses an in-memory DOM and bounded projections without native process control.",
-  },
-  {
-    file: "hr6-permission-evidence.node-test.mjs",
-    reason:
-      "Portable HR-6 permission-card evidence regression uses an in-memory DOM, bounded projections, and source contracts without native process control.",
-  },
-  {
-    file: "hr6-harness-selection.node-test.mjs",
-    reason:
-      "Portable HR-6 harness selection outcome and opt-in flag regression evaluates pure classification functions without native process control.",
   },
 ]);
 

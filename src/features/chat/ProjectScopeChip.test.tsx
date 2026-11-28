@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { browserDirectories } from "../../services/browserWorkspaceFixture";
+import { browserDirectories } from "../../../tests/ui/simulator/browserWorkspaceFixture";
 import { resourceKey } from "../../domain/resourceIdentity";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import {
@@ -16,7 +16,7 @@ import {
   useChatAccessDrafts,
 } from "../../app/chatAccessDrafts";
 import { useWorkbenchStore } from "../../app/store";
-import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../../tests/ui/simulator/browserDesktop";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { AgentCenterKeeper } from "../../workbench/WorkbenchContinuity";
 

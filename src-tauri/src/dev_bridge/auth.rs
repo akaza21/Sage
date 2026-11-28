@@ -1,3 +1,4 @@
+use super::run_record::RunRecord;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use subtle::ConstantTimeEq;
@@ -14,6 +15,7 @@ pub(super) struct Pairing {
     code: Option<String>,
     session: Option<String>,
     active: bool,
+    record: Option<RunRecord>,
 }
 
 impl Pairing {
@@ -22,8 +24,18 @@ impl Pairing {
             code: Some(code),
             session: None,
             active: false,
+            record: None,
         }
     }
+
+    /// A pairing whose code is also published for the dev server.
+    pub fn with_run_record(code: String, record: RunRecord) -> Self {
+        Self {
+            record: Some(record),
+            ..Self::new(code)
+        }
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }
@@ -42,6 +54,11 @@ impl Pairing {
                 let session = random_secret().map_err(|_| "pairing refused")?;
                 self.code = None;
                 self.session = Some(session.clone());
+                // The code is spent in memory either way; a stale record only
+                // costs a dev tab one refused pairing attempt.
+                if let Some(Err(error)) = self.record.as_ref().map(RunRecord::consume) {
+                    tracing::warn!(?error, "browser bridge could not retire its run record");
+                }
                 session
             }
             (None, Some(candidate))

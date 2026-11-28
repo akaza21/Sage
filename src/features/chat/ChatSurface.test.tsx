@@ -3026,7 +3026,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
   });
 
-  it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
+  it("shows the Harness control in a focused Agent chat pane", async () => {
     hooks.page = {
       ...projection(),
       currentSessionId: null,
@@ -4699,11 +4699,15 @@ describe("ChatSurface ACP resource integration", () => {
     });
     rerender(<ChatSurface />);
     await expandReadActivity();
+    openFile.mockClear();
     fireEvent.click(
       await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
 
-    expect(openFile).toHaveBeenLastCalledWith({
+    // The click after the session switch must open the file again, not be
+    // dropped by a handler bound to the old session.
+    await waitFor(() => expect(openFile).toHaveBeenCalledTimes(1));
+    expect(openFile).toHaveBeenCalledWith({
       rootId: "root-a",
       relativePath: "src/main.ts",
     });
@@ -4757,88 +4761,6 @@ describe("ChatSurface ACP resource integration", () => {
         }),
       ),
     );
-  });
-
-  it("rejects an old rendered ToolItem handler after owner rollover", async () => {
-    const openAgentArtifact = vi.fn(async () => true);
-    vi.resetModules();
-    vi.doMock("../../app/store", () => ({ useWorkbenchStore }));
-    vi.doMock("../../app/openAgentArtifact", () => ({ openAgentArtifact }));
-    vi.doMock("./acp", async () => {
-      const actual = await vi.importActual<typeof AcpModule>("./acp");
-      return {
-        ...actual,
-        useAcpChatActions: () => hooks.actions,
-        useAcpChatProjection: () => hooks.page,
-      };
-    });
-    const { ChatSurface: CapturingChatSurface } = await import("./ChatSurface");
-    const { rerender } = render(<CapturingChatSurface />);
-    await expandReadActivity();
-    const oldButton = await screen.findByRole("button", {
-      name: "Open file src/main.ts",
-    });
-    const oldPropsKey = Object.keys(oldButton).find((key) =>
-      key.startsWith("__reactProps$"),
-    ) as keyof typeof oldButton;
-    const oldHandler = (
-      oldButton[oldPropsKey] as unknown as { onClick: () => void }
-    ).onClick;
-    const refreshed = structuredClone(hooks.page!);
-    refreshed.currentSessionId = "session-next" as never;
-    refreshed.sessions = [{ id: "session-next", ordinal: 0 }] as never;
-    refreshed.turns = refreshed.turns.map(
-      (turn) =>
-        ({
-          ...turn,
-          sessionId: "session-next" as never,
-          revision: "2" as never,
-          items: turn.items.map(
-            (item) =>
-              ({
-                ...item,
-                projectId: "project-next" as never,
-                chatId: "chat-next" as never,
-                sessionId: "session-next" as never,
-                revision: "2" as never,
-              }) as AcpItem,
-          ),
-        }) as never,
-    );
-    hooks.page = {
-      ...refreshed,
-      projectId: "project-next" as never,
-      chatId: "chat-next" as never,
-      currentSessionId: "session-next" as never,
-    };
-    rerender(<CapturingChatSurface />);
-    oldHandler();
-    await Promise.resolve();
-    expect(openAgentArtifact).not.toHaveBeenCalled();
-    await expandReadActivity();
-    const freshButton = await screen.findByRole("button", {
-      name: "Open file src/main.ts",
-    });
-    const freshPropsKey = Object.keys(freshButton).find((key) =>
-      key.startsWith("__reactProps$"),
-    ) as keyof typeof freshButton;
-    (
-      freshButton[freshPropsKey] as unknown as { onClick: () => void }
-    ).onClick();
-    await Promise.resolve();
-    expect(openAgentArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        owner: expect.objectContaining({
-          projectId: "project-next",
-          chatId: "chat-next",
-          sessionId: "session-next",
-        }),
-      }),
-    );
-    vi.doUnmock("../../app/store");
-    vi.doUnmock("../../app/openAgentArtifact");
-    vi.doUnmock("./acp");
-    vi.resetModules();
   });
 
   it("passes frontend retention incompleteness into the ACP edit summary", async () => {

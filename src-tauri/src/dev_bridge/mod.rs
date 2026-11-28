@@ -3,10 +3,12 @@ mod client;
 mod connection;
 mod handshake_io;
 mod protocol;
+mod run_record;
 mod transport;
 
 use std::{
     io,
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tauri::Manager;
@@ -43,20 +45,46 @@ fn dev_page(app: &tauri::AppHandle, page: &str) -> io::Result<url::Url> {
     Ok(url)
 }
 
-pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
+/// Starts the bridge. With `run_directory` (a disposable profile) the run is
+/// published there for the dev server, and a pairing link is printed only
+/// with `SAGE_BRIDGE_PRINT_LINK=1`; without one, the link opens a browser.
+pub(crate) fn start(app: &tauri::AppHandle, run_directory: Option<&Path>) -> io::Result<()> {
     let mut browser_url = dev_page(app, BRIDGE_PAGE)?;
     let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
     listener.set_nonblocking(true)?;
     let address = listener.local_addr()?;
     let code = auth::random_secret()?;
-    browser_url
-        .query_pairs_mut()
-        .append_pair("bridge", &address.port().to_string());
-    browser_url.set_fragment(Some(&code));
+    let origin = browser_url.origin().ascii_serialization();
+    let print_link = std::env::var("SAGE_BRIDGE_PRINT_LINK").as_deref() == Ok("1");
+    if run_directory.is_none() || print_link {
+        browser_url
+            .query_pairs_mut()
+            .append_pair("bridge", &address.port().to_string());
+        browser_url.set_fragment(Some(&code));
+        match pairing_notice(&browser_url, address.port(), print_link) {
+            PairingNotice::PrintLink(message) => println!("{message}"),
+            PairingNotice::OpenBrowser { failure_notice } => {
+                if crate::system_browser::open_dev_bridge(&browser_url).is_err() {
+                    println!("{failure_notice}");
+                }
+            }
+        }
+    }
+    let pairing = match run_directory {
+        Some(directory) => {
+            let record = run_record::RunRecord::publish(directory, address.port(), &code)?;
+            println!(
+                "Sage browser bridge run is ready on port {}.",
+                address.port()
+            );
+            auth::Pairing::with_run_record(code, record)
+        }
+        None => auth::Pairing::new(code),
+    };
     let access = Arc::new(transport::Access::new(
         address.to_string(),
-        browser_url.origin().ascii_serialization(),
-        Arc::new(Mutex::new(auth::Pairing::new(code))),
+        origin,
+        Arc::new(Mutex::new(pairing)),
     ));
     let close_access = access.clone();
     let main = app
@@ -93,15 +121,6 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
             }
         }
     });
-    let print_link = std::env::var("SAGE_BRIDGE_PRINT_LINK").as_deref() == Ok("1");
-    match pairing_notice(&browser_url, address.port(), print_link) {
-        PairingNotice::PrintLink(message) => println!("{message}"),
-        PairingNotice::OpenBrowser { failure_notice } => {
-            if crate::system_browser::open_dev_bridge(&browser_url).is_err() {
-                println!("{failure_notice}");
-            }
-        }
-    }
     Ok(())
 }
 

@@ -4,7 +4,7 @@ import { normalizeProjectionPage } from "../app/acpProjectionMerge";
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatPage, AcpChatStatus } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
-import { createBrowserChatTab } from "../services/browserChat";
+import { createBrowserChatTab } from "../../tests/ui/simulator/browserChat";
 import {
   resetAgentRailInteractions,
   useAgentRailInteractions,

@@ -15,7 +15,6 @@ export default tseslint.config(
       "local-evidence/**",
       "work/**",
       "**/target/**",
-      "tools/footprint-control/target/**",
     ],
   },
   eslint.configs.recommended,
@@ -68,15 +67,6 @@ export default tseslint.config(
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: {
       globals: globals.node,
-    },
-  },
-  {
-    files: [
-      "tools/footprint-control/dist/**/*.js",
-      "tools/footprint-control/frontend/**/*.js",
-    ],
-    languageOptions: {
-      globals: globals.browser,
     },
   },
   {

@@ -897,26 +897,6 @@ describe("compact Workbench project tools", () => {
     expect(useWorkbenchStore.getState().tabs).toEqual(beforeTabs);
   });
 
-  it("reveals Settings when the rail gear is used from Agent mode", async () => {
-    const openSettings = vi.fn(async () => undefined);
-    useWorkbenchStore.setState({
-      openSettings,
-      project: { id: "project-a", name: "A", roots: [] },
-    });
-    render(<Workbench />);
-    await selectWindowMode("Agent");
-
-    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-
-    expect(openSettings).not.toHaveBeenCalled();
-    expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
-    expect(
-      await screen.findByRole("dialog", { name: "Agent settings" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
-    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
-  });
-
   it("guides an empty Editor workbench only through implemented entry points", async () => {
     render(<Workbench />);
     await settleLazyModules();

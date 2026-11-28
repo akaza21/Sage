@@ -43,18 +43,4 @@ describe("workspace notify owner-port wire", () => {
       value: { projectId: "project-a" },
     });
   });
-
-  it("browser watch and unwatch reject", async () => {
-    const { createBrowserWorkbenchPorts } =
-      await import("./browserWorkbenchPorts");
-    const project = createBrowserWorkbenchPorts().project;
-    await expect(project.watchWorkspaceNotify(bind)).rejects.toThrow(
-      "workspace notify is not available in the browser adapter",
-    );
-    await expect(
-      project.unwatchWorkspaceNotify({ projectId: "project-a" }),
-    ).rejects.toThrow(
-      "workspace notify is not available in the browser adapter",
-    );
-  });
 });

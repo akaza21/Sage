@@ -2,9 +2,6 @@
 resolver = "3"
 members = ["src-tauri", "crates/*"]
 default-members = ["src-tauri"]
-# The footprint control is a standalone Tauri app with its own lockfile and
-# release profile; it is built on its own and never linked into Sage.
-exclude = ["tools/footprint-control"]
 
 [workspace.package]
 license = "Apache-2.0"

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 

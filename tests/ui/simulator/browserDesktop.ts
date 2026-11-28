@@ -1,0 +1,396 @@
+import type {
+  ChatDeleteRequest,
+  ChatLifecycleRequest,
+  MoveChatRequest,
+  PinChatRequest,
+  CreateProjectFileRequest,
+  CreateProjectFolderRequest,
+  FileDiff,
+  ProjectLayoutRequest,
+  RenameChatRequest,
+  ProjectSwitchRequest,
+  ProjectTransitionResult,
+  ResourceRef,
+  SimulatorTurnResult,
+} from "../../../src/domain/workbench";
+import {
+  archiveChatLayout,
+  restoreChatLayout,
+} from "../../../src/domain/chatArchive";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
+import {
+  appendBrowserSimulatorTurn,
+  assertBrowserChatActivation,
+  assertBrowserChatCreation,
+  assertBrowserChatLifecycleIdentity,
+  assertBrowserChatRenameIdentity,
+  assertExactBrowserChatAttachments,
+  assertBrowserPrompt,
+  browserChatRenameTitle,
+  browserSessionId,
+  createBrowserChatTab,
+  projectBrowserChatTitles,
+  renamedBrowserChatLayout,
+  type BrowserPromptRequest,
+} from "./browserChat";
+import {
+  ensureBrowserLocalProject,
+  moveBrowserChat,
+  pinBrowserChat,
+  switchBrowserProject,
+} from "./browserLocalChat";
+import { browserEditor } from "./browserEditor";
+import {
+  createBrowserProjectFile,
+  createBrowserProjectFolder,
+} from "./browserFileCreate";
+import { browserGitUnavailable } from "./browserGitUnavailable";
+import { assertBrowserProjectLayout } from "./browserLayout";
+import {
+  renameBrowserProjectFile,
+  trashBrowserProjectResource,
+} from "./browserResourceMutations";
+import {
+  browserDirectories as directories,
+  browserRepository as repository,
+  browserSnapshot as snapshot,
+} from "./browserWorkspaceFixture";
+
+export { appendBrowserSimulatorTurn } from "./browserChat";
+export { BrowserGitMutationUnavailableError } from "./browserGitUnavailable";
+export {
+  BrowserFileRenameUnavailableError,
+  BrowserResourceTrashUnavailableError,
+} from "./browserResourceMutations";
+
+import {
+  hasBrowserScope,
+  rememberBrowserScope,
+  createBrowserScopeCommands,
+} from "./browserChatScopes";
+
+export { resetBrowserDesktopForTests } from "./browserChatState";
+import {
+  messagesByChat,
+  simulatorSessions,
+  durableChatIds,
+  chatTitles,
+  activeMessages,
+  projectActiveChat,
+  projectArchivedChats,
+  committedTransition,
+} from "./browserChatState";
+
+const scopeCommands = createBrowserScopeCommands({
+  snapshot,
+  persist: (layout, epoch) =>
+    browserDesktop.persistProjectLayout(layout, epoch),
+  commit: committedTransition,
+  chatCount: () => durableChatIds.size,
+  hasSession: (chat) =>
+    simulatorSessions.has(chat) ||
+    (snapshot.activeTabId === chat && !!snapshot.sessionId),
+  register: (chat) => {
+    durableChatIds.add(chat.id);
+    chatTitles.set(chat.id, chat.title);
+    messagesByChat.set(chat.id, []);
+  },
+  remove: (chat) => {
+    durableChatIds.delete(chat);
+    chatTitles.delete(chat);
+    messagesByChat.delete(chat);
+  },
+  title: (chat) => chatTitles.get(chat) ?? "Chat",
+  activate: projectActiveChat,
+});
+
+export const browserDesktop = {
+  createProject: scopeCommands.createProject,
+  cleanUp: scopeCommands.cleanUp,
+  async getBootstrapSnapshot() {
+    return structuredClone({ ...snapshot, messages: activeMessages() });
+  },
+  async getRepositoryStatus() {
+    return structuredClone(repository);
+  },
+  async listDirectory(resource: ResourceRef) {
+    return structuredClone(
+      directories.get(resourceKey(resource)) ?? {
+        resource,
+        entries: [],
+        truncated: false,
+      },
+    );
+  },
+  async createProjectFile(request: CreateProjectFileRequest) {
+    return createBrowserProjectFile(request);
+  },
+  async createProjectFolder(request: CreateProjectFolderRequest) {
+    return createBrowserProjectFolder(request);
+  },
+  renameProjectFile: renameBrowserProjectFile,
+  trashProjectResource: trashBrowserProjectResource,
+  readTextFile: browserEditor.readTextFile,
+  openEditorDocument: browserEditor.open,
+  snapshotEditorBuffer: browserEditor.snapshot,
+  saveEditorDocument: browserEditor.save,
+  discardEditorBuffer: browserEditor.discard,
+  rebaseEditorBuffer: browserEditor.rebase,
+  async getFileDiff(resource: ResourceRef): Promise<FileDiff> {
+    return { resource, binary: false, truncated: false, hunks: [] };
+  },
+  async getFileGitBase(resource: ResourceRef, knownOid: string | null) {
+    return browserEditor.stagedText(resource, knownOid);
+  },
+  ...browserGitUnavailable,
+  async persistProjectLayout(
+    request: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ) {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before layout persistence could run");
+    }
+    snapshot.tabs = structuredClone(
+      projectBrowserChatTitles(request.tabs, chatTitles),
+    );
+    snapshot.activeTabId = request.activeTabId;
+    snapshot.selectedRootId = request.selectedRootId;
+    snapshot.selectedResource = structuredClone(request.selectedResource);
+    snapshot.archivedChats = projectArchivedChats();
+    projectActiveChat();
+    rememberBrowserScope(snapshot);
+  },
+  async createChat(
+    currentLayout: ProjectLayoutRequest | null,
+    expectedTransitionEpoch: number,
+    projectId?: string | null,
+    chatId?: string,
+  ): Promise<ProjectTransitionResult> {
+    if (
+      projectId === null ||
+      (projectId && projectId !== snapshot.project?.id && chatId)
+    ) {
+      return scopeCommands.createChat(
+        currentLayout,
+        expectedTransitionEpoch,
+        projectId,
+        chatId,
+      );
+    }
+    if (!currentLayout) throw new Error("Missing project layout");
+    assertBrowserChatCreation(
+      currentLayout,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds.size,
+      projectId,
+    );
+    if (chatId && durableChatIds.has(chatId))
+      throw new Error("Chat ID already exists");
+    await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
+    const chatCount = durableChatIds.size;
+    const chat = createBrowserChatTab(snapshot.tabs, chatCount);
+    if (chatId) chat.id = chatId;
+    snapshot.tabs = [...snapshot.tabs, chat];
+    snapshot.activeTabId = chat.id;
+    snapshot.sessionId = null;
+    snapshot.selectedHarnessId = "sage-simulator";
+    snapshot.selectedModelId = null;
+    durableChatIds.add(chat.id);
+    chatTitles.set(chat.id, chat.title);
+    messagesByChat.set(chat.id, []);
+    return committedTransition();
+  },
+  setChatProject: scopeCommands.setChatProject,
+  async activateChat(
+    currentLayout: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    assertBrowserChatActivation(
+      currentLayout,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      durableChatIds,
+    );
+    await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
+    return committedTransition();
+  },
+  async renameChat(
+    request: RenameChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    assertBrowserChatRenameIdentity(
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    const title = browserChatRenameTitle(request, durableChatIds);
+    const renamedLayout = renamedBrowserChatLayout(request, title, chatTitles);
+    chatTitles.set(request.chatId, title);
+    Object.assign(snapshot, renamedLayout);
+    projectActiveChat();
+    return committedTransition();
+  },
+  async archiveChat(
+    request: ChatLifecycleRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    assertBrowserChatLifecycleIdentity(
+      "archive",
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
+    const next = archiveChatLayout(
+      request.currentLayout,
+      request.chatId,
+      snapshot.project?.isInternal,
+    );
+    await this.persistProjectLayout(next, expectedTransitionEpoch);
+    return committedTransition();
+  },
+  async restoreChat(
+    request: ChatLifecycleRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (request.projectId !== snapshot.project?.id)
+      return scopeCommands.restoreChat(request, expectedTransitionEpoch);
+    assertBrowserChatLifecycleIdentity(
+      "restore",
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
+    const archived = projectArchivedChats().find(
+      (chat) => chat.id === request.chatId,
+    );
+    if (!archived) {
+      throw new Error("Chat is already attached to the active Project");
+    }
+    const next = restoreChatLayout(request.currentLayout, archived);
+    assertBrowserProjectLayout(
+      next,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    await this.persistProjectLayout(next, expectedTransitionEpoch);
+    return committedTransition();
+  },
+  async deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (request.projectId !== snapshot.project?.id)
+      return scopeCommands.deleteChat(request, expectedTransitionEpoch);
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before the requested Chat delete");
+    }
+    if (
+      request.projectId !== snapshot.project?.id ||
+      !projectArchivedChats().some((chat) => chat.id === request.chatId)
+    ) {
+      throw new Error("Only an archived Chat can be deleted");
+    }
+    durableChatIds.delete(request.chatId);
+    chatTitles.delete(request.chatId);
+    messagesByChat.delete(request.chatId);
+    simulatorSessions.delete(request.chatId);
+    snapshot.archivedChats = projectArchivedChats();
+    rememberBrowserScope(snapshot);
+    return committedTransition();
+  },
+  async ensureLocalProject(expectedTransitionEpoch: number) {
+    return ensureBrowserLocalProject({
+      snapshot,
+      expectedTransitionEpoch,
+      activeMessages,
+    });
+  },
+  async pinChat(request: PinChatRequest, expectedTransitionEpoch: number) {
+    return pinBrowserChat({
+      snapshot,
+      request,
+      expectedTransitionEpoch,
+      activeMessages,
+    });
+  },
+  async moveChat(request: MoveChatRequest, expectedTransitionEpoch: number) {
+    return moveBrowserChat({
+      snapshot,
+      request,
+      expectedTransitionEpoch,
+      activeMessages,
+    });
+  },
+  async switchProject(
+    request: ProjectSwitchRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (
+      hasBrowserScope(request.targetProjectId) &&
+      request.targetProjectId !== snapshot.project?.id
+    ) {
+      return scopeCommands.switchProject(request, expectedTransitionEpoch);
+    }
+    return switchBrowserProject({
+      snapshot,
+      request,
+      expectedTransitionEpoch,
+      persist: (currentLayout, epoch) =>
+        this.persistProjectLayout(currentLayout, epoch),
+      activeMessages,
+    });
+  },
+  async listHarnessModels(harnessId: string) {
+    return harnessId === "sage-simulator"
+      ? [
+          { id: "sim-fast", name: "Simulator Fast" },
+          { id: "sim-deep", name: "Simulator Deep" },
+        ]
+      : [];
+  },
+  async sendPrompt(
+    request: BrowserPromptRequest,
+  ): Promise<SimulatorTurnResult> {
+    assertBrowserPrompt(request, snapshot.tabs, durableChatIds);
+    const modelId = request.modelId ?? "sim-fast";
+    const priorSession = simulatorSessions.get(request.chatId);
+    const sessionId = browserSessionId(priorSession, modelId);
+    const nextMessages = appendBrowserSimulatorTurn(
+      messagesByChat.get(request.chatId) ?? [],
+      {
+        sessionId,
+        modelId: request.modelId,
+        text: request.text,
+      },
+    );
+    messagesByChat.set(request.chatId, nextMessages);
+    simulatorSessions.set(request.chatId, { sessionId, modelId });
+    if (request.chatId === snapshot.activeTabId) projectActiveChat();
+    return structuredClone({ sessionId, messages: nextMessages });
+  },
+};

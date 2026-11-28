@@ -58,45 +58,28 @@ test("browser visual specs must install the retry guard", () => {
   assert.deepEqual(retryGuardErrors("tests/ui/agent.visual.ts", ""), []);
 });
 
-test("UI rules cite a reference, a source, a known measure and a tight tolerance", () => {
-  const references = ["14-codex-browser.png"];
+test("UI rules cite a source, a known measure and a tight tolerance", () => {
   const rule = {
     id: "toolbar-height",
-    ref: "reference/14",
     source: "CP-16",
     selector: ".toolbar",
     measure: "height",
     expected: 44,
     tolerancePx: 1,
   };
+  assert.deepEqual(uiRuleErrors("rules.json", { rules: [rule] }), []);
   assert.deepEqual(
-    uiRuleErrors("rules.json", { rules: [rule] }, references),
-    [],
-  );
-  assert.deepEqual(
-    uiRuleErrors(
-      "rules.json",
-      {
-        rules: [
-          { ...rule, id: "width", measure: "width" },
-          { ...rule, id: "below", measure: "below", other: ".outline" },
-          { ...rule, id: "hint", measure: "placeholder", expected: "Add" },
-          { ...rule, id: "round", measure: "border-radius", expected: "22px" },
-        ],
-      },
-      references,
-    ),
-    [],
-  );
-  assert.deepEqual(
-    uiRuleErrors("rules.json", { rules: [{ ...rule, ref: "reference/59a" }] }, [
-      "59a-browser-annotate-hover-link.png",
-    ]),
+    uiRuleErrors("rules.json", {
+      rules: [
+        { ...rule, id: "width", measure: "width" },
+        { ...rule, id: "below", measure: "below", other: ".outline" },
+        { ...rule, id: "hint", measure: "placeholder", expected: "Add" },
+        { ...rule, id: "round", measure: "border-radius", expected: "22px" },
+      ],
+    }),
     [],
   );
   for (const broken of [
-    { ...rule, ref: "reference/99" },
-    { ...rule, ref: "somewhere" },
     { ...rule, source: undefined },
     { ...rule, source: "  " },
     { ...rule, selector: "" },
@@ -113,12 +96,9 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
     { ...rule, tolerancePx: Number.NaN },
   ])
     assert.equal(
-      uiRuleErrors("rules.json", { rules: [broken] }, references).length,
+      uiRuleErrors("rules.json", { rules: [broken] }).length,
       1,
       JSON.stringify(broken),
     );
-  assert.equal(
-    uiRuleErrors("rules.json", { rules: [rule, rule] }, references).length,
-    1,
-  );
+  assert.equal(uiRuleErrors("rules.json", { rules: [rule, rule] }).length, 1);
 });

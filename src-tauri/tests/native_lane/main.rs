@@ -1,5 +1,4 @@
-//! Run it with `npm run test:native-lane` on Windows; see
-//! docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
+//! Run it with `npm run test:native-lane` on Windows.
 
 #[cfg(windows)]
 mod annotate;
