@@ -35,7 +35,6 @@ import {
 } from "./agentPaneViews";
 import "./AgentArtifactPaneTabs.css";
 
-
 const VIEW_ICON = {
   diagram: Workflow,
   subagentTranscript: Bot,

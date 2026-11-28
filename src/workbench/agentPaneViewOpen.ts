@@ -1,4 +1,8 @@
-import { selectAgentPaneView, useAgentPaneViews, type AgentPaneView } from "./agentPaneViews";
+import {
+  selectAgentPaneView,
+  useAgentPaneViews,
+  type AgentPaneView,
+} from "./agentPaneViews";
 
 export const MAX_PANE_VIEWS_PER_CHAT = 8;
 const MAX_PANE_VIEWS = 32;

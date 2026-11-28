@@ -227,9 +227,8 @@ export function AgentPaneLauncher({ chatId }: { chatId: string | null }) {
     if (!text) return;
     try {
       // The browser it opens owns address rules; load them with it.
-      const { resolveBrowserAddress } = await import(
-        "../features/browser/BrowserSurface"
-      );
+      const { resolveBrowserAddress } =
+        await import("../features/browser/BrowserSurface");
       openPaneBrowser(resolveBrowserAddress(text));
       done();
     } catch (failure) {

@@ -11,9 +11,7 @@ import { useAgentChangesState } from "./agentChangesState";
  * they stay bounded (see openAgentPaneView) and are never persisted.
  */
 export type AgentPaneViewKind =
-  | "diagram"
-  | "subagentTranscript"
-  | "backgroundTask";
+  "diagram" | "subagentTranscript" | "backgroundTask";
 export type AgentPaneView = {
   id: string;
   chatId: string;

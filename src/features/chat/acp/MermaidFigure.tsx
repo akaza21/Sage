@@ -21,7 +21,6 @@ import {
   mermaidAccessibility,
 } from "./mermaidAccessibility";
 
-
 export function MermaidFigure({
   source,
   copySource = true,
