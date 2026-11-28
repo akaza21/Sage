@@ -139,9 +139,20 @@ export async function startDevServer(
     throw new Error(`vite entrypoint is missing at ${entry}`);
   }
   const { hostname, port } = new URL(target);
+  // The smoke walk drives the UI against the test fixture, like Playwright;
+  // plain Vite now shows the backend-missing screen.
   const child = spawn(
     process.execPath,
-    [entry, "--host", hostname, "--port", port, "--strictPort"],
+    [
+      entry,
+      "--host",
+      hostname,
+      "--port",
+      port,
+      "--strictPort",
+      "--mode",
+      "ui-fixture",
+    ],
     {
       cwd: repositoryRoot,
       stdio: ["ignore", "pipe", "pipe"],
