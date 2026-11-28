@@ -52,56 +52,63 @@ const MODEL_ID =
   /\b(?:claude-(?:opus|sonnet|haiku|fable)|gpt)-\d+(?:[.-][0-9a-z]+)*/g;
 const MODEL_NAME =
   /\b(?:GPT-\d[\d.]*(?: [A-Z][a-z]+)?|(?:Claude )?(?:Opus|Sonnet|Haiku|Fable) \d[\d.]*)/g;
-// Objects that describe the capturing account rather than the protocol: its
-// account, plan, organization, rate limits, credits and the models it can
-// use. Inside one, only the keys a binding reads keep their values.
-const ACCOUNT_OBJECTS = new Set([
-  "account",
-  "organization",
-  "subscription",
-  "rate_limit_info",
-  "rateLimits",
-  "rateLimitsByLimitId",
-  "rate_limits",
-  "credits",
-  "models",
-  "modelUsage",
-]);
-const ACCOUNT_KEEP = new Set([
-  // Model catalogs (Claude Code, Codex, Pi).
-  "value",
-  "model",
-  "modelId",
-  "contextWindow",
-  "supportsEffort",
-  "supportedEffortLevels",
-  "defaultReasoningEffort",
-  "supportedReasoningEfforts",
-  "reasoningEffort",
-  "isDefault",
-  "hidden",
-  "resolvedModel",
-  // Rate limits and usage windows.
-  "status",
-  "rateLimitType",
-  "utilization",
-  "resetsAt",
-  "usedPercent",
-  "windowDurationMins",
+// Objects that describe the capturing account rather than the protocol, and
+// inside each the only paths whose values a binding reads (`*` is any one
+// key, `[]` an array element). Every other value in one becomes
+// "redacted", 0 or false; model ids and names there are placeholders. A model
+// descriptor anywhere is `@model`.
+const WINDOW = ["usedPercent", "windowDurationMins", "resetsAt"];
+const LIMITS = [
+  "limitId",
   "rateLimitReachedType",
   "spendControlReached",
-  "limitId",
-  "planType",
   "ordinaryUsageAllowed",
-  "rate_limits_available",
-  "subscription_type",
-  "model_scoped",
-  "display_name",
-  // Account kind and sign-in method.
-  "type",
-  "requiresOpenaiAuth",
-  "authMode",
-]);
+  ...["primary", "secondary"].flatMap((window) =>
+    WINDOW.map((field) => `${window}.${field}`),
+  ),
+];
+const ACCOUNT_RULES = new Map(
+  Object.entries({
+    account: ["type"],
+    organization: [],
+    subscription: [],
+    credits: [],
+    agents: ["[].name"],
+    rate_limit_info: ["status", "rateLimitType", "utilization", "resetsAt"],
+    rateLimits: LIMITS,
+    rateLimitsByLimitId: LIMITS.map((field) => `*.${field}`),
+    rate_limits: ["*.utilization"],
+    models: [
+      "[].value",
+      "[].supportsEffort",
+      "[].supportedEffortLevels[]",
+      "[].contextWindow",
+      "[].isDefault",
+      "[].hidden",
+    ],
+    "@model": [
+      "isDefault",
+      "hidden",
+      "contextWindow",
+      "defaultReasoningEffort",
+      "supportedReasoningEfforts[].reasoningEffort",
+    ],
+    modelUsage: ["*.contextWindow"],
+  }).map(([root, paths]) => [
+    root,
+    paths.map(
+      (rule) =>
+        new RegExp(
+          `^${rule
+            .split(".")
+            .map((segment) =>
+              segment === "*" ? "[^.]+" : segment.replace(/[[\]]/g, "\\$&"),
+            )
+            .join("\\.")}$`,
+        ),
+    ),
+  ]),
+);
 // A provider's own message, tool-use and call ids.
 const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
@@ -124,25 +131,15 @@ const MODEL_KEYS = new Set([
   "normalModelSlug",
 ]);
 // Token counts and costs of the captured turns, as fixed synthetic values.
-const TOKEN_KEYS = new Set([
-  "input_tokens",
-  "output_tokens",
-  "cache_read_input_tokens",
-  "cache_creation_input_tokens",
-  "ephemeral_5m_input_tokens",
-  "ephemeral_1h_input_tokens",
-  "inputTokens",
-  "outputTokens",
-  "cachedInputTokens",
-  "cacheReadInputTokens",
-  "cacheCreationInputTokens",
-  "reasoningOutputTokens",
-  "totalTokens",
-  "total_tokens",
-  "cacheRead",
-  "cacheWrite",
-]);
+const TOKENS = /tokens(?:_delta)?$|^(?:cacheRead|cacheWrite)$/i;
 const COST_KEYS = new Set(["total_cost_usd", "costUSD", "cost_usd", "total"]);
+// Absolute times move to a fixed epoch, one offset per unit for the whole
+// capture, so every interval between them holds.
+const TIME_KEY = /(?:At|Ms|_at|_time|Time|stamp)$/;
+const NOT_TIME = /duration|Mins|resetsAt|resets_at|expires/i;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const TIME_BASE_MS = 1800000000000;
+const TIME_BASE_S = 1800000000;
 // The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
 const USAGE_EPOCH = 1800000000;
 // When the account's stored sign-in expires.
@@ -368,6 +365,7 @@ export function makeSanitizer({ roots }) {
           ["model", `model-${n}`],
           ["resolvedModel", `model-${n}`],
           ["name", `Model ${n}`],
+          ["displayName", `Model ${n}`],
           ["description", `Model ${n}`],
         ])
           if (typeof value[field] === "string" && !models.has(value[field]))
@@ -397,11 +395,49 @@ export function makeSanitizer({ roots }) {
     return out;
   };
 
-  // Allow-list inside an account, billing, rate-limit, plan, organization or
-  // model-catalog object: a value a binding does not read becomes a fixed
-  // placeholder of its type.
-  const kept = (key, value, inAccount) => {
-    if (!inAccount || ACCOUNT_KEEP.has(key)) return value;
+  // Earliest absolute time seen, per unit.
+  const earliest = { ms: Infinity, s: Infinity };
+  const timeUnit = (value) =>
+    typeof value === "number"
+      ? value >= 1e12
+        ? "ms"
+        : value >= 1e9
+          ? "s"
+          : undefined
+      : typeof value === "string" && ISO_TIME.test(value)
+        ? "iso"
+        : undefined;
+  const isTime = (key) => TIME_KEY.test(key) && !NOT_TIME.test(key);
+  const findTimes = (value, key = "") => {
+    if (Array.isArray(value)) value.forEach((entry) => findTimes(entry, key));
+    else if (value && typeof value === "object") {
+      for (const [name, entry] of Object.entries(value))
+        if (!OPAQUE.has(name)) findTimes(entry, name);
+    } else if (isTime(key)) {
+      const unit = timeUnit(value);
+      if (unit === "s") earliest.s = Math.min(earliest.s, value);
+      if (unit === "ms") earliest.ms = Math.min(earliest.ms, value);
+      if (unit === "iso")
+        earliest.ms = Math.min(earliest.ms, Date.parse(value));
+    }
+  };
+  const shifted = (value) => {
+    const unit = timeUnit(value);
+    if (unit === "s") return TIME_BASE_S + (value - earliest.s);
+    if (unit === "ms") return TIME_BASE_MS + (value - earliest.ms);
+    if (unit === "iso")
+      return new Date(
+        TIME_BASE_MS + (Date.parse(value) - earliest.ms),
+      ).toISOString();
+    return value;
+  };
+
+  // Inside an account object only the paths its rules name keep their value.
+  const kept = (value, account) => {
+    if (!account) return value;
+    const at = account.path.join(".");
+    if ((ACCOUNT_RULES.get(account.root) ?? []).some((rule) => rule.test(at)))
+      return value;
     if (typeof value === "string")
       return /^(?:redacted|model-\d+|Model \d+)$/.test(value)
         ? value
@@ -411,20 +447,19 @@ export function makeSanitizer({ roots }) {
     return value;
   };
 
-  const walk = (
-    value,
-    key,
-    inModel = false,
-    opaque = false,
-    inAccount = false,
-  ) => kept(key, scrub(value, key, inModel, opaque, inAccount), inAccount);
+  const walk = (value, key, inModel = false, opaque = false, account = null) =>
+    kept(scrub(value, key, inModel, opaque, account), account);
 
-  const scrub = (value, key, inModel, opaque, inAccount) => {
+  const scrub = (value, key, inModel, opaque, account) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (!opaque && typeof value === "number") {
-      if (TOKEN_KEYS.has(key)) return 100;
+      if (TOKENS.test(key)) return 100;
       if (COST_KEYS.has(key)) return 0.01;
+    }
+    if (!opaque && isTime(key)) {
+      const unit = timeUnit(value);
+      if (unit) return shifted(value);
     }
     if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
       return CREDENTIAL_EXPIRY;
@@ -448,21 +483,45 @@ export function makeSanitizer({ roots }) {
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
     if (Array.isArray(value)) {
+      // Elements are `<path>[]`; an account array starts its own path.
+      const element = account
+        ? {
+            root: account.root,
+            path: [
+              ...account.path.slice(0, -1),
+              `${account.path.at(-1) ?? ""}[]`,
+            ],
+          }
+        : ACCOUNT_RULES.has(key)
+          ? { root: key, path: ["[]"] }
+          : null;
       return value
         .filter(
           (entry) =>
             !isSynced(entry) &&
             !(typeof entry === "string" && synced.has(entry)),
         )
-        .map((entry) => walk(entry, key, false, opaque, inAccount));
+        .map((entry) => walk(entry, key, false, opaque, element));
     }
     if (value && typeof value === "object") {
       const model = isModel(value);
-      const account = inAccount || model || ACCOUNT_OBJECTS.has(key);
+      const base =
+        account ??
+        (model
+          ? { root: "@model", path: [] }
+          : ACCOUNT_RULES.has(key)
+            ? { root: key, path: [] }
+            : null);
       return Object.fromEntries(
         Object.entries(opaque ? value : usage(value)).map(([name, entry]) => [
           text(name),
-          walk(entry, name, model, opaque || OPAQUE.has(name), account),
+          walk(
+            entry,
+            name,
+            model,
+            opaque || OPAQUE.has(name),
+            base && { root: base.root, path: [...base.path, name] },
+          ),
         ]),
       );
     }
@@ -473,6 +532,7 @@ export function makeSanitizer({ roots }) {
     list.forEach((record) => {
       findSynced(record.frame);
       findModels(record.frame);
+      findTimes(record.frame);
     });
 
   return {
