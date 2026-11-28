@@ -1,9 +1,37 @@
 // Reads a harness's published TypeScript declarations with the TypeScript
 // compiler (already a devDependency) and turns its wire types into a
 // contract graph: each object type once, as `{ field: [child type ids] }`.
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+
 import ts from "typescript";
 
 import { OPAQUE } from "./shape.mjs";
+
+// Installs one published package (no scripts, no platform binaries) into
+// `work` and returns its folder. A Windows shell joins arguments unquoted,
+// and the temp path may hold a space.
+export function installed(spec, work) {
+  const prefix = process.platform === "win32" ? `"${work}"` : work;
+  execFileSync(
+    "npm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--omit=optional",
+      "--no-audit",
+      "--no-fund",
+      "--prefix",
+      prefix,
+      spec,
+    ],
+    {
+      shell: process.platform === "win32",
+      stdio: ["ignore", "ignore", "inherit"],
+    },
+  );
+  return path.join(work, "node_modules", spec.slice(0, spec.lastIndexOf("@")));
+}
 
 // The wire types declared in `entries`, the harness's own declaration files.
 export function declarations(...entries) {

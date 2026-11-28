@@ -36,6 +36,7 @@ const rustTestPhases = [
   'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1',
   'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1',
 ];
+const rustJobs = ["rust-lint", "rust", "rust-bridge"];
 const runnerPlatforms = {
   "windows-latest": "win32",
   "ubuntu-latest": "linux",
@@ -49,34 +50,39 @@ const bridgeTestCommand =
 
 test("Rust CI runs the supported feature phases in strict job order", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const rust = jobBlock(workflow, "rust");
-  const cargoCommands = rust
-    .split("\n")
-    .map((line) => line.trim().replace(/^-\s*/, ""))
-    .filter((line) => /^run: ["']?cargo /u.test(line))
-    .map((line) => line.slice("run: ".length).replace(/^(["'])(.*)\1$/u, "$2"));
+  const cargoCommands = (job) =>
+    jobBlock(workflow, job)
+      .split("\n")
+      .map((line) => line.trim().replace(/^-\s*/, ""))
+      .filter((line) => /^run: ["']?cargo /u.test(line))
+      .map((line) =>
+        line.slice("run: ".length).replace(/^(["'])(.*)\1$/u, "$2"),
+      );
 
-  assert.deepEqual(cargoCommands, [
-    formatCommand,
-    clippyCommand,
-    clippyLibCommand,
-    ...rustTestPhases,
-    bridgeClippyCommand,
-    bridgeTestCommand,
-    releaseCheckCommand,
-  ]);
+  // The Rust lane runs as three jobs on separate runners.
   assert.deepEqual(
-    cargoCommands.filter((command) => command.startsWith("cargo test ")),
-    [...rustTestPhases, bridgeTestCommand],
+    Object.fromEntries(rustJobs.map((job) => [job, cargoCommands(job)])),
+    {
+      "rust-lint": [
+        formatCommand,
+        clippyCommand,
+        clippyLibCommand,
+        bridgeClippyCommand,
+      ],
+      rust: rustTestPhases,
+      "rust-bridge": [bridgeTestCommand, releaseCheckCommand],
+    },
   );
 });
 
 test("Rust CI derives requested runner features from cargo-features.mjs", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  assert.match(
-    jobBlock(workflow, "rust"),
-    /include: \$\{\{ fromJSON\(needs\.plan\.outputs\.rust-matrix\) \}\}/,
-  );
+  for (const job of rustJobs) {
+    assert.match(
+      jobBlock(workflow, job),
+      /include: \$\{\{ fromJSON\(needs\.plan\.outputs\.rust-matrix\) \}\}/,
+    );
+  }
   const plan = jobBlock(workflow, "plan");
   assert.match(
     plan,

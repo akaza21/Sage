@@ -9,6 +9,7 @@ import path from "node:path";
 import {
   Graph,
   declarations,
+  installed,
   literals,
   members,
   variants,

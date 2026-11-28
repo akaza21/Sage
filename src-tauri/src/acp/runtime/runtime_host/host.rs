@@ -320,7 +320,7 @@ impl RuntimeHost {
 
     pub(crate) fn close(&self, intent: HostCloseIntent) -> Result<HostOutcome, HostError> {
         let started = Instant::now();
-        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = crate::acp::process::graceful_exit::close_budget();
         self.outcome_with_timeout(HostCommand::BeginClose(intent.clone()), budget)?;
         self.outcome_with_timeout(
             HostCommand::FinishClose(intent),

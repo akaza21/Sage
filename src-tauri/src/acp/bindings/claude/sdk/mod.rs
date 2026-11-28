@@ -10,7 +10,6 @@ mod fixture_tests;
 mod fork;
 mod launch;
 mod probe;
-mod probe_exit;
 mod runtime;
 mod tools;
 mod transcript;

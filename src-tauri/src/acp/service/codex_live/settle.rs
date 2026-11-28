@@ -50,5 +50,5 @@ impl Lane<'_> {
 }
 
 fn close_deadline() -> Instant {
-    Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close)
+    Instant::now() + crate::acp::process::graceful_exit::close_budget()
 }

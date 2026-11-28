@@ -16,6 +16,7 @@ use crate::acp::transport::{
 };
 
 mod containment;
+mod grace;
 mod reap;
 mod spawn;
 
@@ -113,7 +114,7 @@ pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTr
 }
 
 #[cfg(test)]
-fn launch_shell_for_test(runtime_epoch: u64, script: &str) -> RunningTree {
+pub(crate) fn launch_shell_for_test(runtime_epoch: u64, script: &str) -> RunningTree {
     use std::{ffi::OsString, fs::File, io::Read};
 
     use sha2::{Digest, Sha256};

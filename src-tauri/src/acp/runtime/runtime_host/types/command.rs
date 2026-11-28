@@ -20,7 +20,7 @@ impl HostCommand {
             | Self::AcceptDurableCompleted
             | Self::BeginPark
             | Self::FinishPark
-            | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
+            | Self::Shutdown => crate::acp::process::graceful_exit::close_budget_ms(),
             Self::PreparePrompt(_)
             | Self::DispatchPrompt { .. }
             | Self::Steer(_)

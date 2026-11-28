@@ -317,6 +317,35 @@ where
         }
     }
 
+    /// Ends the harness's input before a shutdown Sage asked for. True when
+    /// its stdin is closed, so it can exit on its own; a recovery state keeps
+    /// whatever it owns and its tree is killed.
+    pub(crate) fn close_stdin_for_shutdown(&mut self) -> bool {
+        match self {
+            Self::Reusable(_) | Self::Active(_) => {
+                self.close_stdin_after_durable_completed();
+                true
+            }
+            Self::Idle(parts) => {
+                parts.transport.close();
+                true
+            }
+            Self::Prepared { turn, .. } => {
+                turn.parts.transport.close();
+                true
+            }
+            // A close already ended its input.
+            Self::ReusableDraining(_)
+            | Self::ReusableZero(_)
+            | Self::Draining(_)
+            | Self::Zero(_)
+            | Self::IdleDraining(_)
+            | Self::IdleZero(_)
+            | Self::Closed => true,
+            Self::Recovery(_) => false,
+        }
+    }
+
     pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken) {
         match self {
             Self::Reusable(parts) => parts.park_after_zero(token).await,
