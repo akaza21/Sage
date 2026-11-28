@@ -80,6 +80,14 @@ impl TreeControl {
         Err(LaunchError::PlatformUnavailable)
     }
 
+    pub(crate) fn request_graceful_termination(
+        &self,
+        _reason: TreeExit,
+        _grace: std::time::Duration,
+    ) -> Result<(), LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
     pub(crate) fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }

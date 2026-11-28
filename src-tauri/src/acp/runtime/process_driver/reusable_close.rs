@@ -139,7 +139,7 @@ where
         if self
             .parts
             .control
-            .request_termination(TreeExit::Cancelled)
+            .request_graceful_termination(TreeExit::Cancelled)
             .is_err()
         {
             return Err(failure(self, CloseError::Driver(DriverError::Tree)));

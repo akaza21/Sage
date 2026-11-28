@@ -20,14 +20,15 @@ use super::{
 
 impl TreeControl {
     pub(crate) fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
-        self.wait_before(Instant::now() + self.0.terminate_deadline)
+        self.wait_before(self.native_wait_deadline()?)
     }
 
     pub(crate) fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
-        self.wait_before(Instant::now() + self.0.terminate_deadline)
+        self.wait_before(self.native_wait_deadline()?)
     }
 
     pub(crate) fn wait_before(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
+        self.finish_grace(deadline)?;
         let status = loop {
             let mut child = self
                 .0
@@ -58,7 +59,7 @@ impl TreeControl {
         &self,
         deadline: Instant,
     ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
-        let exit = self.wait_before(deadline.min(Instant::now() + self.0.terminate_deadline))?;
+        let exit = self.wait_before(deadline.min(self.native_wait_deadline()?))?;
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
 

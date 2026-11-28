@@ -239,7 +239,7 @@ where
             }
         }
         if self.active.turn.driver.teardown_cause().is_none()
-            && let Err(error) = self.active.turn.driver.request_host_termination()
+            && let Err(error) = self.active.turn.driver.request_host_close()
         {
             return Err(failure(self, CloseError::Driver(error)));
         }

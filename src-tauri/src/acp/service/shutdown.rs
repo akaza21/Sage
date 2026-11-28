@@ -11,7 +11,7 @@ impl AcpService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
         let started = Instant::now();
-        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = crate::acp::process::graceful_exit::close_budget();
         self.close_agent_tabs_for_shutdown(started + budget);
         self.clear_lane_channels();
         let settlement = self.read_text_files.terminalize_all();
@@ -35,24 +35,33 @@ impl AcpService {
         // return keeps the slot, publisher, and journal alive for exact retry.
         self.shutdown_codex_recovery(started + budget)?;
         let mut runtime_failure = None;
-        for lane in self.lanes() {
-            let Some(runtime) = lane.runtime.begin_shutdown() else {
-                continue;
-            };
-            #[cfg(all(test, windows))]
-            if failure.is_none() {
-                self.record_shutdown_stage("runtime");
-            }
-            if let Err(error) = runtime.shutdown(started + budget) {
+        let runtimes: Vec<_> = self
+            .lanes()
+            .filter_map(|lane| lane.runtime.begin_shutdown().map(|runtime| (lane, runtime)))
+            .collect();
+        #[cfg(all(test, windows))]
+        if failure.is_none() && !runtimes.is_empty() {
+            self.record_shutdown_stage("runtime");
+        }
+        // Every harness gets its exit grace at the same time.
+        let outcomes = crate::acp::process::graceful_exit::close_all(&runtimes, |(_, runtime)| {
+            runtime.shutdown(started + budget)
+        });
+        // Every failed lane keeps its recovery authority before any error returns.
+        let mut slot_failure = None;
+        for ((lane, runtime), outcome) in runtimes.iter().zip(outcomes) {
+            #[cfg(not(all(test, windows)))]
+            let _ = runtime;
+            if let Err(error) = outcome {
                 #[cfg(all(test, windows))]
                 self.record_shutdown_stage(runtime.last_shutdown_phase());
-                lane.runtime
-                    .shutdown_failed()
-                    .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+                if lane.runtime.shutdown_failed().is_err() {
+                    slot_failure = Some(crate::acp::runtime::HostError::RecoveryRequired);
+                }
                 runtime_failure.get_or_insert(error);
             }
         }
-        if let Some(error) = runtime_failure {
+        if let Some(error) = slot_failure.or(runtime_failure) {
             return Err(error);
         }
         let remaining = (started + budget).saturating_duration_since(Instant::now());
@@ -139,7 +148,7 @@ impl Drop for AcpService {
         self.clear_lane_channels();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();
-        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = crate::acp::process::graceful_exit::close_budget();
         let recovery_deadline = started + budget;
         // A timed-out writer retains Arc-owned state and may still emit. Drop
         // must not claim a completed ACP teardown in that effect-unknown case.
@@ -161,12 +170,23 @@ impl Drop for AcpService {
             .shutdown(budget.saturating_sub(started.elapsed()));
         self.codex_auth.invalidate();
         let mut runtime_stopped = vec![true; self.lanes.len()];
-        for (index, lane) in self.lanes().enumerate() {
-            if let Some(runtime) = lane.runtime.begin_shutdown()
-                && runtime.shutdown(started + budget).is_err()
-            {
+        let runtimes: Vec<_> = self
+            .lanes()
+            .enumerate()
+            .filter_map(|(index, lane)| {
+                lane.runtime
+                    .begin_shutdown()
+                    .map(|runtime| (index, lane, runtime))
+            })
+            .collect();
+        let outcomes =
+            crate::acp::process::graceful_exit::close_all(&runtimes, |(_, _, runtime)| {
+                runtime.shutdown(started + budget)
+            });
+        for ((index, lane, _), outcome) in runtimes.iter().zip(outcomes) {
+            if outcome.is_err() {
                 let _ = lane.runtime.shutdown_failed();
-                runtime_stopped[index] = false;
+                runtime_stopped[*index] = false;
             }
         }
         let _ = self.stop_notifier(budget.saturating_sub(started.elapsed()));
