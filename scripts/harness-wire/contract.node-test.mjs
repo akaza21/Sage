@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -179,4 +180,29 @@ test("a neutralized object keeps no key of its own, only pseudonyms and scrubbed
       "field-3": [false],
     },
   );
+});
+
+test("a second --resanitize refuses to run while a corpus is locked", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-lock-"));
+  try {
+    fs.writeFileSync(path.join(out, ".resanitize.lock"), "");
+    const run = spawnSync(
+      process.execPath,
+      [
+        "scripts/harness-wire/capture.mjs",
+        "--out",
+        out,
+        "--harness",
+        "pi",
+        "--resanitize",
+        "--work",
+        out,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /another --resanitize is running/);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
 });

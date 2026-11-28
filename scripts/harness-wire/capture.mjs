@@ -15,7 +15,7 @@
 // Then compare with the committed corpus:
 //   node scripts/harness-wire/shape.mjs --diff src-tauri/tests/fixtures/harness-wire <dir>
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -136,7 +136,35 @@ function scratchRepo(dir) {
 // transcript first, so a model a catalog in one transcript names is replaced
 // the same way in all; a frame stored once in commands.jsonl and referenced
 // by hash from another transcript keeps its reference.
+// One re-scrub of a corpus at a time: an exclusive lock file in it, and
+// staging and backup names of this run's own, so no run touches another's.
 function resanitize(out, harnesses, work) {
+  const lock = path.join(out, ".resanitize.lock");
+  let held;
+  try {
+    held = fs.openSync(lock, "wx");
+  } catch (error) {
+    if (error.code === "EEXIST")
+      throw new Error(
+        `${lock} exists: another --resanitize is running, or one crashed (remove it once none is)`,
+        { cause: error },
+      );
+    throw error;
+  }
+  try {
+    resanitizeLocked(
+      out,
+      harnesses,
+      work,
+      `${process.pid}-${randomBytes(4).toString("hex")}`,
+    );
+  } finally {
+    fs.closeSync(held);
+    fs.rmSync(lock, { force: true });
+  }
+}
+
+function resanitizeLocked(out, harnesses, work, run) {
   const digest = (line) => createHash("sha256").update(line).digest("hex");
   const every = [];
   for (const harness of harnesses) {
@@ -238,31 +266,31 @@ function resanitize(out, harnesses, work) {
   // replaced.
   for (const [dir, staged] of every)
     for (const [file, body] of staged)
-      fs.writeFileSync(path.join(dir, `${file}.tmp`), body);
+      fs.writeFileSync(path.join(dir, `${file}.${run}.tmp`), body);
   // Scrubbing values leaves a shape as it was; when it does change one (a
   // synced skill dropped), the shape test says so: run `shape.mjs --write`.
-  // The corpus is replaced as a unit: each file is kept as `.bak` until every
+  // The corpus is replaced as a unit: each file is kept as this run's `.bak` until every
   // staged file is in place, and a failed rename puts every original back.
   const swapped = [];
   try {
     for (const [dir, staged] of every)
       for (const file of staged.keys()) {
         const target = path.join(dir, file);
-        fs.renameSync(target, `${target}.bak`);
+        fs.renameSync(target, `${target}.${run}.bak`);
         swapped.push(target);
-        fs.renameSync(`${target}.tmp`, target);
+        fs.renameSync(`${target}.${run}.tmp`, target);
       }
   } catch (error) {
     for (const target of swapped.reverse()) {
       fs.rmSync(target, { force: true });
-      fs.renameSync(`${target}.bak`, target);
+      fs.renameSync(`${target}.${run}.bak`, target);
     }
     for (const [dir, staged] of every)
       for (const file of staged.keys())
-        fs.rmSync(path.join(dir, `${file}.tmp`), { force: true });
+        fs.rmSync(path.join(dir, `${file}.${run}.tmp`), { force: true });
     throw error;
   }
-  for (const target of swapped) fs.rmSync(`${target}.bak`);
+  for (const target of swapped) fs.rmSync(`${target}.${run}.bak`);
 }
 
 async function main() {

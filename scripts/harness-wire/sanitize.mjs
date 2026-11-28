@@ -85,6 +85,7 @@ const ACCOUNT_RULES = new Map(
       "[].hidden",
     ],
     "@model": [
+      "value",
       "isDefault",
       "hidden",
       "contextWindow",
@@ -567,9 +568,7 @@ export function makeSanitizer({ roots }) {
         : undefined;
   // An element of a model list is a descriptor whatever else it carries.
   const isModel = (value, key = "") =>
-    (MODEL_LISTS.has(key) &&
-      !Array.isArray(value) &&
-      modelId(value) !== undefined) ||
+    (MODEL_LISTS.has(key) && value && !Array.isArray(value)) ||
     (typeof value?.id === "string" &&
       ((typeof value.api === "string" && typeof value.provider === "string") ||
         (typeof value.model === "string" && "displayName" in value))) ||
@@ -607,13 +606,17 @@ export function makeSanitizer({ roots }) {
   // The account's usage, as a limit notice reports it, normalized to fixed
   // values that keep their types and order: each window resets one window
   // after a fixed instant.
-  const usage = (object) => {
-    // Only a usage window (a limit notice's) or a credit balance.
+  const usage = (object, inAccount) => {
+    // Only a usage window (a limit notice's), a credit balance, or a reset
+    // time inside an account or rate-limit object, whatever its siblings.
+    const window =
+      "usedPercent" in object ||
+      "utilization" in object ||
+      "windowDurationMins" in object ||
+      "hasCredits" in object;
     if (
-      !("usedPercent" in object) &&
-      !("utilization" in object) &&
-      !("windowDurationMins" in object) &&
-      !("hasCredits" in object)
+      !window &&
+      !(inAccount && ("resetsAt" in object || "resets_at" in object))
     )
       return object;
     const out = { ...object };
@@ -621,8 +624,15 @@ export function makeSanitizer({ roots }) {
     if (typeof out.utilization === "number") out.utilization = 0.1;
     if (typeof out.status === "string" && "utilization" in out)
       out.status = "allowed";
-    if (typeof out.resetsAt === "number")
-      out.resetsAt = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
+    // A reset time, whatever its siblings and form, is one window after a
+    // fixed instant.
+    const reset = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
+    for (const field of ["resetsAt", "resets_at"]) {
+      if (typeof out[field] === "number")
+        out[field] = out[field] >= 1e12 ? reset * 1000 : reset;
+      else if (typeof out[field] === "string")
+        out[field] = new Date(reset * 1000).toISOString();
+    }
     return out;
   };
 
@@ -811,39 +821,41 @@ export function makeSanitizer({ roots }) {
             ? { root: key, path: [] }
             : null);
       return Object.fromEntries(
-        Object.entries(opaque ? value : usage(value)).map(([name, entry]) => {
-          const scrubbed = text(name);
-          // Inside an account object or catalog entry, every key below an
-          // opaque field is the account's own and gets a pseudonym; above
-          // one, a plain identifier is a protocol field name.
-          const renamed =
-            !opaque && CATALOG_KEYED.has(key)
-              ? PLACEHOLDER.test(scrubbed)
-                ? scrubbed
-                : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
-              : (base || catalog) && opaque
+        Object.entries(opaque ? value : usage(value, base !== null)).map(
+          ([name, entry]) => {
+            const scrubbed = text(name);
+            // Inside an account object or catalog entry, every key below an
+            // opaque field is the account's own and gets a pseudonym; above
+            // one, a plain identifier is a protocol field name.
+            const renamed =
+              !opaque && CATALOG_KEYED.has(key)
                 ? PLACEHOLDER.test(scrubbed)
                   ? scrubbed
-                  : pseudonym(keyNames, scrubbed, "key")
-                : base
-                  ? accountKey(scrubbed, base)
-                  : catalog
-                    ? accountKey(scrubbed, { root: "", path: [] })
-                    : scrubbed;
-          return [
-            renamed,
-            walk(
-              entry,
-              name,
-              model,
-              opaque || OPAQUE.has(name),
-              base && { root: base.root, path: [...base.path, renamed] },
-              catalog
-                ? { kind: catalog.kind, path: [...catalog.path, name] }
-                : null,
-            ),
-          ];
-        }),
+                  : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
+                : (base || catalog) && opaque
+                  ? PLACEHOLDER.test(scrubbed)
+                    ? scrubbed
+                    : pseudonym(keyNames, scrubbed, "key")
+                  : base
+                    ? accountKey(scrubbed, base)
+                    : catalog
+                      ? accountKey(scrubbed, { root: "", path: [] })
+                      : scrubbed;
+            return [
+              renamed,
+              walk(
+                entry,
+                name,
+                model,
+                opaque || OPAQUE.has(name),
+                base && { root: base.root, path: [...base.path, renamed] },
+                catalog
+                  ? { kind: catalog.kind, path: [...catalog.path, name] }
+                  : null,
+              ),
+            ];
+          },
+        ),
       );
     }
     return value;

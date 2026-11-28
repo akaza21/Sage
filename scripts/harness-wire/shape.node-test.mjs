@@ -1101,3 +1101,33 @@ test("configured MCP tools and every model list entry get pseudonyms, references
   });
   assert.doesNotMatch(JSON.stringify([init, call, codex]), /Acme|acme/);
 });
+
+test("a default model entry is a descriptor, and a reset time is fixed whatever its siblings", () => {
+  const [init, limit] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        availableModels: [
+          {
+            value: "default",
+            displayName: "Acme Private 3",
+            description: "Acme private deployment",
+          },
+        ],
+        note: "Using Acme Private 3",
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        rate_limit_info: { status: "allowed", resetsAt: 1795000000 },
+        rateLimits: { primary: { resets_at: "2026-11-26T20:00:00Z" } },
+      },
+    },
+  ]);
+  assert.equal(init.frame.availableModels[0].value, "default");
+  assert.doesNotMatch(JSON.stringify(init), /Acme|acme/);
+  assert.equal(limit.frame.rate_limit_info.resetsAt, 1800000000);
+  // Not on the rate-limit allow-list, so redacted outright.
+  assert.equal(limit.frame.rateLimits.primary.resets_at, "redacted");
+});
