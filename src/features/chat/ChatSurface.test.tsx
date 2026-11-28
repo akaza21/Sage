@@ -4699,11 +4699,15 @@ describe("ChatSurface ACP resource integration", () => {
     });
     rerender(<ChatSurface />);
     await expandReadActivity();
+    openFile.mockClear();
     fireEvent.click(
       await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
 
-    expect(openFile).toHaveBeenLastCalledWith({
+    // The click after the session switch must open the file again, not be
+    // dropped by a handler bound to the old session.
+    await waitFor(() => expect(openFile).toHaveBeenCalledTimes(1));
+    expect(openFile).toHaveBeenCalledWith({
       rootId: "root-a",
       relativePath: "src/main.ts",
     });
