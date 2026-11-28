@@ -353,3 +353,61 @@ fn a_request_codex_resolves_itself_stops_counting_against_the_chat() {
     let ids: Vec<_> = refusals.iter().map(|reply| reply["id"].clone()).collect();
     assert_eq!(ids, vec![json!(100)]);
 }
+
+#[test]
+fn a_resolution_after_its_thread_closed_still_retires_the_request() {
+    let (mut router, a, _) = two_threads();
+    only(router.inbound(approval(60, A)).unwrap());
+    let closed = json!({"method": "thread/closed", "params": {"threadId": A}});
+    only(router.inbound(closed).unwrap());
+    let resolved =
+        json!({"method": "serverRequest/resolved", "params": {"threadId": A, "requestId": 60}});
+    assert_eq!(router.inbound(resolved).unwrap(), Routed::default());
+    assert_eq!(router.release(a), Ok((Vec::new(), Vec::new())));
+}
+
+#[test]
+fn a_fork_the_parent_chat_unsubscribes_can_be_resumed_by_another_chat() {
+    let (mut router, a, b) = two_threads();
+    let fork = "01a22300-0000-7000-8000-00000000f0c1";
+    let host = written(router.outbound(
+        a,
+        json!({"id": 5, "method": "thread/fork", "params": {"threadId": A}}),
+    ))["id"]
+        .clone();
+    let mut reply = thread_started(fork);
+    reply["id"] = host;
+    only(router.inbound(reply).unwrap());
+    assert_eq!(router.owner(fork), Some(a));
+    written(router.outbound(
+        a,
+        json!({"id": 6, "method": "thread/unsubscribe", "params": {"threadId": fork}}),
+    ));
+    assert_eq!(router.owner(fork), None);
+    let host = written(router.outbound(
+        b,
+        json!({"id": 7, "method": "thread/resume", "params": {"threadId": fork}}),
+    ))["id"]
+        .clone();
+    let mut reply = thread_started(fork);
+    reply["id"] = host;
+    only(router.inbound(reply).unwrap());
+    assert_eq!(router.owner(fork), Some(b));
+    assert_eq!(router.owner(A), Some(a));
+}
+
+#[test]
+fn a_chat_request_id_the_router_would_have_to_keep_unbounded_is_refused() {
+    let (mut router, a, _) = two_threads();
+    let read = |id: Value| json!({"id": id, "method": "thread/read", "params": {"threadId": A}});
+    assert_eq!(
+        router.outbound(a, read(json!("i".repeat(129)))),
+        Err(RouterError::Malformed)
+    );
+    assert_eq!(
+        router.outbound(a, read(json!({"nested": 1}))),
+        Err(RouterError::Malformed)
+    );
+    written(router.outbound(a, read(json!("i".repeat(128)))));
+    written(router.outbound(a, read(json!(u64::MAX))));
+}

@@ -25,6 +25,8 @@ const MAX_SERVER_REQUESTS_PER_LEASE: usize = 64;
 const MAX_HOST_PENDING: usize = 16;
 /// Longest thread id the router keeps; a longer one names no thread.
 const MAX_THREAD_ID_BYTES: usize = 512;
+/// Longest string id a lease may give its own request.
+const MAX_OWN_ID_BYTES: usize = 128;
 /// Longest serialized server-request id the router keeps.
 const MAX_SERVER_REQUEST_ID_BYTES: usize = 128;
 /// JSON-RPC error a server request gets when no lease can answer it.
@@ -45,6 +47,8 @@ pub(crate) trait ScopePolicy {
     /// The server request a notification reports as resolved without the
     /// chat's answer.
     fn request_resolved<'a>(&self, frame: &'a Value) -> Option<&'a Value>;
+    /// The thread a lease's outbound request lets go of.
+    fn thread_released<'a>(&self, frame: &'a Value) -> Option<&'a str>;
     /// The thread a notification reports as unloaded.
     fn thread_closed<'a>(&self, frame: &'a Value) -> Option<&'a str>;
     /// The handshake request the host made once for every lease.
@@ -253,8 +257,22 @@ impl<P: ScopePolicy> HostRouter<P> {
                 Ok(Outbound::Answer(json!({"id": id, "result": result})))
             }
             (Some(method), Some(own_id)) => {
+                if !own_id.is_u64()
+                    && !own_id
+                        .as_str()
+                        .is_some_and(|id| id.len() <= MAX_OWN_ID_BYTES)
+                {
+                    return Err(RouterError::Malformed);
+                }
                 if self.lease_mut(slot)?.requests.len() >= MAX_PENDING_PER_LEASE {
                     return Err(RouterError::PendingFull);
+                }
+                // The lease lets go of a thread it unsubscribes, so another
+                // lease may take it (a released fork, a parked chat).
+                if let Some(thread) = self.policy.thread_released(&frame).map(str::to_owned) {
+                    self.lease_mut(slot)?
+                        .threads
+                        .retain(|owned| *owned != thread);
                 }
                 let host_id = self.take_host_id();
                 let opens = self.policy.opens_thread(&method);
@@ -338,6 +356,13 @@ impl<P: ScopePolicy> HostRouter<P> {
             self.unscoped(routed, frame);
             return;
         };
+        // Server-request ids are unique per process, so a resolution retires
+        // the request wherever it is open, even after its thread closed.
+        if let Some(resolved) = self.policy.request_resolved(&frame) {
+            for lease in self.leases.iter_mut().flatten() {
+                lease.server_requests.retain(|open| open != resolved);
+            }
+        }
         let Some(slot) = self.owner(&thread) else {
             // Nobody's: a server request is refused, a notification dropped.
             if let Some(id) = frame.get("id") {
@@ -347,11 +372,6 @@ impl<P: ScopePolicy> HostRouter<P> {
         };
         let child = self.policy.child_announced(&frame).map(str::to_owned);
         let closed = self.policy.thread_closed(&frame) == Some(thread.as_str());
-        if let Some(resolved) = self.policy.request_resolved(&frame).cloned()
-            && let Ok(lease) = self.lease_mut(slot)
-        {
-            lease.server_requests.retain(|open| *open != resolved);
-        }
         self.deliver(routed, slot, frame);
         if let Some(child) = child {
             self.bind_into(routed, slot, &child);

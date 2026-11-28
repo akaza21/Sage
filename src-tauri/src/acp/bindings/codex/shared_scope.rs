@@ -50,6 +50,13 @@ impl ScopePolicy for CodexScope {
         frame.get("params")?.get("requestId")
     }
 
+    fn thread_released<'a>(&self, frame: &'a Value) -> Option<&'a str> {
+        if frame.get("method").and_then(Value::as_str) != Some("thread/unsubscribe") {
+            return None;
+        }
+        frame.get("params")?.get("threadId")?.as_str()
+    }
+
     fn thread_closed<'a>(&self, frame: &'a Value) -> Option<&'a str> {
         if frame.get("method").and_then(Value::as_str) != Some("thread/closed") {
             return None;
