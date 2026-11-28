@@ -3,12 +3,13 @@
 // Generates the contract of the harness's newest published release (or the
 // version given) from its official definitions and prints every added or
 // removed kind and field. Exits 1 when a harness changed, so a scheduled run
-// flags it. `--write` admits the new contract (the oldest beyond the kept
-// three is dropped); then recapture the corpus at that version
-// (`capture.mjs`), triage `shape.mjs --diff`, rerun `contract.mjs check` and
-// the replay tests, and review both diffs in one PR.
+// flags it. It only reports: it works in a temporary folder and never changes
+// the checked contracts. To admit a release, run `contract.mjs generate
+// <harness> <version>`, recapture the corpus at that version (`capture.mjs`),
+// triage `shape.mjs --diff`, rerun `contract.mjs check` and the replay tests
+// (`cargo test -p sage --lib wire_`), and review both diffs in one PR.
 //
-//   node scripts/harness-wire/upgrade.mjs [harness[@version] ...] [--write]
+//   node scripts/harness-wire/upgrade.mjs [harness[@version] ...]
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,7 +46,7 @@ export function report(before, after) {
   };
 }
 
-async function upgrade(target, write) {
+async function upgrade(target) {
   const [harness, asked] = target.split("@");
   const provider = await import(
     pathToFileURL(path.join(HERE, `${harness}.contract.mjs`)).href
@@ -54,21 +55,17 @@ async function upgrade(target, write) {
   const kept = contracts(harness).at(-1);
   if (!kept) throw new Error(`${harness}: no checked contract to compare`);
   const before = JSON.parse(fs.readFileSync(kept.file, "utf8"));
-  const root = write
-    ? CONTRACTS
-    : fs.mkdtempSync(path.join(os.tmpdir(), "sage-upgrade-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sage-upgrade-"));
   try {
     const { contract } = await generate(harness, version, root);
     return report(before, contract);
   } finally {
-    if (!write) fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const write = args.includes("--write");
-  const named = args.filter((arg) => !arg.startsWith("--"));
+  const named = process.argv.slice(2);
   const targets = named.length
     ? named
     : fs
@@ -80,7 +77,7 @@ async function main() {
   // One harness failing still reports the others, and fails the run.
   for (const target of targets) {
     try {
-      const result = await upgrade(target, write);
+      const result = await upgrade(target);
       for (const line of result.lines) console.log(line);
       changed ||= result.changed;
     } catch (error) {
@@ -88,7 +85,7 @@ async function main() {
       failed = true;
     }
   }
-  if (failed || (changed && !write)) process.exit(1);
+  if (failed || changed) process.exit(1);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
