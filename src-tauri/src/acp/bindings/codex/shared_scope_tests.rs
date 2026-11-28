@@ -133,7 +133,7 @@ fn a_released_chat_gets_nothing_more_and_its_slot_serves_the_next_chat() {
     let (mut router, a, b) = two_threads();
     let pending = written(router.outbound(
         a,
-        json!({"id": 9, "method": "thread/unsubscribe", "params": {"threadId": A}}),
+        json!({"id": 9, "method": "thread/read", "params": {"threadId": A}}),
     ));
     assert_eq!(router.release(a), Ok((vec![A.to_owned()], Vec::new())));
     assert_eq!(
