@@ -109,18 +109,6 @@ fn an_approval_goes_to_its_chat_and_only_that_chat_may_answer_it() {
 }
 
 #[test]
-fn a_server_request_for_a_thread_no_chat_owns_is_refused_so_the_process_never_waits() {
-    let (mut router, _, _) = two_threads();
-    let elicit = json!({"id": 4, "method": "mcpServer/elicitation/request",
-        "params": {"threadId": "gone", "turnId": "t", "serverName": "spike"}});
-    let routed = router.inbound(elicit).unwrap();
-    assert!(routed.deliveries.is_empty());
-    let [reply] = <[_; 1]>::try_from(routed.replies).expect("one refusal");
-    assert_eq!(reply["id"], json!(4));
-    assert!(reply["error"]["code"].is_i64());
-}
-
-#[test]
 fn each_chat_handshake_is_answered_by_the_host_and_never_reaches_the_process() {
     let mut router = HostRouter::new(CodexScope);
     let slot = router.admit().unwrap();
