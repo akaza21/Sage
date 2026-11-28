@@ -64,7 +64,7 @@
     "Initialized {}",
     "SessionReady {\"id\":\"#1\",\"loaded\":false}",
     "Absorbed x14",
-    "ChildThreadItem {\"id\":\"#2\",\"lifecycle\":\"started\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":\"Reply with only the word: pong\",\"receiverLabels\":[\"Reply with pong\"],\"operation\":\"spawnAgent\",\"agentKey\":null,\"agentKeys\":[\"toolu_0165n6bwgW7Y5LNzyXMkq9cJ\"],\"agentStates\":[[\"toolu_0165n6bwgW7Y5LNzyXMkq9cJ\",\"running\"]]}},\"child_thread_id\":\"#3\"}",
+    "ChildThreadItem {\"id\":\"#2\",\"lifecycle\":\"started\",\"payload\":{\"kind\":\"collaboration\",\"payload\":{\"label\":\"Subagent\",\"message\":\"Reply with only the word: pong\",\"receiverLabels\":[\"Reply with pong\"],\"operation\":\"spawnAgent\",\"agentKey\":null,\"agentKeys\":[\"toolu_000000000000000000000030\"],\"agentStates\":[[\"toolu_000000000000000000000030\",\"running\"]]}},\"child_thread_id\":\"#3\"}",
     "ChildLiveItem {\"child_thread_id\":\"#3\",\"child_turn_id\":\"#3\",\"item_id\":\"#4\",\"role\":\"user\",\"lifecycle\":\"completed\",\"tool_state\":null,\"payload\":{\"kind\":\"text\",\"payload\":{\"text\":\"<30 chars>\"}}}",
     "Absorbed x2",
     "Session {\"id\":\"#1\",\"event\":{\"kind\":\"subagent\",\"id\":\"#5\",\"label\":\"Reply with pong\",\"state\":\"running\",\"progress\":null,\"stoppable\":true}}",

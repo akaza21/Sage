@@ -167,6 +167,10 @@ function resanitize(out, harnesses, work) {
       sanitizer.learn(lines(file).map((line) => JSON.parse(line)));
     // The new hash of each commands.jsonl line, by its old hash.
     const moved = new Map();
+    // Every transcript is rewritten and its references checked in memory
+    // first; only then are the files replaced, so a failure leaves the
+    // corpus as it was.
+    const staged = new Map();
     for (const file of files) {
       const before = lines(file);
       const after = sanitizer
@@ -191,8 +195,12 @@ function resanitize(out, harnesses, work) {
         before.forEach((line, at) =>
           moved.set(digest(line), digest(after[at])),
         );
-      fs.writeFileSync(path.join(dir, file), `${after.join("\n")}\n`);
+      staged.set(file, `${after.join("\n")}\n`);
     }
+    for (const [file, body] of staged)
+      fs.writeFileSync(path.join(dir, `${file}.tmp`), body);
+    for (const file of staged.keys())
+      fs.renameSync(path.join(dir, `${file}.tmp`), path.join(dir, file));
     fs.writeFileSync(
       path.join(dir, "shape.json"),
       `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,

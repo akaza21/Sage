@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
@@ -70,6 +72,18 @@ for (const harness of harnesses) {
         /\\\\Users\\\\|\/Users\/|\/home\/(?!fixture)/i,
         name,
       );
+      // The account's usage, its sign-in's expiry, and the provider's
+      // request, edge, message and tool-use ids.
+      for (const pattern of [
+        /cf-ray: (?!0{16}-XXX)/,
+        /req_(?!0{32})[0-9A-Za-z]{16}/,
+        /\b(?:msg|toolu|srvtoolu|call|resp)_(?!0{12})[0-9A-Za-z]{12}/,
+        /"credential_expires_at":"(?!2027-01-01T00:00:00\.000Z)/,
+        /"usedPercent":(?!10[,}])\d/,
+        /"utilization":(?!0\.1[,}])\d/,
+        /"resetsAt":(?!180\d{7}[,}])\d/,
+      ])
+        assert.doesNotMatch(body, pattern, name);
     }
   });
 
@@ -332,4 +346,123 @@ test("the account's usage and the provider's request ids are normalized", () => 
     failure.frame.params.error.additionalDetails,
     "401 Unauthorized, cf-ray: 0000000000000000-XXX, request id: req_00000000000000000000000000000000",
   );
+});
+
+test("provider ids keep their links, a sign-in's expiry is fixed, other payloads are left alone", () => {
+  const [use, result, auth, tool, catalog] = makeSanitizer({
+    roots: [],
+  }).records([
+    {
+      direction: "in",
+      frame: {
+        type: "assistant",
+        message: {
+          id: "msg_01AbCdEfGhIjKlMnOp",
+          content: [{ type: "tool_use", id: "toolu_01QrStUvWxYz012345" }],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_01QrStUvWxYz012345" },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        type: "system",
+        subtype: "init",
+        credential_expires_at: "2026-12-25T11:47:22.873Z",
+      },
+    },
+    // A tool's own input that happens to use usage-like keys.
+    {
+      direction: "in",
+      frame: {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              input: { balance: "125", resetsAt: 123 },
+              extra: { balance: "125", resetsAt: 123 },
+            },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: {
+        id: 3,
+        result: {
+          data: [
+            {
+              id: "private-a",
+              model: "private-a",
+              displayName: "A",
+              upgrade: "private-b",
+            },
+          ],
+        },
+      },
+    },
+  ]);
+  const toolUse = use.frame.message.content[0].id;
+  assert.match(use.frame.message.id, /^msg_0+1$/);
+  assert.match(toolUse, /^toolu_0+\d$/);
+  assert.equal(result.frame.message.content[0].tool_use_id, toolUse);
+  assert.equal(auth.frame.credential_expires_at, "2027-01-01T00:00:00.000Z");
+  assert.deepEqual(tool.frame.message.content[0].extra, {
+    balance: "125",
+    resetsAt: 123,
+  });
+  assert.doesNotMatch(JSON.stringify(catalog), /private/);
+});
+
+test("a re-scrub that cannot keep every reference leaves the corpus as it was", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "sage-resanitize-"));
+  try {
+    const dir = path.join(out, "pi");
+    fs.mkdirSync(dir);
+    const commands = `${JSON.stringify({ direction: "in", frame: { type: "response", id: "req_0123456789abcdefABCD" } })}\n`;
+    const broken = `${JSON.stringify({ direction: "in", ref: "commands.jsonl", sha256: "ffffffffffff" })}\n`;
+    fs.writeFileSync(path.join(dir, "commands.jsonl"), commands);
+    fs.writeFileSync(path.join(dir, "shell.jsonl"), broken);
+    const run = spawnSync(
+      process.execPath,
+      [
+        path.join("scripts", "harness-wire", "capture.mjs"),
+        "--out",
+        out,
+        "--harness",
+        "pi",
+        "--resanitize",
+        "--work",
+        path.join(out, "work"),
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(run.status, 0);
+    assert.equal(
+      fs.readFileSync(path.join(dir, "commands.jsonl"), "utf8"),
+      commands,
+    );
+    assert.equal(
+      fs.readFileSync(path.join(dir, "shell.jsonl"), "utf8"),
+      broken,
+    );
+    assert.deepEqual(fs.readdirSync(dir).sort(), [
+      "commands.jsonl",
+      "shell.jsonl",
+    ]);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
 });

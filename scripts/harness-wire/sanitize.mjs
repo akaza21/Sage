@@ -45,8 +45,10 @@ const REQUEST_IDS = [
   [/\bcf-ray: [0-9a-f]+(?:-[A-Z]{3})?/g, "cf-ray: 0000000000000000-XXX"],
   [/\breq_[0-9A-Za-z]{16,}/g, "req_00000000000000000000000000000000"],
 ];
+// A provider's own message, tool-use and call ids.
+const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
 // Fields of a model descriptor, and fields elsewhere that name a model.
-const MODEL_FIELDS = new Set(["id", "model", "name"]);
+const MODEL_FIELDS = new Set(["id", "model", "name", "upgrade"]);
 const MODEL_KEYS = new Set([
   "model",
   "modelId",
@@ -57,6 +59,12 @@ const MODEL_KEYS = new Set([
 ]);
 // The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
 const USAGE_EPOCH = 1800000000;
+// When the account's stored sign-in expires.
+const CREDENTIAL_EXPIRY_KEYS = new Set([
+  "credential_expires_at",
+  "credentialExpiresAt",
+]);
+const CREDENTIAL_EXPIRY = "2027-01-01T00:00:00.000Z";
 // Bounded by any non-hex character, so an id after `_` (a Pi session file
 // name) is caught too.
 const UUID =
@@ -110,6 +118,9 @@ export function makeSanitizer({ roots }) {
   const host = os.hostname();
   const user = os.userInfo().username;
   const uuids = new Map();
+  // A provider's message, tool-use and call ids map to stable placeholders,
+  // so references between frames hold but provider records cannot be found.
+  const providerIds = new Map();
 
   const text = (value) => {
     let out = value;
@@ -121,6 +132,14 @@ export function makeSanitizer({ roots }) {
       .replace(EMAIL, "user@example.invalid");
     for (const [pattern, target] of REQUEST_IDS)
       out = out.replace(pattern, target);
+    out = out.replace(PROVIDER_ID, (match, prefix) => {
+      if (!providerIds.has(match))
+        providerIds.set(
+          match,
+          `${prefix}_${String(providerIds.size + 1).padStart(24, "0")}`,
+        );
+      return providerIds.get(match);
+    });
     out = out.replace(UUID, (match) => {
       const key = match.toLowerCase();
       if (!uuids.has(key)) {
@@ -197,6 +216,14 @@ export function makeSanitizer({ roots }) {
   // values that keep their types and order: each window resets one window
   // after a fixed instant.
   const usage = (object) => {
+    // Only a usage window (a limit notice's) or a credit balance.
+    if (
+      !("usedPercent" in object) &&
+      !("utilization" in object) &&
+      !("windowDurationMins" in object) &&
+      !("hasCredits" in object)
+    )
+      return object;
     const out = { ...object };
     if (typeof out.usedPercent === "number") out.usedPercent = 10;
     if (typeof out.utilization === "number") out.utilization = 0.1;
@@ -209,7 +236,20 @@ export function makeSanitizer({ roots }) {
   const walk = (value, key, inModel = false) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
+    if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
+      return CREDENTIAL_EXPIRY;
     if (typeof value === "string") {
+      // A model a descriptor names that no catalog listed (an upgrade
+      // target) gets its own placeholder; placeholders stay as they are.
+      if (
+        inModel &&
+        MODEL_FIELDS.has(key) &&
+        !models.has(value) &&
+        !/^(?:model-|Model )\d+$/.test(value)
+      ) {
+        modelCount += 1;
+        models.set(value, `model-${modelCount}`);
+      }
       if (
         models.has(value) &&
         ((inModel && MODEL_FIELDS.has(key)) || MODEL_KEYS.has(key))
