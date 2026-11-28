@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
-import { checkCorpus, diffContracts } from "./contract.mjs";
+import {
+  CONTRACTS,
+  checkCorpus,
+  contracts,
+  diffContracts,
+} from "./contract.mjs";
 
 test("every recorded frame matches its harness version's contract and reviewed list", () => {
+  const checked = fs
+    .readdirSync(CONTRACTS)
+    .filter((harness) => contracts(harness).length);
+  assert.ok(checked.length >= 2, `contracts found for ${checked}`);
   assert.deepEqual(checkCorpus(), []);
 });
 
