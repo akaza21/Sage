@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { published } from "./npm.mjs";
 import { OPAQUE } from "./shape.mjs";
 
 const BUNDLE = "codex_app_server_protocol.schemas.json";
@@ -100,12 +101,24 @@ function methodOf(entry) {
   return entry.properties?.method?.enum?.[0];
 }
 
+export function latest() {
+  return published("@openai/codex");
+}
+
 export async function contract(version, work) {
   const wanted = version.match(/\d+\.\d+\.\d+/)[0];
-  const installed = execFileSync("codex", ["--version"], {
-    encoding: "utf8",
-    shell: process.platform === "win32",
-  });
+  // No installed Codex (a CI runner) means npx fetches the asked version.
+  const installed = (() => {
+    try {
+      return execFileSync("codex", ["--version"], {
+        encoding: "utf8",
+        shell: process.platform === "win32",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    } catch {
+      return "";
+    }
+  })();
   // The installed binary only when it is exactly that version.
   const command =
     installed.match(/\d+\.\d+\.\d+/)?.[0] === wanted
@@ -207,7 +220,7 @@ export async function contract(version, work) {
   replies(outbound, "ServerRequest");
   return {
     version: wanted,
-    source: `codex app-server generate-json-schema --experimental (${installed.trim()})`,
+    source: `codex app-server generate-json-schema --experimental (codex-cli ${wanted})`,
     in: inbound,
     out: outbound,
     types: graph.types,
