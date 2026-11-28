@@ -90,7 +90,6 @@ export function Workbench() {
     ),
   );
   const compact = useCompactWorkbenchLayout();
-  const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
@@ -101,27 +100,36 @@ export function Workbench() {
   const [agentArtifactExpanded, changeAgentArtifact] = useState(false);
   const [artifactMaximized, setArtifactMaximized] = useState(false);
   if (!agentArtifactExpanded && artifactMaximized) setArtifactMaximized(false);
-  const [navigation, setNavigation] = useState({
-    narrow: narrowAgent,
-    collapsed: narrowAgent,
-  });
-  const agentNavigationCollapsed =
-    navigation.narrow === narrowAgent ? navigation.collapsed : narrowAgent;
-  if (navigation.narrow !== narrowAgent)
-    setNavigation({ narrow: narrowAgent, collapsed: narrowAgent });
+  // The docked preference survives the auto-hidden band; the overlay does not.
+  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
+  const [navigationOverlayOpen, setNavigationOverlayOpen] = useState(false);
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
     useAgentDesktopSidebarWidths(
       agentArtifactExpanded,
-      agentNavigationCollapsed,
+      navigationCollapsed,
+      navigationOverlayOpen,
+      initialLayout.agentSidebarWidth,
     );
+  if (navigationOverlayOpen && !agentLayout.navigationAutoHidden)
+    setNavigationOverlayOpen(false);
+  const agentNavigationShown =
+    !agentLayout.navigationCollapsed || agentLayout.navigationOverlay;
   const toggleAgentNavigation = useCallback(() => {
+    if (agentLayout.navigationAutoHidden) {
+      if (!agentLayout.navigationOverlay && agentLayout.artifactOverlay)
+        changeAgentArtifact(false);
+      setNavigationOverlayOpen(!agentLayout.navigationOverlay);
+      return;
+    }
     const collapsed = !agentLayout.navigationCollapsed;
     if (!collapsed && !agentLayout.navigationFits) changeAgentArtifact(false);
-    setNavigation({ narrow: narrowAgent, collapsed });
+    setNavigationCollapsed(collapsed);
   }, [
+    agentLayout.artifactOverlay,
+    agentLayout.navigationAutoHidden,
     agentLayout.navigationCollapsed,
     agentLayout.navigationFits,
-    narrowAgent,
+    agentLayout.navigationOverlay,
   ]);
   const agentVisible = windowMode === "agent" && !agentSettingsPage;
   const agentCenterVisible = !agentLayout.artifactOverlay && !artifactMaximized;
@@ -234,7 +242,7 @@ export function Workbench() {
         mode={windowMode}
         onModeChange={setWindowMode}
         inert={resourceModal}
-        agentNavigationCollapsed={agentLayout.navigationCollapsed}
+        agentNavigationCollapsed={!agentNavigationShown}
         onToggleAgentNavigation={toggleAgentNavigation}
       />
       {isTauriRuntime() ? (
@@ -243,9 +251,7 @@ export function Workbench() {
           load={loadRailStatus}
           fallback={null}
           render={(Observer) => (
-            <Observer
-              visible={agentVisible && !agentLayout.navigationCollapsed}
-            />
+            <Observer visible={agentVisible && agentNavigationShown} />
           )}
         />
       ) : null}

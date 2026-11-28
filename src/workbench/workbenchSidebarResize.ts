@@ -4,12 +4,26 @@ export type WorkbenchSidebarWidth = {
   maxWidth: number;
 };
 
-// The owner's Codex desktop capture (1872 px wide, 100% scale): the icon rail
-// plus the chat list end at x = 326, and the icon rail is 46 px of that.
+/** The Agent icon rail; matches --agent-icon-rail-width in global.css. */
+export const AGENT_ICON_RAIL_WIDTH = 46;
+
+/** The chat and project panel beside the icon rail: 256 px by default,
+ *  dragged up to 456 px. The one source of the panel's range. */
+export const AGENT_SIDEBAR_PANEL_WIDTH: WorkbenchSidebarWidth = {
+  defaultWidth: 256,
+  minWidth: 256,
+  maxWidth: 456,
+};
+
+/** Below this window width the panel hides itself; the toggle brings it back
+ *  as an overlay above the chat. */
+export const AGENT_SIDEBAR_AUTO_HIDE_BELOW = 800;
+
+/** The icon rail plus the panel, as the Agent grid column measures it. */
 export const AGENT_LEFT_RAIL_WIDTH: WorkbenchSidebarWidth = {
-  defaultWidth: 326,
-  minWidth: 180,
-  maxWidth: 460,
+  defaultWidth: AGENT_ICON_RAIL_WIDTH + AGENT_SIDEBAR_PANEL_WIDTH.defaultWidth,
+  minWidth: AGENT_ICON_RAIL_WIDTH + AGENT_SIDEBAR_PANEL_WIDTH.minWidth,
+  maxWidth: AGENT_ICON_RAIL_WIDTH + AGENT_SIDEBAR_PANEL_WIDTH.maxWidth,
 };
 
 export const EDITOR_TOOL_RAIL_WIDTH: WorkbenchSidebarWidth = {
@@ -19,9 +33,6 @@ export const EDITOR_TOOL_RAIL_WIDTH: WorkbenchSidebarWidth = {
 };
 
 export const EDITOR_ACTIVITY_BAR_WIDTH = 48;
-
-/** The Agent icon rail; matches --agent-icon-rail-width in global.css. */
-export const AGENT_ICON_RAIL_WIDTH = 46;
 
 export const AGENT_CHAT_MIN_WIDTH = 360;
 

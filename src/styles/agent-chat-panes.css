@@ -5,6 +5,32 @@
   grid-template-columns: var(--agent-icon-rail-width);
 }
 
+/* Under the auto-hide width the full panel floats over the chat from the
+   icon rail's track, so the chat column keeps its width. */
+.workbench--agent.workbench--navigation-collapsed
+  .workbench__body--navigation-overlay
+  > .project-sidebar {
+  position: relative;
+  z-index: var(--z-overlay);
+  width: var(--agent-navigation-overlay-width);
+  grid-template-columns: var(--agent-icon-rail-width) minmax(0, 1fr);
+  box-shadow: var(--elevation-popover);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workbench__body--navigation-overlay > .project-sidebar {
+    animation: agent-navigation-overlay-in var(--motion-duration-normal)
+      ease-out;
+  }
+}
+
+@keyframes agent-navigation-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
 .agent-chat-center {
   display: grid;
   container-name: chat-center;
@@ -118,7 +144,7 @@
 }
 
 .agent-chat-panes--split .message-list {
-  padding: var(--space-2) var(--chat-column-gutter) var(--space-6);
+  padding: var(--space-2) 0 var(--space-6);
 }
 
 .agent-chat-chip {

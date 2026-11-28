@@ -215,25 +215,16 @@ it("restores Files with collapsed navigation when split space returns and lets n
   expect(composer).toBeVisible();
 });
 
-it.each([
-  { collapsed: false, entry: "Home" },
-  { collapsed: true, entry: "Home" },
-  { collapsed: false, entry: "shortcut" },
-  { collapsed: true, entry: "shortcut" },
-])(
-  "$entry dismisses the resource overlay before focusing the draft; collapsed=$collapsed",
-  async ({ collapsed, entry }) => {
+// Under 800px the panel auto-hides, so only the icon rail sits beside the
+// resource overlay.
+it.each([{ entry: "Home" }, { entry: "shortcut" }])(
+  "$entry dismisses the resource overlay before focusing the draft",
+  async ({ entry }) => {
     vi.stubGlobal("innerWidth", 700);
     const before = await ports.project.getBootstrapSnapshot();
     const create = vi.spyOn(ports.chat, "createChat");
     render(<Workbench />);
     await settleLazyModules();
-    if (collapsed) {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Hide projects and chats" }),
-      );
-      await settleLazyModules();
-    }
     const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Overlay draft" } });
     fireEvent.click(

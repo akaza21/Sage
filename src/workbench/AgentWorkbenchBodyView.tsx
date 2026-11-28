@@ -11,6 +11,7 @@ import { AgentToolsProvider } from "./AgentToolsProvider";
 import { LeftSidebar } from "./LeftSidebar";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { useNavigationFocusCarry } from "./useNavigationFocusCarry";
+import { useNavigationOverlayDismiss } from "./useNavigationOverlayDismiss";
 import { AgentNavigationPart } from "./agentNavigationLazy";
 import {
   AgentHomeNavigationContext,
@@ -58,7 +59,10 @@ export default function AgentWorkbenchBodyView({
   const openSettings = useAgentSettingsState((state) => state.open);
   const [artifactHeader, setArtifactHeader] =
     useRetainedElement<HTMLDivElement>();
-  const railRef = useNavigationFocusCarry(navigationCollapsed);
+  const navigationOverlay = layout.navigationOverlay;
+  const railDocked = navigationCollapsed && !navigationOverlay;
+  const railRef = useNavigationFocusCarry(railDocked);
+  useNavigationOverlayDismiss(navigationOverlay, onExpandNavigation);
   const draftShown = useDraftShown();
   useEffect(() => {
     if (draftShown && layout.artifactOverlay) onArtifactExpandedChange(false);
@@ -79,16 +83,17 @@ export default function AgentWorkbenchBodyView({
     <AgentChatOwnerScopeContext.Provider value>
       <AgentToolsProvider onOpenTerminal={onOpenTerminal}>
         <div
-          className={`workbench__body${layout.artifactOverlay ? " workbench__body--artifact-overlay" : ""}`}
+          className={`workbench__body${layout.artifactOverlay ? " workbench__body--artifact-overlay" : ""}${navigationOverlay ? " workbench__body--navigation-overlay" : ""}`}
           style={
             {
               ...style,
               "--agent-artifact-overlay-width": `${layout.artifactOverlayWidth}px`,
+              "--agent-navigation-overlay-width": `${layout.navigationOverlayWidth}px`,
             } as CSSProperties
           }
         >
           <AgentHomeNavigationContext.Provider value={navigateHome}>
-            {navigationCollapsed ? (
+            {railDocked ? (
               <AgentNavigationPart
                 part="AgentCollapsedNavigation"
                 fallback={

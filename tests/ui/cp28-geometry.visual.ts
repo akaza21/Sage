@@ -154,8 +154,9 @@ async function expectColumnAlignment(pane: Locator) {
   const composer = await pane.locator(".composer").boundingBox();
   const dock = await pane.locator(".chat-dock").boundingBox();
   expect(answer && composer && dock).toBeTruthy();
-  expect(dock!.x).toBeCloseTo(answer!.x, 0);
-  expect(dock!.width).toBeCloseTo(answer!.width, 0);
+  // The dock is the chat column; transcript text sits a further 8px in.
+  expect(dock!.x + 8).toBeCloseTo(answer!.x, 0);
+  expect(dock!.width - 16).toBeCloseTo(answer!.width, 0);
   expect(composer!.x).toBe(dock!.x + 1);
   expect(composer!.width).toBe(dock!.width - 2);
   expect(

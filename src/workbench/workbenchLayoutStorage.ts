@@ -1,4 +1,5 @@
 import {
+  AGENT_SIDEBAR_PANEL_WIDTH,
   EDITOR_TOOL_RAIL_WIDTH,
   clampWorkbenchSidebarWidth,
 } from "./workbenchSidebarResize";
@@ -13,6 +14,9 @@ export const WORKBENCH_LAYOUT_STORAGE_KEY = "sage.workbench.layout.v1";
 export type WorkbenchLayout = {
   editorToolRailWidth: number;
   windowMode: WorkbenchWindowMode;
+  /** The Agent chat and project panel, without the icon rail; absent until
+   *  the person drags it. */
+  agentSidebarWidth?: number;
 };
 
 export function defaultWorkbenchLayout(): WorkbenchLayout {
@@ -57,6 +61,14 @@ function normalizeWorkbenchLayout(layout: WorkbenchLayout): WorkbenchLayout {
     windowMode: isWorkbenchWindowMode(layout.windowMode)
       ? layout.windowMode
       : DEFAULT_WORKBENCH_WINDOW_MODE,
+    // JSON drops an absent width, so an untouched panel keeps no record.
+    agentSidebarWidth:
+      typeof layout.agentSidebarWidth === "number"
+        ? clampWorkbenchSidebarWidth(
+            AGENT_SIDEBAR_PANEL_WIDTH,
+            layout.agentSidebarWidth,
+          )
+        : undefined,
   };
 }
 

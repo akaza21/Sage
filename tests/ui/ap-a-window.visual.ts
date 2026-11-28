@@ -25,8 +25,8 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   const original = await visibleIds();
   expect(original).toEqual(["visual-chat-primary"]);
   for (const centerWidth of [859, 860, 1200, 859, 1200]) {
-    // The 326 px navigation plus its 8 px splitter sit beside the center.
-    await page.setViewportSize({ width: centerWidth + 334, height: 1000 });
+    // The 302 px navigation (icon rail + 256 px panel) plus its 8 px splitter sit beside the center.
+    await page.setViewportSize({ width: centerWidth + 310, height: 1000 });
     await expect
       .poll(async () =>
         Math.round((await page.locator(".center-region").boundingBox())!.width),
@@ -175,7 +175,7 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
     panes.getByRole("combobox", { name: "Message agent" }),
   ).toHaveValue("");
   await expect(panes.getByRole("alert")).toHaveCount(0);
-  await page.setViewportSize({ width: 1193, height: 1000 });
+  await page.setViewportSize({ width: 1169, height: 1000 });
   await expect(panes).toHaveCount(1);
   await page.setViewportSize({ width: 1888, height: 1000 });
   await expect(panes).toHaveCount(1);

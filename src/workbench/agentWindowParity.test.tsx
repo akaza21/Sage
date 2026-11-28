@@ -104,42 +104,65 @@ it("toggles Agent navigation with Ctrl+B without creating a Chat", async () => {
   expect(useWorkbenchStore.getState().createChat).not.toHaveBeenCalled();
 });
 
-it("collapses on entering a narrow breakpoint after desktop sidebar interaction", async () => {
-  let update = () => {};
-  const media = {
-    matches: false,
-    addEventListener: (_: string, listener: () => void) => {
-      update = listener;
-    },
-    removeEventListener: vi.fn(),
-  };
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((query: string) =>
-      query === "(max-width: 600px)"
-        ? media
-        : {
-            matches: false,
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-          },
-    ),
-  );
+it("auto-hides under 800px, returns as an overlay, and restores the docked panel when widened", async () => {
+  const resizeWindow = (width: number) =>
+    act(() => {
+      vi.stubGlobal("innerWidth", width);
+      window.dispatchEvent(new Event("resize"));
+    });
   const { container } = render(<Workbench />);
   await settleLazyModules();
-  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
-  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
-  expect(container.querySelector(".workbench")).not.toHaveClass(
-    "workbench--navigation-collapsed",
-  );
-  act(() => {
-    media.matches = true;
-    update();
-  });
+  const workbench = container.querySelector(".workbench");
+  const body = () => container.querySelector(".workbench__body");
+  expect(workbench).not.toHaveClass("workbench--navigation-collapsed");
+  resizeWindow(799);
   await settleLazyModules();
-  expect(container.querySelector(".workbench")).toHaveClass(
-    "workbench--navigation-collapsed",
+  expect(workbench).toHaveClass("workbench--navigation-collapsed");
+  expect(body()).not.toHaveClass("workbench__body--navigation-overlay");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show projects and chats" }),
   );
+  await settleLazyModules();
+  expect(body()).toHaveClass("workbench__body--navigation-overlay");
+  expect(
+    screen.getByRole("complementary", { name: "Projects and chats" }),
+  ).toBeInTheDocument();
+  // The overlay floats over the chat; the grid keeps only the icon rail.
+  expect((body() as HTMLElement).style.gridTemplateColumns).toBe(
+    "46px minmax(0, 1fr)",
+  );
+  // A press outside the panel, or Escape, puts it away; inside it stays.
+  fireEvent.pointerDown(
+    screen.getByRole("complementary", { name: "Projects and chats" }),
+  );
+  expect(body()).toHaveClass("workbench__body--navigation-overlay");
+  fireEvent.pointerDown(container.querySelector(".center-region")!);
+  await settleLazyModules();
+  expect(body()).not.toHaveClass("workbench__body--navigation-overlay");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show projects and chats" }),
+  );
+  await settleLazyModules();
+  expect(body()).toHaveClass("workbench__body--navigation-overlay");
+  fireEvent.keyDown(document, { key: "Escape" });
+  await settleLazyModules();
+  expect(body()).not.toHaveClass("workbench__body--navigation-overlay");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show projects and chats" }),
+  );
+  await settleLazyModules();
+  resizeWindow(800);
+  await settleLazyModules();
+  expect(workbench).not.toHaveClass("workbench--navigation-collapsed");
+  expect(body()).not.toHaveClass("workbench__body--navigation-overlay");
+  // A collapse chosen above 800px is kept through the auto-hidden band.
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+  await settleLazyModules();
+  expect(workbench).toHaveClass("workbench--navigation-collapsed");
+  resizeWindow(640);
+  resizeWindow(1200);
+  await settleLazyModules();
+  expect(workbench).toHaveClass("workbench--navigation-collapsed");
 });
 
 it.each(["button", "shortcut"])(
@@ -206,7 +229,7 @@ it("collapses navigation to its icon rail, keeps header New chat usable, and res
   fireEvent.keyDown(splitter, { key: "End" });
   const body = container.querySelector(".workbench__body") as HTMLElement;
   const columns = body.style.gridTemplateColumns;
-  expect(columns).toMatch(/^460px /);
+  expect(columns).toMatch(/^502px /);
   fireEvent.click(
     screen.getByRole("button", { name: "Hide projects and chats" }),
   );

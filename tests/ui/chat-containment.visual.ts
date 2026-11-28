@@ -460,7 +460,7 @@ for (const profile of profiles) {
                 }),
               ).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "180" : "460",
+                split === "Home" ? "302" : "502",
               );
             }
             for (const pane of await panes.all()) {
@@ -597,7 +597,7 @@ for (const profile of profiles) {
               await page.keyboard.press(split);
               await expect(splitter).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "180" : "460",
+                split === "Home" ? "302" : "502",
               );
             }
             for (const pane of await panes.all()) {
@@ -667,11 +667,13 @@ for (const forcedColors of ["none", "active"] as const) {
     const initialOffset = (await panel.boundingBox())!.x - initialAnchor!.x;
     await splitter.focus();
     await expect(splitter).toBeFocused();
-    for (const key of ["Home", "End"]) {
+    // The rail opens at its 302px minimum, so End moves it first.
+    let previousX = initialAnchor!.x;
+    for (const key of ["End", "Home"]) {
       await page.keyboard.press(key);
       await expect(splitter).toHaveAttribute(
         "aria-valuenow",
-        key === "Home" ? "180" : "460",
+        key === "Home" ? "302" : "502",
       );
       await expect(panel).toBeVisible();
       await expect
@@ -685,7 +687,8 @@ for (const forcedColors of ["none", "active"] as const) {
       // A composer at or below 520px uses the intended compact 24px target.
       expect([initialAnchor!.width, 24]).toContain(anchor!.width);
       expect(anchor!.height).toBe(initialAnchor!.height);
-      expect(anchor!.x).not.toBe(initialAnchor!.x);
+      expect(anchor!.x).not.toBe(previousX);
+      previousX = anchor!.x;
       await expectOverlay(panel, viewport);
       await expect(splitter).toBeFocused();
     }
