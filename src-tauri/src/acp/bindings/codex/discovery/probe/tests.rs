@@ -286,7 +286,11 @@ mod fake_app_server {
 
             assert!(
                 catalog
-                    .probed_within(&binding, Duration::from_millis(500), PROBE_CLEANUP)
+                    .probed_within(
+                        &binding,
+                        Duration::from_millis(500),
+                        crate::acp::process::graceful_exit::close_budget()
+                    )
                     .is_none()
             );
             assert!(started.elapsed() < Duration::from_secs(10), "{body}");

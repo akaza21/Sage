@@ -33,14 +33,11 @@ use super::{
 use crate::acp::{
     bindings::codex::AdmittedCodexBinding,
     ipc::CodexDiscoveryModel,
+    process::graceful_exit,
     transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
 
 const PROBE_OPERATION: Duration = Duration::from_secs(20);
-const PROBE_CLEANUP: Duration = Duration::from_secs(5);
-/// How long a probe whose stdin is closed may take to end its output before
-/// it is killed.
-const EXIT_GRACE: Duration = Duration::from_secs(2);
 /// How often teardown asks whether the probe's processes have ended.
 const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// Startup output and four catalog pages; this bounds a misbehaving CLI.
@@ -109,7 +106,7 @@ impl CodexModelCatalog {
     /// `None` when the build could not be read; a later lookup probes again
     /// once [`RETRY_AFTER`] has passed.
     pub(crate) fn probed(&self, binding: &AdmittedCodexBinding) -> Option<Vec<ModelOption>> {
-        self.probed_within(binding, PROBE_OPERATION, PROBE_CLEANUP)
+        self.probed_within(binding, PROBE_OPERATION, graceful_exit::close_budget())
     }
 
     fn probed_within(
@@ -344,7 +341,7 @@ impl<'a> ProbeTransport<'a> {
         };
         self.stdin = None;
         let now = Instant::now();
-        self.drain_output(now + EXIT_GRACE.min(cleanup_end.saturating_duration_since(now)));
+        self.drain_output(now + graceful_exit::grace_before(cleanup_end));
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
         let zero = reap_root(child, cleanup_end, &self.unresolved)
