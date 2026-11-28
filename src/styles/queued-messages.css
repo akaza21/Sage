@@ -55,7 +55,7 @@
   border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
   background: var(--color-fill-soft);
-  font-size: 10px;
+  font-size: var(--font-size-count);
   font-weight: var(--font-weight-medium);
   line-height: 10px;
 }

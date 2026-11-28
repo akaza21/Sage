@@ -65,7 +65,7 @@
   margin: 2px var(--space-1) var(--space-1);
   padding: 6px 10px;
   overflow: auto;
-  border-radius: 10px;
+  border-radius: var(--radius-approval-box);
   color: var(--color-text-secondary);
   background: var(--color-fill-hover);
   font-family: var(--font-family-mono);
@@ -95,7 +95,7 @@
   gap: var(--space-2);
   padding: 4px var(--space-2) 4px 6px;
   border: var(--border-width) solid transparent;
-  border-radius: 13px;
+  border-radius: var(--radius-approval-option);
   color: var(--color-text-secondary);
   background: transparent;
   font-size: var(--font-size-md);
@@ -136,7 +136,7 @@
   padding: 6px 10px;
   resize: vertical;
   border: var(--border-width) solid var(--color-hairline-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-approval-box);
   color: var(--color-text-primary);
   background: var(--color-fill-hover);
   font: inherit;

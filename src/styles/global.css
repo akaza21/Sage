@@ -332,6 +332,7 @@
     "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
   --font-size-2xs: 11px;
+  --font-size-count: 10px;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;
@@ -437,6 +438,9 @@
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
+  /* Approval and question cards: numbered options and the command box. */
+  --radius-approval-option: 13px;
+  --radius-approval-box: 10px;
   --radius-none: 0;
   /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);
