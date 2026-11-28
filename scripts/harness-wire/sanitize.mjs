@@ -159,6 +159,159 @@ const CATALOG_REFS = new Set([
   "agentType",
   "agent_type",
 ]);
+// The only keys an account, model or catalog object keeps, per root, from
+// the harnesses' published definitions as the reviewed corpus shows them;
+// any other key (an organization name, an account's own map key) gets a
+// stable pseudonym, below opaque fields too.
+const RATE_LIMIT_KEYS = [
+  "balance",
+  "credits",
+  "hasCredits",
+  "individualLimit",
+  "limitId",
+  "limitName",
+  "normalModelSlug",
+  "planType",
+  "primary",
+  "rateLimitReachedType",
+  "resetsAt",
+  "secondary",
+  "spendControlReached",
+  "unlimited",
+  "usedPercent",
+  "windowDurationMins",
+];
+const MODEL_KEYS_ALLOWED = [
+  "additionalSpeedTiers",
+  "api",
+  "availabilityNux",
+  "availableAccessPrograms",
+  "baseUrl",
+  "cacheRead",
+  "cacheWrite",
+  "contextWindow",
+  "cost",
+  "cyber",
+  "defaultReasoningEffort",
+  "defaultServiceTier",
+  "description",
+  "displayName",
+  "hidden",
+  "id",
+  "input",
+  "inputModalities",
+  "isDefault",
+  "maxTokens",
+  "message",
+  "migrationMarkdown",
+  "model",
+  "modelLink",
+  "modelSpecialty",
+  "multiAgentVersion",
+  "name",
+  "output",
+  "provider",
+  "reasoning",
+  "reasoningEffort",
+  "resolvedModel",
+  "retirementAt",
+  "serviceTiers",
+  "supportedEffortLevels",
+  "supportedReasoningEfforts",
+  "supportsAdaptiveThinking",
+  "supportsAutoMode",
+  "supportsEffort",
+  "supportsFastMode",
+  "supportsPersonality",
+  "supportsThinkingOff",
+  "upgrade",
+  "upgradeCopy",
+  "upgradeInfo",
+  "value",
+];
+const ACCOUNT_KEYS = new Map(
+  Object.entries({
+    account: [
+      "apiProvider",
+      "email",
+      "subscriptionType",
+      "tokenSource",
+      "type",
+    ],
+    organization: [],
+    subscription: [],
+    credits: ["balance", "hasCredits", "unlimited"],
+    rate_limit_info: [
+      "isUsingOverage",
+      "overageDisabledReason",
+      "overageEnabled",
+      "overageResetsAt",
+      "overageStatus",
+      "rateLimitType",
+      "resetsAt",
+      "status",
+      "surpassedThreshold",
+      "unifiedWindows",
+      "utilization",
+    ],
+    rateLimits: RATE_LIMIT_KEYS,
+    rateLimitsByLimitId: RATE_LIMIT_KEYS,
+    rate_limits: ["utilization", "resets_at", "resetsAt"],
+    models: MODEL_KEYS_ALLOWED,
+    "@model": MODEL_KEYS_ALLOWED,
+    modelUsage: [
+      "cacheCreationEphemeral1hInputTokens",
+      "cacheCreationEphemeral5mInputTokens",
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "canonicalModel",
+      "contextWindow",
+      "costBasis",
+      "costUSD",
+      "inputTokens",
+      "maxOutputTokens",
+      "outputTokens",
+      "provider",
+      "thinkingTokens",
+      "webSearchRequests",
+    ],
+  }).map(([root, keys]) => [root, new Set(keys)]),
+);
+const CATALOG_KEYS = new Set([
+  "aliases",
+  "argumentHint",
+  "argument_hint",
+  "brandColor",
+  "builtin",
+  "defaultPrompt",
+  "description",
+  "displayName",
+  "enabled",
+  "hint",
+  "iconLarge",
+  "iconLargeUrl",
+  "iconSmall",
+  "iconSmallUrl",
+  "input",
+  "interface",
+  "model",
+  "name",
+  "origin",
+  "path",
+  "pluginId",
+  "scope",
+  "shortDescription",
+  "source",
+  "sourceInfo",
+  "status",
+]);
+// The only booleans a catalog entry keeps, because a binding reads them
+// (Codex lists only enabled skills; Claude Code marks built-in commands);
+// every other boolean is false and every number 0.
+const CATALOG_FLAGS = new Set(["enabled", "builtin"]);
+// Ids the sanitizer writes besides placeholders.
+const SCRUBBED_ID =
+  /^(?:(?:msg|toolu|srvtoolu|call|resp|req)_0{12,}\d*|00000000-0000-4000-8000-\d{12}|0{12}\d{4})$/;
 // Maps keyed by an account's own ids.
 const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
 // Maps keyed by model.
@@ -352,7 +505,7 @@ export function makeSanitizer({ roots, trusted = false }) {
   const isSynthetic = (value) =>
     value === "redacted" ||
     generated.has(value) ||
-    (trusted && PLACEHOLDER.test(value));
+    (trusted && (PLACEHOLDER.test(value) || SCRUBBED_ID.test(value)));
   const mcpServer = (server) =>
     isSynthetic(server) || SAGE_SERVERS.has(server)
       ? server
@@ -474,7 +627,7 @@ export function makeSanitizer({ roots, trusted = false }) {
       if (!providerIds.has(match))
         providerIds.set(
           match,
-          `${prefix}_${String(providerIds.size + 1).padStart(24, "0")}`,
+          minted(`${prefix}_${String(providerIds.size + 1).padStart(24, "0")}`),
         );
       return providerIds.get(match);
     });
@@ -483,7 +636,9 @@ export function makeSanitizer({ roots, trusted = false }) {
       if (!uuids.has(key)) {
         uuids.set(
           key,
-          `00000000-0000-4000-8000-${String(uuids.size + 1).padStart(12, "0")}`,
+          minted(
+            `00000000-0000-4000-8000-${String(uuids.size + 1).padStart(12, "0")}`,
+          ),
         );
       }
       return uuids.get(key);
@@ -788,7 +943,7 @@ export function makeSanitizer({ roots, trusted = false }) {
         ? name
         : (models.get(name) ?? modelPlaceholder(name, "model-"))
       : isSynthetic(name) ||
-          (/^[A-Za-z][A-Za-z0-9_]*$/.test(name) &&
+          (ACCOUNT_KEYS.get(base.root)?.has(name) &&
             !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
         ? name
         : pseudonym(keyNames, name, "key");
@@ -835,6 +990,9 @@ export function makeSanitizer({ roots, trusted = false }) {
       return CREDENTIAL_EXPIRY;
     // Inside a catalog entry the allow-list holds at every depth, under
     // opaque keys too.
+    if (catalog && typeof value === "number") return 0;
+    if (catalog && typeof value === "boolean")
+      return CATALOG_FLAGS.has(key) ? value : false;
     if (typeof value === "string" && catalog) {
       if (isSynthetic(value)) return value;
       if (isCatalogName(catalog.path))
@@ -941,7 +1099,9 @@ export function makeSanitizer({ roots, trusted = false }) {
                   : base
                     ? accountKey(scrubbed, base)
                     : catalog
-                      ? accountKey(scrubbed, { root: "", path: [] })
+                      ? isSynthetic(scrubbed) || CATALOG_KEYS.has(scrubbed)
+                        ? scrubbed
+                        : pseudonym(keyNames, scrubbed, "key")
                       : scrubbed;
             return [
               renamed,
@@ -980,6 +1140,7 @@ export function makeSanitizer({ roots, trusted = false }) {
       return joinSplitRuns(list, text).map((r) => walk(r, ""));
     },
     text,
+    isSynthetic,
   };
 }
 

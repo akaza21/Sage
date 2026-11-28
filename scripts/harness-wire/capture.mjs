@@ -249,6 +249,7 @@ function resanitizeLocked(out, harnesses, work, run) {
         sanitizer.records(before.map((line) => JSON.parse(line))),
         undeclared,
         resolve,
+        sanitizer.isSynthetic,
       ).map((record) => {
         if (!record.ref) return JSON.stringify(record);
         const old = [...moved.keys()].find((hash) =>
@@ -396,7 +397,14 @@ async function capture(out, harnesses, only, model) {
         process.stdout.write(`gap: ${result.gap}\n`);
         continue;
       }
-      const records = sanitizer.records(result.wire.records);
+      // A raw capture's undeclared fields are neutralized as it is written,
+      // vouching only for what this run of the sanitizer wrote.
+      const records = neutralizeUndeclared(
+        sanitizer.records(result.wire.records),
+        undeclaredPaths(harness),
+        undefined,
+        sanitizer.isSynthetic,
+      );
       const lines =
         scenario === "commands"
           ? records.map((r) => JSON.stringify(r))

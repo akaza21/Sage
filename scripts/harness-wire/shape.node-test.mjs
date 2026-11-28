@@ -619,7 +619,7 @@ test("inside an account, rate-limit or catalog object only the keys a binding re
     displayName: "redacted",
     supportsEffort: true,
     supportsFastMode: false,
-    price: 0,
+    "key-1": 0,
   });
   // A command an account can configure: a pseudonym and no description.
   assert.deepEqual(reply.commands, [
@@ -673,9 +673,9 @@ test("an account object keeps no id, name or date of its own, distinct request i
     },
   ]);
   assert.deepEqual(account.frame.account, {
-    id: "redacted",
-    name: "redacted",
-    resets_at: "redacted",
+    "key-1": "redacted",
+    "key-2": "redacted",
+    "key-3": "redacted",
     type: "chatgpt",
   });
   assert.deepEqual(catalog.frame.result.data[0].serviceTiers, [
@@ -731,7 +731,10 @@ test("token estimates, agent descriptions, unlisted account paths, display names
   assert.deepEqual(init.frame.agents, [
     { name: "agent-1", description: "redacted" },
   ]);
-  assert.deepEqual(init.frame.account, { value: "redacted", type: "chatgpt" });
+  assert.deepEqual(init.frame.account, {
+    "key-1": "redacted",
+    type: "chatgpt",
+  });
   assert.equal(init.frame.timestamp, "2027-01-15T08:00:00.000Z");
   assert.equal(list.frame.result.data[0].isDefault, true);
   assert.equal(turn.frame.emittedAtMs - list.frame.emittedAtMs, 2500);
@@ -913,8 +916,8 @@ test("a catalog entry keeps only known enums at any depth, and references map ev
       name: "skill-1",
       scope: "user",
       source: "redacted",
-      settings: { "key-1": "redacted" },
-      input: { "key-2": "redacted" },
+      "key-1": { "key-2": "redacted" },
+      input: { "key-3": "redacted" },
     },
   ]);
   assert.equal(files.frame.note, "Wrote agent-agent-1.txt");
@@ -1014,11 +1017,17 @@ test("signatures, keys below opaque fields and text-only times carry nothing of 
   assert.equal(delta.frame.delta.signature, "signature-1");
   assert.equal(block.frame.content[0].signature, "signature-1");
   assert.equal(block.frame.message, "log 2027-01-15T08:00:00Z failed");
-  assert.deepEqual(Object.keys(account.frame.account.settings), [
-    "key-1",
+  // settings is not an account field: the key itself is a pseudonym too.
+  assert.deepEqual(Object.keys(account.frame.account), ["type", "key-1"]);
+  assert.deepEqual(Object.keys(account.frame.account["key-1"]), [
     "key-2",
+    "key-3",
   ]);
-  assert.deepEqual(Object.keys(account.frame.skills[0].settings), ["key-3"]);
+  // A catalog entry's unlisted field is renamed the same way.
+  assert.deepEqual(account.frame.skills[0], {
+    name: "skill-1",
+    "key-1": { "key-4": "redacted" },
+  });
   assert.deepEqual(account.frame.usage, {
     input_tokens: 100,
     output_tokens: 50,
@@ -1128,8 +1137,8 @@ test("a default model entry is a descriptor, and a reset time is fixed whatever 
   assert.equal(init.frame.availableModels[0].value, "default");
   assert.doesNotMatch(JSON.stringify(init), /Acme|acme/);
   assert.equal(limit.frame.rate_limit_info.resetsAt, 1800000000);
-  // Not on the rate-limit allow-list, so redacted outright.
-  assert.equal(limit.frame.rateLimits.primary.resets_at, "redacted");
+  // Not a rate-limit field: renamed, and its value redacted outright.
+  assert.deepEqual(limit.frame.rateLimits.primary, { "key-1": "redacted" });
 });
 
 test("every model usage key is a model placeholder, and usage-like objects elsewhere are left alone", () => {
@@ -1275,4 +1284,34 @@ test("a raw capture's placeholder-shaped name is a real name; a scrubbed corpus'
     structuredClone(raw),
   ]);
   assert.deepEqual(again, raw);
+});
+
+test("a catalog entry's numbers and unread flags, and an account's own map keys, carry nothing", () => {
+  const [frame] = makeSanitizer({ roots: [] }).records([
+    {
+      direction: "in",
+      frame: {
+        skills: [
+          {
+            name: "s",
+            enabled: true,
+            metadata: { accountId: 92738512, beta: true },
+          },
+        ],
+        account: {
+          type: "chatgpt",
+          organizations: { AcmeCorporation: { role: "owner" } },
+        },
+      },
+    },
+  ]);
+  assert.deepEqual(frame.frame.skills[0], {
+    name: "skill-1",
+    enabled: true,
+    "key-1": { "key-2": 0, "key-3": false },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(frame),
+    /92738512|Acme|organizations|owner/,
+  );
 });

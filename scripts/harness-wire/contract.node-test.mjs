@@ -171,10 +171,15 @@ test("a comparison past a hard cap stops loudly instead of enumerating", () => {
 test("a neutralized object keeps no key of its own, only pseudonyms and scrubbed ids", async () => {
   const { neutral } = await import("./neutral.mjs");
   assert.deepEqual(
-    neutral({
-      toolu_000000000000000000000002: { AcmeProject: "secret", count: 3 },
-      "acme-key": [true],
-    }),
+    neutral(
+      {
+        toolu_000000000000000000000002: { AcmeProject: "secret", count: 3 },
+        "acme-key": [true],
+      },
+      new Map(),
+      // Only what the sanitizer vouches for (here, an id it wrote) keeps its form.
+      (value) => value === "toolu_000000000000000000000002",
+    ),
     {
       toolu_000000000000000000000002: { "field-1": "redacted", "field-2": 0 },
       "field-3": [false],
@@ -578,4 +583,33 @@ test("an interrupted --resanitize that had replaced every file says so, not to r
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }
+});
+
+test("a raw capture's undeclared field keeps no placeholder-shaped value the sanitizer did not write", async () => {
+  const { makeSanitizer } = await import("./sanitize.mjs");
+  const sanitizer = makeSanitizer({ roots: [] });
+  const paths = new Map([["in result/success", [["tool_result_meta"]]]]);
+  const [record] = neutralizeUndeclared(
+    sanitizer.records([
+      {
+        direction: "in",
+        frame: {
+          type: "result",
+          subtype: "success",
+          tool_result_meta: {
+            "agent-77": "agent-77",
+            ok: "toolu_0000000000000000000000ab",
+          },
+        },
+      },
+    ]),
+    paths,
+    undefined,
+    sanitizer.isSynthetic,
+  );
+  assert.deepEqual(record.frame.tool_result_meta, {
+    "field-1": "redacted",
+    // A raw provider id the sanitizer replaced is its own id: it is vouched for.
+    "field-2": "toolu_000000000000000000000001",
+  });
 });
