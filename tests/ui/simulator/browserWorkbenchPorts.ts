@@ -1,5 +1,5 @@
-import { browserDesktop } from "../services/browserDesktop";
-import { browserEditor } from "../services/browserEditor";
+import { browserDesktop } from "./browserDesktop";
+import { browserEditor } from "./browserEditor";
 import type {
   ChatDeleteRequest,
   ChatLifecycleRequest,
@@ -11,7 +11,7 @@ import type {
   ProjectTransitionResult,
   RenameChatRequest,
   ResourceRef,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import type {
   AgentPort,
   ChatPort,
@@ -20,22 +20,22 @@ import type {
   RepositoryPort,
   SettingsPort,
   WorkbenchPorts,
-} from "./workbenchPorts";
+} from "../../../src/ports/workbenchPorts";
 import {
   admitEditorSetting,
   admitEditorSettings,
   EDITOR_SETTINGS,
   type EditorSettings,
-} from "../domain/editorSettingsCatalogue";
+} from "../../../src/domain/editorSettingsCatalogue";
 import {
   admitSessionAccessModes,
   type SessionAccessModes,
-} from "../domain/sessionAccessMode";
+} from "../../../src/domain/sessionAccessMode";
 import {
   DEFAULT_UI_APPEARANCE,
   admitUiAppearance,
   type UiAppearance,
-} from "../domain/uiAppearance";
+} from "../../../src/domain/uiAppearance";
 
 function uncommittedTransition(
   expectedTransitionEpoch: number,

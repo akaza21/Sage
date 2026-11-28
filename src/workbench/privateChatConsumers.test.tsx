@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { openInWorkbench } from "./agentChatHistory";
 import { AgentRailArchiveNotice } from "./AgentRailArchiveNotice";
 import { setAgentRailArchiveUndo } from "./agentRailInteractions";

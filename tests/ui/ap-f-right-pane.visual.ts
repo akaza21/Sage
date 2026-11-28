@@ -137,7 +137,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await page.evaluate(async () => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
+        await import("/tests/ui/simulator/workbenchRuntime.ts");
       const { createInjectedEditorWatchDelivery } =
         await import("/src/domain/editorWatch.ts");
       const state = useWorkbenchStore.getState();

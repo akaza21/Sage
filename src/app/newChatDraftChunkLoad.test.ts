@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { useWorkbenchStore } from "./store";
 
 // Kept in its own file: the send module must not already be cached.

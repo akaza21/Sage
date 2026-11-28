@@ -4,7 +4,7 @@ import {
   resourceKey,
 } from "../../../../src/domain/resourceIdentity";
 import { useWorkbenchStore } from "../../../../src/app/store";
-import { getWorkbenchPorts } from "../../../../src/ports/workbenchRuntime";
+import { getWorkbenchPorts } from "../../simulator/workbenchRuntime";
 import { workspaceSearchDesktop } from "../../../../src/features/search/workspaceSearchDesktop";
 
 import { standardPage } from "../visualChatPages";

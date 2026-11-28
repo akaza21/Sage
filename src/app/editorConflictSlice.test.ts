@@ -17,13 +17,13 @@ import { FileEditorNotices } from "../features/files/FileEditorNotices";
 import { SaveAllNotice } from "../features/files/SaveAllNotice";
 import { applyEditorExternalWatchNotice } from "../features/files/editorExternalWatch";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
-import { browserEditor } from "../services/browserEditor";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
+import { browserEditor } from "../../tests/ui/simulator/browserEditor";
 import {
   browserDirectories,
   browserRef,
   browserSnapshot,
-} from "../services/browserWorkspaceFixture";
+} from "../../tests/ui/simulator/browserWorkspaceFixture";
 import {
   CHANGED_ON_DISK,
   closeEditorWithoutSaving,

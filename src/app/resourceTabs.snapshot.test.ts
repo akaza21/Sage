@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAgentDiffRef } from "../domain/agentDiff";
 import { resourceTabUpdate } from "./resourceTabs";
-import { assertBrowserProjectLayout } from "../services/browserLayout";
+import { assertBrowserProjectLayout } from "../../tests/ui/simulator/browserLayout";
 import { useWorkbenchStore, type WorkbenchState } from "./store";
 
 const resource = { rootId: "root", relativePath: "src/a.ts" };

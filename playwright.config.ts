@@ -40,7 +40,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium" }],
   webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+    command: `npm run dev:ui-fixture -- --mode ui-fixture --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,
