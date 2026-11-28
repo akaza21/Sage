@@ -273,13 +273,13 @@ test("--resanitize refuses to run over an interrupted run's backups", () => {
 });
 
 test("every value in the committed corpus is one a person reviewed", async () => {
-  const { unreviewed } = await import("./allowed.mjs");
-  for (const harness of ["claude", "codex", "pi"])
-    assert.deepEqual(
-      unreviewed(harness),
-      [],
-      `${harness}: run allowed.mjs, review, then --write`,
-    );
+  const { unreviewedCorpus } = await import("./allowed.mjs");
+  // Every folder of the corpus, a new harness's included.
+  assert.deepEqual(
+    unreviewedCorpus(),
+    [],
+    "run allowed.mjs, review, then --write",
+  );
 });
 
 test("an unreviewed string, key, number or account path fails with its path", async () => {
@@ -485,6 +485,36 @@ test("a value swapped between positions, or an unexpected file, fails the review
     fs.writeFileSync(path.join(corpus, "x", "notes.txt"), "someone@private\n");
     assert.deepEqual(unreviewed("x", corpus, root), [
       "x/notes.txt: is not a reviewed file",
+    ]);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a nested folder, a stray root file or a new harness folder fails the reviewed-value check", async () => {
+  const { unreviewedCorpus, writeReviewed } = await import("./allowed.mjs");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sage-allowed-tree-"));
+  try {
+    const corpus = path.join(base, "corpus");
+    const root = path.join(base, "contracts");
+    fs.mkdirSync(path.join(corpus, "x"), { recursive: true });
+    fs.mkdirSync(path.join(root, "x"), { recursive: true });
+    fs.writeFileSync(
+      path.join(corpus, "x", "t.jsonl"),
+      `${JSON.stringify({ direction: "in", frame: { type: "ok" } })}\n`,
+    );
+    writeReviewed("x", corpus, root);
+    assert.deepEqual(unreviewedCorpus(corpus, root), []);
+    fs.mkdirSync(path.join(corpus, "x", "nested"));
+    fs.writeFileSync(path.join(corpus, "x", "nested", "a.json"), "{}");
+    assert.throws(() => writeReviewed("x", corpus, root), /nested not files/);
+    fs.writeFileSync(path.join(corpus, "notes.txt"), "someone@private\n");
+    fs.mkdirSync(path.join(corpus, "y"));
+    assert.deepEqual(unreviewedCorpus(corpus, root), [
+      "notes.txt: is not a harness folder; the corpus root holds those only",
+      "x/nested: is not a file; a corpus folder holds files only",
+      "x/nested: is not a reviewed file",
+      "y: no corpus-values.json",
     ]);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });

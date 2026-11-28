@@ -52,6 +52,7 @@ const FIXED = [
   [(key) => key === "utilization", () => 0.1],
 ];
 const VALUES_FILE = "corpus-values.json";
+const NOT_A_FILE = "not a file";
 
 // Every value of one harness corpus, each with the first path it was seen at.
 export function corpusValues(dir) {
@@ -184,7 +185,8 @@ export function corpusDigests(dir) {
       .sort()
       .map((name) => {
         const file = path.join(dir, name);
-        if (!fs.statSync(file).isFile()) return [name, "not a file"];
+        // A corpus folder holds files only: nothing nested escapes review.
+        if (!fs.statSync(file).isFile()) return [name, NOT_A_FILE];
         const bytes = fs
           .readFileSync(file)
           .toString("latin1")
@@ -206,6 +208,11 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   const out = found.fixed.map((problem) => `${harness}/${problem}`);
   const digests = corpusDigests(path.join(corpus, harness));
   const reviewed = allowed.files ?? {};
+  for (const [name, digest] of Object.entries(digests))
+    if (digest === NOT_A_FILE)
+      out.push(
+        `${harness}/${name}: is not a file; a corpus folder holds files only`,
+      );
   for (const name of new Set([
     ...Object.keys(digests),
     ...Object.keys(reviewed),
@@ -244,26 +251,54 @@ export function unreviewed(harness, corpus = CORPUS, root = CONTRACTS) {
 export function writeReviewed(harness, corpus = CORPUS, root = CONTRACTS) {
   const found = corpusValues(path.join(corpus, harness));
   if (found.fixed.length) throw new Error(found.fixed.join("\n"));
+  const files = corpusDigests(path.join(corpus, harness));
+  const nested = Object.keys(files).filter(
+    (name) => files[name] === NOT_A_FILE,
+  );
+  if (nested.length)
+    throw new Error(
+      `${harness}: ${nested.join(", ")} not files; a corpus folder holds files only`,
+    );
   fs.writeFileSync(
     path.join(root, harness, VALUES_FILE),
-    `${JSON.stringify(
-      { files: corpusDigests(path.join(corpus, harness)), ...serialize(found) },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify({ files, ...serialize(found) }, null, 2)}\n`,
   );
 }
 
+// Every harness folder of a corpus, and what is wrong with its root: only
+// harness folders live there, each needs its own reviewed set.
+export function harnessFolders(corpus = CORPUS) {
+  const entries = fs.readdirSync(corpus).sort();
+  return {
+    harnesses: entries.filter((name) =>
+      fs.statSync(path.join(corpus, name)).isDirectory(),
+    ),
+    stray: entries
+      .filter((name) => !fs.statSync(path.join(corpus, name)).isDirectory())
+      .map(
+        (name) =>
+          `${name}: is not a harness folder; the corpus root holds those only`,
+      ),
+  };
+}
+
+// Every problem in a whole corpus.
+export function unreviewedCorpus(corpus = CORPUS, root = CONTRACTS) {
+  const { harnesses, stray } = harnessFolders(corpus);
+  return [
+    ...stray,
+    ...harnesses.flatMap((harness) => unreviewed(harness, corpus, root)),
+  ];
+}
+
 function main() {
-  const harnesses = fs
-    .readdirSync(CORPUS)
-    .filter((name) => fs.statSync(path.join(CORPUS, name)).isDirectory())
-    .sort();
   if (process.argv.includes("--write")) {
+    const { harnesses, stray } = harnessFolders();
+    if (stray.length) throw new Error(stray.join("\n"));
     harnesses.forEach((harness) => writeReviewed(harness));
     return;
   }
-  const problems = harnesses.flatMap((harness) => unreviewed(harness));
+  const problems = unreviewedCorpus();
   for (const problem of problems.slice(0, 50)) console.error(problem);
   if (problems.length) {
     console.error(`${problems.length} unreviewed value(s)`);
