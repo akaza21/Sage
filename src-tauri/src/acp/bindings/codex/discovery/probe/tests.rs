@@ -403,6 +403,44 @@ mod fake_app_server {
     }
 
     #[test]
+    fn a_finished_probe_that_closes_its_output_first_is_left_to_save_its_work() {
+        let server = FakeAppServer::new("");
+        let binding = server.binding();
+        let marker = server.script().with_file_name("saved");
+        sage_test_support::test_executable::write(
+            server.script(),
+            &format!(
+                "#!/bin/sh\nexec 1>&-\ncat >/dev/null\nsleep 1\n: > '{}'\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut command = Command::new(server.script());
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        isolate(&mut command);
+        let mut transport = ProbeTransport::spawn(
+            command,
+            &binding,
+            Instant::now() + Duration::from_secs(10),
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .unwrap();
+        let deadline =
+            CodexDiscoveryDeadline::starting_now(Duration::from_millis(1), Duration::from_secs(8))
+                .unwrap();
+
+        transport.close_stdin();
+        assert!(transport.terminate_zero(false, deadline).is_ok());
+        assert!(
+            marker.exists(),
+            "the probe saved its work after its output ended"
+        );
+    }
+
+    #[test]
     fn dropping_a_probe_tears_it_down_by_its_own_cleanup_deadline() {
         let server = FakeAppServer::new("");
         let binding = server.binding();

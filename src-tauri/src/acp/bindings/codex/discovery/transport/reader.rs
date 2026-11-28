@@ -32,6 +32,8 @@ pub(super) struct ReaderThread {
     events: Option<mpsc::Receiver<ReaderEvent>>,
     completion: mpsc::Receiver<ReaderCompletion>,
     overflowed: Arc<AtomicBool>,
+    /// Set once the run has its answer: later output is read and dropped.
+    discard: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -49,6 +51,8 @@ impl ReaderThread {
         let (send_completion, completion) = mpsc::sync_channel(1);
         let overflowed = Arc::new(AtomicBool::new(false));
         let reader_overflowed = Arc::clone(&overflowed);
+        let discard = Arc::new(AtomicBool::new(false));
+        let reader_discard = Arc::clone(&discard);
         let session_kind = session_kind.to_owned();
         let handle = thread::Builder::new()
             .name(format!("sage-codex-{session_kind}-stdout"))
@@ -66,6 +70,14 @@ impl ReaderThread {
                             ReaderEvent::FramingFailed(error)
                         }
                     };
+                    if reader_discard.load(Ordering::Acquire) {
+                        match event {
+                            ReaderEvent::Frame(_) => continue,
+                            ReaderEvent::Eof | ReaderEvent::FramingFailed(_) => {
+                                break ReaderCompletion::Clean;
+                            }
+                        }
+                    }
                     if let Some(completion) =
                         enqueue_reader_event(&send_event, event, &reader_overflowed, deadline)
                     {
@@ -85,8 +97,21 @@ impl ReaderThread {
             events: Some(events),
             completion,
             overflowed,
+            discard,
             handle: Some(handle),
         })
+    }
+
+    /// Keeps reading the harness's output but drops it, so a harness that
+    /// writes while it exits neither blocks on a full pipe nor meets a closed
+    /// one. Queued frames are dropped, which frees a producer waiting on a full
+    /// queue.
+    pub(super) fn discard_output(&self) {
+        self.discard.store(true, Ordering::Release);
+        if let Some(events) = &self.events {
+            while events.try_recv().is_ok() {}
+        }
+        self.wake_reader();
     }
 
     pub(super) fn overflowed(&self) -> bool {
@@ -112,7 +137,7 @@ impl ReaderThread {
         }
     }
 
-    pub(super) fn close_events(&mut self) {
+    fn close_events(&mut self) {
         // Drop before waking: the producer must observe disconnection even if
         // it has not parked yet. This also releases a full queue during cleanup.
         self.events.take();

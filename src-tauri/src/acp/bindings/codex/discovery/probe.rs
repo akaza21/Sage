@@ -347,7 +347,13 @@ impl<'a> ProbeTransport<'a> {
         // Only a probe that finished cleanly may be saving a refreshed sign-in;
         // a failed or abandoned one is ended now.
         if finished {
-            self.drain_output(Instant::now() + graceful_exit::grace_before(cleanup_end));
+            let grace_end = Instant::now() + graceful_exit::grace_before(cleanup_end);
+            self.drain_output(grace_end);
+            // Output can end before the work does: the grace lasts until Codex
+            // itself has exited.
+            while Instant::now() < grace_end && matches!(child.try_wait(), Ok(None)) {
+                thread::sleep(SETTLE_POLL);
+            }
         }
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
