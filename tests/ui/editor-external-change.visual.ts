@@ -36,7 +36,8 @@ async function typeAtEnd(page: Page, text: string) {
 function changeOnDisk(page: Page, content: string | null) {
   return page.evaluate(
     async ({ file, content }) => {
-      const { browserEditor } = await import("/src/services/browserEditor.ts");
+      const { browserEditor } =
+        await import("/tests/ui/simulator/browserEditor.ts");
       browserEditor.changeOnDisk(file, content);
     },
     { file: FILE, content },
@@ -45,7 +46,8 @@ function changeOnDisk(page: Page, content: string | null) {
 
 function diskText(page: Page) {
   return page.evaluate(async (file) => {
-    const { browserEditor } = await import("/src/services/browserEditor.ts");
+    const { browserEditor } =
+      await import("/tests/ui/simulator/browserEditor.ts");
     return browserEditor.readTextFile(file).content;
   }, FILE);
 }
@@ -65,7 +67,7 @@ test("failed Reload keeps edits and exposes bounded native diagnostics only in D
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     await useWorkbenchStore.getState().flushActiveEditor();
     const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+      await import("/tests/ui/simulator/workbenchRuntime.ts");
     getWorkbenchPorts().editor.discardEditorBuffer = async () => {
       throw new Error(
         "filesystem operation failed: The process cannot access the file because it is being used by another process. (os error 32) " +
@@ -182,7 +184,7 @@ for (const width of [1280, 720]) {
     // Every watch slot is taken from here on.
     await page.evaluate(async () => {
       const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
+        await import("/tests/ui/simulator/workbenchRuntime.ts");
       const { EDITOR_WATCH_LIMIT_ERROR } =
         await import("/src/features/files/editorExternalWatch.ts");
       getWorkbenchPorts().editor.watchEditorDocument = async () => {

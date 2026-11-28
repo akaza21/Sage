@@ -7,14 +7,18 @@ import { describe, expect, it } from "vitest";
 import {
   DESKTOP_NATIVE_BUILD_MODE,
   DESKTOP_NATIVE_CODE_SPLITTING_GROUPS,
-  desktopNativeWorkbenchRuntimePlugin,
-  resolveDesktopNativeWorkbenchRuntime,
+  resolveSimulatorWorkbenchRuntime,
+  simulatorWorkbenchRuntimePlugin,
+  UI_FIXTURE_MODE,
 } from "./vite.config";
 import viteConfig from "./vite.config";
 
 const root = path.resolve(import.meta.dirname);
 const importer = path.join(root, "src/app/store.ts");
-const runtime = path.join(root, "src/ports/workbenchRuntime.desktop.ts");
+const simulatorRuntime = path.join(
+  root,
+  "tests/ui/simulator/workbenchRuntime.ts",
+);
 
 const DESKTOP_GROUPS = DESKTOP_NATIVE_CODE_SPLITTING_GROUPS;
 const BASELINE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
@@ -59,7 +63,7 @@ const LANE_BASE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
       : group,
   ),
 ];
-const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
+const BROWSER_FIXTURE_MODULE = "/tests/ui/simulator/browserWorkspaceFixture.ts";
 const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
   css: "src/features/files/editorLanguageCss.ts",
   html: "src/features/files/editorLanguageHtml.ts",
@@ -675,44 +679,61 @@ describe("desktop-native runtime resolver", () => {
     }
   }, 90_000);
 
-  it("redirects only the canonical runtime import during the desktop build", () => {
-    expect(
-      resolveDesktopNativeWorkbenchRuntime(
-        "build",
-        DESKTOP_NATIVE_BUILD_MODE,
-        "../ports/workbenchRuntime",
-        importer,
-      ),
-    ).toBe(runtime);
-    expect(
-      resolveDesktopNativeWorkbenchRuntime(
-        "build",
-        DESKTOP_NATIVE_BUILD_MODE,
-        "../ports/nativeWorkbenchPorts",
-        importer,
-      ),
-    ).toBeUndefined();
+  it("redirects only the canonical runtime import to the simulator in fixture modes", () => {
+    for (const [command, mode] of [
+      ["serve", UI_FIXTURE_MODE],
+      ["build", "performance-browser"],
+      ["serve", "test"],
+    ]) {
+      expect(
+        resolveSimulatorWorkbenchRuntime(
+          command!,
+          mode!,
+          "../ports/workbenchRuntime",
+          importer,
+        ),
+      ).toBe(simulatorRuntime);
+      expect(
+        resolveSimulatorWorkbenchRuntime(
+          command!,
+          mode!,
+          "/src/ports/workbenchRuntime.ts",
+        ),
+      ).toBe(simulatorRuntime);
+      expect(
+        resolveSimulatorWorkbenchRuntime(
+          command!,
+          mode!,
+          "../ports/nativeWorkbenchPorts",
+          importer,
+        ),
+      ).toBeUndefined();
+    }
   });
 
-  it("leaves development and non-desktop builds on the dual runtime facade", () => {
+  it("keeps the app and the desktop build on the native-only runtime", () => {
+    for (const [command, mode] of [
+      ["build", DESKTOP_NATIVE_BUILD_MODE],
+      ["serve", "development"],
+      ["build", UI_FIXTURE_MODE],
+    ]) {
+      expect(
+        resolveSimulatorWorkbenchRuntime(
+          command!,
+          mode!,
+          "../ports/workbenchRuntime",
+          importer,
+        ),
+      ).toBeUndefined();
+      expect(simulatorWorkbenchRuntimePlugin(command!, mode!)).toBeUndefined();
+    }
     expect(
-      resolveDesktopNativeWorkbenchRuntime(
+      resolveSimulatorWorkbenchRuntime(
         "serve",
-        DESKTOP_NATIVE_BUILD_MODE,
-        "../ports/workbenchRuntime",
-        importer,
+        "test",
+        "./workbenchRuntime",
+        path.join(root, "src/ports/workbenchRuntime.test.ts"),
       ),
-    ).toBeUndefined();
-    expect(
-      resolveDesktopNativeWorkbenchRuntime(
-        "build",
-        "development",
-        "../ports/workbenchRuntime",
-        importer,
-      ),
-    ).toBeUndefined();
-    expect(
-      desktopNativeWorkbenchRuntimePlugin("serve", DESKTOP_NATIVE_BUILD_MODE),
     ).toBeUndefined();
   });
 });

@@ -2,7 +2,7 @@ import { Text } from "@codemirror/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EditorDocument } from "../../domain/workbench";
-import { createBrowserWorkbenchPorts } from "../../ports/browserWorkbenchPorts";
+import { createBrowserWorkbenchPorts } from "../../../tests/ui/simulator/browserWorkbenchPorts";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import {
   type ActiveEditorState,

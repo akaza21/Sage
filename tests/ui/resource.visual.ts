@@ -756,7 +756,7 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await page.goto("/");
     await page.evaluate(async () => {
       const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
+        await import("/tests/ui/simulator/workbenchRuntime.ts");
       const repository = getWorkbenchPorts().repository;
       const getFileDiff = repository.getFileDiff.bind(repository);
       repository.getFileDiff = async (...args) => {

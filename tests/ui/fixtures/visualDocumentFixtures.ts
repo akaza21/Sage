@@ -12,7 +12,7 @@ import type {
   SageItemId,
   SageTurnId,
 } from "../../../src/domain/acp";
-import { browserEditor } from "../../../src/services/browserEditor";
+import { browserEditor } from "../simulator/browserEditor";
 import { resourceKey } from "../../../src/domain/resourceIdentity";
 
 import type { BuiltVisualScenario } from "./visualScenarioTypes";

@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MAX_CHAT_COMPOSER_BYTES } from "../domain/chatOwnership";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { useWorkbenchStore } from "./store";
 import { desktop } from "../services/desktop";
 import { resetHarnessModelCache } from "./harnessModelCache";
 import { useChatEffortDraft } from "./chatEffortDraft";
 import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { durableChatIds } from "../services/browserChatState";
-import { browserSnapshot as snapshot } from "../services/browserWorkspaceFixture";
+import { durableChatIds } from "../../tests/ui/simulator/browserChatState";
+import { browserSnapshot as snapshot } from "../../tests/ui/simulator/browserWorkspaceFixture";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();

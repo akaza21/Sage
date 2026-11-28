@@ -15,7 +15,7 @@ async function openFile(page: Page) {
   await expect(page.locator(".file-surface .git-gutter")).toBeAttached();
   await page.evaluate(async (staged) => {
     const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+      await import("/tests/ui/simulator/workbenchRuntime.ts");
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     getWorkbenchPorts().repository.getFileGitBase = async () => ({
       state: "ready",

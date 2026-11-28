@@ -1,7 +1,7 @@
 import type {
   RenameProjectFileRequest,
   TrashProjectResourceRequest,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 
 export class BrowserFileRenameUnavailableError extends Error {
   override name = "BrowserFileRenameUnavailableError";
