@@ -275,9 +275,8 @@ fn a_caller_running_late_still_kills_the_tree() {
     std::thread::sleep(Duration::from_millis(50));
     let _ = end_tree_before(&control, TreeExit::ParentShutdown, deadline);
     std::thread::sleep(Duration::from_millis(500));
-    assert_ne!(
-        control.native_exit_code_if_exited(),
-        Ok(None),
+    assert!(
+        control.root_has_exited(),
         "the grace ended no later than the deadline, so the tree was killed"
     );
 }

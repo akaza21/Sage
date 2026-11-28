@@ -56,6 +56,11 @@ impl TreeControl {
         self.wait_until(deadline)
     }
 
+    #[cfg(test)]
+    pub(crate) fn root_has_exited(&self) -> bool {
+        try_observe_exit(self.0.process.raw()).unwrap_or(false)
+    }
+
     /// The native bound on a wait for the tree, past any pending grace.
     pub(super) fn native_wait_deadline(&self) -> Result<Instant, LaunchError> {
         Ok(locked(&self.0.termination)?.wait_deadline(self.0.terminate_deadline))

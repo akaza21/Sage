@@ -65,6 +65,14 @@ impl TreeControl {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub(crate) fn root_has_exited(&self) -> bool {
+        self.0
+            .child
+            .lock()
+            .is_ok_and(|mut child| matches!(child.try_wait(), Ok(Some(_))))
+    }
+
     /// The native bound on a wait for the tree, past any pending grace.
     pub(super) fn native_wait_deadline(&self) -> Result<Instant, LaunchError> {
         Ok(self
