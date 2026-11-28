@@ -4,6 +4,8 @@
 // still correlates frames.
 import os from "node:os";
 
+import { OPAQUE } from "./shape.mjs";
+
 export const WORKSPACE = "C:\\fixture-workspace";
 const MAX_STRING = 6000;
 const SYNCED = "(claude.ai sync)";
@@ -26,7 +28,6 @@ const IDENTITY_KEYS = new Set([
   "orgId",
   "user_id",
   "userId",
-  "display_name",
   "displayName",
   "subscription_id",
   "chatgpt_account_id",
@@ -34,12 +35,402 @@ const IDENTITY_KEYS = new Set([
   // The account's plan says who captured, not how the protocol behaves.
   "subscriptionType",
   "subscription_type",
-  "planType",
   "plan_type",
 ]);
 const SECRET =
   /\b(?:sk-ant-[\w-]{8,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[\w-]{10,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,})/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// A provider's request and edge ids tie a capture to its logs and location.
+const REQUEST_IDS = [
+  [/\bcf-ray: ([0-9a-f]+(?:-[A-Z]{3})?)/g, "cf-ray: "],
+  [/\breq_([0-9A-Za-z]{16,})/g, "req_"],
+];
+// A model's id or display name wherever it appears, keys and free text
+// included: a family and a version, so a command such as `claude-api` is not
+// one.
+const MODEL_ID =
+  /\b(?:claude-(?:opus|sonnet|haiku|fable)|gpt)-\d+(?:[.-][0-9a-z]+)*/g;
+const MODEL_NAME =
+  /\b(?:GPT-\d[\d.]*(?: [A-Z][a-z]+)?|(?:Claude )?(?:Opus|Sonnet|Haiku|Fable) \d[\d.]*)/g;
+// Objects that describe the capturing account rather than the protocol, and
+// inside each the only paths whose values a binding reads (`*` is any one
+// key, `[]` an array element). Every other value in one becomes
+// "redacted", 0 or false; model ids and names there are placeholders. A model
+// descriptor anywhere is `@model`.
+const WINDOW = ["usedPercent", "windowDurationMins", "resetsAt"];
+const LIMITS = [
+  "rateLimitReachedType",
+  "spendControlReached",
+  "ordinaryUsageAllowed",
+  ...["primary", "secondary"].flatMap((window) =>
+    WINDOW.map((field) => `${window}.${field}`),
+  ),
+];
+export const ACCOUNT_RULES = new Map(
+  Object.entries({
+    account: ["type"],
+    organization: [],
+    subscription: [],
+    credits: [],
+    rate_limit_info: ["status", "rateLimitType", "utilization", "resetsAt"],
+    rateLimits: LIMITS,
+    rateLimitsByLimitId: LIMITS.map((field) => `*.${field}`),
+    rate_limits: ["*.utilization"],
+    models: [
+      "[].value",
+      "[].supportsEffort",
+      "[].supportedEffortLevels[]",
+      "[].contextWindow",
+      "[].isDefault",
+      "[].hidden",
+    ],
+    "@model": [
+      "value",
+      "isDefault",
+      "hidden",
+      "contextWindow",
+      "defaultReasoningEffort",
+      "supportedReasoningEfforts[].reasoningEffort",
+    ],
+    modelUsage: ["*.contextWindow"],
+  }).map(([root, paths]) => [
+    root,
+    paths.map(
+      (rule) =>
+        new RegExp(
+          `^${rule
+            .split(".")
+            .map((segment) =>
+              segment === "*" ? "[^.]+" : segment.replace(/[[\]]/g, "\\$&"),
+            )
+            .join("\\.")}$`,
+        ),
+    ),
+  ]),
+);
+// Run, task and agent ids a harness made for the capture: each gets a
+// stable pseudonym, replaced wherever it is written (text and paths too).
+const RUN_IDS = new Map(
+  Object.entries({
+    run_id: "run",
+    runId: "run",
+    task_id: "task",
+    taskId: "task",
+    agent_id: "agent",
+    agentId: "agent",
+  }),
+);
+// Command, skill, agent, plugin and MCP server catalogs an account can
+// configure. Inside an element only an allow-list survives: its name (or the
+// element itself, when a string) becomes a stable pseudonym, the CATALOG_KEEP
+// enums and every number, boolean and null keep their value, and every other
+// string at any depth (descriptions, prompts, paths, icons) is "redacted". A
+// field that names an entry uses the same pseudonym, inside tool inputs too.
+export const CATALOGS = new Map(
+  Object.entries({
+    commands: "command",
+    slash_commands: "command",
+    terminal_slash_commands: "command",
+    availableCommands: "command",
+    skills: "skill",
+    agents: "agent",
+    plugins: "plugin",
+    mcp_servers: "server",
+  }),
+);
+// The only enum values a catalog entry keeps, from the harnesses' published
+// definitions: Codex SkillScope; Pi SourceScope, SourceOrigin and command
+// source. Pi's SourceInfo.source is free text, so only its built-in value.
+const CATALOG_KEEP = new Map(
+  Object.entries({
+    scope: ["user", "repo", "system", "admin", "project", "temporary"],
+    origin: ["package", "top-level"],
+    source: ["extension", "prompt", "skill", "builtin"],
+  }).map(([key, values]) => [key, new Set(values)]),
+);
+// Values the sanitizer itself writes.
+export const PLACEHOLDER =
+  /^(?:redacted|(?:model|command|skill|agent|plugin|server|tool|key|field|run|task|signature|process)-\d+|Model \d+)$/;
+const CATALOG_REFS = new Set([
+  "command",
+  "commandName",
+  "skill",
+  "subagent_type",
+  "agentType",
+  "agent_type",
+]);
+// The only keys an account, model or catalog object keeps, per root, from
+// the harnesses' published definitions as the reviewed corpus shows them;
+// any other key (an organization name, an account's own map key) gets a
+// stable pseudonym, below opaque fields too.
+const RATE_LIMIT_KEYS = [
+  "balance",
+  "credits",
+  "hasCredits",
+  "individualLimit",
+  "limitId",
+  "limitName",
+  "normalModelSlug",
+  "planType",
+  "primary",
+  "rateLimitReachedType",
+  "resetsAt",
+  "secondary",
+  "spendControlReached",
+  "unlimited",
+  "usedPercent",
+  "windowDurationMins",
+];
+const MODEL_KEYS_ALLOWED = [
+  "additionalSpeedTiers",
+  "api",
+  "availabilityNux",
+  "availableAccessPrograms",
+  "baseUrl",
+  "cacheRead",
+  "cacheWrite",
+  "contextWindow",
+  "cost",
+  "cyber",
+  "defaultReasoningEffort",
+  "defaultServiceTier",
+  "description",
+  "displayName",
+  "hidden",
+  "id",
+  "input",
+  "inputModalities",
+  "isDefault",
+  "maxTokens",
+  "message",
+  "migrationMarkdown",
+  "model",
+  "modelLink",
+  "modelSpecialty",
+  "multiAgentVersion",
+  "name",
+  "output",
+  "provider",
+  "reasoning",
+  "reasoningEffort",
+  "resolvedModel",
+  "retirementAt",
+  "serviceTiers",
+  "supportedEffortLevels",
+  "supportedReasoningEfforts",
+  "supportsAdaptiveThinking",
+  "supportsAutoMode",
+  "supportsEffort",
+  "supportsFastMode",
+  "supportsPersonality",
+  "supportsThinkingOff",
+  "upgrade",
+  "upgradeCopy",
+  "upgradeInfo",
+  "value",
+];
+const ACCOUNT_KEYS = new Map(
+  Object.entries({
+    account: [
+      "apiProvider",
+      "email",
+      "subscriptionType",
+      "tokenSource",
+      "type",
+    ],
+    organization: [],
+    subscription: [],
+    credits: ["balance", "hasCredits", "unlimited"],
+    rate_limit_info: [
+      "isUsingOverage",
+      "overageDisabledReason",
+      "overageEnabled",
+      "overageResetsAt",
+      "overageStatus",
+      "rateLimitType",
+      "resetsAt",
+      "status",
+      "surpassedThreshold",
+      "unifiedWindows",
+      "utilization",
+    ],
+    rateLimits: RATE_LIMIT_KEYS,
+    rateLimitsByLimitId: RATE_LIMIT_KEYS,
+    rate_limits: ["utilization", "resets_at", "resetsAt"],
+    models: MODEL_KEYS_ALLOWED,
+    "@model": MODEL_KEYS_ALLOWED,
+    modelUsage: [
+      "cacheCreationEphemeral1hInputTokens",
+      "cacheCreationEphemeral5mInputTokens",
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "canonicalModel",
+      "contextWindow",
+      "costBasis",
+      "costUSD",
+      "inputTokens",
+      "maxOutputTokens",
+      "outputTokens",
+      "provider",
+      "thinkingTokens",
+      "webSearchRequests",
+    ],
+  }).map(([root, keys]) => [root, new Set(keys)]),
+);
+const CATALOG_KEYS = new Set([
+  "aliases",
+  "argumentHint",
+  "argument_hint",
+  "brandColor",
+  "builtin",
+  "defaultPrompt",
+  "description",
+  "displayName",
+  "enabled",
+  "hint",
+  "iconLarge",
+  "iconLargeUrl",
+  "iconSmall",
+  "iconSmallUrl",
+  "input",
+  "interface",
+  "model",
+  "name",
+  "origin",
+  "path",
+  "pluginId",
+  "scope",
+  "shortDescription",
+  "source",
+  "sourceInfo",
+  "status",
+]);
+// The only booleans a catalog entry keeps, because a binding reads them
+// (Codex lists only enabled skills; Claude Code marks built-in commands);
+// every other boolean is false and every number 0.
+const CATALOG_FLAGS = new Set(["enabled", "builtin"]);
+// Ids the sanitizer writes besides placeholders.
+const SCRUBBED_ID =
+  /^(?:(?:msg|toolu|srvtoolu|call|resp|req)_0{12,}\d*|00000000-0000-4000-8000-\d{12}|0{12}\d{4})$/;
+// Maps keyed by an account's own ids.
+const DYNAMIC_KEYS = new Set(["rateLimitsByLimitId"]);
+// Maps keyed by model.
+export const MODEL_KEYED = new Set(["modelUsage"]);
+// Maps keyed by catalog entries: each key uses the entry's pseudonym.
+const CATALOG_KEYED = new Map(Object.entries({ by_type: "agent" }));
+// A provider's own message, tool-use and call ids.
+const PROVIDER_ID = /\b(msg|toolu|srvtoolu|call|resp)_[0-9A-Za-z]{12,}/g;
+// An MCP tool an account configured, by its Claude Code name
+// (`mcp__<server>__<tool>`) or a Codex MCP tool call item: the server and
+// tool become stable pseudonyms, and the call's other names are redacted.
+const MCP_TOOL =
+  /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/g;
+const MCP_CALL = /^mcpToolCall/i;
+const MCP_SERVER_METHOD = /^mcpServer\//;
+// MCP servers Sage itself configures keep their names: a binding reads them.
+const SAGE_SERVERS = new Set(["sage-browser"]);
+const MCP_CALL_NAMES = new Set([
+  "connectorId",
+  "connectorName",
+  "toolTitle",
+  "pluginId",
+  "mcpAppResourceUri",
+]);
+// The capturing machine's operating system build, as a user agent states it.
+const OS_VERSION = /\b(Windows|Mac OS X|macOS|Darwin|Linux) \d+(?:\.\d+)+/g;
+// A long directory listing line (`ls -l`): its owner, group and date are
+// the capturing machine's.
+const LISTING =
+  /^([-bcdlps][rwxsStT-]{9}[.+@]?\s+\d+\s+)\S+\s+\S+(\s+\d+\s+)[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4})/gm;
+// Fields that hold a process handle, and the synthetic form one takes.
+export const PROCESS_KEYS = new Set(["processId", "process_id"]);
+export const PROCESS_HANDLE = /^(?:process-\d+|-\d+)$/;
+// A 16-hex-digit folder in a path.
+const HEX_SEGMENT = /(?<=[\\/])[0-9a-f]{16}(?=[\\/])/g;
+// Lists whose elements are model descriptors.
+export const MODEL_LISTS = new Set(["models", "availableModels"]);
+// Fields of a model descriptor, and fields elsewhere that name a model.
+const MODEL_FIELDS = new Set([
+  "id",
+  "value",
+  "model",
+  "resolvedModel",
+  "name",
+  "description",
+  "upgrade",
+]);
+const MODEL_KEYS = new Set([
+  "model",
+  "resolvedModel",
+  "modelId",
+  "model_id",
+  "defaultModel",
+  "modelSlug",
+  "normalModelSlug",
+]);
+// Token counts and costs of the captured turns, as fixed synthetic values.
+export const TOKENS = /tokens(?:_delta)?$|^(?:cacheRead|cacheWrite)$/i;
+// Distinct per kind, so a replay still tells input, output and cache apart.
+export const tokenCount = (key) =>
+  /output/i.test(key)
+    ? 50
+    : /reasoning/i.test(key)
+      ? 40
+      : /cache_?read|cached/i.test(key)
+        ? 30
+        : /cache_?(?:creation|write)/i.test(key)
+          ? 20
+          : 100;
+const SIGNATURE_KEYS = new Set(["signature", "encrypted_content"]);
+export const COST_KEYS = new Set([
+  "total_cost_usd",
+  "costUSD",
+  "cost_usd",
+  "total",
+]);
+// Absolute times move to a fixed epoch, one offset per unit for the whole
+// capture, so every interval between them holds.
+const TIME_KEY = /(?:At|Ms|_at|_time|Time|stamp)$/;
+const NOT_TIME = /duration|Mins|resetsAt|resets_at|expires/i;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+// A time written into a path moves to the same epoch on its own base, since a
+// harness may write it in local time and a shared offset would give away the
+// capture's time zone: a file-name time such as
+// Pi's `2026-11-26T17-01-08-628Z_<id>.jsonl` or Codex's
+// `2026/11/26/rollout-2026-11-26T22-30-00-<id>.jsonl`, together with the
+// date folders in front of it. Groups: folder date and separator, file-name
+// prefix, day, hours, minutes, seconds, milliseconds.
+const FILE_TIME =
+  /(?:\b(\d{4}([\\/])\d{2}\2\d{2})\2([A-Za-z_]*-?))?\b(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3})(?=Z))?/g;
+// An ISO time inside text. Groups: the time to the second, the fraction.
+const TEXT_TIME =
+  /(?<!\d)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z(?![\w:])/g;
+const textTimeMs = (match) =>
+  Date.parse(`${match[1]}.${`${match[2] ?? ""}000`.slice(0, 3)}Z`);
+const fileTimeMs = (match) =>
+  Date.parse(
+    `${match[4]}T${match[5]}:${match[6]}:${match[7]}.${match[8] ?? "000"}Z`,
+  );
+const fileTime = (match, ms) => {
+  const iso = new Date(ms).toISOString();
+  const time = `${iso.slice(0, 10)}T${iso.slice(11, 19).replace(/:/g, "-")}`;
+  const millis = match[8] === undefined ? "" : `-${iso.slice(20, 23)}`;
+  const sep = match[2];
+  const folder = match[1]
+    ? `${iso.slice(0, 10).replace(/-/g, sep)}${sep}${match[3]}`
+    : "";
+  return `${folder}${time}${millis}`;
+};
+const TIME_BASE_MS = 1800000000000;
+const TIME_BASE_S = 1800000000;
+// The instant normalized usage windows reset from (2027-01-15T08:00:00Z).
+const USAGE_EPOCH = 1800000000;
+// When the account's stored sign-in expires.
+const CREDENTIAL_EXPIRY_KEYS = new Set([
+  "credential_expires_at",
+  "credentialExpiresAt",
+]);
+const CREDENTIAL_EXPIRY = "2027-01-01T00:00:00.000Z";
 // Bounded by any non-hex character, so an id after `_` (a Pi session file
 // name) is caught too.
 const UUID =
@@ -74,7 +465,7 @@ function spellings(path, label) {
   return out;
 }
 
-export function makeSanitizer({ roots }) {
+export function makeSanitizer({ roots, trusted = false }) {
   // Longest first, so a scratch repo inside the home folder maps to the repo.
   const replacements = [];
   const system = process.env.SystemRoot
@@ -93,6 +484,58 @@ export function makeSanitizer({ roots }) {
   const host = os.hostname();
   const user = os.userInfo().username;
   const uuids = new Map();
+  // A provider's message, tool-use and call ids map to stable placeholders,
+  // so references between frames hold but provider records cannot be found.
+  const providerIds = new Map();
+  const runIds = new Map();
+  const catalogNames = new Map();
+  const keyNames = new Map();
+  const signatures = new Map();
+  const hexSegments = new Map();
+  const processes = new Map();
+  // Values this sanitizer wrote. A placeholder-shaped value counts as
+  // already scrubbed only if this run wrote it, or when re-scrubbing a corpus
+  // that is already scrubbed (`trusted`): in a raw capture, a server named
+  // `server-835791234` is a real name like any other.
+  const generated = new Set();
+  const minted = (value) => {
+    generated.add(value);
+    return value;
+  };
+  const isSynthetic = (value) =>
+    value === "redacted" ||
+    generated.has(value) ||
+    (trusted && (PLACEHOLDER.test(value) || SCRUBBED_ID.test(value)));
+  const mcpServer = (server) =>
+    isSynthetic(server) || SAGE_SERVERS.has(server)
+      ? server
+      : pseudonym(catalogNames, server, "server");
+  const mcpTool = (server, tool) =>
+    isSynthetic(tool)
+      ? tool
+      : pseudonym(catalogNames, `mcp tool ${server} ${tool}`, "tool");
+  const mcpCall = (call) => {
+    const out = { ...call };
+    const server = typeof call.server === "string" ? call.server : "";
+    if (server) out.server = mcpServer(server);
+    for (const field of ["tool", "toolName"])
+      if (typeof call[field] === "string")
+        out[field] = mcpTool(server, call[field]);
+    for (const field of MCP_CALL_NAMES)
+      if (typeof call[field] === "string") out[field] = "redacted";
+    return out;
+  };
+  const pseudonym = (map, original, kind) => {
+    if (!map.has(original))
+      map.set(
+        original,
+        minted(
+          `${kind}-${[...map.values()].filter((seen) => seen.startsWith(`${kind}-`)).length + 1}`,
+        ),
+      );
+    return map.get(original);
+  };
+  const requestIds = new Map();
 
   const text = (value) => {
     let out = value;
@@ -102,12 +545,100 @@ export function makeSanitizer({ roots }) {
     out = out
       .replace(SECRET, "[redacted-secret]")
       .replace(EMAIL, "user@example.invalid");
+    for (const [pattern, prefix] of REQUEST_IDS)
+      out = out.replace(pattern, (match, id) => {
+        // Placeholders (all zeros but the count) stay as they are.
+        if (/^0+\d*(?:-XXX)?$/.test(id)) return match;
+        if (!requestIds.has(match)) {
+          const count =
+            [...requestIds.keys()].filter((seen) => seen.startsWith(prefix))
+              .length + 1;
+          const ray = prefix !== "req_";
+          requestIds.set(
+            match,
+            `${prefix}${String(count).padStart(ray ? 16 : 32, "0")}${ray ? "-XXX" : ""}`,
+          );
+        }
+        return requestIds.get(match);
+      });
+    out = out
+      .replace(MODEL_NAME, (match) => {
+        // A version that ends a sentence keeps its full stop.
+        const stop = match.endsWith(".") ? "." : "";
+        return (
+          modelPlaceholder(
+            match.slice(0, match.length - stop.length),
+            "Model ",
+          ) + stop
+        );
+      })
+      .replace(MODEL_ID, (match) => modelPlaceholder(match, "model-"));
+    // A model id or name a catalog taught, wherever else it is written. Only
+    // a model-like string (a digit, space or hyphen in it) is matched in free
+    // text, so a catalog id that is also a protocol word stays a word.
+    // Text nobody learned first (a capture's own notes) sets the base itself
+    // when no time set one, so no time is ever left as it was.
+    if (earliest.file === Infinity)
+      for (const match of out.matchAll(FILE_TIME))
+        earliest.file = Math.min(earliest.file, fileTimeMs(match));
+    if (earliest.ms === Infinity)
+      for (const match of out.matchAll(TEXT_TIME))
+        earliest.ms = Math.min(earliest.ms, textTimeMs(match));
+    out = out.replace(FILE_TIME, (...match) =>
+      fileTime(match, TIME_BASE_MS + (fileTimeMs(match) - earliest.file)),
+    );
+    // An absolute time written into text, such as a log line in a stderr
+    // tail, moves with the capture's other times; digits finer than a
+    // millisecond are kept.
+    out = out.replace(TEXT_TIME, (...match) => {
+      const fraction = match[2] ?? "";
+      const iso = new Date(
+        TIME_BASE_MS + (textTimeMs(match) - earliest.ms),
+      ).toISOString();
+      return fraction
+        ? `${iso.slice(0, 23)}${fraction.slice(3)}Z`
+        : `${iso.slice(0, 19)}Z`;
+    });
+    out = out.replace(
+      MCP_TOOL,
+      (match, server, tool) =>
+        `mcp__${mcpServer(server)}__${mcpTool(server, tool)}`,
+    );
+    const learned = learnedModels();
+    if (learned) out = out.replace(learned, (match) => models.get(match));
+    if (wordPattern && /\s/.test(out))
+      out = out.replace(wordPattern, (match) => models.get(match));
+    const runs = runIdPattern();
+    if (runs) out = out.replace(runs, (match) => runIds.get(match));
+    out = out
+      .replace(OS_VERSION, "$1 0.0.0")
+      .replace(LISTING, "$1user group$2Jan 15 08:00");
+    // A hash a harness derives for a folder (Claude Code's per-project temp
+    // directory) comes from the capture's own paths.
+    out = out.replace(HEX_SEGMENT, (match) =>
+      generated.has(match) || (trusted && /^0{12}/.test(match))
+        ? match
+        : (hexSegments.get(match) ??
+          hexSegments
+            .set(match, minted(String(hexSegments.size + 1).padStart(16, "0")))
+            .get(match)),
+    );
+    out = out.replace(PROVIDER_ID, (match, prefix) => {
+      if (!providerIds.has(match))
+        providerIds.set(
+          match,
+          minted(`${prefix}_${String(providerIds.size + 1).padStart(24, "0")}`),
+        );
+      return providerIds.get(match);
+    });
     out = out.replace(UUID, (match) => {
       const key = match.toLowerCase();
       if (!uuids.has(key)) {
         uuids.set(
           key,
-          `00000000-0000-4000-8000-${String(uuids.size + 1).padStart(12, "0")}`,
+          minted(
+            `00000000-0000-4000-8000-${String(uuids.size + 1).padStart(12, "0")}`,
+          ),
         );
       }
       return uuids.get(key);
@@ -145,39 +676,471 @@ export function makeSanitizer({ roots }) {
     }
   };
 
-  const walk = (value, key) => {
+  // The models an account can use say what it is entitled to, so each model
+  // descriptor in a catalog (Pi's `{ id, api, provider }`, Codex's
+  // `{ id, model, displayName }`) maps its id, model and name to a
+  // placeholder. Only those descriptor fields and fields that name a model
+  // are replaced, so a protocol string that happens to equal a model id
+  // (`text`) is never touched.
+  const models = new Map();
+  let modelCount = 0;
+  let runSize = -1;
+  let runPattern = null;
+  function runIdPattern() {
+    if (runSize === runIds.size) return runPattern;
+    runSize = runIds.size;
+    // Ids under four characters carry no identity and would match ordinary
+    // words, so text keeps them; the id fields themselves are always replaced.
+    const ids = [...runIds.keys()]
+      .filter((id) => id.length >= 4)
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    // Separators such as `-`, `.` and `/` bound an id, so it is replaced in
+    // file names (`agent-<id>.txt`) too.
+    runPattern = ids.length
+      ? new RegExp(`(?<![A-Za-z0-9_])(?:${ids.join("|")})(?![A-Za-z0-9_])`, "g")
+      : null;
+    return runPattern;
+  }
+  const findRunIds = (value) => {
+    if (Array.isArray(value)) value.forEach(findRunIds);
+    else if (value && typeof value === "object")
+      for (const [key, entry] of Object.entries(value)) {
+        if (
+          RUN_IDS.has(key) &&
+          typeof entry === "string" &&
+          entry !== "" &&
+          !isSynthetic(entry)
+        )
+          pseudonym(runIds, entry, RUN_IDS.get(key));
+        else findRunIds(entry);
+      }
+  };
+
+  // Catalog names are learned from every transcript before any record is
+  // rewritten, so a reference written before its catalog still maps.
+  const isCatalogName = (at) =>
+    at.length === 0 || (at.length === 1 && at[0] === "name");
+  const findCatalogs = (value, key = "") => {
+    if (Array.isArray(value)) {
+      if (CATALOGS.has(key))
+        for (const entry of value) {
+          const name = typeof entry === "string" ? entry : entry?.name;
+          if (typeof name === "string" && !isSynthetic(name))
+            pseudonym(catalogNames, name, CATALOGS.get(key));
+        }
+      value.forEach((entry) => findCatalogs(entry, key));
+    } else if (value && typeof value === "object")
+      for (const [name, entry] of Object.entries(value))
+        if (!OPAQUE.has(name)) findCatalogs(entry, name);
+  };
+
+  // One pattern for every model-like id or name learned so far, rebuilt
+  // when the catalog grows.
+  let learnedSize = -1;
+  let learnedPattern = null;
+  function learnedModels() {
+    if (learnedSize === models.size) return learnedPattern;
+    learnedSize = models.size;
+    const names = [...models.keys()]
+      .filter(
+        (name) =>
+          name.length >= 4 && /[\d\s-]/.test(name) && !isSynthetic(name),
+      )
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    learnedPattern = names.length
+      ? new RegExp(`(?<![\\w-])(?:${names.join("|")})(?![\\w-])`, "g")
+      : null;
+    // A word-like id (`sonnet`, `o3`) could equal a protocol value, so it
+    // is replaced only as a whole word inside prose: a string with
+    // whitespace in it, never a bare value or a key.
+    const words = [...models.keys()]
+      .filter((name) =>
+        !/[\d\s-]/.test(name) || name.length < 4
+          ? !isSynthetic(name) && name !== "default"
+          : false,
+      )
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp);
+    wordPattern = words.length
+      ? new RegExp(`(?<![\\w-])(?:${words.join("|")})(?![\\w-])`, "g")
+      : null;
+    return learnedPattern;
+  }
+  let wordPattern = null;
+
+  // The placeholder for a model id or name, new on first sight.
+  function modelPlaceholder(found, kind) {
+    const key = kind === "model-" ? found.toLowerCase() : found;
+    if (!models.has(key)) {
+      modelCount += 1;
+      models.set(key, minted(`${kind}${modelCount}`));
+    }
+    return models.get(key);
+  }
+  // Claude Code's `{ value, resolvedModel, description }` too; its "default"
+  // alias is protocol, not a model.
+  const modelId = (value) =>
+    typeof value?.id === "string"
+      ? value.id
+      : typeof value?.value === "string" && value.value !== "default"
+        ? value.value
+        : undefined;
+  // An element of a model list is a descriptor whatever else it carries.
+  const isModel = (value, key = "") =>
+    (MODEL_LISTS.has(key) && value && !Array.isArray(value)) ||
+    (typeof value?.id === "string" &&
+      ((typeof value.api === "string" && typeof value.provider === "string") ||
+        (typeof value.model === "string" && "displayName" in value))) ||
+    (typeof value?.value === "string" &&
+      typeof value.resolvedModel === "string");
+  const findModels = (value, key = "") => {
+    if (Array.isArray(value)) value.forEach((entry) => findModels(entry, key));
+    else if (value && typeof value === "object") {
+      const id = modelId(value);
+      if (isModel(value, key) && id !== undefined && !models.has(id)) {
+        modelCount += 1;
+        models.set(id, minted(`model-${modelCount}`));
+      }
+      if (isModel(value, key)) {
+        const n = models.get(id)?.slice(6) ?? String((modelCount += 1));
+        for (const [field, label] of [
+          ["model", `model-${n}`],
+          ["resolvedModel", `model-${n}`],
+          ["name", `Model ${n}`],
+          ["displayName", `Model ${n}`],
+          ["description", `Model ${n}`],
+        ])
+          if (
+            typeof value[field] === "string" &&
+            !models.has(value[field]) &&
+            !isSynthetic(value[field])
+          )
+            models.set(value[field], minted(label));
+      }
+      for (const [name, entry] of Object.entries(value))
+        findModels(entry, name);
+    }
+  };
+
+  // The account's usage, as a limit notice reports it, normalized to fixed
+  // values that keep their types and order: each window resets one window
+  // after a fixed instant.
+  const usage = (object, inAccount) => {
+    // Only inside an account or rate-limit object: a usage window, a credit
+    // balance, or a reset time whatever its siblings.
+    const window =
+      "usedPercent" in object ||
+      "utilization" in object ||
+      "windowDurationMins" in object ||
+      "hasCredits" in object;
+    if (
+      !inAccount ||
+      (!window && !("resetsAt" in object) && !("resets_at" in object))
+    )
+      return object;
+    const out = { ...object };
+    if (typeof out.usedPercent === "number") out.usedPercent = 10;
+    if (typeof out.utilization === "number") out.utilization = 0.1;
+    if (typeof out.status === "string" && "utilization" in out)
+      out.status = "allowed";
+    // A reset time, whatever its siblings and form, is one window after a
+    // fixed instant.
+    const reset = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
+    for (const field of ["resetsAt", "resets_at"]) {
+      if (typeof out[field] === "number")
+        out[field] = out[field] >= 1e12 ? reset * 1000 : reset;
+      else if (typeof out[field] === "string")
+        out[field] = new Date(reset * 1000).toISOString();
+    }
+    return out;
+  };
+
+  // Earliest absolute time seen, per unit.
+  const earliest = { ms: Infinity, s: Infinity, file: Infinity };
+  const timeUnit = (value) =>
+    typeof value === "number"
+      ? value >= 1e12
+        ? "ms"
+        : value >= 1e9
+          ? "s"
+          : undefined
+      : typeof value === "string" && ISO_TIME.test(value)
+        ? "iso"
+        : undefined;
+  const isTime = (key) => TIME_KEY.test(key) && !NOT_TIME.test(key);
+  const findTextTimes = (value) => {
+    for (const match of value.matchAll(FILE_TIME))
+      earliest.file = Math.min(earliest.file, fileTimeMs(match));
+    for (const match of value.matchAll(TEXT_TIME))
+      earliest.ms = Math.min(earliest.ms, textTimeMs(match));
+  };
+  // Times written into text are learned everywhere, opaque payloads too,
+  // since text() rewrites them there as well.
+  const findTimes = (value, key = "", opaque = false) => {
+    if (Array.isArray(value))
+      value.forEach((entry) => findTimes(entry, key, opaque));
+    else if (value && typeof value === "object") {
+      for (const [name, entry] of Object.entries(value))
+        findTimes(entry, name, opaque || OPAQUE.has(name));
+    } else if (
+      typeof value === "string" &&
+      (opaque || !isTime(key)) &&
+      !CREDENTIAL_EXPIRY_KEYS.has(key) &&
+      !NOT_TIME.test(key)
+    ) {
+      // An expiry or reset time is replaced by a fixed value, not shifted,
+      // so it never sets the base.
+      findTextTimes(value);
+    } else if (!opaque && isTime(key)) {
+      const unit = timeUnit(value);
+      if (unit === "s") earliest.s = Math.min(earliest.s, value);
+      if (unit === "ms") earliest.ms = Math.min(earliest.ms, value);
+      if (unit === "iso")
+        earliest.ms = Math.min(earliest.ms, Date.parse(value));
+    }
+  };
+  const shifted = (value) => {
+    const unit = timeUnit(value);
+    if (unit === "s") return TIME_BASE_S + (value - earliest.s);
+    if (unit === "ms") return TIME_BASE_MS + (value - earliest.ms);
+    if (unit === "iso")
+      return new Date(
+        TIME_BASE_MS + (Date.parse(value) - earliest.ms),
+      ).toISOString();
+    return value;
+  };
+
+  // Inside an account object only the paths its rules name keep their value.
+  const kept = (value, account) => {
+    if (!account) return value;
+    const at = account.path.join(".");
+    if ((ACCOUNT_RULES.get(account.root) ?? []).some((rule) => rule.test(at)))
+      return value;
+    if (typeof value === "string")
+      return isSynthetic(value) ? value : "redacted";
+    if (typeof value === "number") return 0;
+    if (typeof value === "boolean") return false;
+    return value;
+  };
+
+  const walk = (
+    value,
+    key,
+    inModel = false,
+    opaque = false,
+    account = null,
+    catalog = null,
+  ) => kept(scrub(value, key, inModel, opaque, account, catalog), account);
+
+  // A key inside an account object that is not a plain identifier, or any key
+  // of a map keyed by the account's own ids, gets a stable pseudonym.
+  // Every key of a usage map keyed by model is a model, whatever its form.
+  const accountKey = (name, base) =>
+    MODEL_KEYED.has(base.root) && base.path.length === 0
+      ? isSynthetic(name)
+        ? name
+        : (models.get(name) ?? modelPlaceholder(name, "model-"))
+      : isSynthetic(name) ||
+          (ACCOUNT_KEYS.get(base.root)?.has(name) &&
+            !(DYNAMIC_KEYS.has(base.root) && base.path.length === 0))
+        ? name
+        : pseudonym(keyNames, name, "key");
+
+  const scrub = (value, key, inModel, opaque, account, catalog) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
+    // A process handle is the capturing machine's; each gets a stable
+    // synthetic one (1001, 1002, ...) so the frames that share it still do.
+    if (
+      PROCESS_KEYS.has(key) &&
+      (typeof value === "string" || typeof value === "number") &&
+      value !== ""
+    ) {
+      // A synthetic handle has a form no real one can take (`process-N`, or
+      // -N for a number), so its provenance is never inferred from a value.
+      if (
+        generated.has(String(value)) ||
+        (trusted && PROCESS_HANDLE.test(String(value)))
+      )
+        return value;
+      if (!processes.has(String(value)))
+        processes.set(String(value), processes.size + 1);
+      const n = processes.get(String(value));
+      const handle = typeof value === "number" ? -n : `process-${n}`;
+      minted(String(handle));
+      return handle;
+    }
+    if (!opaque && typeof value === "number") {
+      if (TOKENS.test(key)) return tokenCount(key);
+      if (COST_KEYS.has(key)) return 0.01;
+    }
+    // A provider's signature over a response fingerprints the conversation;
+    // each gets a stable pseudonym, so a delta and its full block still match.
+    if (SIGNATURE_KEYS.has(key) && typeof value === "string" && value !== "")
+      return isSynthetic(value)
+        ? value
+        : pseudonym(signatures, value, "signature");
+    if (!opaque && isTime(key)) {
+      const unit = timeUnit(value);
+      if (unit) return shifted(value);
+    }
+    if (CREDENTIAL_EXPIRY_KEYS.has(key) && typeof value === "string")
+      return CREDENTIAL_EXPIRY;
+    // Inside a catalog entry the allow-list holds at every depth, under
+    // opaque keys too.
+    if (catalog && typeof value === "number") return 0;
+    if (catalog && typeof value === "boolean")
+      return CATALOG_FLAGS.has(key) ? value : false;
+    if (typeof value === "string" && catalog) {
+      if (isSynthetic(value)) return value;
+      if (isCatalogName(catalog.path))
+        return pseudonym(catalogNames, value, catalog.kind);
+      return CATALOG_KEEP.get(key)?.has(value) ? value : "redacted";
+    }
+    if (RUN_IDS.has(key) && typeof value === "string" && runIds.has(value))
+      return runIds.get(value);
+    if (
+      typeof value === "string" &&
+      CATALOG_REFS.has(key) &&
+      catalogNames.has(value.replace(/^\//, ""))
+    )
+      return catalogNames.get(value.replace(/^\//, ""));
     if (typeof value === "string") {
+      // A model a descriptor names that no catalog listed (an upgrade
+      // target) gets its own placeholder; placeholders stay as they are.
+      if (
+        ((inModel && MODEL_FIELDS.has(key)) || key === "resolvedModel") &&
+        value !== "default" &&
+        !models.has(value) &&
+        !isSynthetic(value)
+      ) {
+        modelCount += 1;
+        models.set(value, minted(`model-${modelCount}`));
+      }
+      if (
+        models.has(value) &&
+        ((inModel && MODEL_FIELDS.has(key)) || MODEL_KEYS.has(key))
+      )
+        return models.get(value);
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
     if (Array.isArray(value)) {
+      // Elements are `<path>[]`; an account array starts its own path.
+      const element = account
+        ? {
+            root: account.root,
+            path: [
+              ...account.path.slice(0, -1),
+              `${account.path.at(-1) ?? ""}[]`,
+            ],
+          }
+        : ACCOUNT_RULES.has(key)
+          ? { root: key, path: ["[]"] }
+          : null;
       return value
         .filter(
           (entry) =>
             !isSynced(entry) &&
             !(typeof entry === "string" && synced.has(entry)),
         )
-        .map((entry) => walk(entry, key));
+        .map((entry) =>
+          walk(
+            entry,
+            key,
+            false,
+            opaque,
+            element,
+            catalog
+              ? { kind: catalog.kind, path: [...catalog.path, "[]"] }
+              : !opaque && CATALOGS.has(key)
+                ? { kind: CATALOGS.get(key), path: [] }
+                : null,
+          ),
+        );
     }
     if (value && typeof value === "object") {
+      if (!opaque && MCP_CALL.test(value.type ?? "")) value = mcpCall(value);
+      // An MCP server notification names its server in `params.name`.
+      if (
+        !opaque &&
+        MCP_SERVER_METHOD.test(value.method ?? "") &&
+        typeof value.params?.name === "string"
+      )
+        value = {
+          ...value,
+          params: { ...value.params, name: mcpServer(value.params.name) },
+        };
+      const model = isModel(value, key);
+      const base =
+        account ??
+        (model
+          ? { root: "@model", path: [] }
+          : ACCOUNT_RULES.has(key)
+            ? { root: key, path: [] }
+            : null);
       return Object.fromEntries(
-        Object.entries(value).map(([name, entry]) => [
-          text(name),
-          walk(entry, name),
-        ]),
+        Object.entries(opaque ? value : usage(value, base !== null)).map(
+          ([name, entry]) => {
+            const scrubbed = text(name);
+            // Inside an account object or catalog entry, every key below an
+            // opaque field is the account's own and gets a pseudonym; above
+            // one, a plain identifier is a protocol field name.
+            const renamed =
+              !opaque && CATALOG_KEYED.has(key)
+                ? isSynthetic(scrubbed)
+                  ? scrubbed
+                  : pseudonym(catalogNames, scrubbed, CATALOG_KEYED.get(key))
+                : (base || catalog) && opaque
+                  ? isSynthetic(scrubbed)
+                    ? scrubbed
+                    : pseudonym(keyNames, scrubbed, "key")
+                  : base
+                    ? accountKey(scrubbed, base)
+                    : catalog
+                      ? isSynthetic(scrubbed) || CATALOG_KEYS.has(scrubbed)
+                        ? scrubbed
+                        : pseudonym(keyNames, scrubbed, "key")
+                      : scrubbed;
+            return [
+              renamed,
+              walk(
+                entry,
+                name,
+                model,
+                opaque || OPAQUE.has(name),
+                base && { root: base.root, path: [...base.path, renamed] },
+                catalog
+                  ? { kind: catalog.kind, path: [...catalog.path, name] }
+                  : null,
+              ),
+            ];
+          },
+        ),
       );
     }
     return value;
   };
 
+  const learn = (list) =>
+    list.forEach((record) => {
+      findSynced(record.frame);
+      findModels(record.frame);
+      findTimes(record.frame);
+      findRunIds(record.frame);
+      findCatalogs(record.frame);
+    });
+
   return {
+    learn,
     record: (record) => walk(record, ""),
     records: (list) => {
-      list.forEach((record) => findSynced(record.frame));
+      learn(list);
       return joinSplitRuns(list, text).map((r) => walk(r, ""));
     },
     text,
+    isSynthetic,
   };
 }
 

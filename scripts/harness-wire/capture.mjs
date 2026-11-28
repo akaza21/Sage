@@ -15,7 +15,7 @@
 // Then compare with the committed corpus:
 //   node scripts/harness-wire/shape.mjs --diff src-tauri/tests/fixtures/harness-wire <dir>
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +28,7 @@ import {
   freshScratch,
   scenarioEnv,
 } from "./config-env.mjs";
+import { neutralizeUndeclared, undeclaredPaths } from "./neutral.mjs";
 import { makeSanitizer } from "./sanitize.mjs";
 import { shapeOfHarness } from "./shape.mjs";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
@@ -129,36 +130,208 @@ function scratchRepo(dir) {
   return { repo, emptyHome };
 }
 
-// Scrubs an already written capture again, on the host and with the --work
-// dir that recorded it, after the sanitizer learns a new spelling.
+// Scrubs an already written capture again, after the sanitizer learns a new
+// spelling: on the host and with the --work dir that recorded it, or with any
+// --work for a committed corpus. One sanitizer per harness learns every
+// transcript first, so a model a catalog in one transcript names is replaced
+// the same way in all; a frame stored once in commands.jsonl and referenced
+// by hash from another transcript keeps its reference.
+// One writer of a corpus at a time, capture or re-scrub: an exclusive lock
+// file in it for the whole run.
+async function withCorpusLock(out, run) {
+  fs.mkdirSync(out, { recursive: true });
+  const lock = path.join(out, ".corpus.lock");
+  let held;
+  try {
+    held = fs.openSync(lock, "wx");
+  } catch (error) {
+    if (error.code === "EEXIST")
+      throw new Error(
+        `${lock} exists: another capture or --resanitize is running, or one crashed (remove it once none is)`,
+        { cause: error },
+      );
+    throw error;
+  }
+  try {
+    return await run();
+  } finally {
+    fs.closeSync(held);
+    fs.rmSync(lock, { force: true });
+  }
+}
+
+// A re-scrub stages and backs up under names of its own run, so an
+// interrupted one is found and never overwritten.
 function resanitize(out, harnesses, work) {
+  // A crashed run's originals (`.bak`) or staged files (`.tmp`) are never
+  // committed or overwritten: restore or remove them first.
+  const left = harnesses.flatMap((harness) => {
+    const dir = path.join(out, harness);
+    return fs.existsSync(dir)
+      ? fs
+          .readdirSync(dir)
+          .filter((name) => /\.\d+-[0-9a-f]{8}\.(?:bak|tmp)$/.test(name))
+          .map((name) => path.join(dir, name))
+      : [];
+  });
+  const done = fs
+    .readdirSync(out)
+    .filter((name) => /^\.resanitize-\d+-[0-9a-f]{8}\.committed$/.test(name));
+  if (left.length || done.length)
+    throw new Error(
+      done.length
+        ? `an interrupted --resanitize had replaced every file (${done.join(", ")}): delete its leftover .bak and .tmp files and the marker, then rerun; ${left.join(", ")}`
+        : `an interrupted --resanitize left ${left.join(", ")} before replacing every file: put each .bak back in place of its file and delete the .tmp files, then rerun`,
+    );
+  resanitizeLocked(
+    out,
+    harnesses,
+    work,
+    `${process.pid}-${randomBytes(4).toString("hex")}`,
+  );
+}
+
+function resanitizeLocked(out, harnesses, work, run) {
+  const digest = (line) => createHash("sha256").update(line).digest("hex");
+  const every = [];
   for (const harness of harnesses) {
     const dir = path.join(out, harness);
-    for (const file of fs
+    const files = fs
       .readdirSync(dir)
-      .filter((name) => name.endsWith(".jsonl"))) {
-      const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
-      const sanitizer = makeSanitizer({
-        roots: [
-          [path.join(scratch, "repo"), "repo"],
-          [path.join(scratch, "empty-home"), "empty-home"],
-          ...configRoots(DRIVERS[harness].CONFIG, process.env),
-          [work, "work"],
-        ],
-      });
-      const records = readTranscriptLines(path.join(dir, file)).map((line) =>
-        JSON.parse(line),
+      .filter((name) => name.endsWith(".jsonl"))
+      .sort((a, b) =>
+        a === "commands.jsonl"
+          ? -1
+          : b === "commands.jsonl"
+            ? 1
+            : a.localeCompare(b),
       );
-      const body = sanitizer
-        .records(records)
-        .map((record) => JSON.stringify(record));
-      fs.writeFileSync(path.join(dir, file), `${body.join("\n")}\n`);
+    // The committed corpus is already scrubbed: its placeholders are trusted.
+    const sanitizer = makeSanitizer({
+      trusted: true,
+      roots: [
+        ...files.flatMap((file) => {
+          const scratch = path.join(work, `${harness}-${file.slice(0, -6)}`);
+          return [
+            [path.join(scratch, "repo"), "repo"],
+            [path.join(scratch, "empty-home"), "empty-home"],
+          ];
+        }),
+        ...configRoots(DRIVERS[harness].CONFIG, process.env),
+        [work, "work"],
+      ],
+    });
+    const lines = (file) => readTranscriptLines(path.join(dir, file));
+    for (const file of files)
+      sanitizer.learn(lines(file).map((line) => JSON.parse(line)));
+    const metaFile = path.join(dir, "meta.json");
+    const meta = fs.existsSync(metaFile)
+      ? JSON.parse(fs.readFileSync(metaFile, "utf8"))
+      : null;
+    // The capture's notes are learned too, so their times share the base.
+    if (meta) sanitizer.learn([{ frame: meta }]);
+    // The new hash of each commands.jsonl line, by its old hash.
+    // Fields the harness sends beyond its published definitions keep their
+    // key but not their value (neutral.mjs).
+    const undeclared = undeclaredPaths(harness);
+    const moved = new Map();
+    // The scrubbed frame of each commands.jsonl line, by its old hash.
+    const stored = new Map();
+    const resolve = (record) =>
+      [...stored].find(([hash]) => hash.startsWith(record.sha256))?.[1];
+    // Every transcript is rewritten and its references checked in memory
+    // first; only then are the files replaced, so a failure leaves the
+    // corpus as it was.
+    const staged = new Map();
+    for (const file of files) {
+      const before = lines(file);
+      const after = neutralizeUndeclared(
+        sanitizer.records(before.map((line) => JSON.parse(line))),
+        undeclared,
+        resolve,
+        sanitizer.isSynthetic,
+      ).map((record) => {
+        if (!record.ref) return JSON.stringify(record);
+        const old = [...moved.keys()].find((hash) =>
+          hash.startsWith(record.sha256),
+        );
+        if (!old)
+          throw new Error(
+            `${file}: no ${record.ref} line has digest ${record.sha256}`,
+          );
+        return JSON.stringify({
+          ...record,
+          sha256: moved.get(old).slice(0, record.sha256.length),
+        });
+      });
+      if (file === "commands.jsonl" && after.length !== before.length)
+        throw new Error("commands.jsonl changed length; recapture instead");
+      if (file === "commands.jsonl")
+        before.forEach((line, at) => {
+          moved.set(digest(line), digest(after[at]));
+          stored.set(digest(line), JSON.parse(after[at]).frame);
+        });
+      staged.set(file, `${after.join("\n")}\n`);
     }
-    fs.writeFileSync(
-      path.join(dir, "shape.json"),
-      `${JSON.stringify(shapeOfHarness(dir), null, 2)}\n`,
-    );
+    // The capture's own notes (args, gaps, stderr tails) carry the same
+    // kinds of values, so they get the same text scrub.
+    if (meta) {
+      const scrubText = (value) =>
+        typeof value === "string"
+          ? sanitizer.text(value)
+          : Array.isArray(value)
+            ? value.map(scrubText)
+            : value && typeof value === "object"
+              ? Object.fromEntries(
+                  Object.entries(value).map(([key, entry]) => [
+                    key,
+                    scrubText(entry),
+                  ]),
+                )
+              : value;
+      for (const key of ["args", "gaps"])
+        if (key in meta) meta[key] = scrubText(meta[key]);
+      for (const scenario of Object.values(meta.scenarios ?? {}))
+        if (typeof scenario.stderrTail === "string")
+          scenario.stderrTail = sanitizer.text(scenario.stderrTail);
+      staged.set("meta.json", `${JSON.stringify(meta, null, 2)}\n`);
+    }
+    every.push([dir, staged]);
   }
+  // Every selected harness is rewritten and checked before any file is
+  // replaced.
+  for (const [dir, staged] of every)
+    for (const [file, body] of staged)
+      fs.writeFileSync(path.join(dir, `${file}.${run}.tmp`), body);
+  // Scrubbing values leaves a shape as it was; when it does change one (a
+  // synced skill dropped), the shape test says so: run `shape.mjs --write`.
+  // The corpus is replaced as a unit: each file is kept as this run's `.bak` until every
+  // staged file is in place, and a failed rename puts every original back.
+  const swapped = [];
+  try {
+    for (const [dir, staged] of every)
+      for (const file of staged.keys()) {
+        const target = path.join(dir, file);
+        fs.renameSync(target, `${target}.${run}.bak`);
+        swapped.push(target);
+        fs.renameSync(`${target}.${run}.tmp`, target);
+      }
+  } catch (error) {
+    for (const target of swapped.reverse()) {
+      fs.rmSync(target, { force: true });
+      fs.renameSync(`${target}.${run}.bak`, target);
+    }
+    for (const [dir, staged] of every)
+      for (const file of staged.keys())
+        fs.rmSync(path.join(dir, `${file}.${run}.tmp`), { force: true });
+    throw error;
+  }
+  // Every file is in place: the marker says so before any backup goes, so
+  // a run stopped while removing them is known to have committed.
+  const committed = path.join(out, `.resanitize-${run}.committed`);
+  fs.writeFileSync(committed, "");
+  for (const target of swapped) fs.rmSync(`${target}.${run}.bak`);
+  fs.rmSync(committed);
 }
 
 async function main() {
@@ -171,8 +344,12 @@ async function main() {
     const work = option("work");
     if (!work)
       throw new Error("--resanitize needs the --work the capture used");
-    return resanitize(out, harnesses, work);
+    return withCorpusLock(out, () => resanitize(out, harnesses, work));
   }
+  return withCorpusLock(out, () => capture(out, harnesses, only, model));
+}
+
+async function capture(out, harnesses, only, model) {
   // A new scratch dir for every run: the capture never clears an old one.
   const work =
     option("work") ??
@@ -220,7 +397,14 @@ async function main() {
         process.stdout.write(`gap: ${result.gap}\n`);
         continue;
       }
-      const records = sanitizer.records(result.wire.records);
+      // A raw capture's undeclared fields are neutralized as it is written,
+      // vouching only for what this run of the sanitizer wrote.
+      const records = neutralizeUndeclared(
+        sanitizer.records(result.wire.records),
+        undeclaredPaths(harness),
+        undefined,
+        sanitizer.isSynthetic,
+      );
       const lines =
         scenario === "commands"
           ? records.map((r) => JSON.stringify(r))

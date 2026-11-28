@@ -1,8 +1,8 @@
 {
   "version": "1.5.0",
   "commands": [
-    "commands:llama",
-    "commands:mcp"
+    "commands:command-1",
+    "commands:command-2"
   ],
   "kinds": {
     "response/get_available_models": [

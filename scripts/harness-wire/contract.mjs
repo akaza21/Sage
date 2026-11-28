@@ -284,14 +284,25 @@ export function checkCorpus(
       ))
         found.add(line.trim());
     const file = path.join(root, harness, "undeclared.json");
-    const listed = { version: contract.version, fields: [...found].sort() };
-    if (bless) {
-      fs.writeFileSync(file, `${JSON.stringify(listed, null, 2)}\n`);
-      continue;
-    }
     const reviewed = fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file, "utf8"))
       : { fields: [] };
+    // `readBySage`: undeclared fields a binding reads, so a harness that
+    // drops one breaks Sage without its definitions saying so. Kept by hand,
+    // untouched by --bless; one that is no longer sent fails every check
+    // until the binding stops reading it and it is removed by hand.
+    const read = reviewed.readBySage ?? [];
+    if (bless) {
+      const listed = { version: contract.version, fields: [...found].sort() };
+      if (read.length) listed.readBySage = read;
+      fs.writeFileSync(file, `${JSON.stringify(listed, null, 2)}\n`);
+      continue;
+    }
+    for (const line of read)
+      if (!found.has(line))
+        lines.push(
+          `${harness} ${contract.version} read by Sage, no longer sent: ${line}`,
+        );
     const known = new Set(reviewed.fields);
     if (reviewed.version !== contract.version)
       lines.push(

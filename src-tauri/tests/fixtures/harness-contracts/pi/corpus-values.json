@@ -1,0 +1,224 @@
+{
+  "files": {
+    "auth-fail.jsonl": "65e97782e07e9de81174cf2ae285365d39ea29c32e2b7f9bf212260fecc92e4f",
+    "auth-fail.replay.json": "0a4bc8a32f1f11a003a7d9bda73954a99d04529b662e9e9c25ce60912daccd93",
+    "commands.jsonl": "5e1277a7217882462e71887fc1d29c08ea3131fd0c7be3d6995a52db6e089d7a",
+    "commands.replay.json": "91b6e10bea6cdae1699286d02f7ee09d1855b1a106d952c61635f3fea8362997",
+    "meta.json": "61c9651dbf461d3eab2454502eda697309368e2dfd90f24f16f16cc1265db042",
+    "shape.json": "8f6f82b4893581845962823cae9a1cfc59c90e30b2f7e2930564da974b390f21"
+  },
+  "strings": [
+    "",
+    "--mode",
+    "00000000-0000-4000-8000-000000000001",
+    "1.5.0",
+    "builtin",
+    "C:\\fixture-workspace\\config\\sessions\\--C--fixture-workspace-repo--\\2027-01-15T08-00-00-000Z_00000000-0000-4000-8000-000000000001.jsonl",
+    "C:\\fixture-workspace\\empty-home\\sessions\\--C--fixture-workspace-repo--\\2027-01-15T08-00-18-188Z_00000000-0000-4000-8000-000000000001.jsonl",
+    "command-1",
+    "command-2",
+    "completed",
+    "extension",
+    "get_available_models",
+    "get_commands",
+    "get_state",
+    "in",
+    "initialize",
+    "model-1",
+    "No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key. See:\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\providers.md\n  C:\\fixture-workspace\\home\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\docs\\models.md",
+    "off",
+    "one-at-a-time",
+    "out",
+    "pi",
+    "Pi has no built-in subagent tool",
+    "Pi has no plan mode",
+    "pi-1-1",
+    "pi-1-2",
+    "pi-1-3",
+    "pi-1-4",
+    "pi-1-5",
+    "prompt",
+    "redacted",
+    "Reply with the single word ok.",
+    "response",
+    "rpc",
+    "session",
+    "temporary",
+    "the prompt was refused: No API key found for the selected model.",
+    "top-level"
+  ],
+  "keys": [
+    "api",
+    "args",
+    "auth-fail",
+    "autoCompactionEnabled",
+    "baseUrl",
+    "bytes",
+    "cacheRead",
+    "cacheWrite",
+    "code",
+    "command",
+    "commands",
+    "contextWindow",
+    "cost",
+    "data",
+    "description",
+    "direction",
+    "edit",
+    "error",
+    "exit",
+    "firstFrameMs",
+    "followUpMode",
+    "frame",
+    "frames",
+    "gaps",
+    "harness",
+    "id",
+    "image",
+    "images",
+    "input",
+    "isCompacting",
+    "isStreaming",
+    "maxTokens",
+    "message",
+    "messageCount",
+    "model",
+    "models",
+    "ms",
+    "name",
+    "origin",
+    "outcome",
+    "output",
+    "path",
+    "pendingMessageCount",
+    "plan-approve",
+    "plan-decline",
+    "provider",
+    "reasoning",
+    "scenarios",
+    "scope",
+    "sessionFile",
+    "sessionId",
+    "shell",
+    "signal",
+    "source",
+    "sourceInfo",
+    "stderrTail",
+    "steeringMode",
+    "step",
+    "subagent",
+    "success",
+    "text",
+    "thinkingLevel",
+    "type",
+    "version"
+  ],
+  "numbers": {
+    "bytes": [
+      2507,
+      3166
+    ],
+    "cacheRead": [
+      0
+    ],
+    "cacheWrite": [
+      0
+    ],
+    "code": [
+      0
+    ],
+    "contextWindow": [
+      0
+    ],
+    "firstFrameMs": [
+      739,
+      782
+    ],
+    "frames": [
+      8,
+      10
+    ],
+    "images": [
+      0
+    ],
+    "input": [
+      0
+    ],
+    "maxTokens": [
+      0
+    ],
+    "messageCount": [
+      0
+    ],
+    "ms": [
+      4,
+      14,
+      739,
+      753,
+      755,
+      756,
+      759,
+      782,
+      798,
+      803,
+      804
+    ],
+    "output": [
+      0
+    ],
+    "pendingMessageCount": [
+      0
+    ]
+  },
+  "flags": [
+    "auth-fail.jsonl:10.frame.success=false",
+    "auth-fail.jsonl:2.frame.data.autoCompactionEnabled=true",
+    "auth-fail.jsonl:2.frame.data.isCompacting=false",
+    "auth-fail.jsonl:2.frame.data.isStreaming=false",
+    "auth-fail.jsonl:2.frame.data.model.reasoning=false",
+    "auth-fail.jsonl:2.frame.success=true",
+    "auth-fail.jsonl:4.frame.success=true",
+    "auth-fail.jsonl:6.frame.data.autoCompactionEnabled=true",
+    "auth-fail.jsonl:6.frame.data.isCompacting=false",
+    "auth-fail.jsonl:6.frame.data.isStreaming=false",
+    "auth-fail.jsonl:6.frame.data.model.reasoning=false",
+    "auth-fail.jsonl:6.frame.success=true",
+    "auth-fail.jsonl:8.frame.success=true",
+    "commands.jsonl:2.frame.data.autoCompactionEnabled=true",
+    "commands.jsonl:2.frame.data.isCompacting=false",
+    "commands.jsonl:2.frame.data.isStreaming=false",
+    "commands.jsonl:2.frame.data.model.reasoning=false",
+    "commands.jsonl:2.frame.success=true",
+    "commands.jsonl:4.frame.success=true",
+    "commands.jsonl:6.frame.data.autoCompactionEnabled=true",
+    "commands.jsonl:6.frame.data.isCompacting=false",
+    "commands.jsonl:6.frame.data.isStreaming=false",
+    "commands.jsonl:6.frame.data.model.reasoning=false",
+    "commands.jsonl:6.frame.success=true",
+    "commands.jsonl:8.frame.success=true"
+  ],
+  "placeholders": [
+    "auth-fail.jsonl:2.frame.data.model.id=model-1",
+    "auth-fail.jsonl:2.frame.data.model.name=model-1",
+    "auth-fail.jsonl:6.frame.data.model.id=model-1",
+    "auth-fail.jsonl:6.frame.data.model.name=model-1",
+    "auth-fail.jsonl:8.frame.data.commands[0].name=command-1",
+    "auth-fail.jsonl:8.frame.data.commands[1].name=command-2",
+    "commands.jsonl:2.frame.data.model.id=model-1",
+    "commands.jsonl:2.frame.data.model.name=model-1",
+    "commands.jsonl:6.frame.data.model.id=model-1",
+    "commands.jsonl:6.frame.data.model.name=model-1",
+    "commands.jsonl:8.frame.data.commands[0].name=command-1",
+    "commands.jsonl:8.frame.data.commands[1].name=command-2"
+  ],
+  "contextPaths": [
+    "commands:[].description",
+    "commands:[].name",
+    "commands:[].source",
+    "commands:[].sourceInfo",
+    "commands:[].sourceInfo.origin",
+    "commands:[].sourceInfo.path",
+    "commands:[].sourceInfo.scope",
+    "commands:[].sourceInfo.source"
+  ]
+}
