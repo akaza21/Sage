@@ -7,7 +7,7 @@ import {
 } from "../ui/leanIcons";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
-import type { SidebarView } from "../app/store";
+import type { SidebarView, WorkbenchState } from "../app/store";
 import { useWorkbenchStore } from "../app/store";
 import { renderRegisteredTool } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
@@ -27,6 +27,26 @@ const views: Array<{
 
 const sidebarPanelId = "project-tools-panel";
 
+/** VS Code's Source Control count: every listed change across the roots and
+ * the repositories found one level down, with a plus when Git reported more
+ * than a bounded list holds. */
+function pendingChangesBadge({
+  repositories,
+  repositorySummaries,
+}: WorkbenchState) {
+  let count = 0;
+  let more = false;
+  for (const root of repositories.roots) {
+    count += root.changes.length;
+    more ||= root.truncated || root.changesOverflowed === true;
+  }
+  for (const summary of repositorySummaries) {
+    count += summary.changeCount;
+    more ||= summary.changesOverflowed;
+  }
+  return count ? `${count}${more ? "+" : ""}` : null;
+}
+
 function SidebarContent({ view }: { view: SidebarView }) {
   return renderRegisteredTool(view);
 }
@@ -43,6 +63,7 @@ export function RightSidebar({
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
   const openSettings = useWorkbenchStore((state) => state.openSettings);
+  const changesBadge = useWorkbenchStore(pendingChangesBadge);
   const panelRef = useRef<HTMLElement>(null);
   const railButtonRefs = useRef(new Map<SidebarView, HTMLButtonElement>());
   const restoreRailFocus = useRef<SidebarView | null>(null);
@@ -115,10 +136,19 @@ export function RightSidebar({
           aria-label={label}
           aria-controls={sidebarPanelId}
           aria-expanded={sidebarOpen && sidebarView === id}
-          title={label}
+          title={
+            id === "sourceControl" && changesBadge
+              ? `${label} (${changesBadge} pending changes)`
+              : label
+          }
           onClick={() => selectView(id)}
         >
           <Icon size={24} strokeWidth={1.5} aria-hidden="true" />
+          {id === "sourceControl" && changesBadge ? (
+            <span className="activity-rail__badge" aria-hidden="true">
+              {changesBadge}
+            </span>
+          ) : null}
         </button>
       ))}
       <button

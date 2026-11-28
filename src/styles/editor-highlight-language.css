@@ -3,9 +3,10 @@
  * shared resource defaults retain their independent presentation.
  */
 @media (forced-colors: none) {
+  /* VS Code's active tab: the editor's own fill, a 1 px accent top edge. */
   .workbench--editor .tab--active {
-    background: var(--editor-selection-fill);
-    box-shadow: inset 0 1px 0 var(--editor-selection-edge);
+    background: var(--color-card);
+    box-shadow: inset 0 1px 0 var(--color-accent);
   }
 
   .workbench--editor .title-bar__mode--active {

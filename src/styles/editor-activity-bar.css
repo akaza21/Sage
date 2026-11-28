@@ -36,6 +36,23 @@
   background: var(--activity-button-hover-fill, var(--color-surface-hover));
 }
 
+/* Source Control's pending-change count, after VS Code's activity badge. */
+.activity-rail__badge {
+  position: absolute;
+  right: 7px;
+  bottom: 8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
 /* Settings sits at the foot of the rail. */
 .activity-rail__button--end {
   margin-top: auto;

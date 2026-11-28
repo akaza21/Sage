@@ -67,6 +67,61 @@ describe("RightSidebar beta tool rail", () => {
     expect(screen.getByLabelText("Outline project tools")).toBeInTheDocument();
   });
 
+  it("counts pending changes across roots and nested repositories", () => {
+    const root = (rootId: string, paths: string[]): RootRepositoryStatus => ({
+      rootId,
+      state: "repository",
+      branch: "main",
+      changes: paths.map((relativePath) => ({
+        resource: { rootId, relativePath },
+        indexStatus: "unchanged",
+        worktreeStatus: "modified",
+        additions: 1,
+        deletions: 0,
+      })),
+      truncated: false,
+      changesOverflowed: false,
+      elapsedMs: 1,
+      message: null,
+    });
+    const repositories = (roots: RootRepositoryStatus[]) => ({
+      repositories: { roots, truncated: false, elapsedMs: 1 },
+    });
+    useWorkbenchStore.setState(
+      repositories([root("a", ["one.ts", "two.ts"]), root("b", ["three.ts"])]),
+    );
+    const { container } = render(<RightSidebar compact={false} railFirst />);
+    const scm = screen.getByRole("button", { name: "Source Control" });
+    expect(scm).toHaveTextContent("3");
+    expect(scm).toHaveAttribute("title", "Source Control (3 pending changes)");
+
+    act(() =>
+      useWorkbenchStore.setState({
+        ...repositories([root("a", [])]),
+        repositorySummaries: [
+          {
+            ref: { rootId: "a", relativePath: "api" },
+            state: "repository",
+            branch: "main",
+            changeCount: 4,
+            changesOverflowed: true,
+            message: null,
+          },
+        ],
+      }),
+    );
+    expect(scm).toHaveTextContent("4+");
+
+    act(() =>
+      useWorkbenchStore.setState({
+        ...repositories([root("a", [])]),
+        repositorySummaries: [],
+      }),
+    );
+    expect(container.querySelector(".activity-rail__badge")).toBeNull();
+    expect(scm).toHaveAttribute("title", "Source Control");
+  });
+
   it("opens the Editor Settings tab from the activity bar's foot", async () => {
     render(<RightSidebar compact={false} railFirst />);
 
