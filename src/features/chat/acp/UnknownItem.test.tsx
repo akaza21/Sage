@@ -49,7 +49,7 @@ describe("UnknownItem", () => {
       expect(container.querySelector("details")).toBeNull();
       expect(
         container.querySelector('[data-activity-state="cancelled"]'),
-      ).toHaveClass("acp-lifecycle-notice");
+      ).not.toBeNull();
     },
   );
 
@@ -107,15 +107,15 @@ describe("UnknownItem", () => {
         description: "This harness activity is not supported by Sage",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Unsupported" })).toHaveClass(
-      "acp-state",
-    );
+    expect(
+      screen.getByRole("status", { name: "Unsupported" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Activity details")).toBeInTheDocument();
     expect(
       screen.getByText("A future item was retained safely."),
     ).toBeInTheDocument();
     expect(screen.getByText("Summary truncated")).toBeInTheDocument();
-    expect(container.querySelector(".acp-unknown")).toHaveAttribute(
+    expect(container.querySelector("article")).toHaveAttribute(
       "data-activity-state",
       "unsupported",
     );

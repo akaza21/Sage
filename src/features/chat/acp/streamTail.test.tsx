@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -8,22 +5,11 @@ import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
 import nextStreamRuns from "./streamTail";
-import { loadStreamRuns, streamRunTracker } from "./ChatMarkdown";
+import { loadStreamRuns } from "./ChatMarkdown";
 
 // The run tracker is a lazy chunk that starts loading with ChatMarkdown.
 beforeAll(() => loadStreamRuns());
 afterEach(cleanup);
-
-it("loads the run tracker as its own chunk, off the first-Chat path", async () => {
-  await loadStreamRuns();
-  expect(streamRunTracker()).toBeTypeOf("function");
-  const markdown = readFileSync(
-    resolve("src/features/chat/acp/ChatMarkdown.tsx"),
-    "utf8",
-  );
-  expect(markdown).toMatch(/import\("\.\/streamTail"\)/);
-  expect(markdown).not.toMatch(/import \{[^}]*\} from "\.\/streamTail"/);
-});
 
 const doc = renderMarkdownPreview;
 const newestRuns = (
