@@ -193,7 +193,8 @@ export function TitleBar({
             <Search size={16} aria-hidden="true" />
           </button>
         </div>
-        <div className="title-bar__chat" ref={chatSlotRef} />
+        {/* Keyed so Editor never reuses this node for its own center slot. */}
+        <div key="chat" className="title-bar__chat" ref={chatSlotRef} />
         <div className="title-bar__end">
           {notices}
           {terminalControls}
@@ -210,7 +211,7 @@ export function TitleBar({
       aria-hidden={inert || undefined}
     >
       <div className="title-bar__start">{modes}</div>
-      <div className="title-bar__center">
+      <div key="center" className="title-bar__center">
         <button
           className="title-bar__search"
           type="button"

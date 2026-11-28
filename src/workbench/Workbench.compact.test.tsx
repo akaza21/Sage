@@ -1426,5 +1426,10 @@ describe("Agent shell", () => {
 
     await selectWindowMode("Editor");
     expect(container.querySelector(".status-bar")).not.toBeNull();
+    expect(
+      within(container.querySelector<HTMLElement>(".title-bar")!).queryByText(
+        "Shell check",
+      ),
+    ).toBeNull();
   });
 });
