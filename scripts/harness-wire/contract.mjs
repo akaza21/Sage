@@ -128,15 +128,48 @@ export function violations(contract, records, label) {
   return [...lines].sort();
 }
 
-// A kind's field paths, for reading a protocol change; recursion stops at a
-// type already on the path.
-function paths(types, ids, prefix = "", seen = new Set(), out = new Set()) {
+// Hard caps on one comparison of two contracts, all kinds together: paths
+// walked, nesting depth and report lines. Hitting one fails the comparison
+// loudly rather than enumerating a graph that fans out. A real Claude Code
+// comparison walks about 425,000 paths, 10 deep, and reports about 600 lines.
+const MAX_DIFF_VISITS = 2_000_000;
+const MAX_DIFF_DEPTH = 16;
+const MAX_DIFF_LINES = 5_000;
+
+function capped(what, limit) {
+  return new Error(`protocol diff stopped: ${what} exceed ${limit}`);
+}
+
+// A kind's field paths, for reading a protocol change; `a.*` marks a value
+// that admits anything, so a field turning open is a change too. Recursion
+// stops at a type already on the path.
+function paths(
+  types,
+  ids,
+  budget,
+  prefix = "",
+  depth = 0,
+  seen = new Set(),
+  out = new Set(),
+) {
+  if (depth > MAX_DIFF_DEPTH) throw capped("nested fields", MAX_DIFF_DEPTH);
   for (const id of ids) {
+    if (id === "*") out.add(prefix ? `${prefix}.*` : "*");
     if (id === "*" || seen.has(id)) continue;
     for (const [key, children] of Object.entries(types[id])) {
+      budget.left -= 1;
+      if (budget.left < 0) throw capped("field paths walked", MAX_DIFF_VISITS);
       const name = prefix ? `${prefix}.${key}` : key;
       out.add(name);
-      paths(types, children, name, new Set(seen).add(id), out);
+      paths(
+        types,
+        children,
+        budget,
+        name,
+        depth + 1,
+        new Set(seen).add(id),
+        out,
+      );
     }
   }
   return out;
@@ -144,25 +177,31 @@ function paths(types, ids, prefix = "", seen = new Set(), out = new Set()) {
 
 // Every protocol change between two contracts, as report lines.
 export function diffContracts(before, after) {
+  const budget = { left: MAX_DIFF_VISITS };
   const lines = [
     `protocol changes in ${after.harness} ${before.version} -> ${after.version}`,
   ];
+  const report = (line) => {
+    if (lines.length >= MAX_DIFF_LINES)
+      throw capped("report lines", MAX_DIFF_LINES);
+    lines.push(line);
+  };
   for (const direction of ["in", "out"]) {
     const was = before[direction];
     const is = after[direction];
     for (const kind of Object.keys(was))
-      if (!(kind in is)) lines.push(`${direction} removed ${kind}`);
+      if (!(kind in is)) report(`${direction} removed ${kind}`);
     for (const kind of Object.keys(is)) {
       if (!(kind in was)) {
-        lines.push(`${direction} added ${kind}`);
+        report(`${direction} added ${kind}`);
         continue;
       }
-      const old = paths(before.types, was[kind]);
-      const now = paths(after.types, is[kind]);
+      const old = paths(before.types, was[kind], budget);
+      const now = paths(after.types, is[kind], budget);
       for (const field of old)
-        if (!now.has(field)) lines.push(`${direction} ${kind}: - ${field}`);
+        if (!now.has(field)) report(`${direction} ${kind}: - ${field}`);
       for (const field of now)
-        if (!old.has(field)) lines.push(`${direction} ${kind}: + ${field}`);
+        if (!old.has(field)) report(`${direction} ${kind}: + ${field}`);
     }
   }
   return lines;
