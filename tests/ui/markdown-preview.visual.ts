@@ -16,7 +16,7 @@ for (const width of [480, 1280]) {
     await page.evaluate(async () => {
       const [{ useWorkbenchStore }, { browserEditor }] = await Promise.all([
         import("/src/app/store.ts"),
-        import("/src/services/browserEditor.ts"),
+        import("/tests/ui/simulator/browserEditor.ts"),
       ]);
       const state = useWorkbenchStore.getState();
       const tab = state.tabs.find((tab) => tab.id === state.activeTabId);

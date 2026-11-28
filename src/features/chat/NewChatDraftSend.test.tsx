@@ -42,7 +42,7 @@ import { acpDesktop } from "../../services/acpDesktop";
 import { AcpDesktopError } from "../../services/acpDesktopCommand";
 import { desktop } from "../../services/desktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
-import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../../tests/ui/simulator/browserDesktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";

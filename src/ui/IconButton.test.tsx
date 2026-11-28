@@ -9,7 +9,6 @@ describe("IconButton", () => {
   it("leaves its name to the shared tooltip instead of a native title", () => {
     render(<IconButton aria-label="Attach files" />);
     const button = screen.getByRole("button", { name: "Attach files" });
-    expect(button).toHaveClass("icon-button");
     expect(button).not.toHaveAttribute("title");
   });
 

@@ -9,7 +9,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { Workbench } from "./Workbench";
@@ -23,8 +23,8 @@ import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { emptyChatOwnershipEntry } from "../app/chatOwnershipProjection";
 import { AgentCenterKeeper } from "./WorkbenchContinuity";
 import * as workspaceNotify from "../app/workspaceNotifyLifecycle";
-import { browserSnapshot } from "../services/browserWorkspaceFixture";
-import { durableChatIds } from "../services/browserChatState";
+import { browserSnapshot } from "../../tests/ui/simulator/browserWorkspaceFixture";
+import { durableChatIds } from "../../tests/ui/simulator/browserChatState";
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();

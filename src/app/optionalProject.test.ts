@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../tests/ui/simulator/browserDesktop";
 import { currentProjectLayout } from "./projectProjection";
 import { useWorkbenchStore } from "./store";
-import { browserDirectories } from "../services/browserWorkspaceFixture";
+import { browserDirectories } from "../../tests/ui/simulator/browserWorkspaceFixture";
 
 const initial = useWorkbenchStore.getState();
 beforeEach(async () => {

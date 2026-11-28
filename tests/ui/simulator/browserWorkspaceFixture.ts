@@ -1,11 +1,11 @@
-import { resourceKey } from "../domain/resourceIdentity";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
   DirectoryListing,
   FileChange,
   ProjectRepositoryStatus,
   ResourceRef,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 
 export const browserRootId = "browser-root";
 /** This data exists solely to exercise the browser renderer; it is never Git state. */

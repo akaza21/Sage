@@ -7,38 +7,18 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { ComponentProps } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, onTestFinished, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { RepositoryRef, RootRepositoryStatus } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
-import type { SearchablePicker } from "../ui/SearchablePicker";
-import type * as SearchablePickerModule from "../ui/SearchablePicker";
+import { PickerOption } from "../ui/PickerOption";
+import { preloadSearchablePicker } from "../ui/searchablePickerLoad";
 import { SourceControlView } from "./SourceControlView";
 
-const { pickerOptionRender, pickerProps } = vi.hoisted(() => ({
-  pickerOptionRender: vi.fn(),
-  pickerProps: vi.fn(),
-}));
-
-vi.mock("../ui/SearchablePicker", async (importOriginal) => {
-  const actual = await importOriginal<typeof SearchablePickerModule>();
-  // The open list is loaded long before a person opens a picker.
-  await import("../ui/searchablePickerLoad").then((load) =>
-    load.preloadSearchablePicker(),
-  );
-  function TrackedSearchablePicker(
-    props: ComponentProps<typeof SearchablePicker>,
-  ) {
-    pickerProps(props);
-    return (
-      <actual.SearchablePicker {...props} onOptionRender={pickerOptionRender} />
-    );
-  }
-  return { ...actual, SearchablePicker: TrackedSearchablePicker };
-});
+// The open list is loaded long before a person opens a picker.
+beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
 const rootRepository: RepositoryRef = { rootId: "root-a", relativePath: "" };
@@ -228,6 +208,13 @@ it("retries inventory discovery after a project transition and clears stale sele
 });
 
 it("uses disambiguated project-root labels for repository options", () => {
+  // Count renders of the production option through its memoised render
+  // function, so React's own memo bail-out decides what is counted.
+  const memoised = PickerOption as unknown as {
+    type: (props: object) => unknown;
+  };
+  const renders = vi.spyOn(memoised, "type");
+  onTestFinished(() => renders.mockRestore());
   useWorkbenchStore.setState({
     project: {
       id: "project-a",
@@ -272,26 +259,19 @@ it("uses disambiguated project-root labels for repository options", () => {
     screen.getByRole("option", { name: "Workspace (root 2) — packages/tool" }),
   ).toBeInTheDocument();
 
-  const initialPickerProps = pickerProps.mock.lastCall?.[0];
-  pickerProps.mockClear();
-  pickerOptionRender.mockClear();
+  renders.mockClear();
   act(() => {
     useWorkbenchStore.setState({
       selectedResource: { rootId: "root-a", relativePath: "unrelated.ts" },
     });
   });
-  const rerenderedPickerProps = pickerProps.mock.lastCall?.[0];
-  expect(rerenderedPickerProps?.candidates).toBe(
-    initialPickerProps?.candidates,
-  );
-  expect(rerenderedPickerProps?.onSelect).toBe(initialPickerProps?.onSelect);
-  expect(pickerOptionRender).not.toHaveBeenCalled();
+  expect(renders).not.toHaveBeenCalled();
 
   const picker = screen.getByRole("combobox", { name: "Select repository" });
   fireEvent.keyDown(picker, { key: "ArrowDown" });
-  expect(pickerOptionRender).toHaveBeenCalledTimes(1);
+  expect(renders).toHaveBeenCalledTimes(1);
   fireEvent.keyDown(picker, { key: "ArrowDown" });
-  expect(pickerOptionRender).toHaveBeenCalledTimes(3);
+  expect(renders).toHaveBeenCalledTimes(3);
 });
 
 it("projects repository loading, empty, and error states through ResourceStateNotice", () => {

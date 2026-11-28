@@ -425,7 +425,7 @@ test("AP-C a refused archived-chat delete shows on that row, not in the open cha
   await page.evaluate(async (message) => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+      await import("/tests/ui/simulator/workbenchRuntime.ts");
     useWorkbenchStore.setState((state) => ({
       archivedChats: [{ id: "rail-fixture-6", title: "Agent rail task 6" }],
       tabs: state.tabs.filter((tab) => tab.id !== "rail-fixture-6"),
@@ -472,7 +472,7 @@ test("AP-C a refused archive from the rail shows on that chat's row", async ({
   const refusal = "Stop this Chat's running turn before archiving it";
   await page.evaluate(async (message) => {
     const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+      await import("/tests/ui/simulator/workbenchRuntime.ts");
     getWorkbenchPorts().chat.archiveChat = async (
       _request,
       expectedTransitionEpoch,
@@ -712,7 +712,7 @@ test("AP-C a new project starts with an unsent draft and no chat rows", async ({
   await openScenario(page, "agent-dual", "agent");
   await page.evaluate(async () => {
     const { resetBrowserDesktopForTests } =
-      await import("/src/services/browserDesktop.ts");
+      await import("/tests/ui/simulator/browserDesktop.ts");
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();

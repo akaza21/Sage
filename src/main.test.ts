@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("./app/mountApp");
+  vi.doUnmock("./ports/workbenchRuntime");
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   document.body.replaceChildren();
   vi.resetModules();
@@ -31,4 +33,26 @@ it("calls mountApp synchronously during entry evaluation", async () => {
   await import("./main");
 
   expect(contentAfterEntry).toBe("Sage mounted");
+});
+
+it("shows the backend-missing screen in a dev tab with no backend instead of mounting", async () => {
+  vi.stubEnv("DEV", true);
+  document.body.innerHTML = '<div id="root"></div>';
+  let mounted = false;
+  // A plain browser tab: no desktop shell and no dev bridge.
+  vi.doMock("./ports/workbenchRuntime", () => ({
+    hasWorkbenchBackend: () => false,
+  }));
+  vi.doMock("./app/mountApp", () => ({
+    mountApp: () => {
+      mounted = true;
+    },
+  }));
+
+  await import("./main");
+
+  expect(document.querySelector('#root [role="alert"] h1')?.textContent).toBe(
+    "Sage's backend isn't running",
+  );
+  expect(mounted).toBe(false);
 });

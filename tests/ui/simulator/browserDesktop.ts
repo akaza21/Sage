@@ -12,9 +12,12 @@ import type {
   ProjectTransitionResult,
   ResourceRef,
   SimulatorTurnResult,
-} from "../domain/workbench";
-import { archiveChatLayout, restoreChatLayout } from "../domain/chatArchive";
-import { resourceKey } from "../domain/resourceIdentity";
+} from "../../../src/domain/workbench";
+import {
+  archiveChatLayout,
+  restoreChatLayout,
+} from "../../../src/domain/chatArchive";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
 import {
   appendBrowserSimulatorTurn,
   assertBrowserChatActivation,

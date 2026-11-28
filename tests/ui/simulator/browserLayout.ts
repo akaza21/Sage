@@ -2,8 +2,8 @@ import type {
   ProjectLayoutRequest,
   ResourceRef,
   TabKind,
-} from "../domain/workbench";
-import { parseAgentDiffRef } from "../domain/agentDiff";
+} from "../../../src/domain/workbench";
+import { parseAgentDiffRef } from "../../../src/domain/agentDiff";
 
 const MAX_LAYOUT_TABS = 64;
 const MAX_RESOURCE_TABS = 32;
@@ -181,4 +181,4 @@ export function assertBrowserProjectLayout(
     }
   }
 }
-import { utf8ByteLength } from "../domain/text";
+import { utf8ByteLength } from "../../../src/domain/text";

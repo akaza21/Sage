@@ -8,10 +8,10 @@ import type {
   ProjectSwitchRequest,
   ProjectTransitionResult,
   CreateProjectRequest,
-} from "../domain/workbench";
+} from "../../../src/domain/workbench";
 import { createBrowserChatTab } from "./browserChat";
 import { browserDirectories } from "./browserWorkspaceFixture";
-import { resourceKey } from "../domain/resourceIdentity";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
 
 type Scope = ProjectLayoutRequest & {
   project: ProjectSummary;

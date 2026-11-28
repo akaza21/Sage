@@ -22,7 +22,7 @@ import { App } from "../../app/App";
 import { closeProjectCreation } from "../../app/projectCreationState";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
+import { resetBrowserDesktopForTests } from "../../../tests/ui/simulator/browserDesktop";
 import type { ProjectTransitionResult } from "../../domain/workbench";
 import type { ProjectChatSearchResponse } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";

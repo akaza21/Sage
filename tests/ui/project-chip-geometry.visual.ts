@@ -904,7 +904,7 @@ test("project selection keeps the visible chat's identity with a right-pane File
   const expected = await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { resetBrowserDesktopForTests } =
-      await import("/src/services/browserDesktop.ts");
+      await import("/tests/ui/simulator/browserDesktop.ts");
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     const projectId = useWorkbenchStore.getState().project!.id;
@@ -945,7 +945,7 @@ test("New project preserves the unsent composer through creation and reparenting
   const chat = await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { resetBrowserDesktopForTests } =
-      await import("/src/services/browserDesktop.ts");
+      await import("/tests/ui/simulator/browserDesktop.ts");
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().createChat(null);
@@ -1030,11 +1030,11 @@ for (const when of ["before creation", "during creation"]) {
     const original = await page.evaluate(async (when) => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const { resetBrowserDesktopForTests } =
-        await import("/src/services/browserDesktop.ts");
+        await import("/tests/ui/simulator/browserDesktop.ts");
       const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
+        await import("/tests/ui/simulator/workbenchRuntime.ts");
       const { browserDirectories } =
-        await import("/src/services/browserWorkspaceFixture.ts");
+        await import("/tests/ui/simulator/browserWorkspaceFixture.ts");
       const { resourceKey } = await import("/src/domain/resourceIdentity.ts");
       resetBrowserDesktopForTests();
       await useWorkbenchStore.getState().initialize();
@@ -1133,7 +1133,7 @@ test("active project-less chat can be archived and restored from Recents", async
   await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { resetBrowserDesktopForTests } =
-      await import("/src/services/browserDesktop.ts");
+      await import("/tests/ui/simulator/browserDesktop.ts");
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().createChat(null);

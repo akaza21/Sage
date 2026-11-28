@@ -349,7 +349,10 @@ pub fn run() {
             };
             main_window.build()?;
             #[cfg(all(feature = "browser-bridge", debug_assertions))]
-            dev_bridge::start(app.handle())?;
+            dev_bridge::start(
+                app.handle(),
+                profile.is_disposable().then(|| profile.durable_dir()),
+            )?;
             if !profile.is_disposable()
                 && let Err(error) = profile_handoff::listen(app.handle(), profile.durable_dir())
             {
