@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { MAX_TRANSCRIPT_BYTES } from "./limits.mjs";
+import { makeSanitizer } from "./sanitize.mjs";
 import {
   diffShapes,
   diffTiming,
@@ -196,4 +197,46 @@ test("a start that more than doubles by over two seconds is drift", () => {
   assert.deepEqual(diffTiming(meta(1500), meta(9000)), [
     "slower start shell: first frame 1500ms -> 9000ms",
   ]);
+});
+
+test("an account's model catalog is redacted wherever its model ids recur", () => {
+  const sanitizer = makeSanitizer({ roots: [] });
+  const [catalog, turn] = sanitizer.records([
+    {
+      direction: "in",
+      frame: {
+        type: "response",
+        command: "get_available_models",
+        data: {
+          models: [
+            {
+              id: "private-model-x",
+              name: "Private Model X",
+              api: "messages",
+              provider: "acme",
+            },
+            {
+              id: "private-model-y",
+              name: "Private Model Y",
+              api: "messages",
+              provider: "acme",
+            },
+          ],
+        },
+      },
+    },
+    {
+      direction: "in",
+      frame: { type: "message_start", message: { model: "private-model-y" } },
+    },
+  ]);
+  assert.deepEqual(
+    catalog.frame.data.models.map(({ id, name }) => [id, name]),
+    [
+      ["model-1", "Model 1"],
+      ["model-2", "Model 2"],
+    ],
+  );
+  assert.equal(turn.frame.message.model, "model-2");
+  assert.doesNotMatch(JSON.stringify([catalog, turn]), /private|Private/);
 });

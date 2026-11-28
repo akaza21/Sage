@@ -1,0 +1,1504 @@
+{
+  "harness": "pi",
+  "version": "1.7.0",
+  "source": "@earendil-works/pi-coding-agent@1.7.0 rpc-types.d.ts, agent-session.d.ts",
+  "in": {
+    "agent_end": ["agent_end"],
+    "agent_settled": ["agent_settled"],
+    "agent_start": ["agent_start"],
+    "auto_retry_end": ["auto_retry_end"],
+    "auto_retry_start": ["auto_retry_start"],
+    "bash_execution_update": ["bash_execution_update"],
+    "compaction_end": ["compaction_end"],
+    "compaction_start": ["compaction_start"],
+    "entry_appended": ["entry_appended"],
+    "message_end": ["message_end"],
+    "message_start": ["message_start"],
+    "message_update/done": ["message_update/done"],
+    "message_update/error": ["message_update/error"],
+    "message_update/start": ["message_update/start"],
+    "message_update/text_delta": ["message_update/text_delta"],
+    "message_update/text_end": ["message_update/text_end"],
+    "message_update/text_start": ["message_update/text_start"],
+    "message_update/thinking_delta": ["message_update/thinking_delta"],
+    "message_update/thinking_end": ["message_update/thinking_end"],
+    "message_update/thinking_start": ["message_update/thinking_start"],
+    "message_update/toolcall_delta": ["message_update/toolcall_delta"],
+    "message_update/toolcall_end": ["message_update/toolcall_end"],
+    "message_update/toolcall_start": ["message_update/toolcall_start"],
+    "queue_update": ["queue_update"],
+    "request:confirm": ["request:confirm"],
+    "request:editor": ["request:editor"],
+    "request:input": ["request:input"],
+    "request:notify": ["request:notify"],
+    "request:select": ["request:select"],
+    "request:setStatus": ["request:setStatus"],
+    "request:setTitle": ["request:setTitle"],
+    "request:setWidget": ["request:setWidget"],
+    "request:set_editor_text": ["request:set_editor_text"],
+    "response/abort": ["response/abort", "response/prompt#2"],
+    "response/abort_bash": ["response/abort_bash", "response/prompt#2"],
+    "response/abort_retry": ["response/abort_retry", "response/prompt#2"],
+    "response/bash": ["response/bash", "response/prompt#2"],
+    "response/clear_queue": ["response/clear_queue", "response/prompt#2"],
+    "response/clone": ["response/clone", "response/prompt#2"],
+    "response/compact": ["response/compact", "response/prompt#2"],
+    "response/cycle_model": ["response/cycle_model", "response/prompt#2"],
+    "response/cycle_thinking_level": [
+      "response/cycle_thinking_level",
+      "response/prompt#2"
+    ],
+    "response/export_html": ["response/export_html", "response/prompt#2"],
+    "response/follow_up": ["response/follow_up", "response/prompt#2"],
+    "response/fork": ["response/fork", "response/prompt#2"],
+    "response/get_available_models": [
+      "response/get_available_models",
+      "response/prompt#2"
+    ],
+    "response/get_available_thinking_levels": [
+      "response/get_available_thinking_levels",
+      "response/prompt#2"
+    ],
+    "response/get_commands": ["response/get_commands", "response/prompt#2"],
+    "response/get_entries": ["response/get_entries", "response/prompt#2"],
+    "response/get_fork_messages": [
+      "response/get_fork_messages",
+      "response/prompt#2"
+    ],
+    "response/get_last_assistant_text": [
+      "response/get_last_assistant_text",
+      "response/prompt#2"
+    ],
+    "response/get_messages": ["response/get_messages", "response/prompt#2"],
+    "response/get_session_stats": [
+      "response/get_session_stats",
+      "response/prompt#2"
+    ],
+    "response/get_state": ["response/get_state", "response/prompt#2"],
+    "response/get_tree": ["response/get_tree", "response/prompt#2"],
+    "response/new_session": ["response/new_session", "response/prompt#2"],
+    "response/prompt": ["response/prompt", "response/prompt#2"],
+    "response/set_auto_compaction": [
+      "response/prompt#2",
+      "response/set_auto_compaction"
+    ],
+    "response/set_auto_retry": ["response/prompt#2", "response/set_auto_retry"],
+    "response/set_follow_up_mode": [
+      "response/prompt#2",
+      "response/set_follow_up_mode"
+    ],
+    "response/set_model": ["response/prompt#2", "response/set_model"],
+    "response/set_session_name": [
+      "response/prompt#2",
+      "response/set_session_name"
+    ],
+    "response/set_steering_mode": [
+      "response/prompt#2",
+      "response/set_steering_mode"
+    ],
+    "response/set_thinking_level": [
+      "response/prompt#2",
+      "response/set_thinking_level"
+    ],
+    "response/steer": ["response/prompt#2", "response/steer"],
+    "response/switch_session": ["response/prompt#2", "response/switch_session"],
+    "session_info_changed": ["session_info_changed"],
+    "summarization_retry_attempt_start": [
+      "summarization_retry_attempt_start",
+      "summarization_retry_attempt_start#2"
+    ],
+    "summarization_retry_finished": ["summarization_retry_finished"],
+    "summarization_retry_scheduled": ["summarization_retry_scheduled"],
+    "thinking_level_changed": ["thinking_level_changed"],
+    "tool_execution_end": ["tool_execution_end"],
+    "tool_execution_start": ["tool_execution_start"],
+    "tool_execution_update": ["tool_execution_update"],
+    "turn_end": ["turn_end"],
+    "turn_start": ["turn_start"]
+  },
+  "out": {
+    "abort": ["abort"],
+    "abort_bash": ["abort_bash"],
+    "abort_retry": ["abort_retry"],
+    "bash": ["bash"],
+    "clear_queue": ["clear_queue"],
+    "clone": ["clone"],
+    "compact": ["compact"],
+    "cycle_model": ["cycle_model"],
+    "cycle_thinking_level": ["cycle_thinking_level"],
+    "export_html": ["export_html"],
+    "extension_ui_response": [
+      "extension_ui_response",
+      "extension_ui_response#2",
+      "extension_ui_response#3"
+    ],
+    "follow_up": ["follow_up"],
+    "fork": ["fork"],
+    "get_available_models": ["get_available_models"],
+    "get_available_thinking_levels": ["get_available_thinking_levels"],
+    "get_commands": ["get_commands"],
+    "get_entries": ["get_entries"],
+    "get_fork_messages": ["get_fork_messages"],
+    "get_last_assistant_text": ["get_last_assistant_text"],
+    "get_messages": ["get_messages"],
+    "get_session_stats": ["get_session_stats"],
+    "get_state": ["get_state"],
+    "get_tree": ["get_tree"],
+    "new_session": ["new_session"],
+    "prompt": ["prompt"],
+    "set_auto_compaction": ["set_auto_compaction"],
+    "set_auto_retry": ["set_auto_retry"],
+    "set_follow_up_mode": ["set_follow_up_mode"],
+    "set_model": ["set_model"],
+    "set_session_name": ["set_session_name"],
+    "set_steering_mode": ["set_steering_mode"],
+    "set_thinking_level": ["set_thinking_level"],
+    "steer": ["steer"],
+    "switch_session": ["switch_session"]
+  },
+  "types": {
+    "AnthropicMessagesCompat": {
+      "allowEmptySignature": [],
+      "allowedFallbackModels": [
+        "AnthropicMessagesCompat.allowedFallbackModels"
+      ],
+      "forceAdaptiveThinking": [],
+      "sendSessionAffinityHeaders": [],
+      "sessionAffinityFormat": [],
+      "supportsCacheControlOnTools": [],
+      "supportsEagerToolInputStreaming": [],
+      "supportsLongCacheRetention": [],
+      "supportsMessageThreads": [],
+      "supportsMidConvoEffort": [],
+      "supportsMidConvoSystemMessages": [],
+      "supportsMidConvoToolChanges": [],
+      "supportsStrictTools": [],
+      "supportsTemperature": []
+    },
+    "AnthropicMessagesCompat.allowedFallbackModels": {
+      "cost": ["AnthropicMessagesCompat.allowedFallbackModels.cost"],
+      "model": [],
+      "provider": []
+    },
+    "AnthropicMessagesCompat.allowedFallbackModels.cost": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "imageOutput": [],
+      "input": [],
+      "output": [],
+      "tiers": ["AnthropicMessagesCompat.allowedFallbackModels.cost.tiers"]
+    },
+    "AnthropicMessagesCompat.allowedFallbackModels.cost.tiers": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "input": [],
+      "inputTokensAbove": [],
+      "output": []
+    },
+    "AssistantMessage": {
+      "api": [],
+      "content": ["TextContent", "ThinkingContent", "ToolCall"],
+      "deferred": ["DeferredHandle"],
+      "diagnostics": ["AssistantMessageDiagnostic"],
+      "durationMs": [],
+      "endTurn": [],
+      "errorMessage": [],
+      "model": [],
+      "provider": [],
+      "providerThinkingLevel": [],
+      "rawStopReason": [],
+      "responseId": [],
+      "responseModel": [],
+      "role": [],
+      "stopReason": [],
+      "thinkingLevel": [],
+      "timestamp": [],
+      "usage": ["Usage"]
+    },
+    "AssistantMessageDiagnostic": {
+      "details": ["JsonObject"],
+      "error": ["DiagnosticErrorInfo"],
+      "timestamp": [],
+      "type": []
+    },
+    "BashExecutionMessage": {
+      "cancelled": [],
+      "command": [],
+      "excludeFromContext": [],
+      "exitCode": [],
+      "fullOutputError": [],
+      "fullOutputPath": [],
+      "output": [],
+      "role": [],
+      "timestamp": [],
+      "truncated": []
+    },
+    "BashResult": {
+      "cancelled": [],
+      "exitCode": [],
+      "fullOutputError": [],
+      "fullOutputPath": [],
+      "output": [],
+      "truncated": []
+    },
+    "BedrockCompat": {
+      "supportsReasoningReplay": [],
+      "supportsStrictMode": []
+    },
+    "BranchSummaryEntry": {
+      "details": ["*"],
+      "fromHook": [],
+      "fromId": [],
+      "id": [],
+      "parentId": [],
+      "summary": [],
+      "timestamp": [],
+      "type": [],
+      "usage": ["Usage"]
+    },
+    "BranchSummaryMessage": {
+      "fromId": [],
+      "role": [],
+      "summary": [],
+      "timestamp": []
+    },
+    "CompactionEntry": {
+      "details": ["*"],
+      "firstKeptEntryId": [],
+      "fromHook": [],
+      "id": [],
+      "parentId": [],
+      "summary": [],
+      "systemMessage": ["SystemMessage"],
+      "timestamp": [],
+      "tokensBefore": [],
+      "type": [],
+      "usage": ["Usage"]
+    },
+    "CompactionResult": {
+      "details": ["*"],
+      "estimatedTokensAfter": [],
+      "firstKeptEntryId": [],
+      "summary": [],
+      "tokensBefore": [],
+      "usage": ["Usage"]
+    },
+    "CompactionSummaryMessage": {
+      "role": [],
+      "summary": [],
+      "timestamp": [],
+      "tokensBefore": []
+    },
+    "ContextEditEntry": {
+      "id": [],
+      "parentId": [],
+      "replacement": ["ContextEditEntry.replacement"],
+      "targetId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "ContextEditEntry.replacement": {
+      "content": ["ImageContent", "TextContent", "ThinkingContent", "ToolCall"]
+    },
+    "ContextUsage": { "contextWindow": [], "percent": [], "tokens": [] },
+    "CustomEntry": {
+      "customType": [],
+      "data": ["*"],
+      "id": [],
+      "parentId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "CustomMessage": {
+      "content": ["ImageContent", "TextContent"],
+      "customType": [],
+      "details": ["*"],
+      "display": [],
+      "role": [],
+      "timestamp": []
+    },
+    "CustomMessageEntry": {
+      "content": ["ImageContent", "TextContent"],
+      "customType": [],
+      "details": ["*"],
+      "display": [],
+      "id": [],
+      "parentId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "DeferredHandle": {
+      "api": [],
+      "data": ["JsonObject"],
+      "expiresAt": [],
+      "id": [],
+      "modelId": [],
+      "pollAfterMs": [],
+      "provider": []
+    },
+    "DiagnosticErrorInfo": {
+      "code": [],
+      "message": [],
+      "name": [],
+      "stack": []
+    },
+    "GoogleCompat": { "supportsStrictMode": [] },
+    "ImageContent": { "data": [], "mimeType": [], "type": [] },
+    "JsonObject": { "*": [] },
+    "LabelEntry": {
+      "id": [],
+      "label": [],
+      "parentId": [],
+      "targetId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "MistralConversationsCompat": {
+      "supportsMidConvoSystemMessages": [],
+      "supportsStrictMode": []
+    },
+    "Model": {
+      "api": ["*"],
+      "baseUrl": [],
+      "compat": [
+        "AnthropicMessagesCompat",
+        "BedrockCompat",
+        "GoogleCompat",
+        "MistralConversationsCompat",
+        "OpenAICompletionsCompat",
+        "OpenAIResponsesCompat"
+      ],
+      "contextWindow": [],
+      "cost": ["Model.cost"],
+      "headers": ["Record#3"],
+      "id": [],
+      "input": [],
+      "inputLimits": ["Model.inputLimits"],
+      "maxTokens": [],
+      "name": [],
+      "promptCache": ["Model.promptCache"],
+      "provider": [],
+      "reasoning": [],
+      "samplingParams": ["SamplingParams"],
+      "samplingParamsByThinkingLevel": ["Partial"],
+      "thinkingLevelMap": ["Model.thinkingLevelMap"],
+      "type": []
+    },
+    "Model.cost": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "imageOutput": [],
+      "input": [],
+      "output": [],
+      "tiers": ["Model.cost.tiers"]
+    },
+    "Model.cost.tiers": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "input": [],
+      "inputTokensAbove": [],
+      "output": []
+    },
+    "Model.inputLimits": {
+      "images": ["Model.inputLimits.images"],
+      "maxRequestBytes": []
+    },
+    "Model.inputLimits.images": {
+      "maxPerMessage": [],
+      "maxPerRequest": [],
+      "resize": ["Model.inputLimits.images.resize"]
+    },
+    "Model.inputLimits.images.resize": {
+      "jpegQuality": [],
+      "maxBytes": [],
+      "maxHeight": [],
+      "maxWidth": []
+    },
+    "Model.promptCache": { "long": [], "short": [] },
+    "Model.thinkingLevelMap": {
+      "high": [],
+      "low": [],
+      "max": [],
+      "medium": [],
+      "minimal": [],
+      "off": [],
+      "xhigh": []
+    },
+    "ModelChangeEntry": {
+      "id": [],
+      "modelId": [],
+      "parentId": [],
+      "provider": [],
+      "timestamp": [],
+      "type": []
+    },
+    "NestedToolCallRecord": {
+      "arguments": [],
+      "argumentsBytes": [],
+      "durationMs": [],
+      "error": [],
+      "id": [],
+      "name": [],
+      "status": []
+    },
+    "NestedToolCalls": { "calls": ["NestedToolCallRecord"], "complete": [] },
+    "OpenAICompletionsCompat": {
+      "cacheControlFormat": [],
+      "chatTemplateArgs": ["Record#2"],
+      "chatTemplateKwargs": ["Record"],
+      "maxTokensField": [],
+      "openRouterRouting": ["OpenAICompletionsCompat.openRouterRouting"],
+      "promptCacheKeyMode": [],
+      "requiresAssistantAfterToolResult": [],
+      "requiresNonNullAssistantContent": [],
+      "requiresReasoningContentOnAssistantMessages": [],
+      "requiresThinkingAsText": [],
+      "requiresToolResultName": [],
+      "requiresToolsWithToolHistory": [],
+      "sendSessionAffinityHeaders": [],
+      "sessionAffinityFormat": [],
+      "supportsDeveloperRole": [],
+      "supportsFinishReason": [],
+      "supportsLongCacheRetention": [],
+      "supportsMidConvoSystemMessages": [],
+      "supportsMidConvoToolAdditions": [],
+      "supportsOpenAIGrammarTools": [],
+      "supportsReasoningEffort": [],
+      "supportsStore": [],
+      "supportsStrictMode": [],
+      "supportsThinkingTokenBudget": [],
+      "supportsUsageInStreaming": [],
+      "thinkingFormat": [],
+      "thinkingTokenBudgetField": [],
+      "vercelGatewayRouting": ["OpenAICompletionsCompat.vercelGatewayRouting"],
+      "vllmPriority": [],
+      "zaiToolStream": []
+    },
+    "OpenAICompletionsCompat.openRouterRouting": {
+      "allow_fallbacks": [],
+      "data_collection": [],
+      "enforce_distillable_text": [],
+      "ignore": [],
+      "max_price": ["OpenAICompletionsCompat.openRouterRouting.max_price"],
+      "only": [],
+      "order": [],
+      "preferred_max_latency": [
+        "OpenAICompletionsCompat.openRouterRouting.preferred_max_latency"
+      ],
+      "preferred_min_throughput": [
+        "OpenAICompletionsCompat.openRouterRouting.preferred_min_throughput"
+      ],
+      "quantizations": [],
+      "require_parameters": [],
+      "sort": ["OpenAICompletionsCompat.openRouterRouting.sort"],
+      "zdr": []
+    },
+    "OpenAICompletionsCompat.openRouterRouting.max_price": {
+      "audio": [],
+      "completion": [],
+      "image": [],
+      "prompt": [],
+      "request": []
+    },
+    "OpenAICompletionsCompat.openRouterRouting.preferred_max_latency": {
+      "p50": [],
+      "p75": [],
+      "p90": [],
+      "p99": []
+    },
+    "OpenAICompletionsCompat.openRouterRouting.preferred_min_throughput": {
+      "p50": [],
+      "p75": [],
+      "p90": [],
+      "p99": []
+    },
+    "OpenAICompletionsCompat.openRouterRouting.sort": {
+      "by": [],
+      "partition": []
+    },
+    "OpenAICompletionsCompat.vercelGatewayRouting": { "only": [], "order": [] },
+    "OpenAIResponsesCompat": {
+      "promptCacheKeyMode": [],
+      "sessionAffinityFormat": [],
+      "supportsAdditionalTools": [],
+      "supportsDeveloperRole": [],
+      "supportsExplicitPromptCacheMode": [],
+      "supportsLongCacheRetention": [],
+      "supportsMaxOutputTokens": [],
+      "supportsMidConvoEffort": [],
+      "supportsMidConvoSystemMessages": [],
+      "supportsOpenAIGrammarTools": [],
+      "supportsStrictMode": [],
+      "supportsToolSearch": []
+    },
+    "Partial": {
+      "high": ["SamplingParams"],
+      "low": ["SamplingParams"],
+      "max": ["SamplingParams"],
+      "medium": ["SamplingParams"],
+      "minimal": ["SamplingParams"],
+      "off": ["SamplingParams"],
+      "xhigh": ["SamplingParams"]
+    },
+    "Partial#2": { "openai_lark": [], "openai_regex": [] },
+    "Record": { "*": [] },
+    "Record#2": { "*": [] },
+    "Record#3": { "*": [] },
+    "Record#4": { "*": [] },
+    "RpcSessionState": {
+      "autoCompactionEnabled": [],
+      "followUpMode": [],
+      "isCompacting": [],
+      "isStreaming": [],
+      "messageCount": [],
+      "model": ["Model"],
+      "pendingMessageCount": [],
+      "sessionFile": [],
+      "sessionId": [],
+      "sessionName": [],
+      "steeringMode": [],
+      "thinkingLevel": []
+    },
+    "RpcSlashCommand": {
+      "description": [],
+      "name": [],
+      "source": [],
+      "sourceInfo": ["SourceInfo"]
+    },
+    "SamplingParams": { "*": [] },
+    "SessionInfoEntry": {
+      "id": [],
+      "name": [],
+      "parentId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "SessionMessageEntry": {
+      "id": [],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "parentId": [],
+      "timestamp": [],
+      "type": []
+    },
+    "SessionMessageEntry.message": {
+      "content": ["ImageContent", "TextContent"],
+      "details": ["JsonObject"],
+      "durationMs": [],
+      "isError": [],
+      "nestedCalls": ["NestedToolCalls"],
+      "role": [],
+      "timestamp": [],
+      "toolCallId": [],
+      "toolName": [],
+      "usage": ["Usage"]
+    },
+    "SessionStats": {
+      "assistantMessages": [],
+      "contextUsage": ["ContextUsage"],
+      "cost": [],
+      "sessionFile": [],
+      "sessionId": [],
+      "tokens": ["SessionStats.tokens"],
+      "toolCalls": [],
+      "toolResults": [],
+      "totalMessages": [],
+      "userMessages": []
+    },
+    "SessionStats.tokens": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "input": [],
+      "output": [],
+      "total": []
+    },
+    "SessionTreeNode": {
+      "children": ["SessionTreeNode"],
+      "entry": [
+        "BranchSummaryEntry",
+        "CompactionEntry",
+        "ContextEditEntry",
+        "CustomEntry",
+        "CustomMessageEntry",
+        "LabelEntry",
+        "ModelChangeEntry",
+        "SessionInfoEntry",
+        "SessionMessageEntry",
+        "ThinkingLevelChangeEntry",
+        "UsageEntry"
+      ],
+      "label": [],
+      "labelTimestamp": []
+    },
+    "SourceInfo": {
+      "baseDir": [],
+      "changelogPath": [],
+      "origin": [],
+      "path": [],
+      "scope": [],
+      "source": []
+    },
+    "SystemMessage": {
+      "content": ["TextContent"],
+      "role": [],
+      "sections": ["Record#4"],
+      "timestamp": [],
+      "toolsAdded": ["Tool"],
+      "toolsRemoved": ["ToolReference"]
+    },
+    "TextContent": { "text": [], "textSignature": [], "type": [] },
+    "ThinkingContent": {
+      "redacted": [],
+      "thinking": [],
+      "thinkingSignature": [],
+      "type": []
+    },
+    "ThinkingLevelChangeEntry": {
+      "id": [],
+      "parentId": [],
+      "thinkingLevel": [],
+      "timestamp": [],
+      "type": []
+    },
+    "Tool": {
+      "constrainedSampling": [
+        "Tool.constrainedSampling",
+        "Tool.constrainedSampling#2"
+      ],
+      "description": [],
+      "name": [],
+      "parameters": ["*"]
+    },
+    "Tool.constrainedSampling": { "strict": [], "type": [] },
+    "Tool.constrainedSampling#2": { "type": [], "variants": ["Partial#2"] },
+    "ToolCall": {
+      "arguments": [],
+      "argumentsError": [],
+      "id": [],
+      "name": [],
+      "namespace": [],
+      "thoughtSignature": [],
+      "type": []
+    },
+    "ToolReference": { "name": [] },
+    "Usage": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "cacheWrite1h": [],
+      "cost": ["Usage.cost"],
+      "imageOutput": [],
+      "input": [],
+      "output": [],
+      "reasoning": [],
+      "totalTokens": []
+    },
+    "Usage.cost": {
+      "cacheRead": [],
+      "cacheWrite": [],
+      "input": [],
+      "output": [],
+      "total": [],
+      "totalFromProvider": []
+    },
+    "UsageEntry": {
+      "id": [],
+      "kind": [],
+      "model": [],
+      "note": [],
+      "parentId": [],
+      "provider": [],
+      "timestamp": [],
+      "type": [],
+      "usage": ["Usage"]
+    },
+    "UserMessage": {
+      "content": ["ImageContent", "TextContent"],
+      "role": [],
+      "timestamp": []
+    },
+    "abort": { "id": [], "type": [] },
+    "abort_bash": { "id": [], "type": [] },
+    "abort_retry": { "id": [], "type": [] },
+    "agent_end": {
+      "messages": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": [],
+      "willRetry": []
+    },
+    "agent_settled": { "aborted": [], "type": [] },
+    "agent_start": { "type": [] },
+    "auto_retry_end": {
+      "attempt": [],
+      "finalError": [],
+      "success": [],
+      "type": []
+    },
+    "auto_retry_start": {
+      "attempt": [],
+      "delayMs": [],
+      "errorMessage": [],
+      "maxAttempts": [],
+      "type": []
+    },
+    "bash": { "command": [], "excludeFromContext": [], "id": [], "type": [] },
+    "bash_execution_update": { "delta": [], "id": [], "type": [] },
+    "clear_queue": { "id": [], "type": [] },
+    "clone": { "id": [], "type": [] },
+    "compact": { "customInstructions": [], "id": [], "type": [] },
+    "compaction_end": {
+      "aborted": [],
+      "errorMessage": [],
+      "reason": [],
+      "result": ["CompactionResult"],
+      "type": [],
+      "willRetry": []
+    },
+    "compaction_start": { "reason": [], "type": [] },
+    "cycle_model": { "id": [], "type": [] },
+    "cycle_thinking_level": { "id": [], "type": [] },
+    "entry_appended": {
+      "entry": [
+        "BranchSummaryEntry",
+        "CompactionEntry",
+        "ContextEditEntry",
+        "CustomEntry",
+        "CustomMessageEntry",
+        "LabelEntry",
+        "ModelChangeEntry",
+        "SessionInfoEntry",
+        "SessionMessageEntry",
+        "ThinkingLevelChangeEntry",
+        "UsageEntry"
+      ],
+      "type": []
+    },
+    "export_html": { "id": [], "outputPath": [], "type": [] },
+    "extension_ui_response": { "id": [], "type": [], "value": [] },
+    "extension_ui_response#2": { "confirmed": [], "id": [], "type": [] },
+    "extension_ui_response#3": { "cancelled": [], "id": [], "type": [] },
+    "follow_up": {
+      "id": [],
+      "images": ["ImageContent"],
+      "message": [],
+      "type": []
+    },
+    "fork": { "entryId": [], "id": [], "type": [] },
+    "get_available_models": { "id": [], "type": [] },
+    "get_available_thinking_levels": { "id": [], "type": [] },
+    "get_commands": { "id": [], "type": [] },
+    "get_entries": { "id": [], "since": [], "type": [] },
+    "get_fork_messages": { "id": [], "type": [] },
+    "get_last_assistant_text": { "id": [], "type": [] },
+    "get_messages": { "id": [], "type": [] },
+    "get_session_stats": { "id": [], "type": [] },
+    "get_state": { "id": [], "type": [] },
+    "get_tree": { "id": [], "type": [] },
+    "message_end": {
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_start": {
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/done": {
+      "assistantMessageEvent": ["message_update/done.assistantMessageEvent"],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/done.assistantMessageEvent": {
+      "message": ["AssistantMessage"],
+      "reason": [],
+      "type": []
+    },
+    "message_update/error": {
+      "assistantMessageEvent": ["message_update/error.assistantMessageEvent"],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/error.assistantMessageEvent": {
+      "error": ["AssistantMessage"],
+      "reason": [],
+      "type": []
+    },
+    "message_update/start": {
+      "assistantMessageEvent": ["message_update/start.assistantMessageEvent"],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/start.assistantMessageEvent": {
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/text_delta": {
+      "assistantMessageEvent": [
+        "message_update/text_delta.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/text_delta.assistantMessageEvent": {
+      "contentIndex": [],
+      "delta": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/text_end": {
+      "assistantMessageEvent": [
+        "message_update/text_end.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/text_end.assistantMessageEvent": {
+      "content": [],
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/text_start": {
+      "assistantMessageEvent": [
+        "message_update/text_start.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/text_start.assistantMessageEvent": {
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/thinking_delta": {
+      "assistantMessageEvent": [
+        "message_update/thinking_delta.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/thinking_delta.assistantMessageEvent": {
+      "contentIndex": [],
+      "delta": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/thinking_end": {
+      "assistantMessageEvent": [
+        "message_update/thinking_end.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/thinking_end.assistantMessageEvent": {
+      "content": [],
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/thinking_start": {
+      "assistantMessageEvent": [
+        "message_update/thinking_start.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/thinking_start.assistantMessageEvent": {
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/toolcall_delta": {
+      "assistantMessageEvent": [
+        "message_update/toolcall_delta.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/toolcall_delta.assistantMessageEvent": {
+      "contentIndex": [],
+      "delta": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "message_update/toolcall_end": {
+      "assistantMessageEvent": [
+        "message_update/toolcall_end.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/toolcall_end.assistantMessageEvent": {
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "toolCall": ["ToolCall"],
+      "type": []
+    },
+    "message_update/toolcall_start": {
+      "assistantMessageEvent": [
+        "message_update/toolcall_start.assistantMessageEvent"
+      ],
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "type": []
+    },
+    "message_update/toolcall_start.assistantMessageEvent": {
+      "contentIndex": [],
+      "partial": ["AssistantMessage"],
+      "type": []
+    },
+    "new_session": { "id": [], "parentSession": [], "type": [] },
+    "prompt": {
+      "id": [],
+      "images": ["ImageContent"],
+      "message": [],
+      "streamingBehavior": [],
+      "type": []
+    },
+    "queue_update": { "followUp": [], "steering": [], "type": [] },
+    "request:confirm": {
+      "id": [],
+      "message": [],
+      "method": [],
+      "timeout": [],
+      "title": [],
+      "type": []
+    },
+    "request:editor": {
+      "id": [],
+      "method": [],
+      "prefill": [],
+      "title": [],
+      "type": []
+    },
+    "request:input": {
+      "id": [],
+      "method": [],
+      "placeholder": [],
+      "timeout": [],
+      "title": [],
+      "type": []
+    },
+    "request:notify": {
+      "id": [],
+      "message": [],
+      "method": [],
+      "notifyType": [],
+      "type": []
+    },
+    "request:select": {
+      "id": [],
+      "method": [],
+      "options": [],
+      "timeout": [],
+      "title": [],
+      "type": []
+    },
+    "request:setStatus": {
+      "id": [],
+      "method": [],
+      "statusKey": [],
+      "statusText": [],
+      "type": []
+    },
+    "request:setTitle": { "id": [], "method": [], "title": [], "type": [] },
+    "request:setWidget": {
+      "id": [],
+      "method": [],
+      "type": [],
+      "widgetKey": [],
+      "widgetLines": [],
+      "widgetPlacement": []
+    },
+    "request:set_editor_text": {
+      "id": [],
+      "method": [],
+      "text": [],
+      "type": []
+    },
+    "response/abort": { "command": [], "id": [], "success": [], "type": [] },
+    "response/abort_bash": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/abort_retry": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/bash": {
+      "command": [],
+      "data": ["BashResult"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/clear_queue": {
+      "command": [],
+      "data": ["response/clear_queue.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/clear_queue.data": { "followUp": [], "steering": [] },
+    "response/clone": {
+      "command": [],
+      "data": ["response/clone.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/clone.data": { "cancelled": [] },
+    "response/compact": {
+      "command": [],
+      "data": ["CompactionResult"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/cycle_model": {
+      "command": [],
+      "data": ["response/cycle_model.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/cycle_model.data": {
+      "isScoped": [],
+      "model": ["Model"],
+      "thinkingLevel": []
+    },
+    "response/cycle_thinking_level": {
+      "command": [],
+      "data": ["response/cycle_thinking_level.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/cycle_thinking_level.data": { "level": [] },
+    "response/export_html": {
+      "command": [],
+      "data": ["response/export_html.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/export_html.data": { "path": [] },
+    "response/follow_up": {
+      "command": [],
+      "data": ["response/follow_up.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/follow_up.data": { "disposition": [] },
+    "response/fork": {
+      "command": [],
+      "data": ["response/fork.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/fork.data": { "cancelled": [], "text": [] },
+    "response/get_available_models": {
+      "command": [],
+      "data": ["response/get_available_models.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_available_models.data": { "models": ["Model"] },
+    "response/get_available_thinking_levels": {
+      "command": [],
+      "data": ["response/get_available_thinking_levels.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_available_thinking_levels.data": { "levels": [] },
+    "response/get_commands": {
+      "command": [],
+      "data": ["response/get_commands.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_commands.data": { "commands": ["RpcSlashCommand"] },
+    "response/get_entries": {
+      "command": [],
+      "data": ["response/get_entries.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_entries.data": {
+      "entries": [
+        "BranchSummaryEntry",
+        "CompactionEntry",
+        "ContextEditEntry",
+        "CustomEntry",
+        "CustomMessageEntry",
+        "LabelEntry",
+        "ModelChangeEntry",
+        "SessionInfoEntry",
+        "SessionMessageEntry",
+        "ThinkingLevelChangeEntry",
+        "UsageEntry"
+      ],
+      "leafId": []
+    },
+    "response/get_fork_messages": {
+      "command": [],
+      "data": ["response/get_fork_messages.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_fork_messages.data": {
+      "messages": ["response/get_fork_messages.data.messages"]
+    },
+    "response/get_fork_messages.data.messages": { "entryId": [], "text": [] },
+    "response/get_last_assistant_text": {
+      "command": [],
+      "data": ["response/get_last_assistant_text.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_last_assistant_text.data": { "text": [] },
+    "response/get_messages": {
+      "command": [],
+      "data": ["response/get_messages.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_messages.data": {
+      "messages": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ]
+    },
+    "response/get_session_stats": {
+      "command": [],
+      "data": ["SessionStats"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_state": {
+      "command": [],
+      "data": ["RpcSessionState"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_tree": {
+      "command": [],
+      "data": ["response/get_tree.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/get_tree.data": { "leafId": [], "tree": ["SessionTreeNode"] },
+    "response/new_session": {
+      "command": [],
+      "data": ["response/new_session.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/new_session.data": { "cancelled": [] },
+    "response/prompt": {
+      "command": [],
+      "data": ["response/prompt.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/prompt#2": {
+      "command": [],
+      "error": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/prompt.data": { "disposition": [] },
+    "response/set_auto_compaction": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_auto_retry": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_follow_up_mode": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_model": {
+      "command": [],
+      "data": ["Model"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_session_name": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_steering_mode": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/set_thinking_level": {
+      "command": [],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/steer": {
+      "command": [],
+      "data": ["response/steer.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/steer.data": { "disposition": [] },
+    "response/switch_session": {
+      "command": [],
+      "data": ["response/switch_session.data"],
+      "id": [],
+      "success": [],
+      "type": []
+    },
+    "response/switch_session.data": { "cancelled": [] },
+    "session_info_changed": { "name": [], "type": [] },
+    "set_auto_compaction": { "enabled": [], "id": [], "type": [] },
+    "set_auto_retry": { "enabled": [], "id": [], "type": [] },
+    "set_follow_up_mode": { "id": [], "mode": [], "type": [] },
+    "set_model": { "id": [], "modelId": [], "provider": [], "type": [] },
+    "set_session_name": { "id": [], "name": [], "type": [] },
+    "set_steering_mode": { "id": [], "mode": [], "type": [] },
+    "set_thinking_level": { "id": [], "level": [], "type": [] },
+    "steer": {
+      "id": [],
+      "images": ["ImageContent"],
+      "message": [],
+      "type": []
+    },
+    "summarization_retry_attempt_start": { "source": [], "type": [] },
+    "summarization_retry_attempt_start#2": {
+      "reason": [],
+      "source": [],
+      "type": []
+    },
+    "summarization_retry_finished": { "type": [] },
+    "summarization_retry_scheduled": {
+      "attempt": [],
+      "delayMs": [],
+      "errorMessage": [],
+      "maxAttempts": [],
+      "type": []
+    },
+    "switch_session": { "id": [], "sessionPath": [], "type": [] },
+    "thinking_level_changed": { "level": [], "type": [] },
+    "tool_execution_end": {
+      "durationMs": [],
+      "isError": [],
+      "parentToolCallId": [],
+      "result": ["*"],
+      "toolCallId": [],
+      "toolName": [],
+      "type": []
+    },
+    "tool_execution_start": {
+      "args": [],
+      "parentToolCallId": [],
+      "toolCallId": [],
+      "toolName": [],
+      "type": []
+    },
+    "tool_execution_update": {
+      "args": [],
+      "parentToolCallId": [],
+      "partialResult": [],
+      "toolCallId": [],
+      "toolName": [],
+      "type": []
+    },
+    "turn_end": {
+      "message": [
+        "AssistantMessage",
+        "BashExecutionMessage",
+        "BranchSummaryMessage",
+        "CompactionSummaryMessage",
+        "CustomMessage",
+        "SessionMessageEntry.message",
+        "SystemMessage",
+        "UserMessage"
+      ],
+      "toolResults": ["SessionMessageEntry.message"],
+      "type": []
+    },
+    "turn_start": { "type": [] }
+  }
+}

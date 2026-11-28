@@ -8,6 +8,7 @@
     "review",
     "status",
     "mcp",
+    "create-statusline",
     "imagegen",
     "openai-docs",
     "review-agent",
@@ -20,6 +21,6 @@
     "SessionReady {\"id\":\"#1\",\"loaded\":false}",
     "IgnoredLate x3",
     "Models {\"models\":[{\"id\":\"#2\",\"name\":\"redacted\",\"is_default\":true},{\"id\":\"#3\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#4\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#5\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#6\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#7\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#8\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#9\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#10\",\"name\":\"redacted\",\"is_default\":false},{\"id\":\"#11\",\"name\":\"redacted\",\"is_default\":false}],\"next_cursor\":null}",
-    "IgnoredLate x2"
+    "IgnoredLate"
   ]
 }

@@ -145,10 +145,35 @@ export function makeSanitizer({ roots }) {
     }
   };
 
+  // The models an account can use (a provider catalog, Pi's) say what the
+  // account is entitled to, so each model descriptor's id and name map to a
+  // placeholder, the same one wherever that string recurs.
+  const models = new Map();
+  let modelCount = 0;
+  const findModels = (value) => {
+    if (Array.isArray(value)) value.forEach(findModels);
+    else if (value && typeof value === "object") {
+      if (
+        typeof value.id === "string" &&
+        typeof value.api === "string" &&
+        typeof value.provider === "string" &&
+        !models.has(value.id)
+      ) {
+        modelCount += 1;
+        const n = modelCount;
+        models.set(value.id, `model-${n}`);
+        if (typeof value.name === "string" && !models.has(value.name))
+          models.set(value.name, `Model ${n}`);
+      }
+      Object.values(value).forEach(findModels);
+    }
+  };
+
   const walk = (value, key) => {
     // A process id changes every run and says nothing about the protocol.
     if (key === "pid" && typeof value === "number") return 0;
     if (typeof value === "string") {
+      if (models.has(value)) return models.get(value);
       return IDENTITY_KEYS.has(key) ? "redacted" : text(value);
     }
     if (Array.isArray(value)) {
@@ -174,7 +199,10 @@ export function makeSanitizer({ roots }) {
   return {
     record: (record) => walk(record, ""),
     records: (list) => {
-      list.forEach((record) => findSynced(record.frame));
+      list.forEach((record) => {
+        findSynced(record.frame);
+        findModels(record.frame);
+      });
       return joinSplitRuns(list, text).map((r) => walk(r, ""));
     },
     text,
