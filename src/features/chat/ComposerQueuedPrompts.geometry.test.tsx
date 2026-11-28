@@ -129,8 +129,7 @@ it("puts a text-only queued message back in the composer and folds the card to i
           onDelete={(id) =>
             setPrompts((rows) => rows.filter((row) => row.id !== id))
           }
-          onEdit={(queued) => setText(`${text}
-${queued}`)}
+          onEdit={(queued) => setText(`${text}\n${queued}`)}
         />
         <textarea
           ref={input}
@@ -158,8 +157,7 @@ ${queued}`)}
     }),
   );
   const prompt = screen.getByRole("textbox", { name: "Prompt" });
-  expect(prompt).toHaveValue("Draft
-Also check the branch");
+  expect(prompt).toHaveValue("Draft\nAlso check the branch");
   expect(prompt).toHaveFocus();
   expect(screen.queryByRole("region", { name: "Queued messages" })).toBeNull();
 });
