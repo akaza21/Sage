@@ -105,8 +105,8 @@ impl Unowned {
             .collect()
     }
 
-    fn take(&mut self, mut picked: impl FnMut(&Held) -> bool) -> Vec<Held> {
-        let (taken, kept): (Vec<Held>, VecDeque<Held>) = std::mem::take(&mut self.held)
+    fn take(&mut self, mut picked: impl FnMut(&Held) -> bool) -> VecDeque<Held> {
+        let (taken, kept): (VecDeque<Held>, VecDeque<Held>) = std::mem::take(&mut self.held)
             .into_iter()
             .partition(|held| picked(held));
         self.held = kept;
