@@ -9,6 +9,7 @@ import { AgentOverviewEntries, useOverviewPage } from "./AgentPaneLauncher";
 import "./agent-resources.css";
 
 export { AgentPaneLauncher, AgentPaneAskPill } from "./AgentPaneLauncher";
+export { AgentPaneViewCanvas } from "./AgentPaneViewCanvas";
 
 export function AgentResourcesPopover({
   chatId,

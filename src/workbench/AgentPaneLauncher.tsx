@@ -20,9 +20,7 @@ import { Folders } from "../ui/leanIconNodesLazy";
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import { useWorkbenchStore } from "../app/store";
-import { resolveBrowserAddress } from "../features/browser/browserAddress";
 import { NoticePart } from "../features/chat/lazyParts";
-import { decodeSessionSurface } from "../services/acpSessionSurface";
 import {
   liveAgent,
   projectRecentAgents,
@@ -93,16 +91,21 @@ export function AgentOverviewEntries({
     () => projectRecentAgents(validPage ? page : null, chatId),
     [page, chatId, validPage],
   );
-  // Counts what BackgroundProcesses lists: background tasks, plus running
-  // subagents that can still be stopped.
+  // Counts what BackgroundProcesses lists (background tasks, plus running
+  // subagents that can still be stopped); that list decodes the surface.
+  const activities = (
+    page?.sessionSurface as { activities?: unknown } | undefined
+  )?.activities;
   const taskCount =
-    decodeSessionSurface(
-      validPage ? page?.sessionSurface : null,
-    )?.activities.filter(
-      ({ kind, state, stoppable }) =>
-        kind === "backgroundTask" ||
-        (kind === "subagent" && state === "running" && stoppable),
-    ).length ?? 0;
+    validPage && Array.isArray(activities)
+      ? activities.filter(
+          (activity: { kind?: string; state?: string; stoppable?: boolean }) =>
+            activity?.kind === "backgroundTask" ||
+            (activity?.kind === "subagent" &&
+              activity.state === "running" &&
+              activity.stoppable === true),
+        ).length
+      : 0;
   const noSession = !validPage || !page?.currentSessionId;
   const browserDisabled = useBrowserPaneDisabled();
   const entry = (
@@ -217,12 +220,16 @@ export function AgentOverviewEntries({
 export function AgentPaneLauncher({ chatId }: { chatId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const done = () => selectAgentPaneView(null);
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const field = event.currentTarget.elements.namedItem("address");
     const text = field instanceof HTMLInputElement ? field.value.trim() : "";
     if (!text) return;
     try {
+      // The browser it opens owns address rules; load them with it.
+      const { resolveBrowserAddress } = await import(
+        "../features/browser/BrowserSurface"
+      );
       openPaneBrowser(resolveBrowserAddress(text));
       done();
     } catch (failure) {
@@ -231,7 +238,10 @@ export function AgentPaneLauncher({ chatId }: { chatId: string | null }) {
   };
   return (
     <section className="agent-pane-launcher" aria-label="New tab">
-      <form className="agent-pane-launcher__address" onSubmit={submit}>
+      <form
+        className="agent-pane-launcher__address"
+        onSubmit={(event) => void submit(event)}
+      >
         <Search size={16} aria-hidden="true" />
         <input
           name="address"

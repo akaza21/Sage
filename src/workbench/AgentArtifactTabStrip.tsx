@@ -35,7 +35,6 @@ import {
 } from "./agentPaneViews";
 import "./AgentArtifactPaneTabs.css";
 
-export { AgentPaneViewCanvas } from "./AgentPaneViewCanvas";
 
 const VIEW_ICON = {
   diagram: Workflow,

@@ -17,7 +17,6 @@ import {
 import { useWorkbenchStore } from "../../../app/store";
 import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
 import { ChatCodeBlock } from "./ChatCodeBlock";
-import { ChatDiagramCard } from "./ChatDiagramCard";
 import type { StreamRuns } from "./streamTail";
 import type nextStreamRuns from "./streamTail";
 
@@ -201,14 +200,11 @@ export function ChatMarkdown({
         renderCode={(block) =>
           block.language.toLowerCase() === "mermaid" &&
           !(streaming && !block.fenceClosed) ? (
-            fileReferenceOwner ? (
-              <ChatDiagramCard
-                source={block.text}
-                chatId={fileReferenceOwner.chatId}
-              />
-            ) : (
-              <MermaidFigureBoundary source={block.text} copySource={false} />
-            )
+            <MermaidFigureBoundary
+              source={block.text}
+              copySource={false}
+              chatId={fileReferenceOwner?.chatId}
+            />
           ) : (
             <ChatCodeBlock
               language={block.language}

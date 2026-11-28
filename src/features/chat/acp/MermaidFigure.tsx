@@ -20,6 +20,8 @@ import {
   mermaidAccessibility,
 } from "./mermaidAccessibility";
 
+import { ChatDiagramCard } from "./ChatDiagramCard";
+
 export function MermaidFigure({
   source,
   copySource = true,
@@ -342,4 +344,18 @@ function LaneSvg({
   );
 }
 
-export default MermaidFigure;
+/** In a Chat message a diagram is a card that opens it in the side pane. */
+export default function MermaidEntry({
+  chatId,
+  ...props
+}: {
+  source: string;
+  copySource?: boolean;
+  chatId?: string;
+}) {
+  return chatId ? (
+    <ChatDiagramCard source={props.source} chatId={chatId} />
+  ) : (
+    <MermaidFigure {...props} />
+  );
+}

@@ -378,7 +378,7 @@ export function AgentArtifactPane({
                 : renderFileOrDiffCanvas(activeArtifact, PANE_CANVAS)
               : null}
             {paneViews.selected ? (
-              <TabsPart part="AgentPaneViewCanvas" view={paneViews.selected} />
+              <OverviewPart part="AgentPaneViewCanvas" view={paneViews.selected} />
             ) : null}
             {paneViews.launcher ||
             (!otherSelected && !previewSelected && !activeArtifact) ? (

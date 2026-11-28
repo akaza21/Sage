@@ -59,6 +59,9 @@ const BrowserHistoryPage = lazy(() =>
   })),
 );
 
+// The pane launcher resolves typed addresses with the browser it opens.
+export { resolveBrowserAddress };
+
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
   if (tab.status === "closed")
     return (

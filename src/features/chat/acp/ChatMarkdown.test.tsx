@@ -383,7 +383,7 @@ describe("ChatMarkdown code blocks", () => {
     expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
-  it("shows a Chat diagram as a card that opens it in the side pane", () => {
+  it("shows a Chat diagram as a card that opens it in the side pane", async () => {
     const source = "sequenceDiagram\nA->>B: hi";
     render(
       <ChatMarkdown
@@ -397,12 +397,12 @@ describe("ChatMarkdown code blocks", () => {
         }
       />,
     );
-    expect(screen.queryByRole("img", { name: "Mermaid diagram" })).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: "Open Sequence diagram in the side pane",
       }),
     );
+    expect(screen.queryByRole("img", { name: /Mermaid/ })).toBeNull();
     const { views, selected } = useAgentPaneViews.getState();
     expect(views).toMatchObject([
       { chatId: "chat-a", kind: "diagram", title: "Sequence diagram", source },
