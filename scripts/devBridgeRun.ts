@@ -59,10 +59,15 @@ export function bridgeRunHandler(runFile: string | undefined) {
     // With a live backend the app root is the paired page, so the plain dev
     // URL never lands on the "backend isn't running" screen.
     if (runFile && (route === "/" || route === "/index.html")) {
+      const page = query ? `${BRIDGE_PAGE_PATH}?${query}` : BRIDGE_PAGE_PATH;
+      // The bridge admits only the 127.0.0.1 origin, so a localhost tab moves there.
+      const localhost = /^localhost:(\d{1,5})$/i.exec(
+        request.headers.host ?? "",
+      );
       response.statusCode = 302;
       response.setHeader(
         "Location",
-        query ? `${BRIDGE_PAGE_PATH}?${query}` : BRIDGE_PAGE_PATH,
+        localhost ? `http://127.0.0.1:${localhost[1]}${page}` : page,
       );
       response.setHeader("Cache-Control", "no-store");
       response.end();

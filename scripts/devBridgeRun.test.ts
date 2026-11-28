@@ -124,3 +124,12 @@ it("sends the app root to the paired page only when a live backend is configured
   const fixture = await serve(undefined);
   expect((await get(fixture, {}, "/")).status).toBe(418);
 });
+
+it("moves a localhost tab to the 127.0.0.1 origin the bridge admits", async () => {
+  const live = await serve(runFile);
+  const response = await get(live, { host: "localhost:1461" }, "/");
+  expect(response.status).toBe(302);
+  expect(response.headers.location).toBe(
+    `http://127.0.0.1:1461${BRIDGE_PAGE_PATH}`,
+  );
+});
