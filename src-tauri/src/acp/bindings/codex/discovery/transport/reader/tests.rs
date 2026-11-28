@@ -180,7 +180,7 @@ fn an_oversized_line_during_discard_keeps_the_pipe_open() {
     let tree = crate::acp::process::launch_shell_for_test(
         82,
         &format!(
-            "cat >/dev/null; head -c 1100000 /dev/zero | tr '\0' a; echo; echo '[0]'; sleep 1; : > '{}'",
+            "cat >/dev/null; head -c 1100000 /dev/zero | tr -c a a; echo; echo '[0]'; sleep 1; : > '{}'",
             marker.display()
         ),
     );
@@ -193,6 +193,46 @@ fn an_oversized_line_during_discard_keeps_the_pipe_open() {
     assert!(
         marker.exists(),
         "the harness wrote past the oversized line and saved"
+    );
+    assert_eq!(reader.finish_before(deadline), Ok(()));
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Malformed output right after the answer, before the runner starts
+/// discarding, must not close the pipe either.
+#[cfg(not(windows))]
+#[test]
+fn a_framing_failure_right_after_the_answer_keeps_the_pipe_open() {
+    use crate::acp::process::{TreeExit, graceful_exit};
+
+    let scratch =
+        std::env::temp_dir().join(format!("sage-reader-framing-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("saved");
+    let tree = crate::acp::process::launch_shell_for_test(
+        83,
+        &format!(
+            "cat >/dev/null; echo '[0]'; head -c 1100000 /dev/zero | tr -c a a; echo; echo '[0]'; sleep 1; : > '{}'",
+            marker.display()
+        ),
+    );
+    let (mut stdin, stdout, control) = tree.into_parts();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut reader = ReaderThread::spawn(stdout, 4, "test", deadline).unwrap();
+    stdin.close();
+    assert!(matches!(
+        reader.recv_timeout(Duration::from_secs(5)),
+        Ok(ReaderEvent::Frame(_))
+    ));
+    assert!(matches!(
+        reader.recv_timeout(Duration::from_secs(5)),
+        Ok(ReaderEvent::FramingFailed(_))
+    ));
+    reader.discard_output();
+    graceful_exit::end_tree_before(&control, TreeExit::ParentShutdown, deadline).unwrap();
+    assert!(
+        marker.exists(),
+        "the harness wrote past its malformed line and saved"
     );
     assert_eq!(reader.finish_before(deadline), Ok(()));
     let _ = std::fs::remove_dir_all(&scratch);

@@ -73,10 +73,10 @@ impl ReaderThread {
                     if reader_discard.load(Ordering::Acquire) {
                         // The run has its answer: drain raw bytes to end of stream,
                         // so no malformed or oversized line closes the pipe early.
-                        let mut sink = [0_u8; 8192];
-                        while matches!(stdout.read(&mut sink), Ok(read) if read > 0) {}
+                        drain_to_end(&mut stdout);
                         break ReaderCompletion::Clean;
                     }
+                    let framing_failed = matches!(event, ReaderEvent::FramingFailed(_));
                     if let Some(completion) =
                         enqueue_reader_event(&send_event, event, &reader_overflowed, deadline)
                     {
@@ -85,6 +85,12 @@ impl ReaderThread {
                                 session_kind,
                                 "Codex discovery stdout reader buffer stayed full until its deadline"
                             );
+                        }
+                        if framing_failed {
+                            // The runner decides whether the exchange failed; until
+                            // Codex is ended the pipe stays open so a write after
+                            // its answer cannot fail mid-save.
+                            drain_to_end(&mut stdout);
                         }
                         break completion;
                     }
@@ -173,6 +179,12 @@ impl Drop for ReaderThread {
     fn drop(&mut self) {
         self.close_events();
     }
+}
+
+/// Reads and drops the harness's output until its stream ends.
+fn drain_to_end(stdout: &mut StdoutEndpoint) {
+    let mut sink = [0_u8; 8192];
+    while matches!(stdout.read(&mut sink), Ok(read) if read > 0) {}
 }
 
 pub(super) fn enqueue_reader_event(
