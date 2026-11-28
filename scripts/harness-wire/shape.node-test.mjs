@@ -82,6 +82,10 @@ for (const harness of harnesses) {
         /"usedPercent":(?!10[,}])\d/,
         /"utilization":(?!0\.1[,}])\d/,
         /"resetsAt":(?!180\d{7}[,}])\d/,
+        /"(?:hasCredits|unlimited|isUsingOverage|overageInUse|overageEnabled)":true/,
+        /"overageDisabledReason":"(?!unknown")/,
+        /"overageStatus":"(?!allowed")/,
+        /"surpassedThreshold":(?!0\.5[,}])\d/,
       ])
         assert.doesNotMatch(body, pattern, name);
     }
@@ -294,7 +298,7 @@ test("the account's usage and the provider's request ids are normalized", () => 
               windowDurationMins: 10080,
               resetsAt: 1796244039,
             },
-            credits: { hasCredits: false, balance: "12.5" },
+            credits: { hasCredits: true, unlimited: true, balance: "12.5" },
           },
         },
       },
@@ -323,7 +327,11 @@ test("the account's usage and the provider's request ids are normalized", () => 
     windowDurationMins: 10080,
     resetsAt: 1800604800,
   });
-  assert.equal(credits.balance, "0");
+  assert.deepEqual(credits, {
+    hasCredits: false,
+    unlimited: false,
+    balance: "0",
+  });
   const [claude] = makeSanitizer({ roots: [] }).records([
     {
       direction: "in",
@@ -331,16 +339,26 @@ test("the account's usage and the provider's request ids are normalized", () => 
         type: "rate_limit_event",
         rate_limit_info: {
           status: "allowed_warning",
+          rateLimitType: "seven_day",
           utilization: 0.9,
           resetsAt: 1795849200,
+          overageStatus: "rejected",
+          overageDisabledReason: "out_of_credits",
+          isUsingOverage: true,
+          surpassedThreshold: 0.75,
         },
       },
     },
   ]);
   assert.deepEqual(claude.frame.rate_limit_info, {
     status: "allowed_warning",
+    rateLimitType: "seven_day",
     utilization: 0.1,
     resetsAt: 1800000000,
+    overageStatus: "allowed",
+    overageDisabledReason: "unknown",
+    isUsingOverage: false,
+    surpassedThreshold: 0.5,
   });
   assert.equal(
     failure.frame.params.error.additionalDetails,

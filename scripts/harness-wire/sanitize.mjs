@@ -285,6 +285,23 @@ export function makeSanitizer({ roots }) {
     if (typeof out.resetsAt === "number")
       out.resetsAt = USAGE_EPOCH + (out.windowDurationMins ?? 0) * 60;
     if (typeof out.balance === "string") out.balance = "0";
+    // The account's credit and extra-usage state, as neutral values the
+    // protocol allows; `status` and `rateLimitType` stay, as Sage reads them.
+    for (const flag of [
+      "hasCredits",
+      "unlimited",
+      "isUsingOverage",
+      "overageInUse",
+      "overageEnabled",
+    ])
+      if (typeof out[flag] === "boolean") out[flag] = false;
+    if (typeof out.surpassedThreshold === "number")
+      out.surpassedThreshold = 0.5;
+    if (typeof out.overageStatus === "string") out.overageStatus = "allowed";
+    if (typeof out.overageDisabledReason === "string")
+      out.overageDisabledReason = "unknown";
+    if (typeof out.overageResetsAt === "number")
+      out.overageResetsAt = USAGE_EPOCH;
     return out;
   };
 
