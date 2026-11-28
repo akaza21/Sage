@@ -26,6 +26,7 @@
 }
 
 .workbench--agent .project-sidebar__icon-rail > :is(button, .account-avatar) {
+  position: relative;
   display: grid;
   width: 34px;
   height: 34px;
@@ -52,17 +53,10 @@
   grid-column: 2;
 }
 
-.workbench--agent .project-sidebar__actions {
-  grid-row: 1;
-}
-
-.workbench--agent .project-sidebar__scroll {
-  grid-row: 2;
-}
-
 /* The gutter is always reserved, so rows keep one box (and the "…" trigger
    stays put) whether or not the list is long enough to scroll. */
 .workbench--agent .project-sidebar__scroll {
+  grid-row: 2;
   scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -91,7 +85,10 @@
 
 .workbench--agent .project-sidebar__actions {
   position: relative;
-  padding-block: var(--space-2) var(--space-1);
+  display: grid;
+  grid-row: 1;
+  gap: 0;
+  padding: var(--space-1) var(--space-2) 0;
   border-bottom: 0;
 }
 
@@ -131,14 +128,22 @@
 .workbench--agent .project-chat-row {
   grid-template-rows: 32px;
   border: 0;
+  margin-top: 1px;
+  border-radius: var(--radius-sm);
   background: transparent;
   box-shadow: none;
+  transition: background-color var(--motion-duration-fast)
+    var(--motion-ease-standard);
   backdrop-filter: none;
   isolation: isolate;
 }
 
-.workbench--agent .project-chat-row--active {
-  background: var(--agent-shell-selected);
+.workbench--agent .project-chat-row--active,
+.workbench--agent .project-chat-row--active:hover {
+  background: var(--color-row-selected);
+  box-shadow:
+    inset 0 1px 0 var(--agent-row-highlight),
+    inset 0 0 0 1px var(--color-hairline);
 }
 
 .workbench--agent .project-row--active {
@@ -160,7 +165,7 @@
 }
 
 .workbench--agent .project-entry__header:is(:hover, :has(:focus-visible)) {
-  background: var(--agent-shell-selected);
+  background: var(--color-fill-hover);
 }
 
 .workbench--agent .project-entry__header .project-row:hover {
@@ -413,16 +418,12 @@
 
 .workbench--agent .project-chat__state--unread::before,
 .workbench--agent .project-chat__state--waiting::before {
-  width: 7px;
-  height: 7px;
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: var(--radius-circle);
   background: var(--color-accent);
   content: "";
-}
-
-.workbench--agent .project-chat__state--waiting::before {
-  background: var(--color-warning);
 }
 
 .workbench--agent
@@ -440,8 +441,13 @@
   justify-self: end;
   align-self: center;
   gap: 2px;
+  padding-left: var(--space-4);
   border-radius: var(--radius-sm);
-  background: var(--agent-shell-selected);
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--agent-row-solid) var(--space-4)
+  );
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--motion-duration-fast) ease;
@@ -478,7 +484,7 @@
 }
 
 .workbench--agent .project-chat-row:hover {
-  background: var(--agent-shell-selected);
+  background: var(--color-fill-hover);
 }
 
 .workbench--agent

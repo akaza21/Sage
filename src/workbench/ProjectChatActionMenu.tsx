@@ -19,6 +19,8 @@ import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 import { whenIdle } from "../ui/whenIdle";
 import {
   railChatAge,
+  railMinuteNow,
+  subscribeRailMinute,
   type AgentRailTrailingState,
 } from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
@@ -242,8 +244,9 @@ export function ProjectChatTrailingState({
   state: AgentRailTrailingState | null;
   updatedAt?: number;
 }) {
+  const now = useSyncExternalStore(subscribeRailMinute, railMinuteNow);
   if (!awaitingApproval && !state) {
-    const age = railChatAge(updatedAt, Date.now());
+    const age = railChatAge(updatedAt, now);
     return age ? (
       <span className="project-chat__state project-chat__age">{age}</span>
     ) : null;
