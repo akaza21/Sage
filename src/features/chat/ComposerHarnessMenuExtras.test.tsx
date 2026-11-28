@@ -66,7 +66,7 @@ it("lists harnesses this computer lacks with Install, which opens Settings' harn
 
 it("runs discovery again and applies the new inventory", async () => {
   withHarnesses();
-  const refreshed = [claude];
+  const refreshed: HarnessDefinition[] = [claude];
   vi.spyOn(getWorkbenchPorts().agent, "refreshHarnesses").mockResolvedValue(
     refreshed,
   );
