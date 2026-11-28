@@ -24,6 +24,8 @@ const MAX_PENDING_PER_LEASE: usize = 64;
 const MAX_SERVER_REQUESTS_PER_LEASE: usize = 64;
 /// Requests the host itself may have waiting on the process.
 const MAX_HOST_PENDING: usize = 16;
+/// Longest thread id the router keeps; a longer one names no thread.
+const MAX_THREAD_ID_BYTES: usize = 512;
 /// JSON-RPC error a server request gets when no lease can answer it.
 const NO_OWNER_CODE: i64 = -32001;
 
@@ -48,7 +50,12 @@ pub(crate) trait ScopePolicy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct LeaseSlot(u8);
+/// One admission of a chat. A slot index is reused after release, so the
+/// generation keeps a released chat from acting on the next one.
+pub(crate) struct LeaseSlot {
+    index: u8,
+    generation: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum RouterError {
@@ -94,15 +101,16 @@ pub(crate) struct Routed {
 }
 
 /// A request waiting on the process: its host-wide id, the lease's own id and
-/// its method.
+/// whether its success opens a thread for the lease.
 struct Pending {
     host_id: u64,
     own_id: Value,
-    method: String,
+    opens: bool,
 }
 
 #[derive(Default)]
 struct Lease {
+    generation: u64,
     threads: Vec<String>,
     requests: Vec<Pending>,
     server_requests: Vec<Value>,
@@ -115,6 +123,13 @@ pub(crate) struct HostRouter<P> {
     host_pending: Vec<u64>,
     handshake: Option<Value>,
     unowned: Unowned,
+}
+
+fn slot_of(index: usize, lease: &Lease) -> LeaseSlot {
+    LeaseSlot {
+        index: index as u8,
+        generation: lease.generation,
+    }
 }
 
 fn refusal(id: Value) -> Value {
@@ -158,8 +173,15 @@ impl<P: ScopePolicy> HostRouter<P> {
             .iter()
             .position(Option::is_none)
             .ok_or(RouterError::Full)?;
-        self.leases[index] = Some(Lease::default());
-        Ok(LeaseSlot(index as u8))
+        let generation = self.take_host_id();
+        self.leases[index] = Some(Lease {
+            generation,
+            ..Lease::default()
+        });
+        Ok(LeaseSlot {
+            index: index as u8,
+            generation,
+        })
     }
 
     pub(crate) fn leases(&self) -> usize {
@@ -173,10 +195,9 @@ impl<P: ScopePolicy> HostRouter<P> {
         &mut self,
         slot: LeaseSlot,
     ) -> Result<(Vec<String>, Vec<Value>), RouterError> {
-        let lease = self
-            .leases
-            .get_mut(usize::from(slot.0))
-            .and_then(Option::take)
+        self.lease_mut(slot)?;
+        let lease = self.leases[usize::from(slot.index)]
+            .take()
             .ok_or(RouterError::UnknownLease)?;
         for thread in &lease.threads {
             self.unowned.retire(thread);
@@ -190,7 +211,7 @@ impl<P: ScopePolicy> HostRouter<P> {
             lease
                 .as_ref()
                 .filter(|lease| lease.threads.iter().any(|owned| owned == thread))
-                .map(|_| LeaseSlot(index as u8))
+                .map(|lease| slot_of(index, lease))
         })
     }
 
@@ -201,6 +222,9 @@ impl<P: ScopePolicy> HostRouter<P> {
         slot: LeaseSlot,
         thread: &str,
     ) -> Result<Routed, RouterError> {
+        if thread.len() > MAX_THREAD_ID_BYTES {
+            return Err(RouterError::Malformed);
+        }
         if self.owner(thread).is_some_and(|owner| owner != slot) {
             return Err(RouterError::ThreadOwned);
         }
@@ -212,8 +236,10 @@ impl<P: ScopePolicy> HostRouter<P> {
             lease.threads.push(thread.to_owned());
         }
         let mut routed = Routed::default();
+        // Replayed through the same path as live frames, so a held frame that
+        // announces a child or closes a thread still does so.
         for frame in self.unowned.claim(thread) {
-            self.deliver(&mut routed, slot, frame);
+            self.dispatch(&mut routed, frame);
         }
         Ok(routed)
     }
@@ -242,10 +268,11 @@ impl<P: ScopePolicy> HostRouter<P> {
                     return Err(RouterError::PendingFull);
                 }
                 let host_id = self.take_host_id();
+                let opens = self.policy.opens_thread(&method);
                 let pending = Pending {
                     host_id,
                     own_id,
-                    method,
+                    opens,
                 };
                 self.lease_mut(slot)?.requests.push(pending);
                 frame["id"] = json!(host_id);
@@ -299,14 +326,14 @@ impl<P: ScopePolicy> HostRouter<P> {
                     .requests
                     .iter()
                     .position(|pending| pending.host_id == host_id)?;
-                Some((LeaseSlot(index as u8), lease.requests.swap_remove(at)))
+                Some((slot_of(index, lease), lease.requests.swap_remove(at)))
             });
         let Some((slot, pending)) = found else {
             return;
         };
         let opened = frame
             .get("result")
-            .filter(|_| self.policy.opens_thread(&pending.method))
+            .filter(|_| pending.opens)
             .and_then(|result| self.policy.thread_in_result(result))
             .map(str::to_owned);
         frame["id"] = pending.own_id;
@@ -322,6 +349,13 @@ impl<P: ScopePolicy> HostRouter<P> {
             self.unscoped(routed, frame);
             return;
         };
+        if thread.len() > MAX_THREAD_ID_BYTES {
+            // Not a thread id this router keeps: no chat can take it.
+            if let Some(id) = frame.get("id") {
+                routed.replies.push(refusal(id.clone()));
+            }
+            return;
+        }
         let Some(slot) = self.owner(&thread) else {
             let closed = self.policy.thread_closed(&frame) == Some(thread.as_str());
             routed
@@ -335,7 +369,7 @@ impl<P: ScopePolicy> HostRouter<P> {
         if let Some(child) = child {
             self.bind_into(routed, slot, &child);
         }
-        if closed && let Some(lease) = self.leases[usize::from(slot.0)].as_mut() {
+        if closed && let Ok(lease) = self.lease_mut(slot) {
             lease.threads.retain(|owned| *owned != thread);
         }
     }
@@ -361,7 +395,7 @@ impl<P: ScopePolicy> HostRouter<P> {
     /// Hands `frame` to `slot`, recording a server request it must answer, or
     /// refuses it when the lease has too many open.
     fn deliver(&mut self, routed: &mut Routed, slot: LeaseSlot, frame: Value) {
-        let Some(lease) = self.leases[usize::from(slot.0)].as_mut() else {
+        let Ok(lease) = self.lease_mut(slot) else {
             return;
         };
         if let Some(id) = frame.get("id").filter(|_| frame.get("method").is_some()) {
@@ -394,15 +428,15 @@ impl<P: ScopePolicy> HostRouter<P> {
         self.leases
             .iter()
             .enumerate()
-            .filter(|(_, lease)| lease.is_some())
-            .map(|(index, _)| LeaseSlot(index as u8))
+            .filter_map(|(index, lease)| lease.as_ref().map(|lease| slot_of(index, lease)))
             .collect()
     }
 
     fn lease_mut(&mut self, slot: LeaseSlot) -> Result<&mut Lease, RouterError> {
         self.leases
-            .get_mut(usize::from(slot.0))
+            .get_mut(usize::from(slot.index))
             .and_then(Option::as_mut)
+            .filter(|lease| lease.generation == slot.generation)
             .ok_or(RouterError::UnknownLease)
     }
 }

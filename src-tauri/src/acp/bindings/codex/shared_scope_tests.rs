@@ -146,11 +146,19 @@ fn a_released_chat_gets_nothing_more_and_its_slot_serves_the_next_chat() {
     assert_eq!(router.inbound(closed).unwrap(), Routed::default());
     assert_eq!(router.release(a), Err(RouterError::UnknownLease));
 
+    // The next chat reuses the slot; the released chat cannot act as it.
     let next = router.admit().unwrap();
-    assert_eq!(next, a);
-    // Resuming the still-loaded thread gives it to the new chat.
+    assert_ne!(next, a);
     assert_eq!(router.bind_thread(next, A), Ok(Routed::default()));
     assert_eq!(router.bind_thread(b, A), Err(RouterError::ThreadOwned));
+    only(router.inbound(approval(30, A)).unwrap());
+    let answer = json!({"id": 30, "result": {"decision": "decline"}});
+    assert_eq!(
+        router.outbound(a, answer.clone()),
+        Err(RouterError::UnknownLease)
+    );
+    assert_eq!(router.release(a), Err(RouterError::UnknownLease));
+    assert_eq!(written(router.outbound(next, answer.clone())), answer);
 }
 
 #[test]
@@ -330,5 +338,48 @@ fn answers_to_the_hosts_own_requests_go_to_the_host_not_a_chat() {
     assert_eq!(
         routed.host,
         Some(json!({"id": id, "result": {"account": null}}))
+    );
+}
+
+#[test]
+fn a_grandchild_announced_before_its_parent_is_bound_still_follows_the_chat() {
+    let (mut router, a, _) = two_threads();
+    let child = "01a22200-0000-7000-8000-0000000000c1";
+    let grandchild = "01a22200-0000-7000-8000-0000000000c2";
+    let announce = |thread: &str, agent: &str| {
+        json!({"method": "item/started", "params": {"threadId": thread, "turnId": "t",
+            "item": {"type": "subAgentActivity", "id": "sa", "agentThreadId": agent}}})
+    };
+    // The child announces its own child before A announces the child.
+    assert_eq!(
+        router.inbound(announce(child, grandchild)).unwrap(),
+        Routed::default()
+    );
+    let routed = router.inbound(announce(A, child)).unwrap();
+    assert_eq!(routed.deliveries.len(), 2);
+    assert_eq!(router.owner(grandchild), Some(a));
+    assert_eq!(only(router.inbound(approval(40, grandchild)).unwrap()).0, a);
+}
+
+#[test]
+fn what_no_chat_owns_yet_is_held_only_within_its_byte_bounds() {
+    let (mut router, _, _) = two_threads();
+    let long_thread = "t".repeat(513);
+    assert_eq!(
+        refused_ids(&router.inbound(approval(50, &long_thread)).unwrap()),
+        vec![json!(50)]
+    );
+    let mut huge = approval(51, "01a22200-0000-7000-8000-0000000000aa");
+    huge["params"]["reason"] = json!("x".repeat(300 * 1024));
+    assert_eq!(refused_ids(&router.inbound(huge).unwrap()), vec![json!(51)]);
+    // Two large held approvals: the older is refused when the second exceeds the budget.
+    let mut first = approval(52, "01a22200-0000-7000-8000-0000000000ab");
+    first["params"]["reason"] = json!("x".repeat(200 * 1024));
+    assert_eq!(router.inbound(first).unwrap(), Routed::default());
+    let mut second = approval(53, "01a22200-0000-7000-8000-0000000000ac");
+    second["params"]["reason"] = json!("x".repeat(100 * 1024));
+    assert_eq!(
+        refused_ids(&router.inbound(second).unwrap()),
+        vec![json!(52)]
     );
 }
