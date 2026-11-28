@@ -180,30 +180,25 @@ impl AdmittedClaudeBinding {
 fn current_launch_environment(
     system_root: &OsString,
 ) -> Result<Vec<(OsString, OsString)>, ClaudeAdmissionUnavailable> {
-    let user_profile = required_process_value("USERPROFILE")?;
-    let config_directory = std::env::var_os("CLAUDE_CONFIG_DIR")
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(&user_profile)
-                .join(".claude")
-                .into_os_string()
-        });
+    // Claude Code keys its macOS Keychain login by CLAUDE_CONFIG_DIR whenever it
+    // is set, so a default Sage filled in would hide the user's login. Only a
+    // value the user set passes through.
     let values = [
-        config_directory,
-        user_profile,
-        required_process_value("APPDATA")?,
-        required_process_value("LOCALAPPDATA")?,
-        required_process_value("PATH")?,
-        required_process_value("PATHEXT")?,
-        required_process_value("ComSpec")?,
-        system_root.clone(),
-        required_process_value("TEMP")?,
-        required_process_value("TMP")?,
+        std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty()),
+        Some(required_process_value("USERPROFILE")?),
+        Some(required_process_value("APPDATA")?),
+        Some(required_process_value("LOCALAPPDATA")?),
+        Some(required_process_value("PATH")?),
+        Some(required_process_value("PATHEXT")?),
+        Some(required_process_value("ComSpec")?),
+        Some(system_root.clone()),
+        Some(required_process_value("TEMP")?),
+        Some(required_process_value("TMP")?),
     ];
     Ok(super::LAUNCH_ENVIRONMENT_KEYS
         .iter()
         .zip(values)
-        .map(|(key, value)| (OsString::from(key), value))
+        .filter_map(|(key, value)| Some((OsString::from(key), value?)))
         .collect())
 }
 
@@ -219,10 +214,10 @@ pub(crate) fn unix_launch_environment(
     let present = |key: &str| read(key).filter(|value| !value.is_empty());
     let home = present("HOME").ok_or(ClaudeAdmissionUnavailable::CandidateInvalid)?;
     let path = present("PATH").ok_or(ClaudeAdmissionUnavailable::CandidateInvalid)?;
-    let config_directory = present("CLAUDE_CONFIG_DIR")
-        .unwrap_or_else(|| std::path::Path::new(&home).join(".claude").into_os_string());
+    // Claude Code keys its macOS Keychain login by CLAUDE_CONFIG_DIR whenever it
+    // is set, so only a value the user set passes through.
     let resolved = [
-        ("CLAUDE_CONFIG_DIR", Some(config_directory)),
+        ("CLAUDE_CONFIG_DIR", present("CLAUDE_CONFIG_DIR")),
         ("HOME", Some(home)),
         ("PATH", Some(path)),
         ("TMPDIR", present("TMPDIR")),
